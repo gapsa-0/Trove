@@ -54,6 +54,10 @@ class Config:
     date_priority: list[str] = field(
         default_factory=lambda: ["takeout_json", "exif", "filename", "mtime"]
     )
+    # IANA timezone (e.g. "America/Argentina/Buenos_Aires") used to convert
+    # Google Takeout's UTC timestamps to local wall-clock time, so evening
+    # photos don't roll into the next day. None => keep UTC.
+    timezone: str | None = None
 
     @classmethod
     def load(cls) -> "Config":

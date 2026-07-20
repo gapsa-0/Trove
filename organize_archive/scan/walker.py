@@ -9,6 +9,7 @@ and re-run — upserts are idempotent and commits happen in batches.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -85,8 +86,10 @@ def scan_root(conn, cfg: Config, root_path: str, run_started: str,
     stats = ScanStats()
     now = db.now_iso()
     batch = 0
+    last_commit = time.monotonic()
 
-    for path in iter_files(root):
+    try:
+      for path in iter_files(root):
         name = path.name
         if is_ignored(name):
             stats.ignored += 1
@@ -152,14 +155,20 @@ def scan_root(conn, cfg: Config, root_path: str, run_started: str,
 
         if progress is not None:
             progress.update(base_done + stats.seen,
-                            base_bytes + stats.bytes_hashed)
+                            base_bytes + stats.bytes_hashed, current=name)
 
+        # Commit by count or by time, so an abrupt kill loses little work.
         batch += 1
-        if batch >= commit_every:
+        if batch >= commit_every or (time.monotonic() - last_commit) > 20:
             conn.commit()
             batch = 0
+            last_commit = time.monotonic()
 
-    conn.commit()
+      conn.commit()
+    except KeyboardInterrupt:
+        # Save what we have; do NOT mark files missing on a partial scan.
+        conn.commit()
+        raise
 
     # Mark files under this root not seen in this run as missing.
     conn.execute(

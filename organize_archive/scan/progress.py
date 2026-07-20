@@ -24,10 +24,13 @@ def _fmt_gb(nbytes: int) -> str:
 
 
 class ScanProgress:
-    def __init__(self, total: int | None, stream=None, width: int = 32):
+    def __init__(self, total: int | None, stream=None, width: int = 32,
+                 show_bytes: bool = True, label: str = ""):
         self.total = total or 0
         self.stream = stream or sys.stdout
         self.width = width
+        self.show_bytes = show_bytes
+        self.label = label
         self.tty = self.stream.isatty()
         # Redraw often on a terminal; log sparsely when redirected.
         self.min_interval = 0.2 if self.tty else 10.0
@@ -35,10 +38,12 @@ class ScanProgress:
         self.last_draw = 0.0
         self.done = 0
         self.bytes_hashed = 0
+        self.current = ""
 
-    def update(self, done: int, bytes_hashed: int) -> None:
+    def update(self, done: int, bytes_hashed: int, current: str = "") -> None:
         self.done = done
         self.bytes_hashed = bytes_hashed
+        self.current = current
         now = time.monotonic()
         final = self.total and done >= self.total
         if now - self.last_draw < self.min_interval and not final:
@@ -61,7 +66,9 @@ class ScanProgress:
             counts = f"{self.done}"
             eta_s = f"elapsed {_fmt_hms(elapsed)}"
 
-        tail = f"{pct}  {counts}  {_fmt_gb(self.bytes_hashed)}  {rate:.0f} f/s  {eta_s}"
+        gb = f"  {_fmt_gb(self.bytes_hashed)}" if self.show_bytes else ""
+        lbl = f"{self.label} " if self.label else ""
+        tail = f"{lbl}{pct}  {counts}{gb}  {rate:.0f} f/s  {eta_s}"
         if self.tty:
             cols = shutil.get_terminal_size((80, 20)).columns
             # Reserve room so the bar always fits on one line (no wrapping),
@@ -69,7 +76,16 @@ class ScanProgress:
             bar_width = max(4, min(self.width, cols - len(tail) - 4))
             filled = int(bar_width * frac)
             bar = "█" * filled + "░" * (bar_width - filled)
-            line = f"[{bar}] {tail}"[: cols - 1]
+            base = f"[{bar}] {tail}"
+            line = base
+            if self.current:
+                room = cols - 1 - len(base) - 2  # 2 for the separating spaces
+                if room >= 8:
+                    cur = self.current
+                    if len(cur) > room:            # keep the tail (extension) visible
+                        cur = "…" + cur[-(room - 1):]
+                    line = f"{base}  {cur}"
+            line = line[: cols - 1]
             # \r returns to column 0; \x1b[K clears any leftover from a longer frame.
             self.stream.write("\r" + line + "\x1b[K")
         else:

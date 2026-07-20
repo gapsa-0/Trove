@@ -42,3 +42,48 @@ CREATE TABLE IF NOT EXISTS scan_runs (
     files_updated  INTEGER DEFAULT 0,
     bytes_hashed   INTEGER DEFAULT 0
 );
+
+-- ---- Phase 3: metadata & dates -------------------------------------------
+
+-- Embedded/derived media properties (from exiftool).
+CREATE TABLE IF NOT EXISTS media_meta (
+    file_id       INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    width         INTEGER,
+    height        INTEGER,
+    duration_s    REAL,
+    make          TEXT,
+    model         TEXT,
+    orientation   INTEGER,
+    mime          TEXT,
+    detected_type TEXT             -- content-sniffed type (fixes extensionless files)
+);
+
+-- One resolved best datetime per file, with provenance.
+CREATE TABLE IF NOT EXISTS dates (
+    file_id        INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    best_datetime  TEXT,           -- ISO 8601 wall-clock ("YYYY-MM-DDTHH:MM:SS")
+    date_source    TEXT,           -- takeout_json | exif | filename | mtime
+    date_confidence REAL           -- 0..1
+);
+CREATE INDEX IF NOT EXISTS idx_dates_best   ON dates(best_datetime);
+CREATE INDEX IF NOT EXISTS idx_dates_source ON dates(date_source);
+
+-- GPS location per file, with provenance.
+CREATE TABLE IF NOT EXISTS geo (
+    file_id     INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    lat         REAL,
+    lon         REAL,
+    alt         REAL,
+    geo_source  TEXT               -- takeout_json | exif
+);
+
+-- Matched Google Takeout sidecar, with the fields we consume.
+CREATE TABLE IF NOT EXISTS takeout_sidecar (
+    file_id           INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    json_rel_path     TEXT,
+    title             TEXT,
+    description       TEXT,
+    taken_time        INTEGER,     -- photoTakenTime epoch (UTC)
+    match_method      TEXT,        -- which candidate rule matched
+    match_confidence  REAL
+);

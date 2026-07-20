@@ -79,24 +79,28 @@ def cmd_scan(args, cfg: Config) -> int:
         progress = ScanProgress(total)
 
     totals = walker.ScanStats()
-    for root in roots:
-        print(f"Scanning: {root}")
-        try:
-            stats = walker.scan_root(
-                conn, cfg, root, run_started, progress=progress,
-                base_done=totals.seen, base_bytes=totals.bytes_hashed,
-            )
-        except FileNotFoundError as e:
-            print(f"  ! {e}", file=sys.stderr)
-            continue
-        totals.seen += stats.seen
-        totals.new += stats.new
-        totals.updated += stats.updated
-        totals.skipped += stats.skipped
-        totals.ignored += stats.ignored
-        totals.errors += stats.errors
-        totals.bytes_hashed += stats.bytes_hashed
-        totals.error_samples.extend(stats.error_samples[:5])
+    interrupted = False
+    try:
+        for root in roots:
+            print(f"Scanning: {root}")
+            try:
+                stats = walker.scan_root(
+                    conn, cfg, root, run_started, progress=progress,
+                    base_done=totals.seen, base_bytes=totals.bytes_hashed,
+                )
+            except FileNotFoundError as e:
+                print(f"  ! {e}", file=sys.stderr)
+                continue
+            totals.seen += stats.seen
+            totals.new += stats.new
+            totals.updated += stats.updated
+            totals.skipped += stats.skipped
+            totals.ignored += stats.ignored
+            totals.errors += stats.errors
+            totals.bytes_hashed += stats.bytes_hashed
+            totals.error_samples.extend(stats.error_samples[:5])
+    except KeyboardInterrupt:
+        interrupted = True
 
     if progress is not None:
         progress.close()
@@ -110,7 +114,10 @@ def cmd_scan(args, cfg: Config) -> int:
     conn.commit()
     conn.close()
 
-    print("\nScan complete:")
+    if interrupted:
+        print("\n\nInterrupted — progress saved. Re-run 'oa scan' to resume "
+              "(already-hashed files are skipped).")
+    print("\nScan complete:" if not interrupted else "\nProgress so far:")
     print(f"  media files seen : {totals.seen}")
     print(f"  new              : {totals.new}")
     print(f"  updated          : {totals.updated}")
@@ -121,6 +128,77 @@ def cmd_scan(args, cfg: Config) -> int:
         print(f"  errors           : {totals.errors}")
         for s in totals.error_samples:
             print(f"      - {s}")
+    return 0
+
+
+def cmd_enrich(args, cfg: Config) -> int:
+    from pathlib import Path
+    from .metadata import enrich as enrich_mod
+    from .metadata.exiftool_reader import available as exif_available
+
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init  then  oa scan")
+        return 1
+
+    if not exif_available():
+        print("Note: exiftool not found — resolving dates from Takeout JSON, "
+              "filenames and file times only (no EXIF).")
+    if cfg.timezone is None:
+        print("Note: no timezone set — Takeout (UTC) dates may shift evening "
+              "photos by a day. Set one with:  oa config --set-timezone <IANA>")
+
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+
+    progress = None if args.no_progress else ScanProgress(
+        None, show_bytes=False, label="enriching")
+    stats = enrich_mod.enrich(conn, cfg, progress=progress)
+    if progress is not None:
+        progress.close()
+    conn.close()
+
+    print("\nEnrichment complete:")
+    print(f"  files processed   : {stats.processed}")
+    print(f"  matched Takeout   : {stats.with_takeout}")
+    print(f"  with GPS location : {stats.with_gps}")
+    print("  date source used  :")
+    for src, n in sorted(stats.by_source.items(), key=lambda x: -x[1]):
+        print(f"      {src:<14} {n}")
+    return 0
+
+
+def cmd_dates(args, cfg: Config) -> int:
+    from pathlib import Path
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init  then  oa scan")
+        return 1
+    conn = db.open_readonly(cfg.db_path)
+
+    done = conn.execute("SELECT COUNT(*) FROM dates").fetchone()[0]
+    if not done:
+        print("No dates resolved yet. Run:  oa enrich")
+        return 0
+
+    print("Files per year:")
+    rows = conn.execute(
+        """SELECT substr(best_datetime,1,4) AS y, COUNT(*) c
+           FROM dates WHERE best_datetime IS NOT NULL
+           GROUP BY y ORDER BY y"""
+    ).fetchall()
+    peak = max((r["c"] for r in rows), default=1)
+    for r in rows:
+        bar = "█" * max(1, round(30 * r["c"] / peak))
+        print(f"  {r['y']}  {r['c']:>7}  {bar}")
+
+    print("\nDate source:")
+    for r in conn.execute(
+        "SELECT date_source, COUNT(*) c FROM dates GROUP BY date_source ORDER BY c DESC"
+    ):
+        print(f"  {r['date_source']:<14} {r['c']:>7}")
+
+    gps = conn.execute("SELECT COUNT(*) FROM geo").fetchone()[0]
+    print(f"\nWith GPS location: {gps}")
+    conn.close()
     return 0
 
 
@@ -177,6 +255,18 @@ def cmd_config(args, cfg: Config) -> int:
             print(f"Added root: {args.add_root}")
         else:
             print("Root already configured.")
+    if args.set_timezone:
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(args.set_timezone)
+        except Exception:
+            print(f"Unknown timezone: {args.set_timezone!r} "
+                  "(use an IANA name like America/Argentina/Buenos_Aires)")
+            return 1
+        cfg.timezone = args.set_timezone
+        cfg.save()
+        print(f"Timezone set to {args.set_timezone}. Re-run 'oa enrich' to apply "
+              "it to Takeout dates.")
     return 0
 
 
@@ -197,12 +287,22 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Disable the progress bar and pre-count")
     sp.set_defaults(func=cmd_scan)
 
+    sp = sub.add_parser("enrich", help="Resolve dates, GPS and metadata (resumable)")
+    sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
+    sp.set_defaults(func=cmd_enrich)
+
+    sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
+    sp.set_defaults(func=cmd_dates)
+
     sp = sub.add_parser("status", help="Show catalog summary")
     sp.set_defaults(func=cmd_status)
 
     sp = sub.add_parser("config", help="Show or modify configuration")
     sp.add_argument("--show", action="store_true", help="Print current config")
     sp.add_argument("--add-root", metavar="PATH", help="Add a source root")
+    sp.add_argument("--set-timezone", metavar="IANA",
+                    help="Set timezone for Takeout date conversion "
+                         "(e.g. America/Argentina/Buenos_Aires)")
     sp.set_defaults(func=cmd_config)
 
     return p
