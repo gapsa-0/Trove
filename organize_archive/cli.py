@@ -109,8 +109,11 @@ def cmd_scan(args, cfg: Config) -> int:
 
 
 def cmd_status(args, cfg: Config) -> int:
-    conn = db.connect(cfg.db_path)
-    db.init_db(conn)
+    from pathlib import Path
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init")
+        return 1
+    conn = db.open_readonly(cfg.db_path)
 
     total, present, hashed, missing, size = conn.execute(
         """SELECT COUNT(*),

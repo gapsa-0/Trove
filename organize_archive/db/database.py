@@ -27,6 +27,18 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def open_readonly(db_path: str | Path) -> sqlite3.Connection:
+    """Open a read-only connection safe to use while a scan is writing.
+
+    Uses a normal connection (so it can read not-yet-checkpointed WAL data) but
+    sets ``query_only`` so it never takes a write lock and never contends with
+    the single writer.
+    """
+    conn = connect(db_path)
+    conn.execute("PRAGMA query_only=ON")
+    return conn
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     """Create/upgrade the schema. Idempotent."""
     conn.executescript(_SCHEMA_SQL.read_text())
