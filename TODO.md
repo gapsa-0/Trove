@@ -27,24 +27,24 @@ carries **provenance**.
 - [ ] Change detection: skip unchanged files by path + size + mtime.
 - [ ] Fast partial hash (size + head/tail) as prefilter, then full SHA-256.
 - [ ] Media-type classification (image / video / audio / document / other).
-- [ ] `scan` and `status` CLI commands; progress + interruption safety.
+- [x] `scan` and `status` CLI commands; progress + interruption safety.
 
 ## Phase 3 — Metadata & dates  *(MVP)*
-- [ ] EXIF/embedded metadata reader (via exiftool): dimensions, camera, duration.
-- [ ] Content-based type detection (exiftool/magic) for extensionless files —
+- [x] EXIF/embedded metadata reader (via exiftool): dimensions, camera, duration.
+- [x] Content-based type detection (exiftool/magic) for extensionless files —
       e.g. Google Motion Photos `MVIMG_*` and truncated Takeout names currently
       fall into media_type "other".
-- [ ] **Google Takeout sidecar matcher** — robust to Google's quirks:
+- [x] **Google Takeout sidecar matcher** — robust to Google's quirks:
       base `.json`, `.supplemental-metadata.json`, ~46-char truncation,
       `(1)` counter placement, `-edited` variants. Log unmatched pairs.
-- [ ] Takeout JSON parser: `photoTakenTime` (date), `geoData`/`geoDataExif`
+- [x] Takeout JSON parser: `photoTakenTime` (date), `geoData`/`geoDataExif`
       (`0.0/0.0` → NULL), `description`.
-- [ ] Multi-format filename date parser (`IMG_20220514_090957`, `IMG-...-WA0001`,
+- [x] Multi-format filename date parser (`IMG_20220514_090957`, `IMG-...-WA0001`,
       `2022-05-14`, `20220514`, …).
-- [ ] Date resolver with **configurable** priority
+- [x] Date resolver with **configurable** priority
       (Takeout JSON → EXIF → filename → mtime); store source + confidence.
-- [ ] GPS resolver with provenance.
-- [ ] Unit tests using real weird filenames/sidecars from the archive.
+- [x] GPS resolver with provenance.
+- [x] Unit tests using real weird filenames/sidecars from the archive.
 
 ## Phase 4 — Deduplication  *(MVP)*
 - [ ] Exact-duplicate grouping via SHA-256.
