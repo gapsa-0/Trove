@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>organize_archive</title>
+<style>
+  :root {
+    --bg:#14161a; --panel:#1c1f26; --panel2:#252a33; --line:#2e343f;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#5b9dff; --accent2:#3a7bd5;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--text); }
+  a { color:var(--accent); }
+  header { display:flex; align-items:baseline; gap:14px; padding:12px 18px;
+           border-bottom:1px solid var(--line); position:sticky; top:0;
+           background:var(--bg); z-index:5; }
+  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.3px; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .layout { display:flex; min-height:calc(100vh - 49px); }
+  aside { width:210px; flex:none; border-right:1px solid var(--line);
+          padding:14px 10px; overflow:auto; max-height:calc(100vh - 49px);
+          position:sticky; top:49px; }
+  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.8px;
+             color:var(--muted); margin:16px 6px 6px; }
+  .item { display:flex; justify-content:space-between; gap:8px; padding:5px 8px;
+          border-radius:6px; cursor:pointer; color:var(--text); }
+  .item:hover { background:var(--panel2); }
+  .item.active { background:var(--accent2); color:#fff; }
+  .item .n { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .item.active .n { color:#dbe8ff; }
+  main { flex:1; padding:14px 18px; }
+  .bar { display:flex; align-items:center; gap:10px; margin-bottom:12px;
+         color:var(--muted); flex-wrap:wrap; }
+  .chip { background:var(--panel); border:1px solid var(--line); color:var(--text);
+          border-radius:14px; padding:3px 10px; font-size:12px; cursor:pointer; }
+  .chip button { all:unset; margin-left:6px; color:var(--muted); cursor:pointer; }
+  .grid { display:grid; gap:8px;
+          grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); }
+  .tile { position:relative; aspect-ratio:1; background:var(--panel);
+          border:1px solid var(--line); border-radius:8px; overflow:hidden;
+          cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .tile img { width:100%; height:100%; object-fit:cover; display:block; }
+  .tile .ph { font-size:34px; color:var(--muted); }
+  .tile .cap { position:absolute; left:0; right:0; bottom:0; padding:3px 6px;
+               font-size:10px; color:#eef; background:linear-gradient(transparent,#000a);
+               display:flex; justify-content:space-between; }
+  .tile .badge { position:absolute; top:5px; right:6px; font-size:12px;
+                 text-shadow:0 1px 2px #000; }
+  .more { text-align:center; margin:18px; }
+  .more button { background:var(--panel2); color:var(--text); border:1px solid var(--line);
+                 border-radius:8px; padding:9px 20px; cursor:pointer; }
+  .empty { color:var(--muted); padding:40px; text-align:center; }
+  /* modal */
+  .modal { position:fixed; inset:0; background:#000d; display:none;
+           align-items:center; justify-content:center; z-index:20; }
+  .modal.open { display:flex; }
+  .viewer { display:flex; max-width:96vw; max-height:94vh; gap:0;
+            background:var(--panel); border:1px solid var(--line); border-radius:10px;
+            overflow:hidden; }
+  .viewer .media { background:#000; display:flex; align-items:center;
+                   justify-content:center; max-width:74vw; }
+  .viewer .media img, .viewer .media video { max-width:74vw; max-height:94vh;
+            object-fit:contain; display:block; }
+  .viewer .info { width:290px; flex:none; padding:16px; overflow:auto;
+                  max-height:94vh; }
+  .viewer .info h3 { margin:0 0 10px; font-size:14px; word-break:break-all; }
+  .kv { display:flex; justify-content:space-between; gap:10px; padding:4px 0;
+        border-bottom:1px solid var(--line); font-size:12.5px; }
+  .kv .k { color:var(--muted); }
+  .kv .v { text-align:right; word-break:break-word; }
+  .close { position:absolute; top:14px; right:18px; font-size:26px; color:#fff;
+           cursor:pointer; z-index:21; }
+</style>
+</head>
+<body>
+<header>
+  <h1>organize_archive</h1>
+  <span class="sub" id="subtitle">loading…</span>
+</header>
+
+<div class="layout">
+  <aside>
+    <h2>Type</h2>
+    <div id="types"></div>
+    <h2>Year</h2>
+    <div id="years"></div>
+  </aside>
+
+  <main>
+    <div class="bar" id="filterbar"></div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" style="display:none">Nothing here yet.</div>
+    <div class="more" id="more" style="display:none">
+      <button onclick="loadMore()">Load more</button>
+    </div>
+  </main>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <span class="close" onclick="closeModal()">×</span>
+  <div class="viewer">
+    <div class="media" id="mmedia"></div>
+    <div class="info" id="minfo"></div>
+  </div>
+</div>
+
+<script>
+const TYPE_ICON = {image:"🖼️", video:"🎞️", audio:"🎵", document:"📄",
+                   archive:"🗜️", other:"📦"};
+const state = { year:null, month:null, type:null, offset:0, total:0 };
+
+function fmtBytes(n){ if(n==null)return "";
+  const u=["B","KB","MB","GB"]; let i=0,f=n; while(f>=1024&&i<3){f/=1024;i++;}
+  return f.toFixed(1)+" "+u[i]; }
+
+async function j(url){ const r=await fetch(url); return r.json(); }
+
+async function loadSummary(){
+  const s = await j("/api/summary");
+  document.getElementById("subtitle").textContent =
+    s.total.toLocaleString()+" items · "+s.with_gps.toLocaleString()+" with location";
+  const tEl=document.getElementById("types"); tEl.innerHTML="";
+  s.types.forEach(t=>tEl.appendChild(row(TYPE_ICON[t.type]+" "+t.type, t.count,
+    ()=>setFilter("type", state.type===t.type?null:t.type), state.type===t.type)));
+  const yEl=document.getElementById("years"); yEl.innerHTML="";
+  s.years.forEach(y=>yEl.appendChild(row(y.year, y.count,
+    ()=>setFilter("year", state.year===y.year?null:y.year), state.year===y.year)));
+}
+
+function row(label, count, onclick, active){
+  const d=document.createElement("div");
+  d.className="item"+(active?" active":"");
+  d.innerHTML=`<span>${label}</span><span class="n">${count.toLocaleString()}</span>`;
+  d.onclick=onclick; return d;
+}
+
+function setFilter(key, val){ state[key]=val; if(key==="year") state.month=null;
+  reload(); }
+
+function renderFilterBar(){
+  const b=document.getElementById("filterbar"); b.innerHTML="";
+  const add=(txt,clear)=>{ const c=document.createElement("span"); c.className="chip";
+    c.innerHTML=txt+' <button>×</button>'; c.querySelector("button").onclick=clear;
+    b.appendChild(c); };
+  if(state.type) add("type: "+state.type, ()=>setFilter("type",null));
+  if(state.year) add("year: "+state.year, ()=>setFilter("year",null));
+  if(!state.type && !state.year){ const s=document.createElement("span");
+    s.textContent="All items — newest first"; b.appendChild(s); }
+}
+
+async function reload(){ state.offset=0; document.getElementById("grid").innerHTML="";
+  renderFilterBar(); loadSummary(); await loadMore(); }
+
+async function loadMore(){
+  const p=new URLSearchParams();
+  if(state.year) p.set("year",state.year);
+  if(state.month) p.set("month",state.month);
+  if(state.type) p.set("type",state.type);
+  p.set("offset",state.offset); p.set("limit",120);
+  const res=await j("/api/media?"+p);
+  const grid=document.getElementById("grid");
+  res.items.forEach(it=>grid.appendChild(tile(it)));
+  state.offset+=res.count;
+  document.getElementById("empty").style.display =
+    (state.offset===0)?"block":"none";
+  document.getElementById("more").style.display =
+    (res.count>=120)?"block":"none";
+}
+
+function tile(it){
+  const d=document.createElement("div"); d.className="tile"; d.onclick=()=>openItem(it.id);
+  if(it.type==="image"){
+    const img=document.createElement("img"); img.loading="lazy";
+    img.src="/thumb/"+it.id; img.onerror=()=>{img.replaceWith(ph("🖼️"));};
+    d.appendChild(img);
+  } else { d.appendChild(ph(TYPE_ICON[it.type]||"📦")); }
+  const day=(it.date||"").slice(0,10);
+  const cap=document.createElement("div"); cap.className="cap";
+  cap.innerHTML=`<span>${day}</span><span>${it.type==="video"?"▶":""}</span>`;
+  d.appendChild(cap);
+  if(it.has_gps){ const b=document.createElement("div"); b.className="badge";
+    b.textContent="📍"; d.appendChild(b); }
+  return d;
+}
+function ph(icon){ const s=document.createElement("div"); s.className="ph";
+  s.textContent=icon; return s; }
+
+async function openItem(id){
+  const it=await j("/api/item/"+id);
+  const m=document.getElementById("mmedia");
+  if(it.type==="image"){ m.innerHTML=`<img src="/file/${id}">`; }
+  else if(it.type==="video"){ m.innerHTML=`<video src="/file/${id}" controls autoplay></video>`; }
+  else if(it.type==="audio"){ m.innerHTML=`<div style="padding:40px"><div class="ph" style="font-size:60px;text-align:center">🎵</div><audio src="/file/${id}" controls autoplay></audio></div>`; }
+  else { m.innerHTML=`<div class="ph" style="font-size:70px;padding:60px">${TYPE_ICON[it.type]||"📦"}</div>`; }
+  const info=document.getElementById("minfo");
+  const kv=(k,v)=> v!=null&&v!==""? `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`:"";
+  const dims=it.meta&&it.meta.width?`${it.meta.width}×${it.meta.height}`:"";
+  const cam=it.meta&&it.meta.model?((it.meta.make||"")+" "+it.meta.model).trim():"";
+  const gps=it.gps?`<a href="https://www.openstreetmap.org/?mlat=${it.gps.lat}&mlon=${it.gps.lon}&zoom=14" target="_blank">${it.gps.lat.toFixed(5)}, ${it.gps.lon.toFixed(5)}</a>`:"";
+  info.innerHTML =
+    `<h3>${it.name}</h3>`+
+    kv("Date", it.date? it.date.replace("T"," "):"—")+
+    kv("Date source", it.date_source)+
+    kv("Type", it.type)+
+    kv("Size", fmtBytes(it.size))+
+    kv("Dimensions", dims)+
+    kv("Camera", cam)+
+    kv("Location", gps)+
+    kv("Description", it.description)+
+    `<div class="kv"><span class="k">Path</span></div>`+
+    `<div style="font-size:11px;color:var(--muted);word-break:break-all">${it.rel_path}</div>`+
+    `<div style="margin-top:12px"><a href="/file/${id}" target="_blank">Open original ↗</a></div>`;
+  document.getElementById("modal").classList.add("open");
+}
+function closeModal(){ document.getElementById("modal").classList.remove("open");
+  document.getElementById("mmedia").innerHTML=""; }
+document.addEventListener("keydown",e=>{ if(e.key==="Escape")closeModal(); });
+
+reload();
+</script>
+</body>
+</html>

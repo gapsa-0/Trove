@@ -202,6 +202,33 @@ def cmd_dates(args, cfg: Config) -> int:
     return 0
 
 
+def cmd_gui(args, cfg: Config) -> int:
+    import webbrowser
+    from pathlib import Path
+    from .gui.server import serve
+
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
+        return 1
+
+    httpd = serve(cfg, port=args.port)
+    url = f"http://127.0.0.1:{args.port}/"
+    print(f"organize_archive GUI running at {url}")
+    print("Press Ctrl-C to stop.")
+    if not args.no_open:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping.")
+    finally:
+        httpd.server_close()
+    return 0
+
+
 def cmd_status(args, cfg: Config) -> int:
     from pathlib import Path
     if not Path(cfg.db_path).exists():
@@ -293,6 +320,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
     sp.set_defaults(func=cmd_dates)
+
+    sp = sub.add_parser("gui", help="Launch the local web browser UI")
+    sp.add_argument("--port", type=int, default=8756, help="Port (default 8756)")
+    sp.add_argument("--no-open", action="store_true", help="Don't open a browser")
+    sp.set_defaults(func=cmd_gui)
 
     sp = sub.add_parser("status", help="Show catalog summary")
     sp.set_defaults(func=cmd_status)

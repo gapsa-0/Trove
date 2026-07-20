@@ -31,3 +31,4 @@ include = ["organize_archive*"]
 
 [tool.setuptools.package-data]
 "organize_archive.db" = ["*.sql"]
+"organize_archive.gui" = ["*.html"]
