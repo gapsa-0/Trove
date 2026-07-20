@@ -164,6 +164,9 @@ def cmd_config(args, cfg: Config) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="oa", description=__doc__)
     p.add_argument("--version", action="version", version=f"organize_archive {__version__}")
+    p.add_argument("--db", metavar="PATH",
+                   help="Use this database file instead of the configured default "
+                        "(useful for isolated testing while a scan runs).")
     sub = p.add_subparsers(dest="command", required=True)
 
     sp = sub.add_parser("init", help="Create the database and register roots")
@@ -188,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     cfg = Config.load()
+    if args.db:
+        cfg.db_path = args.db
     return args.func(args, cfg)
 
 
