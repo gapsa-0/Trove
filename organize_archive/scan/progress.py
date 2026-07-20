@@ -7,6 +7,7 @@ instead so logs stay readable.
 
 from __future__ import annotations
 
+import shutil
 import sys
 import time
 
@@ -62,9 +63,15 @@ class ScanProgress:
 
         tail = f"{pct}  {counts}  {_fmt_gb(self.bytes_hashed)}  {rate:.0f} f/s  {eta_s}"
         if self.tty:
-            filled = int(self.width * frac)
-            bar = "█" * filled + "░" * (self.width - filled)
-            self.stream.write(f"\r[{bar}] {tail}")
+            cols = shutil.get_terminal_size((80, 20)).columns
+            # Reserve room so the bar always fits on one line (no wrapping),
+            # shrinking the bar itself on narrow terminals.
+            bar_width = max(4, min(self.width, cols - len(tail) - 4))
+            filled = int(bar_width * frac)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            line = f"[{bar}] {tail}"[: cols - 1]
+            # \r returns to column 0; \x1b[K clears any leftover from a longer frame.
+            self.stream.write("\r" + line + "\x1b[K")
         else:
             self.stream.write(tail + "\n")
         self.stream.flush()
