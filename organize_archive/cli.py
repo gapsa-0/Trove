@@ -15,6 +15,7 @@ from . import __version__
 from .config import Config
 from .db import database as db
 from .scan import walker
+from .scan.progress import ScanProgress
 
 
 def _preflight() -> list[str]:
@@ -68,11 +69,23 @@ def cmd_scan(args, cfg: Config) -> int:
     run_id = cur.lastrowid
     conn.commit()
 
+    # Pre-count for an accurate progress bar (fast: scandir only, no hashing).
+    progress = None
+    if not args.no_progress:
+        from pathlib import Path
+        print("Counting files…", flush=True)
+        total = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
+        print(f"  {total} media files to check.")
+        progress = ScanProgress(total)
+
     totals = walker.ScanStats()
     for root in roots:
         print(f"Scanning: {root}")
         try:
-            stats = walker.scan_root(conn, cfg, root, run_started)
+            stats = walker.scan_root(
+                conn, cfg, root, run_started, progress=progress,
+                base_done=totals.seen, base_bytes=totals.bytes_hashed,
+            )
         except FileNotFoundError as e:
             print(f"  ! {e}", file=sys.stderr)
             continue
@@ -84,6 +97,9 @@ def cmd_scan(args, cfg: Config) -> int:
         totals.errors += stats.errors
         totals.bytes_hashed += stats.bytes_hashed
         totals.error_samples.extend(stats.error_samples[:5])
+
+    if progress is not None:
+        progress.close()
 
     conn.execute(
         """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
@@ -177,6 +193,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("scan", help="Walk roots and index/hash media files (resumable)")
     sp.add_argument("--root", action="append", help="Scan this root only (repeatable)")
+    sp.add_argument("--no-progress", action="store_true",
+                    help="Disable the progress bar and pre-count")
     sp.set_defaults(func=cmd_scan)
 
     sp = sub.add_parser("status", help="Show catalog summary")

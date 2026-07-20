@@ -69,8 +69,14 @@ def iter_files(root: Path) -> Iterator[Path]:
             continue
 
 
+def count_files(root: Path) -> int:
+    """Fast pre-count of non-ignored files (scandir only, no hashing)."""
+    return sum(1 for p in iter_files(root) if not is_ignored(p.name))
+
+
 def scan_root(conn, cfg: Config, root_path: str, run_started: str,
-              progress_every: int = 500) -> ScanStats:
+              progress=None, commit_every: int = 500,
+              base_done: int = 0, base_bytes: int = 0) -> ScanStats:
     root = Path(root_path)
     if not root.is_dir():
         raise FileNotFoundError(f"Root not found or not a directory: {root_path}")
@@ -144,15 +150,14 @@ def scan_root(conn, cfg: Config, root_path: str, run_started: str,
                 )
                 stats.new += 1
 
+        if progress is not None:
+            progress.update(base_done + stats.seen,
+                            base_bytes + stats.bytes_hashed)
+
         batch += 1
-        if batch >= progress_every:
+        if batch >= commit_every:
             conn.commit()
             batch = 0
-            yield_progress = (
-                f"  … {stats.seen} seen "
-                f"({stats.new} new, {stats.updated} updated, {stats.skipped} skipped)"
-            )
-            print(yield_progress, flush=True)
 
     conn.commit()
 
