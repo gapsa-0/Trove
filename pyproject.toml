@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "organize-archive"
+version = "0.1.0"
+description = "Local, read-only cataloging tool for a large family multimedia archive"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+# The core (scan/index/status) runs on the stdlib plus the exiftool and ffprobe
+# system binaries. The optional extras below add richer output and later phases.
+dependencies = []
+
+[project.optional-dependencies]
+# Nicer CLI output. Core still works without it.
+cli = ["rich>=13"]
+# Metadata + perceptual dedup (Phase 3/4).
+media = ["pyexiftool>=0.5", "Pillow>=10", "pillow-heif>=0.16", "ImageHash>=4.3"]
+# Later phases (local models only).
+ai = ["insightface", "onnxruntime", "sentence-transformers", "sqlite-vec"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+oa = "organize_archive.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["organize_archive*"]
+
+[tool.setuptools.package-data]
+"organize_archive.db" = ["*.sql"]

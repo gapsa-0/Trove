@@ -1,0 +1,21 @@
+# Data: database, cache, thumbnails — never commit the catalog or media
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Env / editors
+.env
+.vscode/
+.idea/
+.DS_Store
