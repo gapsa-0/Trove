@@ -14,10 +14,33 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from ..config import Config
-from . import queries, thumbs
+from . import queries, thumbs, icons
 
 _INDEX = Path(__file__).with_name("index.html")
 _CHUNK = 256 * 1024
+
+_MANIFEST = {
+    "name": "organize_archive",
+    "short_name": "archive",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#14161a",
+    "theme_color": "#14161a",
+    "icons": [
+        {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png",
+         "purpose": "any maskable"},
+    ],
+}
+
+# No-op service worker: its presence (with a fetch handler) makes the page
+# installable as a standalone app; it does not cache anything.
+_SW = (
+    "self.addEventListener('install',e=>self.skipWaiting());\n"
+    "self.addEventListener('activate',e=>self.clients.claim());\n"
+    "self.addEventListener('fetch',e=>{});\n"
+)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -29,12 +52,17 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers ----------------------------------------------------------
     def _json(self, obj, status=200):
-        body = json.dumps(obj).encode("utf-8")
+        self._bytes(json.dumps(obj).encode("utf-8"), "application/json", status)
+
+    def _bytes(self, body: bytes, content_type: str, status=200):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _send_file(self, path: Path, content_type: str | None = None):
         ctype = content_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
@@ -85,6 +113,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/" or path == "/index.html":
                 self._send_file(_INDEX, "text/html; charset=utf-8")
+            elif path == "/manifest.webmanifest":
+                self._bytes(json.dumps(_MANIFEST).encode(), "application/manifest+json")
+            elif path == "/sw.js":
+                self._bytes(_SW.encode(), "text/javascript")
+            elif path.startswith("/icon-"):
+                size = 512 if "512" in path else 192
+                png = icons.app_icon(self.cfg.cache_dir, size)
+                self._bytes(png, "image/png")
             elif path == "/api/summary":
                 self._json(queries.summary(self.cfg.db_path))
             elif path == "/api/media":

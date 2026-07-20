@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>organize_archive</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#14161a">
+<link rel="icon" href="/icon-192.png">
+<script>
+  if ("serviceWorker" in navigator)
+    window.addEventListener("load", () =>
+      navigator.serviceWorker.register("/sw.js").catch(()=>{}));
+</script>
 <style>
   :root {
     --bg:#14161a; --panel:#1c1f26; --panel2:#252a33; --line:#2e343f;
