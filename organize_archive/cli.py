@@ -167,6 +167,28 @@ def cmd_enrich(args, cfg: Config) -> int:
     return 0
 
 
+def cmd_dedup(args, cfg: Config) -> int:
+    from pathlib import Path
+    from .dedup import exact
+    from .scan.progress import ScanProgress
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init  then  oa scan")
+        return 1
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+    progress = None if args.no_progress else ScanProgress(
+        None, show_bytes=False, label="grouping")
+    stats = exact.run(conn, progress=progress)
+    if progress is not None:
+        progress.close()
+    conn.close()
+    print("\nExact deduplication complete:")
+    print(f"  duplicate groups   : {stats.groups:,}")
+    print(f"  redundant copies   : {stats.duplicate_files:,} (hidden, not deleted)")
+    print(f"  reclaimable space  : {_fmt_bytes(stats.reclaimable_bytes)}")
+    return 0
+
+
 def cmd_dates(args, cfg: Config) -> int:
     from pathlib import Path
     if not Path(cfg.db_path).exists():
@@ -318,6 +340,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("enrich", help="Resolve dates, GPS and metadata (resumable)")
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_enrich)
+
+    sp = sub.add_parser("dedup", help="Find exact-duplicate files (SHA-256) and group them")
+    sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
+    sp.set_defaults(func=cmd_dedup)
 
     sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
     sp.set_defaults(func=cmd_dates)

@@ -134,10 +134,17 @@ class Handler(BaseHTTPRequestHandler):
                                             one("bucket", str, "month")))
             elif path == "/api/map":
                 self._json(queries.map_points(self.cfg.db_path, one("root", int)))
+            elif path == "/api/dups/summary":
+                self._json(queries.dup_summary(self.cfg.db_path, one("root", int)))
+            elif path == "/api/dups":
+                self._json(queries.dup_groups(
+                    self.cfg.db_path, one("root", int),
+                    limit=min(one("limit", int, 60), 200), offset=one("offset", int, 0)))
             elif path == "/api/media":
                 self._json(queries.media(
                     self.cfg.db_path, root_id=one("root", int),
                     year=one("year"), month=one("month"), mtype=one("type"),
+                    include_dups=one("dups", str) == "1",
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path.startswith("/api/item/"):
                 it = queries.item(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
@@ -178,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(res)
             elif path == "/api/task":
                 kind = body.get("kind")
-                if kind not in ("scan", "enrich"):
+                if kind not in ("scan", "enrich", "dedup"):
                     return self._json({"error": "unknown task"}, 400)
                 root_id = body.get("root_id")
                 root_path = None

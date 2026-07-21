@@ -25,7 +25,9 @@
     padding:9px 16px;cursor:pointer;}
   .btn:hover{background:var(--accent);}
   .btn.sec{background:var(--panel2);color:var(--text);border:1px solid var(--line);}
-  .btn:disabled{opacity:.5;cursor:default;}
+  .btn:disabled{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
+    cursor:not-allowed;}
+  .btn:disabled:hover{background:var(--panel2);}
   .muted{color:var(--muted);}
 
   /* ---- archive picker ---- */
@@ -127,6 +129,18 @@
   .chip{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:12px;cursor:pointer;}
   .chip button{all:unset;margin-left:6px;color:var(--muted);cursor:pointer;}
 
+  /* duplicates */
+  .dupgroup{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;}
+  .dghead{font-size:13px;margin-bottom:10px;}
+  .duprow{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;}
+  .duptile{flex:none;width:120px;cursor:pointer;}
+  .duptile>img,.duptile>.ph{width:120px;height:120px;object-fit:cover;border-radius:8px;
+    border:2px solid var(--line);background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:30px;color:var(--muted);}
+  .duptile.kept>img,.duptile.kept>.ph{border-color:var(--good);}
+  .dtcap{font-size:11px;margin-top:3px;}
+  .dtcap .keep{color:var(--good);font-weight:600;}
+  .dtpath{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
   .soonbox{padding:50px;text-align:center;color:var(--muted);}
   .soonbox .big{font-size:40px;margin-bottom:10px;}
 
@@ -178,6 +192,7 @@ const SECTIONS=[
   {id:"timeline",label:"Timeline",icon:"📈"},
   {id:"map",label:"Map",icon:"🗺️"},
   {id:"photos",label:"Browse",icon:"🖼️"},
+  {id:"dups",label:"Duplicates",icon:"🧹"},
   {id:"faces",label:"Faces",icon:"🙂",soon:true},
   {id:"places",label:"Places",icon:"📍",soon:true},
   {id:"situations",label:"Situations",icon:"🔎",soon:true},
@@ -253,26 +268,29 @@ function showSection(id){
   if(id==="timeline")return renderTimeline(m);
   if(id==="map")return renderMap(m);
   if(id==="photos")return renderPhotos(m);
+  if(id==="dups")return renderDedup(m);
   return renderSoon(m,id);
 }
 
 /* ---------- overview + tasks ---------- */
 async function renderOverview(m){
   const root=S.arch.id;
-  const s=await jget("/api/summary?root="+root);
-  const need=s.enriched<s.total;
+  const [s,ds]=await Promise.all([
+    jget("/api/summary?root="+root), jget("/api/dups/summary?root="+root)]);
+  S.dupsum=ds;
   m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
     <div class="statrow">
       <div class="stat"><div class="k">Files</div><div class="v">${s.total.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Total size</div><div class="v">${fmtBytes(s.size)}</div></div>
       <div class="stat"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()} <small>/ ${s.total.toLocaleString()}</small></div></div>
-      <div class="stat"><div class="k">Date range</div><div class="v" style="font-size:14px">${(s.date_min||"—").slice(0,10)}<br>${(s.date_max||"—").slice(0,10)}</div></div>
+      <div class="stat" style="cursor:pointer" onclick="showSection('dups')"><div class="k">Duplicates</div><div class="v">${ds.duplicates.toLocaleString()} <small>· ${fmtBytes(ds.reclaimable)}</small></div></div>
     </div>
     <div class="panel"><h3>Tasks</h3>
       <div id="taskcards">
         <div class="taskcard" id="task-scan"></div>
         <div class="taskcard" id="task-enrich"></div>
+        <div class="taskcard" id="task-dedup"></div>
       </div>
       <div id="jobarea"></div>
     </div>
@@ -289,35 +307,48 @@ async function renderOverview(m){
   });
   S.summary=s;
   renderTaskCards();
+  loadFreshness();     // fast disk-vs-index check; enables the Scan button if new
   refreshJobs();
 }
 
-// Task-card state. Uses instant DB counts; the disk walk only runs when the
-// user explicitly checks for new files.
+// Task-card state. DB counts are instant; the disk check runs on load (it's fast)
+// to decide whether the Scan button is active.
 function taskCardHTML(kind, running){
   const s=S.summary||{total:0,enriched:0}, f=S.fresh, ic=kind==="scan"?"🔎":"✦";
   const title=kind==="scan"?"Scan files":"Extract dates, places & metadata";
   if(running)
     return card(ic,title,`<span class="spin"></span>Working…`,"","");
   if(kind==="scan"){
+    const nf = f && f.checked ? f.new_files : null;   // null while checking
     let desc, action;
-    if(f && f.checking){ desc=`<span class="spin"></span>Checking the folder…`; action=""; }
-    else if(f && f.new_files>0){
-      desc=`<span class="dot pending"></span>${f.new_files.toLocaleString()} new files found`;
-      action=btn("Scan new files",`runTask('scan')`,false);
+    if(nf===null){
+      desc=`<span class="dot ok"></span>${s.total.toLocaleString()} files indexed`;
+      action=`<button class="btn" disabled title="Checking for new files…">Scan for new files</button>`;
+    } else if(nf>0){
+      desc=`<span class="dot pending"></span>${s.total.toLocaleString()} indexed · ${nf.toLocaleString()} new`;
+      action=btn("Scan for new files",`runTask('scan')`,false);
     } else {
-      desc=`<span class="dot ok"></span>${s.total.toLocaleString()} files indexed`
-        + (f&&f.checked?` <span class="muted">· no new files</span>`:"");
-      action=`<button class="linkbtn" onclick="checkNewFiles()">Check for new files</button>`;
+      desc=`<span class="dot ok"></span>${s.total.toLocaleString()} files indexed`;
+      action=`<button class="btn" disabled title="No new files to process">Scan for new files</button>`;
     }
-    return card(ic,title,desc,f&&f.new_files>0?"pending":"ok",action);
-  } else {
+    return card(ic,title,desc,nf>0?"pending":"ok",action);
+  } else if(kind==="enrich"){
     const need=s.total-s.enriched;
     if(!s.total) return card(ic,title,`<span class="dot check"></span>Scan first`,"","");
     if(need>0)
       return card(ic,title,`<span class="dot pending"></span>${need.toLocaleString()} files need dates & places`,"pending",
         btn("Extract now",`runTask('enrich')`,false));
     return card(ic,title,`<span class="dot ok"></span>Dates, places & metadata complete`,"ok","");
+  } else {  // dedup
+    const d=S.dupsum;
+    if(!s.total) return card("🧹","Find duplicates",`<span class="dot check"></span>Scan first`,"","");
+    if(d && d.groups>0)
+      return card("🧹","Find duplicates",
+        `<span class="dot ok"></span>${d.duplicates.toLocaleString()} duplicates in ${d.groups.toLocaleString()} groups · ${fmtBytes(d.reclaimable)} reclaimable`,"ok",
+        btn("Rescan for duplicates","runTask('dedup')",true));
+    return card("🧹","Find duplicates",
+      `<span class="dot pending"></span>Not scanned yet`,"pending",
+      btn("Find duplicates","runTask('dedup')",false));
   }
 }
 function card(ico,title,desc,cls,action){
@@ -329,12 +360,14 @@ function btn(label,onclick,secondary){
 }
 function renderTaskCards(){
   const active=S.activeJobs||{};
-  const cs=document.getElementById("task-scan"), ce=document.getElementById("task-enrich");
+  const cs=document.getElementById("task-scan"), ce=document.getElementById("task-enrich"),
+        cd=document.getElementById("task-dedup");
   if(cs)cs.innerHTML=taskCardHTML("scan",!!active.scan);
   if(ce)ce.innerHTML=taskCardHTML("enrich",!!active.enrich);
+  if(cd)cd.innerHTML=taskCardHTML("dedup",!!active.dedup);
 }
-async function checkNewFiles(){
-  S.fresh={checking:true}; renderTaskCards();
+async function loadFreshness(){
+  S.fresh=null;
   try{
     const r=await jget("/api/freshness?root="+S.arch.id);
     S.fresh={checked:true,new_files:r.new_files||0};
@@ -350,7 +383,8 @@ async function refreshJobs(){
   const area=document.getElementById("jobarea"); if(!area)return;
   const {jobs}=await jget("/api/jobs?root="+S.arch.id);
   const active=jobs.filter(j=>j.status==="running");
-  S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich")};
+  S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich"),
+    dedup:active.some(j=>j.kind==="dedup")};
   renderTaskCards();
   area.innerHTML="";
   active.forEach(j=>{
@@ -530,14 +564,22 @@ function drawClusters(){
 
 /* ---------- browse ---------- */
 async function renderPhotos(m){
-  S.grid={offset:0,year:null,month:null,type:null};
-  m.innerHTML=`<h2 class="sec">Browse</h2><div class="chips" id="gchips"></div>
+  S.grid={offset:0,year:null,month:null,type:null,dups:false};
+  m.innerHTML=`<h2 class="sec">Browse</h2>
+    <div class="chips">
+      <label style="font-size:12px;cursor:pointer"><input type="checkbox" id="showdups" onchange="toggleDups()"> Show hidden duplicates</label>
+    </div>
     <div class="grid" id="grid"></div><div class="more" id="gmore" style="display:none">
     <button class="btn sec" onclick="loadGrid()">Load more</button></div>`;
   loadGrid();
 }
+function toggleDups(){
+  S.grid.dups=document.getElementById("showdups").checked;
+  S.grid.offset=0; document.getElementById("grid").innerHTML=""; loadGrid();
+}
 async function loadGrid(){
   const g=S.grid, p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
+  if(g.dups)p.set("dups","1");
   if(g.type)p.set("type",g.type); if(g.year)p.set("year",g.year);
   const res=await jget("/api/media?"+p);
   const grid=document.getElementById("grid");
@@ -557,6 +599,60 @@ function tile(it){
   return d;
 }
 function ph(icon){const s=document.createElement("div");s.className="ph";s.textContent=icon;return s;}
+
+/* ---------- duplicates ---------- */
+async function renderDedup(m){
+  const root=S.arch.id;
+  const ds=await jget("/api/dups/summary?root="+root);
+  if(!ds.groups){
+    m.innerHTML=`<h2 class="sec">Duplicates</h2>
+      <div class="soonbox"><div class="big">🧹</div>
+      <p>No duplicate scan yet.</p>
+      <p><button class="btn" onclick="runTaskThen('dedup','dups')">Find duplicates</button></p>
+      <p class="muted">Groups byte-identical copies (same photo across takeouts). Nothing is deleted — extra copies are just hidden from browsing.</p></div>`;
+    return;
+  }
+  m.innerHTML=`<h2 class="sec">Duplicates</h2>
+    <div class="statrow">
+      <div class="stat"><div class="k">Duplicate groups</div><div class="v">${ds.groups.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Reclaimable</div><div class="v">${fmtBytes(ds.reclaimable)}</div></div>
+    </div>
+    <div class="muted" style="margin-bottom:12px">Byte-identical copies. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>
+    <div id="dupgroups"></div>
+    <div class="more" id="dupmore" style="display:none"><button class="btn sec" onclick="loadDupGroups()">Load more</button></div>`;
+  S.dupoff=0; document.getElementById("dupgroups").innerHTML=""; loadDupGroups();
+}
+async function loadDupGroups(){
+  const res=await jget(`/api/dups?root=${S.arch.id}&offset=${S.dupoff}&limit=40`);
+  const wrap=document.getElementById("dupgroups");
+  res.groups.forEach(g=>{
+    const row=document.createElement("div"); row.className="dupgroup";
+    const head=`<div class="dghead"><b>${g.count}×</b> · ${fmtBytes(g.size_each)} each ·
+      <span class="muted">${fmtBytes(g.reclaimable)} reclaimable</span></div>`;
+    const tiles=g.members.map(mm=>{
+      const kept=mm.role==="canonical";
+      const thumb=mm.type==="image"?`<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type]||"📦"}'}))">`
+        :`<div class="ph">${TYPE_ICON[mm.type]||"📦"}</div>`;
+      return `<div class="duptile ${kept?'kept':''}" title="${mm.folder}" onclick="openItem(${mm.id})">
+        ${thumb}<div class="dtcap">${kept?'<span class=\"keep\">✓ kept</span>':'<span class=\"muted\">copy</span>'}</div>
+        <div class="dtpath">${mm.folder||'/'}</div></div>`;
+    }).join("");
+    row.innerHTML=head+`<div class="duprow">${tiles}</div>`;
+    wrap.appendChild(row);
+  });
+  S.dupoff+=res.count;
+  document.getElementById("dupmore").style.display=res.count>=40?"block":"none";
+}
+async function runTaskThen(kind,section){
+  const r=await jpost("/api/task",{kind:kind,root_id:S.arch.id});
+  if(r.error){alert(r.error);return;}
+  // poll until done, then re-render the section
+  const iv=setInterval(async()=>{
+    const {jobs}=await jget("/api/jobs?root="+S.arch.id);
+    if(!jobs.some(j=>j.status==="running")){clearInterval(iv); showSection(section);}
+  },1000);
+}
 
 function renderSoon(m,id){
   const S2={faces:["🙂","Faces","Detect and cluster people locally, then pick a person to see all their photos."],

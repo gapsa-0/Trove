@@ -120,6 +120,8 @@ class JobManager:
                         self._run_scan(conn, job, cancel)
                     elif job.kind == "enrich":
                         self._run_enrich(conn, job, cancel)
+                    elif job.kind == "dedup":
+                        self._run_dedup(conn, job, cancel)
                     else:
                         raise ValueError(f"unknown job kind: {job.kind}")
                 finally:
@@ -157,3 +159,10 @@ class JobManager:
         job.message = (f"{stats.processed} processed, "
                        f"{stats.with_takeout} Takeout-matched, "
                        f"{stats.with_gps} with GPS")
+
+    def _run_dedup(self, conn, job: Job, cancel):
+        from ..dedup import exact
+        prog = _JobProgress(job, cancel)
+        stats = exact.run(conn, progress=prog)
+        job.message = (f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
+                       f"{stats.reclaimable_bytes/1e9:.1f} GB reclaimable")

@@ -77,6 +77,27 @@ CREATE TABLE IF NOT EXISTS geo (
     geo_source  TEXT               -- takeout_json | exif
 );
 
+-- ---- Phase 4: deduplication ----------------------------------------------
+
+CREATE TABLE IF NOT EXISTS dup_groups (
+    id                INTEGER PRIMARY KEY,
+    method            TEXT NOT NULL,        -- 'exact' | 'phash'
+    canonical_file_id INTEGER REFERENCES files(id),
+    member_count      INTEGER NOT NULL,
+    size_each         INTEGER,              -- bytes per copy (exact groups)
+    redundant_bytes   INTEGER,              -- (count-1)*size_each reclaimable
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dupgroups_method ON dup_groups(method);
+
+CREATE TABLE IF NOT EXISTS dup_members (
+    group_id  INTEGER NOT NULL REFERENCES dup_groups(id) ON DELETE CASCADE,
+    file_id   INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    role      TEXT NOT NULL,                -- 'canonical' | 'duplicate'
+    PRIMARY KEY (group_id, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dupmembers_file ON dup_members(file_id);
+
 -- Matched Google Takeout sidecar, with the fields we consume.
 CREATE TABLE IF NOT EXISTS takeout_sidecar (
     file_id           INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,

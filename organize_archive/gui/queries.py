@@ -12,7 +12,10 @@ from pathlib import Path
 
 from ..db import database as db
 
-_VISIBLE = "f.present = 1 AND f.hidden = 0"
+# Analytics (summary, timeline, map, counts) describe the whole archive, so they
+# count every present file. Only Browse hides non-canonical duplicates.
+_VISIBLE = "f.present = 1"
+_NOT_HIDDEN = "f.present = 1 AND f.hidden = 0"
 
 
 def _root_clause(root_id):
@@ -178,10 +181,10 @@ def map_points(db_path: str, root_id=None, limit=5000) -> dict:
 # -- media grid + detail ----------------------------------------------------
 
 def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
-          limit=120, offset=0) -> dict:
+          include_dups=False, limit=120, offset=0) -> dict:
     conn = db.open_readonly(db_path)
     try:
-        where = [_VISIBLE]
+        where = [_VISIBLE if include_dups else _NOT_HIDDEN]
         params: list = []
         rc, rp = _root_clause(root_id)
         if rc:
@@ -209,6 +212,59 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
             "has_gps": bool(r["has_gps"]),
         } for r in rows]
         return {"items": items, "offset": offset, "limit": limit, "count": len(items)}
+    finally:
+        conn.close()
+
+
+def dup_summary(db_path: str, root_id=None) -> dict:
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        # groups whose canonical is in this archive (a group can span archives)
+        row = conn.execute(
+            f"""SELECT COUNT(*) groups,
+                       COALESCE(SUM(g.member_count-1),0) dups,
+                       COALESCE(SUM(g.redundant_bytes),0) bytes
+                FROM dup_groups g
+                JOIN files f ON f.id=g.canonical_file_id
+                WHERE g.method='exact'{rc}""", rp).fetchone()
+        return {"groups": row["groups"], "duplicates": row["dups"],
+                "reclaimable": row["bytes"]}
+    finally:
+        conn.close()
+
+
+def dup_groups(db_path: str, root_id=None, limit=60, offset=0) -> dict:
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        groups = conn.execute(
+            f"""SELECT g.id, g.member_count, g.size_each, g.redundant_bytes,
+                       g.canonical_file_id
+                FROM dup_groups g JOIN files f ON f.id=g.canonical_file_id
+                WHERE g.method='exact'{rc}
+                ORDER BY g.redundant_bytes DESC, g.id
+                LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
+        out = []
+        for g in groups:
+            members = conn.execute(
+                """SELECT f.id, f.media_type, f.rel_path, m.role,
+                          r.path AS root
+                   FROM dup_members m JOIN files f ON f.id=m.file_id
+                   JOIN roots r ON r.id=f.root_id
+                   WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
+                (g["id"],)).fetchall()
+            out.append({
+                "id": g["id"], "count": g["member_count"],
+                "size_each": g["size_each"], "reclaimable": g["redundant_bytes"],
+                "canonical_id": g["canonical_file_id"],
+                "members": [{
+                    "id": m["id"], "type": m["media_type"], "role": m["role"],
+                    "name": os.path.basename(m["rel_path"]),
+                    "folder": os.path.dirname(m["rel_path"]),
+                } for m in members],
+            })
+        return {"groups": out, "offset": offset, "count": len(out)}
     finally:
         conn.close()
 

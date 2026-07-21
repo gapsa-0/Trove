@@ -10,7 +10,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
@@ -39,9 +39,18 @@ def open_readonly(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _add_column_if_missing(conn, table, column, decl):
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     """Create/upgrade the schema. Idempotent."""
     conn.executescript(_SCHEMA_SQL.read_text())
+    # Migrations for columns added to existing tables.
+    _add_column_if_missing(conn, "files", "dup_group_id", "INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_files_dupgroup ON files(dup_group_id)")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
 
