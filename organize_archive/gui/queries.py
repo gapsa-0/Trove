@@ -140,6 +140,27 @@ def summary(db_path: str, root_id=None) -> dict:
         conn.close()
 
 
+def date_sources(db_path: str, root_id=None) -> dict:
+    """Breakdown of which source resolved each file's date, for the Overview
+    'Dated' drill-down (Takeout JSON vs EXIF vs filename vs mtime vs none)."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM files f WHERE {_VISIBLE}{rc}", rp).fetchone()[0]
+        rows = conn.execute(
+            f"""SELECT d.date_source src, COUNT(*) c
+                FROM files f JOIN dates d ON d.file_id=f.id
+                WHERE {_VISIBLE}{rc} AND d.best_datetime IS NOT NULL
+                GROUP BY d.date_source ORDER BY c DESC""", rp).fetchall()
+        sources = [{"source": r["src"] or "unknown", "count": r["c"]} for r in rows]
+        dated = sum(s["count"] for s in sources)
+        return {"total": total, "dated": dated, "undated": total - dated,
+                "sources": sources}
+    finally:
+        conn.close()
+
+
 def timeline(db_path: str, root_id=None, bucket="month") -> dict:
     """Frequency of media over time. bucket: 'month' or 'year'."""
     conn = db.open_readonly(db_path)

@@ -344,11 +344,10 @@ async function renderOverview(m){
   S.dupsum=ds; S.auto=auto;
   m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
     <div class="statrow">
-      <div class="stat"><div class="k">Unique files</div><div class="v">${(s.total-ds.duplicates).toLocaleString()} <small>/ ${s.total.toLocaleString()} total</small></div></div>
-      <div class="stat"><div class="k">Total size</div><div class="v">${fmtBytes(s.size)}</div></div>
-      <div class="stat"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()} <small>/ ${s.total.toLocaleString()}</small></div></div>
+      <div class="stat"><div class="k">Total files</div><div class="v">${s.total.toLocaleString()} <small>· ${fmtBytes(s.size)}</small></div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('dups')"><div class="k">Duplicates</div><div class="v">${ds.duplicates.toLocaleString()} <small>· ${fmtBytes(ds.reclaimable)}</small></div></div>
+      <div class="stat" style="cursor:pointer" onclick="showSection('timeline')"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()}</div></div>
+      <div class="stat" style="cursor:pointer" onclick="showSection('map')"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
     </div>
     <div class="panel"><h3 style="display:flex;align-items:center;gap:10px">Keeping in sync
         <button class="btn sec" id="autobtn" style="margin-left:auto" onclick="toggleAuto()"></button></h3>
@@ -444,6 +443,28 @@ async function refreshJobs(){
 function startPoll(){stopPoll(); S.poll=setInterval(refreshJobs,1200); refreshJobs();}
 function stopPoll(){if(S.poll){clearInterval(S.poll);S.poll=null;}}
 
+/* ---------- date sources (complementary bar shown under the Timeline) ---------- */
+const DATE_SRC_LABEL={takeout_json:"Google Takeout JSON",exif:"Embedded EXIF",
+  filename:"Filename pattern",mtime:"File modified time",unknown:"Unresolved source",
+  unresolved:"No date found"};
+const DATE_SRC_COL={takeout_json:"#5b9dff",exif:"#c77dff",filename:"#57c98b",
+  mtime:"#e6b45e",unknown:"#9aa3b2",unresolved:"#4a5261"};
+async function renderDateSourceBar(){
+  const el=document.getElementById("dsbar"); if(!el)return;
+  const r=await jget("/api/dates/sources?root="+S.arch.id);
+  const rows=r.sources.slice();
+  if(r.undated>0)rows.push({source:"unresolved",count:r.undated});
+  const total=r.total||1;
+  const segs=rows.map(x=>
+    `<div style="width:${100*x.count/total}%;background:${DATE_SRC_COL[x.source]||"#8b93a3"}" title="${DATE_SRC_LABEL[x.source]||x.source}: ${(100*x.count/total).toFixed(1)}%"></div>`
+  ).join("");
+  const legend=rows.map(x=>
+    `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${DATE_SRC_COL[x.source]||"#8b93a3"};margin-right:6px"></span>${DATE_SRC_LABEL[x.source]||x.source} <span class="muted">, ${(100*x.count/total).toFixed(1)}%</span></span>`
+  ).join("");
+  el.innerHTML=`<div style="display:flex;height:14px;border-radius:7px;overflow:hidden">${segs}</div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12px">${legend}</div>`;
+}
+
 /* ---------- timeline ---------- */
 const TL_COL={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#8b93a3"};
 async function renderTimeline(m){
@@ -451,9 +472,12 @@ async function renderTimeline(m){
     <div class="chips"><span class="chip" id="tl-month" onclick="drawTimeline('month')">By month</span>
       <span class="chip" id="tl-year" onclick="drawTimeline('year')">By year</span></div>
     <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
-    <canvas id="tlc" width="1180" height="380"></canvas>
-    <div class="muted" style="margin-top:8px;font-size:12px">Photos, videos and audio per period on a shared scale. Totals are in the legend.</div>`;
+    <canvas id="tlc2" width="1180" height="380"></canvas>
+    <div class="muted" style="margin-top:8px;font-size:12px">Running total of files over time, each type scaled to its own final count.</div>
+    <h2 class="sec" style="margin-top:28px">How dates were found</h2>
+    <div class="panel" id="dsbar">Loading…</div>`;
   drawTimeline("month");
+  renderDateSourceBar();
 }
 function monotonePath(ctx,xs,ys){
   // Fritsch-Carlson monotone cubic: smooth but never overshoots the data,
@@ -475,37 +499,26 @@ function monotonePath(ctx,xs,ys){
     ctx.bezierCurveTo(xs[i]+h/3, ys[i]+t[i]*h/3, xs[i+1]-h/3, ys[i+1]-t[i+1]*h/3, xs[i+1], ys[i+1]);
   }
 }
-function niceMax(v){
-  if(v<=5)return 5;
-  const p=Math.pow(10,Math.floor(Math.log10(v)));
-  for(const m of [1,2,2.5,5,10]) if(v<=m*p)return m*p;
-  return 10*p;
-}
-async function drawTimeline(bucket){
-  document.getElementById("tl-month").style.background=bucket==="month"?"var(--accent2)":"";
-  document.getElementById("tl-year").style.background=bucket==="year"?"var(--accent2)":"";
-  const {series}=await jget(`/api/timeline?root=${S.arch.id}&bucket=${bucket}`);
-  const cv=document.getElementById("tlc"); if(!cv)return;
-  const ctx=cv.getContext("2d"); const W=cv.width,H=cv.height,padL=54,padR=16,padT=18,padB=28;
+// Draws one type's curve normalized to its own max (0..1), so each type's
+// shape is comparable regardless of volume. Per-type totals live in the
+// legend above the canvas, not inside the plot.
+function drawTypeChart(canvasId, rows, ordered, maxByType){
+  const cv=document.getElementById(canvasId); if(!cv)return;
+  const ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height,padL=40,padR=16,padB=28,padT=14;
   ctx.clearRect(0,0,W,H);
-  const leg=document.getElementById("tllegend"); leg.innerHTML="";
-  if(!series.length){leg.innerHTML='<span class="muted">No dated media yet, run Extract on the Overview tab.</span>';return;}
-  const types=["image","video","audio"].filter(t=>series.some(s=>s[t]));
-  const n=series.length;
-  const gmax=niceMax(Math.max(...series.flatMap(s=>types.map(t=>s[t]||0)),1));
+  const n=rows.length;
   const X=i=> padL + (n===1?(W-padL-padR)/2 : i*(W-padL-padR)/(n-1));
-  const Y=v=> H-padB - v/gmax*(H-padT-padB);
+  const Y=frac=> H-padB - frac*(H-padT-padB);
+  [0,0.25,0.5,0.75,1].forEach(frac=>{
+    const y=Y(frac);
+    ctx.strokeStyle=frac===0?"#3a414e":"#232833";
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+  });
   ctx.font="10px system-ui"; ctx.textAlign="right"; ctx.textBaseline="middle";
-  for(let g=0;g<=4;g++){
-    const val=gmax*g/4, y=Y(val);
-    ctx.strokeStyle=g===0?"#3a414e":"#232833"; ctx.beginPath();
-    ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
-    ctx.fillStyle="#9aa3b2"; ctx.fillText(Math.round(val).toLocaleString(),padL-8,y);
-  }
-  const ordered=types.slice().sort((a,b)=>
-    series.reduce((x,s)=>x+(s[b]||0),0)-series.reduce((x,s)=>x+(s[a]||0),0));
+  ctx.fillStyle="#9aa3b2"; ctx.fillText("0",padL-8,Y(0));
   ordered.forEach(t=>{
-    const xs=series.map((s,i)=>X(i)), ys=series.map(s=>Y(s[t]||0));
+    const xs=rows.map((r,i)=>X(i)), ys=rows.map(r=>Y((r[t]||0)/(maxByType[t]||1)));
     if(n===1){ctx.fillStyle=TL_COL[t];ctx.beginPath();ctx.arc(xs[0],ys[0],3,0,7);ctx.fill();return;}
     ctx.beginPath(); monotonePath(ctx,xs,ys);
     ctx.lineTo(xs[n-1],H-padB); ctx.lineTo(xs[0],H-padB); ctx.closePath();
@@ -515,14 +528,43 @@ async function drawTimeline(bucket){
   });
   ctx.fillStyle="#9aa3b2"; ctx.textAlign="center"; ctx.textBaseline="top";
   const step=Math.max(1,Math.ceil(n/12));
-  series.forEach((s,i)=>{ if(i%step===0||i===n-1)ctx.fillText(s.period,X(i),H-padB+8); });
-  types.forEach(t=>{
-    const tot=series.reduce((a,s)=>a+(s[t]||0),0);
+  rows.forEach((r,i)=>{ if(i%step===0||i===n-1)ctx.fillText(r.period,X(i),H-padB+8); });
+}
+function drawTypeLegend(legendId, ordered, totalsByType){
+  const leg=document.getElementById(legendId); leg.innerHTML="";
+  ordered.forEach(t=>{
     const sp=document.createElement("span");
     sp.innerHTML=`<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${TL_COL[t]};margin-right:6px"></span>`+
-      t+` <span class="muted">, ${tot.toLocaleString()}</span>`;
+      t+` <span class="muted">, ${totalsByType[t].toLocaleString()}</span>`;
     leg.appendChild(sp);
   });
+}
+async function drawTimeline(bucket){
+  document.getElementById("tl-month").style.background=bucket==="month"?"var(--accent2)":"";
+  document.getElementById("tl-year").style.background=bucket==="year"?"var(--accent2)":"";
+  const {series}=await jget(`/api/timeline?root=${S.arch.id}&bucket=${bucket}`);
+  const cv2=document.getElementById("tlc2");
+  const leg=document.getElementById("tllegend");
+  if(!cv2)return;
+  if(!series.length){
+    cv2.getContext("2d").clearRect(0,0,cv2.width,cv2.height);
+    leg.innerHTML='<span class="muted">No dated media yet, run Extract on the Overview tab.</span>';
+    return;
+  }
+  const types=["image","video","audio"].filter(t=>series.some(s=>s[t]));
+  const totalsByType={};
+  types.forEach(t=>{totalsByType[t]=series.reduce((a,s)=>a+(s[t]||0),0);});
+  const ordered=types.slice().sort((a,b)=>totalsByType[b]-totalsByType[a]);
+
+  const running=Object.fromEntries(types.map(t=>[t,0]));
+  const cumRows=series.map(s=>{
+    const row={period:s.period};
+    types.forEach(t=>{running[t]+=s[t]||0; row[t]=running[t];});
+    return row;
+  });
+  const cumMax={}; types.forEach(t=>{cumMax[t]=Math.max(totalsByType[t],1);});
+  drawTypeChart("tlc2", cumRows, ordered, cumMax);
+  drawTypeLegend("tllegend", ordered, totalsByType);
 }
 
 /* ---------- map (Leaflet: place clusters, optional basemap) ----------

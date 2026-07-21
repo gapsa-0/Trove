@@ -132,6 +132,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/timeline":
                 self._json(queries.timeline(self.cfg.db_path, one("root", int),
                                             one("bucket", str, "month")))
+            elif path == "/api/dates/sources":
+                self._json(queries.date_sources(self.cfg.db_path, one("root", int)))
             elif path == "/api/auto":
                 self._json(self.jobs.auto_status())
             elif path == "/api/map/clusters":
