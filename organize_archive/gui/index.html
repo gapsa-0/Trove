@@ -49,8 +49,11 @@
   #app{display:none;}
   #app.on{display:flex;min-height:100vh;}
   nav{width:210px;flex:none;background:var(--panel);border-right:1px solid var(--line);
-    padding:14px 10px;position:sticky;top:0;height:100vh;overflow:auto;}
+    padding:14px 10px;position:sticky;top:0;height:100vh;overflow:auto;transition:width .15s;}
   nav .brand{display:flex;align-items:center;gap:8px;font-weight:600;padding:4px 8px 12px;}
+  nav .navtoggle{margin-left:auto;cursor:pointer;color:var(--muted);font-size:13px;
+    padding:3px 6px;border-radius:5px;flex:none;}
+  nav .navtoggle:hover{background:var(--panel2);color:var(--text);}
   nav .back{font-size:12px;color:var(--muted);cursor:pointer;display:block;padding:4px 8px;margin-bottom:8px;}
   nav .arch{font-size:13px;padding:4px 8px 12px;border-bottom:1px solid var(--line);
     margin-bottom:8px;word-break:break-word;}
@@ -61,6 +64,13 @@
   .navitem.soon{color:var(--muted);cursor:default;}
   .navitem .tag{margin-left:auto;font-size:9px;text-transform:uppercase;letter-spacing:.5px;
     color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 5px;}
+
+  nav.collapsed{width:56px;}
+  nav.collapsed .brand{justify-content:center;}
+  nav.collapsed .brandtxt,nav.collapsed .back,nav.collapsed .arch,
+  nav.collapsed .navitem span:nth-of-type(2),nav.collapsed .navitem .tag{display:none;}
+  nav.collapsed .navtoggle{margin-left:0;transform:scaleX(-1);}
+  nav.collapsed .navitem{justify-content:center;padding:8px 4px;}
   main{flex:1;padding:22px 26px;max-width:100%;overflow:auto;height:100vh;}
   h2.sec{margin:0 0 16px;font-size:17px;}
 
@@ -170,8 +180,10 @@
 
 <!-- APP SHELL -->
 <div id="app">
-  <nav>
-    <div class="brand"><img src="/icon-192.png" width="22" height="22" style="border-radius:5px"> organize_archive</div>
+  <nav id="nav">
+    <div class="brand"><img src="/icon-192.png" width="22" height="22" style="border-radius:5px">
+      <span class="brandtxt">organize_archive</span>
+      <span class="navtoggle" onclick="toggleNav()" title="Collapse sidebar">«</span></div>
     <span class="back" onclick="toPicker()">← all archives</span>
     <div class="arch" id="archname"></div>
     <div id="navitems"></div>
@@ -198,6 +210,10 @@ const SECTIONS=[
   {id:"situations",label:"Situations",icon:"🔎",soon:true},
 ];
 const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null}, poll:null};
+// Bumped on every user navigation (section switch / archive open). Async renders
+// capture it and bail if it changed while they were awaiting, so a slow fetch can
+// never paint a stale section over the one the user just picked.
+let NAV=0;
 
 function fmtBytes(n){if(n==null)return "—";const u=["B","KB","MB","GB","TB"];let i=0,f=n;
   while(f>=1024&&i<4){f/=1024;i++;}return f.toFixed(1)+" "+u[i];}
@@ -254,22 +270,41 @@ function renderNav(){
   SECTIONS.forEach(s=>{
     const d=document.createElement("div");
     d.className="navitem"+(s.soon?" soon":"")+(s.id===S.section?" active":"");
+    d.title=s.label+(s.soon?" (soon)":"");
     d.innerHTML=`<span>${s.icon}</span><span>${s.label}</span>`+(s.soon?'<span class="tag">soon</span>':"");
     if(!s.soon)d.onclick=()=>showSection(s.id);
     el.appendChild(d);
   });
 }
+function navCollapsed(){ return localStorage.getItem("navCollapsed")==="1"; }
+function applyNavCollapsed(){
+  document.getElementById("nav").classList.toggle("collapsed", navCollapsed());
+}
+function toggleNav(){
+  localStorage.setItem("navCollapsed", navCollapsed()?"0":"1");
+  applyNavCollapsed();
+}
+applyNavCollapsed();
+const RENDERERS={overview:renderOverview,timeline:renderTimeline,
+  map:renderMap,photos:renderPhotos,dups:renderDedup};
 function showSection(id){
   if(id!=="map" && MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
+  NAV++; const gen=NAV;
   S.section=id; renderNav(); stopPoll();
   if(S.arch)location.hash=`/archive/${S.arch.id}/${id}`;
   const m=document.getElementById("main");
-  if(id==="overview")return renderOverview(m);
-  if(id==="timeline")return renderTimeline(m);
-  if(id==="map")return renderMap(m);
-  if(id==="photos")return renderPhotos(m);
-  if(id==="dups")return renderDedup(m);
-  return renderSoon(m,id);
+  m.innerHTML='<div class="muted" style="padding:30px">Loading…</div>';
+  const fn=RENDERERS[id]||(mm=>renderSoon(mm,id));
+  // Isolate each section render: a throw (bad fetch, JSON error, …) shows an inline
+  // error with Retry instead of leaving the previous section's DOM half-replaced.
+  Promise.resolve().then(()=>fn(m)).catch(err=>{
+    if(gen!==NAV)return;
+    console.error("section render failed:",id,err);
+    m.innerHTML=`<div class="soonbox"><div class="big">⚠️</div>
+      <p>Couldn't load this section.</p>
+      <p class="muted">${(err&&err.message)||err}</p>
+      <p style="margin-top:14px"><button class="btn sec" onclick="showSection('${id}')">Retry</button></p></div>`;
+  });
 }
 
 /* ---------- overview + tasks ---------- */
