@@ -84,7 +84,7 @@ def _pending(conn, batch_size: int):
     ).fetchall()
 
 
-def enrich(conn, cfg: Config, progress=None, batch_size: int = 300) -> EnrichStats:
+def enrich(conn, cfg: Config, progress=None, batch_size: int = 80) -> EnrichStats:
     stats = EnrichStats()
     matcher = SidecarMatcher()
     reader = ExifReader() if (ExifReader and exif_available()) else None

@@ -13,220 +13,413 @@
       navigator.serviceWorker.register("/sw.js").catch(()=>{}));
 </script>
 <style>
-  :root {
-    --bg:#14161a; --panel:#1c1f26; --panel2:#252a33; --line:#2e343f;
-    --text:#e7e9ee; --muted:#9aa3b2; --accent:#5b9dff; --accent2:#3a7bd5;
-  }
-  * { box-sizing:border-box; }
-  body { margin:0; font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;
-         background:var(--bg); color:var(--text); }
-  a { color:var(--accent); }
-  header { display:flex; align-items:baseline; gap:14px; padding:12px 18px;
-           border-bottom:1px solid var(--line); position:sticky; top:0;
-           background:var(--bg); z-index:5; }
-  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.3px; }
-  header .sub { color:var(--muted); font-size:12px; }
-  .layout { display:flex; min-height:calc(100vh - 49px); }
-  aside { width:210px; flex:none; border-right:1px solid var(--line);
-          padding:14px 10px; overflow:auto; max-height:calc(100vh - 49px);
-          position:sticky; top:49px; }
-  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.8px;
-             color:var(--muted); margin:16px 6px 6px; }
-  .item { display:flex; justify-content:space-between; gap:8px; padding:5px 8px;
-          border-radius:6px; cursor:pointer; color:var(--text); }
-  .item:hover { background:var(--panel2); }
-  .item.active { background:var(--accent2); color:#fff; }
-  .item .n { color:var(--muted); font-variant-numeric:tabular-nums; }
-  .item.active .n { color:#dbe8ff; }
-  main { flex:1; padding:14px 18px; }
-  .bar { display:flex; align-items:center; gap:10px; margin-bottom:12px;
-         color:var(--muted); flex-wrap:wrap; }
-  .chip { background:var(--panel); border:1px solid var(--line); color:var(--text);
-          border-radius:14px; padding:3px 10px; font-size:12px; cursor:pointer; }
-  .chip button { all:unset; margin-left:6px; color:var(--muted); cursor:pointer; }
-  .grid { display:grid; gap:8px;
-          grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); }
-  .tile { position:relative; aspect-ratio:1; background:var(--panel);
-          border:1px solid var(--line); border-radius:8px; overflow:hidden;
-          cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  .tile img { width:100%; height:100%; object-fit:cover; display:block; }
-  .tile .ph { font-size:34px; color:var(--muted); }
-  .tile .cap { position:absolute; left:0; right:0; bottom:0; padding:3px 6px;
-               font-size:10px; color:#eef; background:linear-gradient(transparent,#000a);
-               display:flex; justify-content:space-between; }
-  .tile .badge { position:absolute; top:5px; right:6px; font-size:12px;
-                 text-shadow:0 1px 2px #000; }
-  .more { text-align:center; margin:18px; }
-  .more button { background:var(--panel2); color:var(--text); border:1px solid var(--line);
-                 border-radius:8px; padding:9px 20px; cursor:pointer; }
-  .empty { color:var(--muted); padding:40px; text-align:center; }
+  :root{--bg:#14161a;--panel:#1c1f26;--panel2:#252a33;--line:#2e343f;
+    --text:#e7e9ee;--muted:#9aa3b2;--accent:#5b9dff;--accent2:#3a7bd5;--good:#57c98b;}
+  *{box-sizing:border-box;}
+  body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  a{color:var(--accent);text-decoration:none;}
+  button{font:inherit;}
+  .btn{background:var(--accent2);color:#fff;border:none;border-radius:8px;
+    padding:9px 16px;cursor:pointer;}
+  .btn:hover{background:var(--accent);}
+  .btn.sec{background:var(--panel2);color:var(--text);border:1px solid var(--line);}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .muted{color:var(--muted);}
+
+  /* ---- archive picker ---- */
+  #picker{max-width:900px;margin:0 auto;padding:40px 20px;}
+  #picker h1{font-size:22px;margin:0 0 4px;}
+  #picker .sub{color:var(--muted);margin-bottom:26px;}
+  .cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px;cursor:pointer;transition:border-color .15s;}
+  .card:hover{border-color:var(--accent);}
+  .card h3{margin:0 0 4px;font-size:15px;word-break:break-word;}
+  .card .path{font-size:11px;color:var(--muted);word-break:break-all;margin-bottom:10px;}
+  .card .stats{display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .card.add{display:flex;align-items:center;justify-content:center;border-style:dashed;
+    color:var(--muted);font-size:15px;min-height:120px;}
+  .badge-warn{color:#e6b45e;font-size:11px;}
+
+  /* ---- app shell ---- */
+  #app{display:none;}
+  #app.on{display:flex;min-height:100vh;}
+  nav{width:210px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+    padding:14px 10px;position:sticky;top:0;height:100vh;overflow:auto;}
+  nav .brand{display:flex;align-items:center;gap:8px;font-weight:600;padding:4px 8px 12px;}
+  nav .back{font-size:12px;color:var(--muted);cursor:pointer;display:block;padding:4px 8px;margin-bottom:8px;}
+  nav .arch{font-size:13px;padding:4px 8px 12px;border-bottom:1px solid var(--line);
+    margin-bottom:8px;word-break:break-word;}
+  .navitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;
+    cursor:pointer;color:var(--text);font-size:13.5px;}
+  .navitem:hover{background:var(--panel2);}
+  .navitem.active{background:var(--accent2);color:#fff;}
+  .navitem.soon{color:var(--muted);cursor:default;}
+  .navitem .tag{margin-left:auto;font-size:9px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 5px;}
+  main{flex:1;padding:22px 26px;max-width:100%;overflow:auto;height:100vh;}
+  h2.sec{margin:0 0 16px;font-size:17px;}
+
+  .statrow{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:20px;}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;}
+  .stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+  .stat .v{font-size:22px;font-weight:600;margin-top:4px;}
+  .stat .v small{font-size:12px;font-weight:400;color:var(--muted);}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:20px;}
+  .panel h3{margin:0 0 12px;font-size:14px;}
+  table.types{width:100%;border-collapse:collapse;font-size:13px;}
+  table.types td{padding:6px 4px;border-bottom:1px solid var(--line);}
+  table.types td.bar{width:45%;}
+  .barwrap{background:var(--panel2);border-radius:5px;height:10px;overflow:hidden;}
+  .barfill{height:100%;background:var(--accent);}
+  .num{text-align:right;font-variant-numeric:tabular-nums;}
+
+  /* tasks */
+  .tasks{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .job{margin-top:12px;font-size:13px;}
+  .progress{background:var(--panel2);border-radius:6px;height:14px;overflow:hidden;margin:6px 0;}
+  .progfill{height:100%;background:var(--good);width:0;transition:width .3s;}
+  .job .cur{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  canvas{max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;}
+
+  /* grid */
+  .grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
+  .tile{position:relative;aspect-ratio:1;background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .tile img{width:100%;height:100%;object-fit:cover;}
+  .tile .ph{font-size:32px;color:var(--muted);}
+  .tile .cap{position:absolute;left:0;right:0;bottom:0;padding:3px 6px;font-size:10px;color:#eef;
+    background:linear-gradient(transparent,#000a);display:flex;justify-content:space-between;}
+  .tile .badge{position:absolute;top:5px;right:6px;font-size:12px;text-shadow:0 1px 2px #000;}
+  .more{text-align:center;margin:16px;}
+  .chips{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:12px;cursor:pointer;}
+  .chip button{all:unset;margin-left:6px;color:var(--muted);cursor:pointer;}
+
+  .soonbox{padding:50px;text-align:center;color:var(--muted);}
+  .soonbox .big{font-size:40px;margin-bottom:10px;}
+
   /* modal */
-  .modal { position:fixed; inset:0; background:#000d; display:none;
-           align-items:center; justify-content:center; z-index:20; }
-  .modal.open { display:flex; }
-  .viewer { display:flex; max-width:96vw; max-height:94vh; gap:0;
-            background:var(--panel); border:1px solid var(--line); border-radius:10px;
-            overflow:hidden; }
-  .viewer .media { background:#000; display:flex; align-items:center;
-                   justify-content:center; max-width:74vw; }
-  .viewer .media img, .viewer .media video { max-width:74vw; max-height:94vh;
-            object-fit:contain; display:block; }
-  .viewer .info { width:290px; flex:none; padding:16px; overflow:auto;
-                  max-height:94vh; }
-  .viewer .info h3 { margin:0 0 10px; font-size:14px; word-break:break-all; }
-  .kv { display:flex; justify-content:space-between; gap:10px; padding:4px 0;
-        border-bottom:1px solid var(--line); font-size:12.5px; }
-  .kv .k { color:var(--muted); }
-  .kv .v { text-align:right; word-break:break-word; }
-  .close { position:absolute; top:14px; right:18px; font-size:26px; color:#fff;
-           cursor:pointer; z-index:21; }
+  .modal{position:fixed;inset:0;background:#000d;display:none;align-items:center;justify-content:center;z-index:20;}
+  .modal.open{display:flex;}
+  .viewer{display:flex;max-width:96vw;max-height:94vh;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .viewer .media{background:#000;display:flex;align-items:center;justify-content:center;max-width:74vw;}
+  .viewer .media img,.viewer .media video{max-width:74vw;max-height:94vh;object-fit:contain;}
+  .viewer .info{width:290px;flex:none;padding:16px;overflow:auto;max-height:94vh;}
+  .viewer .info h3{margin:0 0 10px;font-size:14px;word-break:break-all;}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .kv .k{color:var(--muted);}
+  .kv .v{text-align:right;word-break:break-word;}
+  .close{position:absolute;top:14px;right:18px;font-size:26px;color:#fff;cursor:pointer;z-index:21;}
 </style>
 </head>
 <body>
-<header>
+
+<!-- ARCHIVE PICKER -->
+<div id="picker">
   <h1>organize_archive</h1>
-  <span class="sub" id="subtitle">loading…</span>
-</header>
-
-<div class="layout">
-  <aside>
-    <h2>Type</h2>
-    <div id="types"></div>
-    <h2>Year</h2>
-    <div id="years"></div>
-  </aside>
-
-  <main>
-    <div class="bar" id="filterbar"></div>
-    <div class="grid" id="grid"></div>
-    <div class="empty" id="empty" style="display:none">Nothing here yet.</div>
-    <div class="more" id="more" style="display:none">
-      <button onclick="loadMore()">Load more</button>
-    </div>
-  </main>
+  <div class="sub">Select an archive, or add a directory to catalog.</div>
+  <div class="cards" id="archcards"></div>
 </div>
 
+<!-- APP SHELL -->
+<div id="app">
+  <nav>
+    <div class="brand"><img src="/icon-192.png" width="22" height="22" style="border-radius:5px"> organize_archive</div>
+    <span class="back" onclick="toPicker()">← all archives</span>
+    <div class="arch" id="archname"></div>
+    <div id="navitems"></div>
+  </nav>
+  <main id="main"></main>
+</div>
+
+<!-- MODAL -->
 <div class="modal" id="modal" onclick="if(event.target.id==='modal')closeModal()">
   <span class="close" onclick="closeModal()">×</span>
-  <div class="viewer">
-    <div class="media" id="mmedia"></div>
-    <div class="info" id="minfo"></div>
-  </div>
+  <div class="viewer"><div class="media" id="mmedia"></div><div class="info" id="minfo"></div></div>
 </div>
 
 <script>
-const TYPE_ICON = {image:"🖼️", video:"🎞️", audio:"🎵", document:"📄",
-                   archive:"🗜️", other:"📦"};
-const state = { year:null, month:null, type:null, offset:0, total:0 };
+const TYPE_ICON={image:"🖼️",video:"🎞️",audio:"🎵",document:"📄",archive:"🗜️",other:"📦"};
+const SECTIONS=[
+  {id:"overview",label:"Overview",icon:"📊"},
+  {id:"timeline",label:"Timeline",icon:"📈"},
+  {id:"map",label:"Map",icon:"🗺️"},
+  {id:"photos",label:"Browse",icon:"🖼️"},
+  {id:"faces",label:"Faces",icon:"🙂",soon:true},
+  {id:"places",label:"Places",icon:"📍",soon:true},
+  {id:"situations",label:"Situations",icon:"🔎",soon:true},
+];
+const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null}, poll:null};
 
-function fmtBytes(n){ if(n==null)return "";
-  const u=["B","KB","MB","GB"]; let i=0,f=n; while(f>=1024&&i<3){f/=1024;i++;}
-  return f.toFixed(1)+" "+u[i]; }
+function fmtBytes(n){if(n==null)return "—";const u=["B","KB","MB","GB","TB"];let i=0,f=n;
+  while(f>=1024&&i<4){f/=1024;i++;}return f.toFixed(1)+" "+u[i];}
+async function jget(u){return (await fetch(u)).json();}
+async function jpost(u,b){return (await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})})).json();}
 
-async function j(url){ const r=await fetch(url); return r.json(); }
-
-async function loadSummary(){
-  const s = await j("/api/summary");
-  document.getElementById("subtitle").textContent =
-    s.total.toLocaleString()+" items · "+s.with_gps.toLocaleString()+" with location";
-  const tEl=document.getElementById("types"); tEl.innerHTML="";
-  s.types.forEach(t=>tEl.appendChild(row(TYPE_ICON[t.type]+" "+t.type, t.count,
-    ()=>setFilter("type", state.type===t.type?null:t.type), state.type===t.type)));
-  const yEl=document.getElementById("years"); yEl.innerHTML="";
-  s.years.forEach(y=>yEl.appendChild(row(y.year, y.count,
-    ()=>setFilter("year", state.year===y.year?null:y.year), state.year===y.year)));
+/* ---------- picker ---------- */
+let ARCHIVES=[];
+async function loadPicker(){
+  const {archives}=await jget("/api/archives"); ARCHIVES=archives;
+  const el=document.getElementById("archcards"); el.innerHTML="";
+  archives.forEach(a=>{
+    const c=document.createElement("div"); c.className="card"; c.onclick=()=>openArchive(a);
+    const warn=a.exists?"":'<span class="badge-warn">⚠ not mounted</span>';
+    const enr=a.enriched<a.files?`<span class="badge-warn">${(a.files-a.enriched).toLocaleString()} not enriched</span>`:"";
+    c.innerHTML=`<h3>${a.name} ${warn}</h3><div class="path">${a.path}</div>
+      <div class="stats"><span>${a.files.toLocaleString()} files</span>
+      <span>${fmtBytes(a.size)}</span>${enr}</div>`;
+    el.appendChild(c);
+  });
+  const add=document.createElement("div"); add.className="card add";
+  add.innerHTML="+ Add directory"; add.onclick=addArchive; el.appendChild(add);
+}
+async function addArchive(){
+  const p=prompt("Full path to the directory to catalog:");
+  if(!p)return;
+  const r=await jpost("/api/archives",{path:p});
+  if(r.error){alert(r.error);return;}
+  loadPicker();
 }
 
-function row(label, count, onclick, active){
-  const d=document.createElement("div");
-  d.className="item"+(active?" active":"");
-  d.innerHTML=`<span>${label}</span><span class="n">${count.toLocaleString()}</span>`;
-  d.onclick=onclick; return d;
+/* ---------- archive shell ---------- */
+function openArchive(a,section){
+  S.arch=a; S.section=section||"overview";
+  document.getElementById("picker").style.display="none";
+  document.getElementById("app").classList.add("on");
+  document.getElementById("archname").textContent=a.name;
+  location.hash=`/archive/${a.id}/${S.section}`;
+  renderNav(); showSection(S.section);
+}
+function applyHash(){
+  const m=(location.hash||"").match(/#\/archive\/(\d+)\/(\w+)/);
+  if(m){const a=ARCHIVES.find(x=>x.id==+m[1]); if(a){openArchive(a,m[2]);return true;}}
+  return false;
+}
+function toPicker(){
+  stopPoll(); S.arch=null;
+  document.getElementById("app").classList.remove("on");
+  document.getElementById("picker").style.display="block";
+  loadPicker();
+}
+function renderNav(){
+  const el=document.getElementById("navitems"); el.innerHTML="";
+  SECTIONS.forEach(s=>{
+    const d=document.createElement("div");
+    d.className="navitem"+(s.soon?" soon":"")+(s.id===S.section?" active":"");
+    d.innerHTML=`<span>${s.icon}</span><span>${s.label}</span>`+(s.soon?'<span class="tag">soon</span>':"");
+    if(!s.soon)d.onclick=()=>showSection(s.id);
+    el.appendChild(d);
+  });
+}
+function showSection(id){
+  S.section=id; renderNav(); stopPoll();
+  if(S.arch)location.hash=`/archive/${S.arch.id}/${id}`;
+  const m=document.getElementById("main");
+  if(id==="overview")return renderOverview(m);
+  if(id==="timeline")return renderTimeline(m);
+  if(id==="map")return renderMap(m);
+  if(id==="photos")return renderPhotos(m);
+  return renderSoon(m,id);
 }
 
-function setFilter(key, val){ state[key]=val; if(key==="year") state.month=null;
-  reload(); }
+/* ---------- overview + tasks ---------- */
+async function renderOverview(m){
+  const root=S.arch.id;
+  const s=await jget("/api/summary?root="+root);
+  const need=s.enriched<s.total;
+  m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
+    <div class="statrow">
+      <div class="stat"><div class="k">Files</div><div class="v">${s.total.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Total size</div><div class="v">${fmtBytes(s.size)}</div></div>
+      <div class="stat"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()} <small>/ ${s.total.toLocaleString()}</small></div></div>
+      <div class="stat"><div class="k">Date range</div><div class="v" style="font-size:14px">${(s.date_min||"—").slice(0,10)}<br>${(s.date_max||"—").slice(0,10)}</div></div>
+    </div>
+    <div class="panel"><h3>Tasks</h3>
+      <div class="tasks">
+        <button class="btn" id="btn-scan" onclick="runTask('scan')">▶ Scan (index files)</button>
+        <button class="btn sec" id="btn-enrich" onclick="runTask('enrich')">✦ Enrich (dates · GPS · metadata)</button>
+        ${need?'<span class="badge-warn">Enrich pending — timeline/map need it</span>':'<span class="muted">✓ up to date</span>'}
+      </div>
+      <div id="jobarea"></div>
+    </div>
+    <div class="panel"><h3>By type</h3><table class="types" id="typetbl"></table></div>`;
+  const tbl=document.getElementById("typetbl");
+  const max=Math.max(...s.types.map(t=>t.size),1);
+  s.types.forEach(t=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${TYPE_ICON[t.type]||"📦"} ${t.type}</td>
+      <td class="num">${t.count.toLocaleString()}</td>
+      <td class="bar"><div class="barwrap"><div class="barfill" style="width:${100*t.size/max}%"></div></div></td>
+      <td class="num">${fmtBytes(t.size)}</td>`;
+    tbl.appendChild(tr);
+  });
+  refreshJobs();
+}
+async function runTask(kind){
+  const r=await jpost("/api/task",{kind:kind,root_id:S.arch.id});
+  if(r.error){alert(r.error);return;}
+  startPoll();
+}
+async function refreshJobs(){
+  const area=document.getElementById("jobarea"); if(!area)return;
+  const {jobs}=await jget("/api/jobs?root="+S.arch.id);
+  const active=jobs.filter(j=>j.status==="running");
+  area.innerHTML="";
+  (active.length?active:jobs.slice(0,1)).forEach(j=>{
+    const pct=j.percent!=null?j.percent:0;
+    const st=j.status==="running"?`${pct}%`:j.status;
+    const div=document.createElement("div"); div.className="job";
+    div.innerHTML=`<b>${j.kind}</b> — ${st} <span class="muted">(${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""}, ${j.elapsed}s)</span>
+      <div class="progress"><div class="progfill" style="width:${pct}%;${j.status==='error'?'background:#e06c6c':''}"></div></div>
+      <div class="cur">${j.status==='running'?(j.current||''):(j.message||'')}</div>`;
+    area.appendChild(div);
+  });
+  const scanning=active.some(j=>j.kind==="scan"), enriching=active.some(j=>j.kind==="enrich");
+  const bs=document.getElementById("btn-scan"), be=document.getElementById("btn-enrich");
+  if(bs)bs.disabled=scanning; if(be)be.disabled=enriching;
+  if(!active.length){stopPoll(); if(jobs.length&&jobs[0].status==="done"){/*refresh stats*/ if(S.section==="overview")renderOverview(document.getElementById("main"));}}
+}
+function startPoll(){stopPoll(); S.poll=setInterval(refreshJobs,1200); refreshJobs();}
+function stopPoll(){if(S.poll){clearInterval(S.poll);S.poll=null;}}
 
-function renderFilterBar(){
-  const b=document.getElementById("filterbar"); b.innerHTML="";
-  const add=(txt,clear)=>{ const c=document.createElement("span"); c.className="chip";
-    c.innerHTML=txt+' <button>×</button>'; c.querySelector("button").onclick=clear;
-    b.appendChild(c); };
-  if(state.type) add("type: "+state.type, ()=>setFilter("type",null));
-  if(state.year) add("year: "+state.year, ()=>setFilter("year",null));
-  if(!state.type && !state.year){ const s=document.createElement("span");
-    s.textContent="All items — newest first"; b.appendChild(s); }
+/* ---------- timeline ---------- */
+async function renderTimeline(m){
+  m.innerHTML=`<h2 class="sec">Timeline</h2>
+    <div class="chips"><span class="chip" onclick="drawTimeline('month')">By month</span>
+      <span class="chip" onclick="drawTimeline('year')">By year</span>
+      <span class="muted" id="tlnote"></span></div>
+    <canvas id="tlc" width="1100" height="360"></canvas>`;
+  drawTimeline("month");
+}
+async function drawTimeline(bucket){
+  const {series}=await jget(`/api/timeline?root=${S.arch.id}&bucket=${bucket}`);
+  const cv=document.getElementById("tlc"); if(!cv)return;
+  const ctx=cv.getContext("2d"); const W=cv.width,H=cv.height,pad=40;
+  ctx.clearRect(0,0,W,H);
+  document.getElementById("tlnote").textContent=series.length?`${series.length} periods`:"No dated media yet — run Enrich.";
+  if(!series.length)return;
+  const max=Math.max(...series.map(s=>s.total),1);
+  const n=series.length, bw=(W-2*pad)/n;
+  const colOf={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#6b7280"};
+  // axes
+  ctx.strokeStyle="#2e343f"; ctx.beginPath(); ctx.moveTo(pad,H-pad); ctx.lineTo(W-pad,H-pad); ctx.stroke();
+  series.forEach((s,i)=>{
+    const x=pad+i*bw; let y=H-pad;
+    ["image","video","audio","document","archive","other"].forEach(t=>{
+      if(!s[t])return; const h=(H-2*pad)*s[t]/max;
+      ctx.fillStyle=colOf[t]||"#6b7280"; ctx.fillRect(x+1,y-h,Math.max(bw-2,1),h); y-=h;
+    });
+  });
+  // x labels (sparse)
+  ctx.fillStyle="#9aa3b2"; ctx.font="10px system-ui"; ctx.textAlign="center";
+  const step=Math.ceil(n/12);
+  series.forEach((s,i)=>{ if(i%step===0){ctx.fillText(s.period,pad+i*bw+bw/2,H-pad+14);} });
+  // y labels
+  ctx.textAlign="right"; ctx.fillText(max,pad-6,pad+4); ctx.fillText("0",pad-6,H-pad);
+  // legend
+  ctx.textAlign="left"; let lx=pad;
+  Object.entries({image:"image",video:"video",audio:"audio",document:"doc"}).forEach(([t,l])=>{
+    ctx.fillStyle=colOf[t]; ctx.fillRect(lx,10,10,10); ctx.fillStyle="#9aa3b2"; ctx.fillText(l,lx+14,19); lx+=70;
+  });
 }
 
-async function reload(){ state.offset=0; document.getElementById("grid").innerHTML="";
-  renderFilterBar(); loadSummary(); await loadMore(); }
+/* ---------- map (offline scatter) ---------- */
+async function renderMap(m){
+  m.innerHTML=`<h2 class="sec">Map</h2>
+    <div class="muted" style="margin-bottom:10px" id="mapnote">Loading…</div>
+    <canvas id="mapc" width="1100" height="560" style="cursor:crosshair"></canvas>
+    <div class="muted" style="margin-top:8px;font-size:12px">Offline plot (equirectangular). Click a point to open it. A street-map basemap is a future opt-in.</div>`;
+  const {points}=await jget("/api/map?root="+S.arch.id);
+  const cv=document.getElementById("mapc"), ctx=cv.getContext("2d");
+  document.getElementById("mapnote").textContent=points.length?`${points.length.toLocaleString()} geolocated items`:"No geolocated media yet — run Enrich (needs GPS in Takeout/EXIF).";
+  if(!points.length)return;
+  let laMin=90,laMax=-90,loMin=180,loMax=-180;
+  points.forEach(p=>{laMin=Math.min(laMin,p.lat);laMax=Math.max(laMax,p.lat);
+    loMin=Math.min(loMin,p.lon);loMax=Math.max(loMax,p.lon);});
+  const padLa=(laMax-laMin)*.08+.01, padLo=(loMax-loMin)*.08+.01;
+  laMin-=padLa;laMax+=padLa;loMin-=padLo;loMax+=padLo;
+  const W=cv.width,H=cv.height;
+  const proj=p=>[ (p.lon-loMin)/(loMax-loMin)*W, H-(p.lat-laMin)/(laMax-laMin)*H ];
+  ctx.fillStyle="#1c1f26"; ctx.fillRect(0,0,W,H);
+  const xy=points.map(p=>({p,c:proj(p)}));
+  ctx.fillStyle="rgba(91,157,255,.7)";
+  xy.forEach(({c})=>{ctx.beginPath();ctx.arc(c[0],c[1],3,0,7);ctx.fill();});
+  cv.onclick=e=>{
+    const r=cv.getBoundingClientRect(), mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*H/r.height;
+    let best=null,bd=1e9;
+    xy.forEach(({p,c})=>{const d=(c[0]-mx)**2+(c[1]-my)**2; if(d<bd){bd=d;best=p;}});
+    if(best&&bd<200)openItem(best.id);
+  };
+}
 
-async function loadMore(){
-  const p=new URLSearchParams();
-  if(state.year) p.set("year",state.year);
-  if(state.month) p.set("month",state.month);
-  if(state.type) p.set("type",state.type);
-  p.set("offset",state.offset); p.set("limit",120);
-  const res=await j("/api/media?"+p);
+/* ---------- browse ---------- */
+async function renderPhotos(m){
+  S.grid={offset:0,year:null,month:null,type:null};
+  m.innerHTML=`<h2 class="sec">Browse</h2><div class="chips" id="gchips"></div>
+    <div class="grid" id="grid"></div><div class="more" id="gmore" style="display:none">
+    <button class="btn sec" onclick="loadGrid()">Load more</button></div>`;
+  loadGrid();
+}
+async function loadGrid(){
+  const g=S.grid, p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
+  if(g.type)p.set("type",g.type); if(g.year)p.set("year",g.year);
+  const res=await jget("/api/media?"+p);
   const grid=document.getElementById("grid");
   res.items.forEach(it=>grid.appendChild(tile(it)));
-  state.offset+=res.count;
-  document.getElementById("empty").style.display =
-    (state.offset===0)?"block":"none";
-  document.getElementById("more").style.display =
-    (res.count>=120)?"block":"none";
+  g.offset+=res.count;
+  document.getElementById("gmore").style.display=res.count>=120?"block":"none";
 }
-
 function tile(it){
   const d=document.createElement("div"); d.className="tile"; d.onclick=()=>openItem(it.id);
-  if(it.type==="image"){
-    const img=document.createElement("img"); img.loading="lazy";
-    img.src="/thumb/"+it.id; img.onerror=()=>{img.replaceWith(ph("🖼️"));};
-    d.appendChild(img);
-  } else { d.appendChild(ph(TYPE_ICON[it.type]||"📦")); }
-  const day=(it.date||"").slice(0,10);
-  const cap=document.createElement("div"); cap.className="cap";
-  cap.innerHTML=`<span>${day}</span><span>${it.type==="video"?"▶":""}</span>`;
+  if(it.type==="image"){const img=document.createElement("img");img.loading="lazy";
+    img.src="/thumb/"+it.id;img.onerror=()=>img.replaceWith(ph("🖼️"));d.appendChild(img);}
+  else d.appendChild(ph(TYPE_ICON[it.type]||"📦"));
+  const cap=document.createElement("div");cap.className="cap";
+  cap.innerHTML=`<span>${(it.date||"").slice(0,10)}</span><span>${it.type==="video"?"▶":""}</span>`;
   d.appendChild(cap);
-  if(it.has_gps){ const b=document.createElement("div"); b.className="badge";
-    b.textContent="📍"; d.appendChild(b); }
+  if(it.has_gps){const b=document.createElement("div");b.className="badge";b.textContent="📍";d.appendChild(b);}
   return d;
 }
-function ph(icon){ const s=document.createElement("div"); s.className="ph";
-  s.textContent=icon; return s; }
+function ph(icon){const s=document.createElement("div");s.className="ph";s.textContent=icon;return s;}
 
+function renderSoon(m,id){
+  const S2={faces:["🙂","Faces","Detect and cluster people locally, then pick a person to see all their photos."],
+    places:["📍","Places","Reverse-geocode coordinates into place names and browse by location."],
+    situations:["🔎","Situations","Search by content — “beach sunset”, “birthday” — using local image embeddings."]}[id];
+  m.innerHTML=`<h2 class="sec">${S2[1]}</h2><div class="soonbox"><div class="big">${S2[0]}</div>
+    <p>${S2[2]}</p><p class="muted">Coming in a later phase.</p></div>`;
+}
+
+/* ---------- detail modal ---------- */
 async function openItem(id){
-  const it=await j("/api/item/"+id);
+  const it=await jget("/api/item/"+id);
   const m=document.getElementById("mmedia");
-  if(it.type==="image"){ m.innerHTML=`<img src="/file/${id}">`; }
-  else if(it.type==="video"){ m.innerHTML=`<video src="/file/${id}" controls autoplay></video>`; }
-  else if(it.type==="audio"){ m.innerHTML=`<div style="padding:40px"><div class="ph" style="font-size:60px;text-align:center">🎵</div><audio src="/file/${id}" controls autoplay></audio></div>`; }
-  else { m.innerHTML=`<div class="ph" style="font-size:70px;padding:60px">${TYPE_ICON[it.type]||"📦"}</div>`; }
-  const info=document.getElementById("minfo");
-  const kv=(k,v)=> v!=null&&v!==""? `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`:"";
+  if(it.type==="image")m.innerHTML=`<img src="/file/${id}">`;
+  else if(it.type==="video")m.innerHTML=`<video src="/file/${id}" controls autoplay></video>`;
+  else if(it.type==="audio")m.innerHTML=`<div style="padding:40px"><div class="ph" style="font-size:60px;text-align:center">🎵</div><audio src="/file/${id}" controls autoplay></audio></div>`;
+  else m.innerHTML=`<div class="ph" style="font-size:70px;padding:60px">${TYPE_ICON[it.type]||"📦"}</div>`;
+  const kv=(k,v)=>v!=null&&v!==""?`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`:"";
   const dims=it.meta&&it.meta.width?`${it.meta.width}×${it.meta.height}`:"";
   const cam=it.meta&&it.meta.model?((it.meta.make||"")+" "+it.meta.model).trim():"";
   const gps=it.gps?`<a href="https://www.openstreetmap.org/?mlat=${it.gps.lat}&mlon=${it.gps.lon}&zoom=14" target="_blank">${it.gps.lat.toFixed(5)}, ${it.gps.lon.toFixed(5)}</a>`:"";
-  info.innerHTML =
-    `<h3>${it.name}</h3>`+
-    kv("Date", it.date? it.date.replace("T"," "):"—")+
-    kv("Date source", it.date_source)+
-    kv("Type", it.type)+
-    kv("Size", fmtBytes(it.size))+
-    kv("Dimensions", dims)+
-    kv("Camera", cam)+
-    kv("Location", gps)+
-    kv("Description", it.description)+
-    `<div class="kv"><span class="k">Path</span></div>`+
-    `<div style="font-size:11px;color:var(--muted);word-break:break-all">${it.rel_path}</div>`+
-    `<div style="margin-top:12px"><a href="/file/${id}" target="_blank">Open original ↗</a></div>`;
+  document.getElementById("minfo").innerHTML=`<h3>${it.name}</h3>`+
+    kv("Date",it.date?it.date.replace("T"," "):"—")+kv("Date source",it.date_source)+
+    kv("Type",it.type)+kv("Size",fmtBytes(it.size))+kv("Dimensions",dims)+kv("Camera",cam)+
+    kv("Location",gps)+kv("Description",it.description)+
+    `<div class="kv"><span class="k">Path</span></div><div style="font-size:11px;color:var(--muted);word-break:break-all">${it.rel_path}</div>
+     <div style="margin-top:12px"><a href="/file/${id}" target="_blank">Open original ↗</a></div>`;
   document.getElementById("modal").classList.add("open");
 }
-function closeModal(){ document.getElementById("modal").classList.remove("open");
-  document.getElementById("mmedia").innerHTML=""; }
-document.addEventListener("keydown",e=>{ if(e.key==="Escape")closeModal(); });
+function closeModal(){document.getElementById("modal").classList.remove("open");
+  document.getElementById("mmedia").innerHTML="";}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 
-reload();
+loadPicker().then(applyHash);
 </script>
 </body>
 </html>
