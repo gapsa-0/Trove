@@ -89,6 +89,8 @@
   .taskcard .act{flex:none;}
   .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;}
   .dot.ok{background:var(--good);} .dot.pending{background:#e6b45e;} .dot.check{background:var(--muted);}
+  .linkbtn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12.5px;padding:6px 0;}
+  .linkbtn:hover{text-decoration:underline;}
   @keyframes spin{to{transform:rotate(360deg)}}
   .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);
     border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-right:6px;vertical-align:middle;}
@@ -285,38 +287,37 @@ async function renderOverview(m){
       <td class="num">${fmtBytes(t.size)}</td>`;
     tbl.appendChild(tr);
   });
-  S.fresh=null;
-  renderTaskCards();          // draws "checking…" then fills in
-  loadFreshness();
+  S.summary=s;
+  renderTaskCards();
   refreshJobs();
 }
 
-// Task-card state: reflect whether work is actually pending.
+// Task-card state. Uses instant DB counts; the disk walk only runs when the
+// user explicitly checks for new files.
 function taskCardHTML(kind, running){
-  const f=S.fresh, ic=kind==="scan"?"🔎":"✦";
+  const s=S.summary||{total:0,enriched:0}, f=S.fresh, ic=kind==="scan"?"🔎":"✦";
   const title=kind==="scan"?"Scan files":"Extract dates, places & metadata";
-  if(running){
+  if(running)
     return card(ic,title,`<span class="spin"></span>Working…`,"","");
-  }
-  if(f===null){
-    return card(ic,title,`<span class="spin"></span>Checking…`,"","");
-  }
   if(kind==="scan"){
-    if(f.exists===false)
-      return card(ic,title,`<span class="dot pending"></span>Folder not found`,"pending","");
-    if(f.new_files>0)
-      return card(ic,title,`<span class="dot pending"></span>${f.new_files.toLocaleString()} new files to index`,"pending",
-        btn("Scan new files",`runTask('scan')`,false));
-    return card(ic,title,`<span class="dot ok"></span>All ${f.indexed.toLocaleString()} files indexed`,"ok",
-      btn("Rescan",`runTask('scan')`,true));
+    let desc, action;
+    if(f && f.checking){ desc=`<span class="spin"></span>Checking the folder…`; action=""; }
+    else if(f && f.new_files>0){
+      desc=`<span class="dot pending"></span>${f.new_files.toLocaleString()} new files found`;
+      action=btn("Scan new files",`runTask('scan')`,false);
+    } else {
+      desc=`<span class="dot ok"></span>${s.total.toLocaleString()} files indexed`
+        + (f&&f.checked?` <span class="muted">· no new files</span>`:"");
+      action=`<button class="linkbtn" onclick="checkNewFiles()">Check for new files</button>`;
+    }
+    return card(ic,title,desc,f&&f.new_files>0?"pending":"ok",action);
   } else {
-    if(f.not_enriched>0)
-      return card(ic,title,`<span class="dot pending"></span>${f.not_enriched.toLocaleString()} files need dates & places`,"pending",
+    const need=s.total-s.enriched;
+    if(!s.total) return card(ic,title,`<span class="dot check"></span>Scan first`,"","");
+    if(need>0)
+      return card(ic,title,`<span class="dot pending"></span>${need.toLocaleString()} files need dates & places`,"pending",
         btn("Extract now",`runTask('enrich')`,false));
-    if(!f.indexed)
-      return card(ic,title,`<span class="dot check"></span>Scan first`,"","");
-    return card(ic,title,`<span class="dot ok"></span>Dates, places & metadata complete`,"ok",
-      btn("Re-extract",`runTask('enrich')`,true));
+    return card(ic,title,`<span class="dot ok"></span>Dates, places & metadata complete`,"ok","");
   }
 }
 function card(ico,title,desc,cls,action){
@@ -332,8 +333,12 @@ function renderTaskCards(){
   if(cs)cs.innerHTML=taskCardHTML("scan",!!active.scan);
   if(ce)ce.innerHTML=taskCardHTML("enrich",!!active.enrich);
 }
-async function loadFreshness(){
-  try{ S.fresh=await jget("/api/freshness?root="+S.arch.id); }catch(e){ S.fresh={error:1}; }
+async function checkNewFiles(){
+  S.fresh={checking:true}; renderTaskCards();
+  try{
+    const r=await jget("/api/freshness?root="+S.arch.id);
+    S.fresh={checked:true,new_files:r.new_files||0};
+  }catch(e){ S.fresh={checked:true,new_files:0}; }
   renderTaskCards();
 }
 async function runTask(kind){
@@ -374,59 +379,75 @@ async function renderTimeline(m){
       <span class="chip" id="tl-year" onclick="drawTimeline('year')">By year</span></div>
     <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
     <canvas id="tlc" width="1180" height="380"></canvas>
-    <div class="muted" style="margin-top:8px;font-size:12px">Each line is scaled to its own peak so every type stays visible — compare shapes, not heights. Peak counts are in the legend.</div>`;
+    <div class="muted" style="margin-top:8px;font-size:12px">Photos, videos and audio per period on a shared scale. Totals are in the legend.</div>`;
   drawTimeline("month");
 }
-function smoothPath(ctx,pts){        // Catmull-Rom → bezier, monotone-ish
-  if(pts.length<2){return;}
-  ctx.moveTo(pts[0][0],pts[0][1]);
-  for(let i=0;i<pts.length-1;i++){
-    const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||p2;
-    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
-    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
-    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,p2[0],p2[1]);
+function monotonePath(ctx,xs,ys){
+  // Fritsch-Carlson monotone cubic: smooth but never overshoots the data,
+  // so a line can't dip below zero or spike between points.
+  const n=xs.length;
+  if(n===1){return;}
+  const dx=[],slope=[];
+  for(let i=0;i<n-1;i++){dx[i]=xs[i+1]-xs[i];slope[i]=(ys[i+1]-ys[i])/dx[i];}
+  const t=new Array(n); t[0]=slope[0]; t[n-1]=slope[n-2];
+  for(let i=1;i<n-1;i++) t[i]=(slope[i-1]*slope[i]<=0)?0:(slope[i-1]+slope[i])/2;
+  for(let i=0;i<n-1;i++){
+    if(slope[i]===0){t[i]=0;t[i+1]=0;continue;}
+    const a=t[i]/slope[i], b=t[i+1]/slope[i], h=Math.hypot(a,b);
+    if(h>3){const tau=3/h;t[i]=tau*a*slope[i];t[i+1]=tau*b*slope[i];}
   }
+  ctx.moveTo(xs[0],ys[0]);
+  for(let i=0;i<n-1;i++){
+    const h=dx[i];
+    ctx.bezierCurveTo(xs[i]+h/3, ys[i]+t[i]*h/3, xs[i+1]-h/3, ys[i+1]-t[i+1]*h/3, xs[i+1], ys[i+1]);
+  }
+}
+function niceMax(v){
+  if(v<=5)return 5;
+  const p=Math.pow(10,Math.floor(Math.log10(v)));
+  for(const m of [1,2,2.5,5,10]) if(v<=m*p)return m*p;
+  return 10*p;
 }
 async function drawTimeline(bucket){
   document.getElementById("tl-month").style.background=bucket==="month"?"var(--accent2)":"";
   document.getElementById("tl-year").style.background=bucket==="year"?"var(--accent2)":"";
   const {series}=await jget(`/api/timeline?root=${S.arch.id}&bucket=${bucket}`);
   const cv=document.getElementById("tlc"); if(!cv)return;
-  const ctx=cv.getContext("2d"); const W=cv.width,H=cv.height,padL=46,padR=16,padT=16,padB=28;
+  const ctx=cv.getContext("2d"); const W=cv.width,H=cv.height,padL=54,padR=16,padT=18,padB=28;
   ctx.clearRect(0,0,W,H);
   const leg=document.getElementById("tllegend"); leg.innerHTML="";
-  if(!series.length){leg.innerHTML='<span class="muted">No dated media yet — run Extract on the Overview tab.</span>';return;}
-  const types=["image","video","audio","document","archive","other"]
-    .filter(t=>series.some(s=>s[t]));
+  if(!series.length){leg.innerHTML='<span class="muted">No dated media yet, run Extract on the Overview tab.</span>';return;}
+  const types=["image","video","audio"].filter(t=>series.some(s=>s[t]));
   const n=series.length;
+  const gmax=niceMax(Math.max(...series.flatMap(s=>types.map(t=>s[t]||0)),1));
   const X=i=> padL + (n===1?(W-padL-padR)/2 : i*(W-padL-padR)/(n-1));
-  const Y=(v,mx)=> H-padB - (mx? v/mx*(H-padT-padB):0);
-  // grid baseline
-  ctx.strokeStyle="#2a2f3a"; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(padL,H-padB); ctx.lineTo(W-padR,H-padB); ctx.stroke();
-  // per-type normalized line + soft fill
-  types.forEach(t=>{
-    const mx=Math.max(...series.map(s=>s[t]||0),1);
-    const pts=series.map((s,i)=>[X(i),Y(s[t]||0,mx)]);
-    // fill
-    ctx.beginPath(); smoothPath(ctx,pts);
-    ctx.lineTo(pts[n-1][0],H-padB); ctx.lineTo(pts[0][0],H-padB); ctx.closePath();
-    ctx.fillStyle=TL_COL[t]+"22"; ctx.fill();
-    // line
-    ctx.beginPath(); smoothPath(ctx,pts);
-    ctx.strokeStyle=TL_COL[t]; ctx.lineWidth=2; ctx.stroke();
+  const Y=v=> H-padB - v/gmax*(H-padT-padB);
+  ctx.font="10px system-ui"; ctx.textAlign="right"; ctx.textBaseline="middle";
+  for(let g=0;g<=4;g++){
+    const val=gmax*g/4, y=Y(val);
+    ctx.strokeStyle=g===0?"#3a414e":"#232833"; ctx.beginPath();
+    ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+    ctx.fillStyle="#9aa3b2"; ctx.fillText(Math.round(val).toLocaleString(),padL-8,y);
+  }
+  const ordered=types.slice().sort((a,b)=>
+    series.reduce((x,s)=>x+(s[b]||0),0)-series.reduce((x,s)=>x+(s[a]||0),0));
+  ordered.forEach(t=>{
+    const xs=series.map((s,i)=>X(i)), ys=series.map(s=>Y(s[t]||0));
+    if(n===1){ctx.fillStyle=TL_COL[t];ctx.beginPath();ctx.arc(xs[0],ys[0],3,0,7);ctx.fill();return;}
+    ctx.beginPath(); monotonePath(ctx,xs,ys);
+    ctx.lineTo(xs[n-1],H-padB); ctx.lineTo(xs[0],H-padB); ctx.closePath();
+    ctx.fillStyle=TL_COL[t]+"1e"; ctx.fill();
+    ctx.beginPath(); monotonePath(ctx,xs,ys);
+    ctx.strokeStyle=TL_COL[t]; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.stroke();
   });
-  // x labels (sparse)
-  ctx.fillStyle="#9aa3b2"; ctx.font="10px system-ui"; ctx.textAlign="center";
+  ctx.fillStyle="#9aa3b2"; ctx.textAlign="center"; ctx.textBaseline="top";
   const step=Math.max(1,Math.ceil(n/12));
-  series.forEach((s,i)=>{ if(i%step===0||i===n-1)ctx.fillText(s.period,X(i),H-padB+14); });
-  // legend with per-type peak
+  series.forEach((s,i)=>{ if(i%step===0||i===n-1)ctx.fillText(s.period,X(i),H-padB+8); });
   types.forEach(t=>{
-    const mx=Math.max(...series.map(s=>s[t]||0),0);
     const tot=series.reduce((a,s)=>a+(s[t]||0),0);
     const sp=document.createElement("span");
-    sp.innerHTML=`<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${TL_COL[t]};margin-right:6px"></span>
-      ${t} <span class="muted">· ${tot.toLocaleString()} · peak ${mx.toLocaleString()}</span>`;
+    sp.innerHTML=`<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${TL_COL[t]};margin-right:6px"></span>`+
+      t+` <span class="muted">, ${tot.toLocaleString()}</span>`;
     leg.appendChild(sp);
   });
 }
