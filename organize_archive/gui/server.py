@@ -134,6 +134,8 @@ class Handler(BaseHTTPRequestHandler):
                                             one("bucket", str, "month")))
             elif path == "/api/map":
                 self._json(queries.map_points(self.cfg.db_path, one("root", int)))
+            elif path == "/api/auto":
+                self._json(self.jobs.auto_status())
             elif path == "/api/dups/summary":
                 self._json(queries.dup_summary(self.cfg.db_path, one("root", int)))
             elif path == "/api/dups":
@@ -197,6 +199,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/api/job/") and path.endswith("/cancel"):
                 jid = int(path.split("/")[3])
                 self._json({"cancelled": self.jobs.cancel(jid)})
+            elif path == "/api/auto":
+                self.jobs.set_auto_paused(bool(body.get("paused", False)))
+                self._json(self.jobs.auto_status())
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:

@@ -309,10 +309,11 @@ function showSection(id){
 
 /* ---------- overview + tasks ---------- */
 async function renderOverview(m){
-  const root=S.arch.id;
-  const [s,ds]=await Promise.all([
-    jget("/api/summary?root="+root), jget("/api/dups/summary?root="+root)]);
-  S.dupsum=ds;
+  const gen=NAV, root=S.arch.id;
+  const [s,ds,auto]=await Promise.all([
+    jget("/api/summary?root="+root), jget("/api/dups/summary?root="+root), jget("/api/auto")]);
+  if(gen!==NAV)return;   // user switched sections while these were loading
+  S.dupsum=ds; S.auto=auto;
   m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
     <div class="statrow">
       <div class="stat"><div class="k">Unique files</div><div class="v">${(s.total-ds.duplicates).toLocaleString()} <small>/ ${s.total.toLocaleString()} total</small></div></div>
@@ -321,12 +322,9 @@ async function renderOverview(m){
       <div class="stat"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()} <small>/ ${s.total.toLocaleString()}</small></div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('dups')"><div class="k">Duplicates</div><div class="v">${ds.duplicates.toLocaleString()} <small>· ${fmtBytes(ds.reclaimable)}</small></div></div>
     </div>
-    <div class="panel"><h3>Tasks</h3>
-      <div id="taskcards">
-        <div class="taskcard" id="task-scan"></div>
-        <div class="taskcard" id="task-enrich"></div>
-        <div class="taskcard" id="task-dedup"></div>
-      </div>
+    <div class="panel"><h3 style="display:flex;align-items:center;gap:10px">Keeping in sync
+        <button class="btn sec" id="autobtn" style="margin-left:auto" onclick="toggleAuto()"></button></h3>
+      <div id="syncstatus"></div>
       <div id="jobarea"></div>
     </div>
     <div class="panel"><h3>By type</h3><table class="types" id="typetbl"></table></div>`;
@@ -341,65 +339,42 @@ async function renderOverview(m){
     tbl.appendChild(tr);
   });
   S.summary=s;
-  renderTaskCards();
-  loadFreshness();     // fast disk-vs-index check; enables the Scan button if new
-  refreshJobs();
+  renderSyncPanel();
+  loadFreshness();   // fast disk-vs-index check, shown while waiting for the next auto tick
+  startPoll();       // catches jobs the scheduler starts on its own, not just user-triggered ones
 }
 
-// Task-card state. DB counts are instant; the disk check runs on load (it's fast)
-// to decide whether the Scan button is active.
-function taskCardHTML(kind, running){
-  const s=S.summary||{total:0,enriched:0}, f=S.fresh, ic=kind==="scan"?"🔎":"✦";
-  const title=kind==="scan"?"Scan files":"Extract dates, places & metadata";
-  if(running)
-    return card(ic,title,`<span class="spin"></span>Working…`,"","");
-  if(kind==="scan"){
-    const nf = f && f.checked ? f.new_files : null;   // null while checking
-    let desc, action;
-    if(nf===null){
-      desc=`<span class="dot ok"></span>${s.total.toLocaleString()} files indexed`;
-      action=`<button class="btn" disabled title="Checking for new files…">Scan for new files</button>`;
-    } else if(nf>0){
-      desc=`<span class="dot pending"></span>${s.total.toLocaleString()} indexed · ${nf.toLocaleString()} new`;
-      action=btn("Scan for new files",`runTask('scan')`,false);
-    } else {
-      desc=`<span class="dot ok"></span>${s.total.toLocaleString()} files indexed`;
-      action=`<button class="btn" disabled title="No new files to process">Scan for new files</button>`;
-    }
-    return card(ic,title,desc,nf>0?"pending":"ok",action);
-  } else if(kind==="enrich"){
-    const need=s.total-s.enriched;
-    if(!s.total) return card(ic,title,`<span class="dot check"></span>Scan first`,"","");
-    if(need>0)
-      return card(ic,title,`<span class="dot pending"></span>${need.toLocaleString()} files need dates & places`,"pending",
-        btn("Extract now",`runTask('enrich')`,false));
-    return card(ic,title,`<span class="dot ok"></span>Dates, places & metadata complete`,"ok","");
-  } else {  // dedup
-    const d=S.dupsum;
-    if(!s.total) return card("🧹","Find duplicates",`<span class="dot check"></span>Scan first`,"","");
-    if(d && d.groups>0)
-      return card("🧹","Find duplicates",
-        `<span class="dot ok"></span>${d.duplicates.toLocaleString()} duplicates in ${d.groups.toLocaleString()} groups · ${fmtBytes(d.reclaimable)} reclaimable`,"ok",
-        btn("Rescan for duplicates","runTask('dedup')",true));
-    return card("🧹","Find duplicates",
-      `<span class="dot pending"></span>Not scanned yet`,"pending",
-      btn("Find duplicates","runTask('dedup')",false));
+// Everything (scan → extract → dedup) runs automatically in the background;
+// this panel just reports what's happening and lets the user pause it.
+const JOB_LABEL={scan:"Scanning for new files…",enrich:"Extracting dates, places & metadata…",
+  dedup:"Finding duplicates…"};
+function renderSyncPanel(){
+  const btn=document.getElementById("autobtn");
+  if(btn)btn.textContent=(S.auto&&S.auto.paused)?"Resume":"Pause";
+  const el=document.getElementById("syncstatus"); if(!el)return;
+  const active=S.activeJobs||{};
+  const runningKind=active.scan?"scan":active.enrich?"enrich":active.dedup?"dedup":null;
+  if(runningKind){
+    el.innerHTML=`<div class="d"><span class="spin"></span>${JOB_LABEL[runningKind]}</div>`;
+    return;
+  }
+  if(S.auto&&S.auto.paused){
+    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Paused — new files won't be processed until you resume.</div>`;
+    return;
+  }
+  const f=S.fresh, s=S.summary;
+  if(f&&f.checked&&f.new_files>0){
+    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>${f.new_files.toLocaleString()} new file${f.new_files===1?"":"s"} found — scanning shortly…</div>`;
+  } else if(s&&s.total>s.enriched){
+    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Extracting dates &amp; metadata shortly…</div>`;
+  } else {
+    el.innerHTML=`<div class="d ok"><span class="dot ok"></span>Up to date — scanned, dated and deduplicated.</div>`;
   }
 }
-function card(ico,title,desc,cls,action){
-  return `<div class="ico">${ico}</div><div class="body"><div class="t">${title}</div>
-    <div class="d ${cls}">${desc}</div></div><div class="act">${action}</div>`;
-}
-function btn(label,onclick,secondary){
-  return `<button class="btn ${secondary?'sec':''}" onclick="${onclick}">${label}</button>`;
-}
-function renderTaskCards(){
-  const active=S.activeJobs||{};
-  const cs=document.getElementById("task-scan"), ce=document.getElementById("task-enrich"),
-        cd=document.getElementById("task-dedup");
-  if(cs)cs.innerHTML=taskCardHTML("scan",!!active.scan);
-  if(ce)ce.innerHTML=taskCardHTML("enrich",!!active.enrich);
-  if(cd)cd.innerHTML=taskCardHTML("dedup",!!active.dedup);
+async function toggleAuto(){
+  const next=!(S.auto&&S.auto.paused);
+  S.auto=await jpost("/api/auto",{paused:next});
+  renderSyncPanel();
 }
 async function loadFreshness(){
   S.fresh=null;
@@ -407,34 +382,35 @@ async function loadFreshness(){
     const r=await jget("/api/freshness?root="+S.arch.id);
     S.fresh={checked:true,new_files:r.new_files||0};
   }catch(e){ S.fresh={checked:true,new_files:0}; }
-  renderTaskCards();
+  renderSyncPanel();
 }
-async function runTask(kind){
-  const r=await jpost("/api/task",{kind:kind,root_id:S.arch.id});
-  if(r.error){alert(r.error);return;}
-  startPoll();
-}
+async function cancelJob(id){ await jpost(`/api/job/${id}/cancel`,{}); refreshJobs(); }
 async function refreshJobs(){
   const area=document.getElementById("jobarea"); if(!area)return;
   const {jobs}=await jget("/api/jobs?root="+S.arch.id);
   const active=jobs.filter(j=>j.status==="running");
   S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich"),
     dedup:active.some(j=>j.kind==="dedup")};
-  renderTaskCards();
+  renderSyncPanel();
   area.innerHTML="";
   active.forEach(j=>{
     const pct=j.percent!=null?j.percent:0;
     const div=document.createElement("div"); div.className="job";
     div.innerHTML=`<div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-      <div class="cur">${j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
+      <div class="cur">${j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}
+      <button class="linkbtn" style="float:right" onclick="cancelJob(${j.id})">Cancel</button></div>`;
     area.appendChild(div);
   });
-  if(!active.length){
-    stopPoll();
-    if(jobs.length && (jobs[0].status==="done"||jobs[0].status==="cancelled")){
-      loadFreshness();
-      if(S.section==="overview")renderOverview(document.getElementById("main"));
-    }
+  // Re-render the overview once, only when a job has just finished (active→idle) so
+  // the stats reflect the completed work. Guarding on the transition matters: the
+  // newest job stays "done" forever, so re-rendering whenever `jobs[0]` is done would
+  // loop endlessly (renderOverview→startPoll→refreshJobs→renderOverview…), pegging the
+  // CPU and repainting Overview over whatever section the user navigates to.
+  const justFinished=S.wasActive && !active.length;
+  S.wasActive=active.length>0;
+  if(justFinished){
+    loadFreshness();
+    if(S.section==="overview")renderOverview(document.getElementById("main"));
   }
 }
 function startPoll(){stopPoll(); S.poll=setInterval(refreshJobs,1200); refreshJobs();}
@@ -642,9 +618,8 @@ async function renderDedup(m){
   if(!ds.groups){
     m.innerHTML=`<h2 class="sec">Duplicates</h2>
       <div class="soonbox"><div class="big">🧹</div>
-      <p>No duplicate scan yet.</p>
-      <p><button class="btn" onclick="runTaskThen('dedup','dups')">Find duplicates</button></p>
-      <p class="muted">Groups byte-identical copies (same photo across takeouts). Nothing is deleted — extra copies are just hidden from browsing.</p></div>`;
+      <p>No duplicates found yet.</p>
+      <p class="muted">This runs automatically once files are scanned and dated — see the Overview tab for progress. Groups byte-identical copies (same photo across takeouts); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
     return;
   }
   m.innerHTML=`<h2 class="sec">Duplicates</h2>
@@ -679,16 +654,6 @@ async function loadDupGroups(){
   S.dupoff+=res.count;
   document.getElementById("dupmore").style.display=res.count>=40?"block":"none";
 }
-async function runTaskThen(kind,section){
-  const r=await jpost("/api/task",{kind:kind,root_id:S.arch.id});
-  if(r.error){alert(r.error);return;}
-  // poll until done, then re-render the section
-  const iv=setInterval(async()=>{
-    const {jobs}=await jget("/api/jobs?root="+S.arch.id);
-    if(!jobs.some(j=>j.status==="running")){clearInterval(iv); showSection(section);}
-  },1000);
-}
-
 function renderSoon(m,id){
   const S2={faces:["🙂","Faces","Detect and cluster people locally, then pick a person to see all their photos."],
     places:["📍","Places","Reverse-geocode coordinates into place names and browse by location."],

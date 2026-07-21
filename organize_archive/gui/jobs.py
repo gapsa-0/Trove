@@ -64,6 +64,11 @@ class _JobProgress:
 
 
 class JobManager:
+    # Idle poll interval backs off (up to _AUTO_MAX) when a tick finds nothing
+    # to do, so a quiet archive doesn't get walked every few seconds forever.
+    _AUTO_MIN = 10
+    _AUTO_MAX = 300
+
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self._jobs: dict[int, Job] = {}
@@ -71,6 +76,12 @@ class JobManager:
         self._seq = 0
         self._lock = threading.Lock()          # guards registry
         self._write_lock = threading.Lock()    # serializes DB writers
+
+        self._auto_paused = False
+        self._dedup_dirty = True   # run one dedup pass on startup
+        self._dedup_root: int | None = None
+        self._auto_interval = self._AUTO_MIN
+        threading.Thread(target=self._auto_loop, daemon=True).start()
 
     # -- introspection ----------------------------------------------------
     def list(self, root_id: int | None = None) -> list[dict]:
@@ -106,6 +117,64 @@ class JobManager:
         ev = self._cancels.get(job_id)
         if ev:
             ev.set()
+            return True
+        return False
+
+    # -- automatic scheduling ----------------------------------------------
+    # The catalog is meant to keep itself in sync without the user pressing
+    # buttons: a background thread notices new/un-enriched files and starts
+    # the right job on its own. "Pause" just stops it from starting new work;
+    # it doesn't interrupt a job already running.
+    def auto_status(self) -> dict:
+        return {"paused": self._auto_paused}
+
+    def set_auto_paused(self, paused: bool):
+        self._auto_paused = bool(paused)
+        if not self._auto_paused:
+            self._auto_interval = self._AUTO_MIN  # check promptly after resuming
+
+    def _auto_loop(self):
+        while True:
+            time.sleep(self._auto_interval)
+            if self._auto_paused:
+                continue
+            try:
+                acted = self._auto_tick()
+            except Exception:
+                traceback.print_exc()
+                acted = False
+            self._auto_interval = (self._AUTO_MIN if acted
+                                    else min(self._auto_interval * 1.5, self._AUTO_MAX))
+
+    def _auto_tick(self) -> bool:
+        """One scheduling decision. Returns True if it started (or is waiting
+        on) work, so the caller can poll again soon rather than backing off."""
+        from . import queries
+        if any(j.status == "running" for j in self._jobs.values()):
+            return True
+        archives = queries.archives(self.cfg.db_path)
+        for a in archives:
+            if not a["exists"]:
+                continue
+            fresh = queries.freshness(self.cfg.db_path, a["id"])
+            if fresh.get("new_files", 0) > 0:
+                self.start("scan", a["id"], a["path"])
+                self._dedup_dirty, self._dedup_root = True, a["id"]
+                return True
+            if fresh.get("not_enriched", 0) > 0:
+                self.start("enrich", a["id"], a["path"])
+                self._dedup_dirty, self._dedup_root = True, a["id"]
+                return True
+        if self._dedup_dirty:
+            self._dedup_dirty = False
+            # Dedup itself spans every archive, but the job is tagged with one
+            # root_id so its progress bar shows up somewhere (the GUI's job
+            # list is filtered per-archive) — prefer the archive that just got
+            # new/enriched data, else fall back to whichever archive exists.
+            root_id = self._dedup_root
+            if root_id is None:
+                root_id = next((a["id"] for a in archives if a["exists"]), None)
+            self.start("dedup", root_id, None)
             return True
         return False
 
