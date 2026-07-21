@@ -39,10 +39,18 @@ class Job:
 
 
 class _JobProgress:
-    """Adapter with the interface walker/enrich expect (.total, .update())."""
-    def __init__(self, job: Job, cancel: threading.Event):
+    """Adapter with the interface walker/enrich expect (.total, .update()).
+
+    ``base`` / ``fixed_total`` let a multi-pass job (faces: detect in chunks,
+    re-clustering between them) present one continuous bar: each pass reports
+    0..chunk offset by ``base``, while the grand ``total`` stays put instead of
+    being reset to the chunk size on every pass."""
+    def __init__(self, job: Job, cancel: threading.Event, base: int = 0,
+                 fixed_total: bool = False):
         self.job = job
         self._cancel = cancel
+        self.base = base
+        self._fixed_total = fixed_total
 
     @property
     def total(self):
@@ -50,12 +58,13 @@ class _JobProgress:
 
     @total.setter
     def total(self, v):
-        self.job.total = v or 0
+        if not self._fixed_total:
+            self.job.total = v or 0
 
     def update(self, done, _bytes=0, current=""):
         if self._cancel.is_set():
             raise KeyboardInterrupt
-        self.job.done = done
+        self.job.done = self.base + done
         if current:
             self.job.current = current
 
@@ -68,6 +77,10 @@ class JobManager:
     # to do, so a quiet archive doesn't get walked every few seconds forever.
     _AUTO_MIN = 10
     _AUTO_MAX = 300
+    # Images per detect-then-recluster chunk in a faces job (see _run_faces):
+    # small enough that people appear early in a multi-hour run, large enough
+    # that repeated clustering stays a small fraction of total time.
+    _FACE_CHUNK = 1200
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -165,6 +178,17 @@ class JobManager:
                 self.start("enrich", a["id"], a["path"])
                 self._dedup_dirty, self._dedup_root = True, a["id"]
                 return True
+        # Faces come after every archive is scanned + enriched (lowest-priority
+        # extraction pass, before dedup). Skipped entirely when the local face
+        # backend isn't available, so we never spin on work that can't run.
+        from ..faces import backend as face_backend
+        if face_backend.available():
+            for a in archives:
+                if not a["exists"]:
+                    continue
+                if queries.faces_pending(self.cfg.db_path, a["id"]) > 0:
+                    self.start("faces", a["id"], a["path"])
+                    return True
         if self._dedup_dirty:
             self._dedup_dirty = False
             # Dedup itself spans every archive, but the job is tagged with one
@@ -191,6 +215,8 @@ class JobManager:
                         self._run_enrich(conn, job, cancel)
                     elif job.kind == "dedup":
                         self._run_dedup(conn, job, cancel)
+                    elif job.kind == "faces":
+                        self._run_faces(conn, job, cancel)
                     else:
                         raise ValueError(f"unknown job kind: {job.kind}")
                 finally:
@@ -235,3 +261,26 @@ class JobManager:
         stats = exact.run(conn, progress=prog)
         job.message = (f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
                        f"{stats.reclaimable_bytes/1e9:.1f} GB reclaimable")
+
+    def _run_faces(self, conn, job: Job, cancel):
+        # Part of the automatic pipeline (runs after scan + enrich). Detect faces
+        # in chunks and re-cluster after each chunk, so the Faces section fills
+        # in progressively during a long run instead of only at the very end.
+        from ..faces import extract as fx, cluster as fc
+        job.total = fx.pending_count(conn)
+        # Load the face models once and reuse them across every chunk.
+        be = fx.make_backend(self.cfg, log=lambda m: setattr(job, "current", m))
+        processed = faces_found = 0
+        while True:
+            if cancel.is_set():
+                raise KeyboardInterrupt
+            prog = _JobProgress(job, cancel, base=processed, fixed_total=True)
+            es = fx.extract(conn, self.cfg, progress=prog, limit=self._FACE_CHUNK, be=be)
+            if es.processed == 0:
+                break
+            processed += es.processed
+            faces_found += es.faces_found
+            job.current = "clustering people…"
+            fc.cluster_faces(conn, self.cfg)
+        people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+        job.message = f"{faces_found} faces in {processed} photos · {people} people"

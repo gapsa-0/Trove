@@ -189,6 +189,58 @@ def cmd_dedup(args, cfg: Config) -> int:
     return 0
 
 
+def cmd_faces(args, cfg: Config) -> int:
+    from pathlib import Path
+    from .faces import backend, extract as fx, cluster as fc
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
+        return 1
+    if not backend.available():
+        print("Face detection needs OpenCV's DNN face APIs. Install a modern "
+              "opencv-python (the 'media' extra) and retry.")
+        return 1
+
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+
+    if not args.recluster:
+        if not backend.models_ready(cfg.cache_dir):
+            print("Fetching face models (one-time, ~38 MB) into "
+                  f"{cfg.cache_dir}/models …")
+        pending = fx.pending_count(conn)
+        if pending == 0:
+            print("All images already face-scanned.")
+        else:
+            cap = f" (limit {args.limit})" if args.limit else ""
+            print(f"Detecting faces in {pending} image(s){cap} …")
+            progress = None if args.no_progress else ScanProgress(
+                None, show_bytes=False, label="faces")
+            es = fx.extract(conn, cfg, progress=progress, limit=args.limit)
+            if progress is not None:
+                progress.close()
+            print(f"\n  images scanned    : {es.processed}")
+            print(f"  faces detected    : {es.faces_found}")
+            print(f"  photos with faces : {es.images_with_faces}")
+            if es.errors:
+                print(f"  errors            : {es.errors}")
+                for s in es.error_samples:
+                    print(f"      - {s}")
+
+    print("\nClustering faces into people …")
+    progress = None if args.no_progress else ScanProgress(
+        None, show_bytes=False, label="clustering")
+    cs = fc.cluster_faces(conn, cfg, progress=progress)
+    if progress is not None:
+        progress.close()
+    conn.close()
+    print(f"\n  people found      : {cs.people}")
+    print(f"  faces clustered   : {cs.clustered}")
+    print(f"  unassigned faces  : {cs.noise}")
+    if cs.named:
+        print(f"  names preserved   : {cs.named}")
+    return 0
+
+
 def cmd_dates(args, cfg: Config) -> int:
     from pathlib import Path
     if not Path(cfg.db_path).exists():
@@ -344,6 +396,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("dedup", help="Find exact-duplicate files (SHA-256) and group them")
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_dedup)
+
+    sp = sub.add_parser("faces", help="Detect faces (local) and cluster them into people")
+    sp.add_argument("--limit", type=int, default=None,
+                    help="Only scan this many pending images this run (resumable)")
+    sp.add_argument("--recluster", action="store_true",
+                    help="Skip detection; just re-cluster existing faces into people")
+    sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
+    sp.set_defaults(func=cmd_faces)
 
     sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
     sp.set_defaults(func=cmd_dates)

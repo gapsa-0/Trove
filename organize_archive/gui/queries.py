@@ -75,6 +75,19 @@ def freshness(db_path: str, root_id: int) -> dict:
         enriched = conn.execute(
             f"""SELECT COUNT(*) FROM files f JOIN dates d ON d.file_id=f.id
                 WHERE {_VISIBLE} AND f.root_id=?""", (root_id,)).fetchone()[0]
+        # Un-face-scanned images (only relevant when the face backend can run).
+        from ..faces import backend as fb
+        not_faced = 0
+        if fb.available():
+            images = conn.execute(
+                f"""SELECT COUNT(*) FROM files f
+                    WHERE {_VISIBLE} AND f.media_type='image' AND f.root_id=?""",
+                (root_id,)).fetchone()[0]
+            faced = conn.execute(
+                f"""SELECT COUNT(*) FROM files f JOIN face_scan s ON s.file_id=f.id
+                    WHERE {_VISIBLE} AND f.media_type='image' AND f.root_id=?""",
+                (root_id,)).fetchone()[0]
+            not_faced = max(0, images - faced)
     finally:
         conn.close()
     p = Path(r["path"])
@@ -88,6 +101,7 @@ def freshness(db_path: str, root_id: int) -> dict:
         "enriched": enriched,
         "new_files": max(0, on_disk - indexed),
         "not_enriched": max(0, indexed - enriched),
+        "not_faced": not_faced,
     }
 
 
@@ -372,6 +386,165 @@ def dup_groups(db_path: str, root_id=None, limit=60, offset=0) -> dict:
         conn.close()
 
 
+# -- faces / people ---------------------------------------------------------
+
+def faces_pending(db_path: str, root_id=None) -> int:
+    """Present images not yet face-scanned (DB-only, no disk walk) — used by the
+    auto-scheduler to decide whether to queue a faces job."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        return conn.execute(
+            f"""SELECT COUNT(*) FROM files f
+                LEFT JOIN face_scan s ON s.file_id=f.id
+                WHERE s.file_id IS NULL AND {_VISIBLE} AND f.media_type='image'{rc}""",
+            rp).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def face_summary(db_path: str, root_id=None) -> dict:
+    from ..faces import backend as fb
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        total_images = conn.execute(
+            f"SELECT COUNT(*) FROM files f WHERE {_VISIBLE} AND f.media_type='image'{rc}",
+            rp).fetchone()[0]
+        scanned = conn.execute(
+            f"""SELECT COUNT(*) FROM files f JOIN face_scan s ON s.file_id=f.id
+                WHERE {_VISIBLE} AND f.media_type='image'{rc}""", rp).fetchone()[0]
+        faces = conn.execute(
+            f"""SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id
+                WHERE {_VISIBLE}{rc}""", rp).fetchone()[0]
+        people = conn.execute(
+            f"""SELECT COUNT(DISTINCT fa.person_id) FROM faces fa
+                JOIN files f ON f.id=fa.file_id
+                WHERE {_VISIBLE} AND fa.person_id IS NOT NULL{rc}""", rp).fetchone()[0]
+        photos_with_faces = conn.execute(
+            f"""SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
+                JOIN files f ON f.id=fa.file_id WHERE {_VISIBLE}{rc}""", rp).fetchone()[0]
+        return {
+            "total_images": total_images, "scanned": scanned,
+            "unscanned": max(0, total_images - scanned),
+            "faces": faces, "people": people,
+            "photos_with_faces": photos_with_faces,
+            "backend_available": fb.available(),
+        }
+    finally:
+        conn.close()
+
+
+def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
+    """People (clusters) that appear in this archive, most faces first. Each
+    carries a cover face for the card and its photo/face counts here."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        rows = conn.execute(
+            f"""SELECT fa.person_id pid, p.name, p.cover_face_id,
+                       COUNT(DISTINCT fa.file_id) photos, COUNT(*) faces
+                FROM faces fa JOIN files f ON f.id=fa.file_id
+                JOIN persons p ON p.id=fa.person_id
+                WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL{rc}
+                GROUP BY fa.person_id
+                ORDER BY faces DESC, pid
+                LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
+        people = [{
+            "id": r["pid"], "name": r["name"], "cover_face_id": r["cover_face_id"],
+            "photos": r["photos"], "faces": r["faces"],
+        } for r in rows]
+        return {"people": people, "offset": offset, "count": len(people)}
+    finally:
+        conn.close()
+
+
+def face_person(db_path: str, person_id: int, root_id=None,
+                limit=120, offset=0) -> dict | None:
+    conn = db.open_readonly(db_path)
+    try:
+        p = conn.execute(
+            "SELECT id, name FROM persons WHERE id=?", (person_id,)).fetchone()
+        if not p:
+            return None
+        rc, rp = _root_clause(root_id)
+        rows = conn.execute(
+            f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
+                       d.date_source AS dsrc,
+                       EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
+                       (SELECT fa2.id FROM faces fa2
+                        WHERE fa2.file_id=f.id AND fa2.person_id=?
+                        ORDER BY fa2.det_score DESC LIMIT 1) AS face_id
+                FROM faces fa JOIN files f ON f.id=fa.file_id
+                LEFT JOIN dates d ON d.file_id=f.id
+                WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc}
+                GROUP BY f.id
+                ORDER BY (d.best_datetime IS NULL), d.best_datetime DESC, f.id
+                LIMIT ? OFFSET ?""",
+            (person_id, person_id, *rp, limit, offset)).fetchall()
+        total = conn.execute(
+            f"""SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
+                JOIN files f ON f.id=fa.file_id
+                WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc}""",
+            (person_id, *rp)).fetchone()[0]
+        items = [{
+            "id": r["id"], "type": r["media_type"],
+            "name": os.path.basename(r["rel_path"]),
+            "date": r["dt"], "date_source": r["dsrc"],
+            "has_gps": bool(r["has_gps"]), "face_id": r["face_id"],
+        } for r in rows]
+        return {"id": person_id, "name": p["name"], "photos": total,
+                "items": items, "offset": offset, "count": len(items)}
+    finally:
+        conn.close()
+
+
+def rename_person(db_path: str, person_id, name: str) -> dict:
+    if not person_id:
+        return {"error": "missing person_id"}
+    conn = db.connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE persons SET name=? WHERE id=?", (name or None, person_id))
+        conn.commit()
+        if cur.rowcount == 0:
+            return {"error": "not found"}
+        return {"ok": True, "name": name or None}
+    finally:
+        conn.close()
+
+
+def recompute_people(db_path: str, cfg) -> dict:
+    """Re-run clustering over all current face embeddings (idempotent)."""
+    from ..faces.cluster import cluster_faces
+    conn = db.connect(db_path)
+    try:
+        stats = cluster_faces(conn, cfg)
+        return {"people": stats.people, "clustered": stats.clustered,
+                "noise": stats.noise, "named": stats.named}
+    finally:
+        conn.close()
+
+
+def face_crop_source(db_path: str, face_id: int):
+    """(abs path, sha256, box) for a face id, or None. Path is DB-derived."""
+    conn = db.open_readonly(db_path)
+    try:
+        r = conn.execute(
+            """SELECT r.path AS root, f.rel_path, f.sha256,
+                      fa.box_x, fa.box_y, fa.box_w, fa.box_h
+               FROM faces fa JOIN files f ON f.id=fa.file_id
+               JOIN roots r ON r.id=f.root_id WHERE fa.id=?""", (face_id,)).fetchone()
+        if not r:
+            return None
+        p = Path(r["root"]) / r["rel_path"]
+        if not p.is_file():
+            return None
+        return p, r["sha256"], (r["box_x"], r["box_y"], r["box_w"], r["box_h"])
+    finally:
+        conn.close()
+
+
 def item(db_path: str, fid: int) -> dict | None:
     conn = db.open_readonly(db_path)
     try:
@@ -384,6 +557,12 @@ def item(db_path: str, fid: int) -> dict | None:
         g = conn.execute("SELECT * FROM geo WHERE file_id=?", (fid,)).fetchone()
         m = conn.execute("SELECT * FROM media_meta WHERE file_id=?", (fid,)).fetchone()
         t = conn.execute("SELECT * FROM takeout_sidecar WHERE file_id=?", (fid,)).fetchone()
+        people = [{
+            "person_id": r["person_id"], "name": r["name"], "face_id": r["face_id"],
+        } for r in conn.execute(
+            """SELECT fa.id AS face_id, fa.person_id, p.name
+               FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id
+               WHERE fa.file_id=? ORDER BY fa.det_score DESC""", (fid,))]
         return {
             "id": fid, "name": os.path.basename(f["rel_path"]),
             "rel_path": f["rel_path"], "type": f["media_type"], "size": f["size"],
@@ -394,6 +573,7 @@ def item(db_path: str, fid: int) -> dict | None:
                      "source": g["geo_source"]} if g else None),
             "meta": (dict(m) if m else None),
             "description": (t["description"] if t else None),
+            "people": people,
         }
     finally:
         conn.close()
@@ -411,5 +591,26 @@ def file_location(db_path: str, fid: int) -> Path | None:
             return None
         p = Path(r["root"]) / r["rel_path"]
         return p if p.is_file() else None
+    finally:
+        conn.close()
+
+
+def thumb_source(db_path: str, fid: int) -> tuple[Path, str | None] | None:
+    """(absolute path, content sha256) for a file id, or None if missing.
+
+    The sha256 is what the thumbnail cache is keyed on, so byte-identical
+    duplicates (rife in this cross-takeout archive) share one thumbnail and can
+    never disagree. Path is DB-derived, so no request-driven path traversal."""
+    conn = db.open_readonly(db_path)
+    try:
+        r = conn.execute(
+            """SELECT r.path AS root, f.rel_path, f.sha256 FROM files f
+               JOIN roots r ON r.id=f.root_id WHERE f.id=?""", (fid,)).fetchone()
+        if not r:
+            return None
+        p = Path(r["root"]) / r["rel_path"]
+        if not p.is_file():
+            return None
+        return p, r["sha256"]
     finally:
         conn.close()

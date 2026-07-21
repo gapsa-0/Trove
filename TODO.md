@@ -65,9 +65,42 @@ carries **provenance**.
 ## Later phases (ambitious features)
 
 ## Phase 6 — Face recognition (local)
-- [ ] Local detection + embeddings (`insightface`/`face_recognition`, `onnxruntime`).
-- [ ] Face clustering into persons; label persons; query "photos of X (and Y)".
-- [ ] Extend to video (sampled frames).
+- [x] Local detection + embeddings — OpenCV YuNet detector + SFace 128-d
+      embeddings (`faces/backend.py`); weights fetched once into the cache dir,
+      no image ever leaves the machine. Behind an interface so a higher-accuracy
+      backend can be swapped in.
+- [x] Resumable/incremental extraction (`faces/extract.py`, `face_scan` marker).
+- [x] Auto-queued in the background pipeline (scan → dates → **faces** → dedup),
+      default-on and pausable from Overview; extracts in chunks and re-clusters
+      after each so the Faces section fills in live.
+- [ ] Efficiency: run faces *after* exact-dedup and skip `hidden` byte-identical
+      copies, so the same face isn't detected once per takeout duplicate.
+- [x] Face clustering into persons — **two-stage, chaining-resistant**
+      (`faces/cluster.py`): tight over-cluster (blocked-cosine + union-find) →
+      complete-linkage centroid merge, on non-hidden faces only. Replaced plain
+      DBSCAN, which chained ~55% of faces into one junk cluster; now the biggest
+      cluster is a coherent ~8% (verified by intra-cluster tightness ~0.75).
+      Idempotent rebuild, user names preserved by member overlap.
+- [ ] Reduce the ~1800-cluster long tail: face **quality gate** (blur/pose) to
+      drop non-face/false-positive detections, and a **merge/split people** UI.
+      Lower `faces_link_sim` and/or the ArcFace upgrade would assign more of the
+      ~half-of-faces currently left unassigned (mostly genuine one-off faces).
+- [x] `oa faces` CLI + GUI Faces section: person cards, per-person photos,
+      rename, recompute. Query "photos of X".
+- [x] Fixed a face-crop coordinate bug: Pillow's `Image.draft()` (used to speed
+      up decoding large JPEGs before detection) silently shrinks `im.size` as a
+      side effect, which the old scale-back-to-original math didn't account
+      for — crops landed on the wrong, wrong-scale region of the photo for any
+      image large enough to trigger it. Fixed in `faces/backend.py`; existing
+      DB rows repaired once via `tools/fix_face_boxes.py` (header-only, no
+      re-detection needed — embeddings/clustering were never affected).
+- [x] Faces person view: sticky topbar (back button + name) so navigating back
+      to the people grid doesn't require scrolling up first.
+- [ ] Higher-accuracy **insightface / ArcFace** backend behind `faces/backend.py`
+      (the `ai` extra), + an ANN index (e.g. `sqlite-vec`/hnsw) so clustering
+      and "find this face" scale past ~100k faces without O(N²).
+- [ ] Multi-face query "photos of X **and** Y"; merge/split people; hide a person.
+- [ ] Extend detection to video (sampled frames).
 
 ## Phase 7 — Map
 - [ ] Aggregate GPS points; export/visualize photo & video locations on a map.

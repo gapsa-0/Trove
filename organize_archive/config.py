@@ -50,6 +50,34 @@ class Config:
     # Dedup (Phase 4)
     phash_hamming_threshold: int = 6
 
+    # Faces (Phase 6). Detection + embedding run locally; nothing leaves the
+    # machine. Detection is YuNet; the face is aligned to the 112x112 ArcFace
+    # template (OpenCV's alignCrop) and embedded by the selected backend.
+    #   "adaface" -> AdaFace ir101 (WebFace12M), 512-d, ONNX/onnxruntime. Much
+    #               stronger on this archive's varied/low-quality faces; the
+    #               model file lives in cache/models/adaface/ (see faces/backend).
+    #   "sface"   -> the original OpenCV SFace, 128-d. Lighter, weaker.
+    # Switching backend changes the embedding dimension, so it requires a full
+    # re-extract (wipe faces/face_scan) — the vectors are not comparable.
+    faces_embed_backend: str = "adaface"
+    faces_min_score: float = 0.70   # drop YuNet detections below this confidence
+                                    # (real frontal faces score ~0.9; raising
+                                    # this trims false positives on sky/texture)
+    faces_min_px: int = 36          # drop faces smaller than this (box side, px)
+    faces_max_side: int = 960       # downscale long side before detection (speed)
+    # Clustering into people is two-stage (faces/cluster.py), because plain
+    # DBSCAN chains distinct identities through low-quality "bridge" faces into
+    # one giant blob. Stage 1 over-clusters tightly (link two faces only above
+    # `faces_link_sim` cosine similarity → small, pure fragments); stage 2 merges
+    # fragment centroids with complete linkage below `faces_merge_sim` distance
+    # (complete linkage can't chain). A final person needs `faces_min_faces`.
+    # Defaults below are calibrated for AdaFace (measured on this archive:
+    # same-person cosine ~0.63-0.74, different-person ~0.05, max ~0.14 — a wide,
+    # clean margin). For SFace's tighter distribution use ~0.76 / ~0.52.
+    faces_link_sim: float = 0.50    # stage-1 tight over-cluster (cosine sim)
+    faces_merge_sim: float = 0.40   # stage-2 centroid merge (cosine sim)
+    faces_min_faces: int = 3        # min faces for a cluster to become a person
+
     # Date resolution priority (Phase 3). Tunable; first available wins.
     date_priority: list[str] = field(
         default_factory=lambda: ["takeout_json", "exif", "filename", "mtime"]

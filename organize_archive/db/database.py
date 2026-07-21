@@ -10,7 +10,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 

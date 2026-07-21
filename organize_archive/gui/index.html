@@ -179,6 +179,29 @@
   .dtcap .keep{color:var(--good);font-weight:600;}
   .dtpath{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
+  /* faces / people */
+  .people{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    cursor:pointer;transition:border-color .15s;}
+  .pcard:hover{border-color:var(--accent);}
+  .pcard .face{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:var(--panel2);}
+  .pcard .pmeta{padding:8px 10px;}
+  .pcard .pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pcard .pname.un{color:var(--muted);font-weight:400;font-style:italic;}
+  .pcard .pcount{font-size:11px;color:var(--muted);margin-top:2px;}
+
+  /* person detail: a sticky topbar keeps back-nav + name reachable while the
+     photo grid below (often thousands of tiles) scrolls out of view. */
+  .facetopbar{position:sticky;top:0;z-index:5;background:var(--bg);
+    display:flex;align-items:center;gap:14px;padding:12px 0;margin-bottom:14px;
+    border-bottom:1px solid var(--line);}
+  .facetopbar .back{flex:none;color:var(--accent);cursor:pointer;font-size:13px;}
+  .facetopbar .back:hover{text-decoration:underline;}
+  .facetopbar .ftb-name{flex:1;min-width:0;display:flex;align-items:center;gap:8px;}
+  .facetopbar .ftb-name .nm{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .facetopbar .ftb-name .nm.un{color:var(--muted);font-weight:400;font-style:italic;}
+  .facetopbar .ftb-count{flex:none;font-size:12px;}
+
   .soonbox{padding:50px;text-align:center;color:var(--muted);}
   .soonbox .big{font-size:40px;margin-bottom:10px;}
 
@@ -233,7 +256,7 @@ const SECTIONS=[
   {id:"map",label:"Map",icon:"🗺️"},
   {id:"photos",label:"Browse",icon:"🖼️"},
   {id:"dups",label:"Duplicates",icon:"🧹"},
-  {id:"faces",label:"Faces",icon:"🙂",soon:true},
+  {id:"faces",label:"Faces",icon:"🙂"},
   {id:"places",label:"Places",icon:"📍",soon:true},
   {id:"situations",label:"Situations",icon:"🔎",soon:true},
 ];
@@ -314,7 +337,7 @@ function toggleNav(){
 }
 applyNavCollapsed();
 const RENDERERS={overview:renderOverview,timeline:renderTimeline,
-  map:renderMap,photos:renderPhotos,dups:renderDedup};
+  map:renderMap,photos:renderPhotos,dups:renderDedup,faces:renderFaces};
 function showSection(id){
   if(id!=="map" && MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
   NAV++; const gen=NAV;
@@ -344,7 +367,7 @@ async function renderOverview(m){
   S.dupsum=ds; S.auto=auto;
   m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
     <div class="statrow">
-      <div class="stat"><div class="k">Total files</div><div class="v">${s.total.toLocaleString()} <small>· ${fmtBytes(s.size)}</small></div></div>
+      <div class="stat" style="cursor:pointer" onclick="showSection('photos')"><div class="k">Total files</div><div class="v">${s.total.toLocaleString()} <small>· ${fmtBytes(s.size)}</small></div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('dups')"><div class="k">Duplicates</div><div class="v">${ds.duplicates.toLocaleString()} <small>· ${fmtBytes(ds.reclaimable)}</small></div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('timeline')"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()}</div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('map')"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
@@ -374,13 +397,13 @@ async function renderOverview(m){
 // Everything (scan → extract → dedup) runs automatically in the background;
 // this panel just reports what's happening and lets the user pause it.
 const JOB_LABEL={scan:"Scanning for new files…",enrich:"Extracting dates, places & metadata…",
-  dedup:"Finding duplicates…"};
+  dedup:"Finding duplicates…",faces:"Detecting faces…"};
 function renderSyncPanel(){
   const btn=document.getElementById("autobtn");
   if(btn)btn.textContent=(S.auto&&S.auto.paused)?"Resume":"Pause";
   const el=document.getElementById("syncstatus"); if(!el)return;
   const active=S.activeJobs||{};
-  const runningKind=active.scan?"scan":active.enrich?"enrich":active.dedup?"dedup":null;
+  const runningKind=active.scan?"scan":active.enrich?"enrich":active.dedup?"dedup":active.faces?"faces":null;
   if(runningKind){
     el.innerHTML=`<div class="d"><span class="spin"></span>${JOB_LABEL[runningKind]}</div>`;
     return;
@@ -394,8 +417,10 @@ function renderSyncPanel(){
     el.innerHTML=`<div class="d pending"><span class="dot pending"></span>${f.new_files.toLocaleString()} new file${f.new_files===1?"":"s"} found — scanning shortly…</div>`;
   } else if(s&&s.total>s.enriched){
     el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Extracting dates &amp; metadata shortly…</div>`;
+  } else if(f&&f.not_faced>0){
+    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Detecting faces in ${f.not_faced.toLocaleString()} photo${f.not_faced===1?"":"s"} shortly…</div>`;
   } else {
-    el.innerHTML=`<div class="d ok"><span class="dot ok"></span>Up to date — scanned, dated and deduplicated.</div>`;
+    el.innerHTML=`<div class="d ok"><span class="dot ok"></span>Up to date — scanned, dated, faces &amp; duplicates.</div>`;
   }
 }
 async function toggleAuto(){
@@ -407,8 +432,8 @@ async function loadFreshness(){
   S.fresh=null;
   try{
     const r=await jget("/api/freshness?root="+S.arch.id);
-    S.fresh={checked:true,new_files:r.new_files||0};
-  }catch(e){ S.fresh={checked:true,new_files:0}; }
+    S.fresh={checked:true,new_files:r.new_files||0,not_faced:r.not_faced||0};
+  }catch(e){ S.fresh={checked:true,new_files:0,not_faced:0}; }
   renderSyncPanel();
 }
 async function cancelJob(id){ await jpost(`/api/job/${id}/cancel`,{}); refreshJobs(); }
@@ -417,7 +442,7 @@ async function refreshJobs(){
   const {jobs}=await jget("/api/jobs?root="+S.arch.id);
   const active=jobs.filter(j=>j.status==="running");
   S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich"),
-    dedup:active.some(j=>j.kind==="dedup")};
+    dedup:active.some(j=>j.kind==="dedup"),faces:active.some(j=>j.kind==="faces")};
   renderSyncPanel();
   area.innerHTML="";
   active.forEach(j=>{
@@ -730,8 +755,8 @@ async function loadGrid(){
 }
 function tile(it){
   const d=document.createElement("div"); d.className="tile"; d.onclick=()=>openItem(it.id);
-  if(it.type==="image"){const img=document.createElement("img");img.loading="lazy";
-    img.src="/thumb/"+it.id;img.onerror=()=>img.replaceWith(ph("🖼️"));d.appendChild(img);}
+  if(it.type==="image"||it.type==="video"){const img=document.createElement("img");img.loading="lazy";
+    img.src="/thumb/"+it.id;img.onerror=()=>img.replaceWith(ph(TYPE_ICON[it.type]||"🖼️"));d.appendChild(img);}
   else d.appendChild(ph(TYPE_ICON[it.type]||"📦"));
   const cap=document.createElement("div");cap.className="cap";
   cap.innerHTML=`<span>${(it.date||"").slice(0,10)}</span><span>${it.type==="video"?"▶":""}</span>`;
@@ -772,7 +797,7 @@ async function loadDupGroups(){
       <span class="muted">${fmtBytes(g.reclaimable)} reclaimable</span></div>`;
     const tiles=g.members.map(mm=>{
       const kept=mm.role==="canonical";
-      const thumb=mm.type==="image"?`<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type]||"📦"}'}))">`
+      const thumb=(mm.type==="image"||mm.type==="video")?`<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type]||"📦"}'}))">`
         :`<div class="ph">${TYPE_ICON[mm.type]||"📦"}</div>`;
       return `<div class="duptile ${kept?'kept':''}" title="${mm.folder}" onclick="openItem(${mm.id})">
         ${thumb}<div class="dtcap">${kept?'<span class=\"keep\">✓ kept</span>':'<span class=\"muted\">copy</span>'}</div>
@@ -784,9 +809,183 @@ async function loadDupGroups(){
   S.dupoff+=res.count;
   document.getElementById("dupmore").style.display=res.count>=40?"block":"none";
 }
+/* ---------- faces / people ---------- */
+function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+async function renderFaces(m){
+  const gen=NAV, root=S.arch.id;
+  S.facePerson=null;
+  const [sum,auto]=await Promise.all([jget("/api/faces/summary?root="+root),jget("/api/auto")]);
+  if(gen!==NAV)return;
+  S.auto=auto;
+  if(!sum.backend_available){
+    m.innerHTML=`<h2 class="sec">Faces</h2><div class="soonbox"><div class="big">🙂</div>
+      <p>Face detection needs OpenCV's DNN face module.</p>
+      <p class="muted">Install a modern <code>opencv-python</code> (the <code>media</code> extra) and reopen this tab.</p></div>`;
+    return;
+  }
+  S.faceSum=sum;
+  m.innerHTML=`<h2 class="sec">Faces — ${S.arch.name}</h2>
+    <div class="statrow">
+      <div class="stat"><div class="k">People</div><div class="v" id="fs-people">${sum.people.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Faces</div><div class="v" id="fs-faces">${sum.faces.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Photos with faces</div><div class="v" id="fs-photos">${sum.photos_with_faces.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Scanned</div><div class="v" id="fs-scanned">${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small></div></div>
+    </div>
+    <div class="panel"><div id="facectl"></div><div id="facejob"></div></div>
+    <div id="peoplewrap"><div class="muted" style="padding:20px">Loading people…</div></div>`;
+  renderFaceControls();
+  renderPeople();
+  startFacePoll();   // reflects a face job's progress and refreshes when it ends
+}
+// Faces run automatically as part of the background pipeline (scan → dates →
+// faces → duplicates); this panel reports status and offers a "Scan now" nudge.
+// The master pause lives in Overview → Keeping in sync.
+function renderFaceControls(){
+  const el=document.getElementById("facectl"); if(!el)return;
+  const sum=S.faceSum, paused=!!(S.auto&&S.auto.paused);
+  const recompute=sum.people>0
+    ? '<button class="btn sec" style="margin-left:auto" onclick="reclusterPeople(this)">Recompute people</button>' : "";
+  if(S.faceJobRunning){
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px">
+      <span class="d"><span class="spin"></span>Detecting faces locally…</span>${recompute}</div>`;
+  } else if(sum.unscanned>0){
+    const first=sum.scanned===0;
+    const note=paused
+      ? `${sum.unscanned.toLocaleString()} photo${sum.unscanned===1?"":"s"} not yet scanned — paused in <a style="cursor:pointer" onclick="showSection('overview')">Overview</a>.`
+      : `${sum.unscanned.toLocaleString()} photo${sum.unscanned===1?"":"s"} not yet scanned — runs automatically${first?" (first run fetches a ~38 MB face model once)":""}.`;
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="btn" onclick="startFaces()">Scan now</button>
+      <span class="${paused?'d pending':'muted'}" style="font-size:12.5px">${paused?'<span class="dot pending"></span>':''}${note}</span>
+      ${recompute}</div>`;
+  } else {
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px">
+      <span class="d ok"><span class="dot ok"></span>All ${sum.total_images.toLocaleString()} photos scanned.</span>
+      ${recompute}</div>`;
+  }
+}
+async function startFaces(){
+  const r=await jpost("/api/task",{kind:"faces",root_id:S.arch.id});
+  if(r.error){alert(r.error);return;}
+  S.faceJobRunning=true; renderFaceControls(); startFacePoll();
+}
+async function reclusterPeople(btn){
+  btn.disabled=true; btn.textContent="Recomputing…";
+  await jpost("/api/faces/recluster",{root_id:S.arch.id});
+  renderFaces(document.getElementById("main"));
+}
+function setText(id,v){const e=document.getElementById(id); if(e)e.textContent=v;}
+function startFacePoll(){ stopPoll(); S.poll=setInterval(faceTick,1500); faceTick(); }
+// Live refresh while a faces job runs: the stat tiles and progress bar tick
+// every poll; the people grid re-renders only when a new clustering pass has
+// landed (people/faces counts changed), so thumbnails don't flicker in between.
+async function faceTick(){
+  const area=document.getElementById("facejob"); if(!area){stopPoll();return;}
+  const [{jobs},sum,auto]=await Promise.all([
+    jget("/api/jobs?root="+S.arch.id),
+    jget("/api/faces/summary?root="+S.arch.id),
+    jget("/api/auto")]);
+  const fj=jobs.find(j=>j.kind==="faces"&&j.status==="running");
+  const wasRunning=S.faceJobRunning; S.faceJobRunning=!!fj;
+  const prev=S.faceSum||{}; S.faceSum=sum; S.auto=auto;
+  setText("fs-people",sum.people.toLocaleString());
+  setText("fs-faces",sum.faces.toLocaleString());
+  setText("fs-photos",sum.photos_with_faces.toLocaleString());
+  const sc=document.getElementById("fs-scanned");
+  if(sc)sc.innerHTML=`${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
+  renderFaceControls();
+  if(fj){
+    const pct=fj.percent!=null?fj.percent:0;
+    area.innerHTML=`<div class="job"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
+      <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total?"/"+fj.total.toLocaleString():""} · ${fj.elapsed}s${fj.current?" · "+fj.current:""}
+      <button class="linkbtn" style="float:right" onclick="cancelJob(${fj.id})">Cancel</button></div></div>`;
+    if(sum.people!==prev.people||sum.faces!==prev.faces) renderPeople();
+  } else {
+    area.innerHTML="";
+    if(wasRunning) renderPeople();   // final pass finished → refresh grid
+  }
+}
+async function renderPeople(){
+  const wrap=document.getElementById("peoplewrap"); if(!wrap)return;
+  const {people}=await jget("/api/faces/persons?root="+S.arch.id+"&limit=300");
+  if(!people.length){
+    const s=S.faceSum;
+    wrap.innerHTML=`<div class="soonbox"><div class="big">🙂</div>`+(
+      s.faces>0
+        ? `<p>No recurring people found yet.</p><p class="muted">${s.faces.toLocaleString()} face${s.faces===1?"":"s"} detected, but none repeat often enough to group into a person. Scan more photos, then Recompute people.</p>`
+        : (s.scanned>0
+            ? `<p>No faces detected in the scanned photos.</p>`
+            : `<p>No faces yet — click <b>Detect faces</b> above to scan your photos locally.</p>`))+`</div>`;
+    return;
+  }
+  wrap.innerHTML=`<div class="people" id="peoplegrid"></div>`;
+  const grid=document.getElementById("peoplegrid");
+  people.forEach(p=>grid.appendChild(personCard(p)));
+}
+function personCard(p){
+  const d=document.createElement("div"); d.className="pcard"; d.onclick=()=>showPerson(p.id);
+  const cover=p.cover_face_id
+    ? `<img class="face" src="/faceThumb/${p.cover_face_id}" loading="lazy" onerror="this.style.visibility='hidden'">`
+    : `<div class="face"></div>`;
+  const nm=p.name?`<div class="pname">${esc(p.name)}</div>`:`<div class="pname un">Unnamed</div>`;
+  d.innerHTML=cover+`<div class="pmeta">${nm}<div class="pcount">${p.photos.toLocaleString()} photo${p.photos===1?"":"s"}</div></div>`;
+  return d;
+}
+async function showPerson(id){
+  stopPoll();
+  S.section="faces"; renderNav(); S.facePerson=id; S.faceGrid={offset:0};
+  if(S.arch)location.hash=`/archive/${S.arch.id}/faces`;
+  const m=document.getElementById("main");
+  m.innerHTML='<div class="muted" style="padding:30px">Loading…</div>';
+  const r=await jget("/api/faces/person/"+id+"?root="+S.arch.id+"&limit=120");
+  if(!r||r.error){m.innerHTML='<div class="soonbox">Person not found.</div>';return;}
+  S.faceGrid.offset=r.count;
+  const nm=r.name?esc(r.name):"Unnamed person";
+  const nmCls=r.name?"nm":"nm un";
+  const safe=(r.name||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  m.innerHTML=`<div class="facetopbar">
+      <span class="back" onclick="backToPeople()">← People</span>
+      <div class="ftb-name" id="personname">
+        <span class="${nmCls}">${nm}</span>
+        <button class="linkbtn" onclick="editPersonName(${id},'${safe}')">${r.name?"Rename":"Name this person"}</button>
+      </div>
+      <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos===1?"":"s"}</span>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="more" id="gmore" style="display:none"><button class="btn sec" onclick="loadPersonMore()">Load more</button></div>`;
+  const grid=document.getElementById("grid");
+  r.items.forEach(it=>grid.appendChild(tile(it)));
+  document.getElementById("gmore").style.display=r.count>=120?"block":"none";
+}
+async function loadPersonMore(){
+  const r=await jget("/api/faces/person/"+S.facePerson+"?root="+S.arch.id+"&offset="+S.faceGrid.offset+"&limit=120");
+  const grid=document.getElementById("grid");
+  r.items.forEach(it=>grid.appendChild(tile(it)));
+  S.faceGrid.offset+=r.count;
+  document.getElementById("gmore").style.display=r.count>=120?"block":"none";
+}
+function backToPeople(){ renderFaces(document.getElementById("main")); }
+function editPersonName(id,current){
+  const box=document.getElementById("personname"); if(!box)return;
+  box.innerHTML=`<input id="personnameinput" value="${esc(current)}" placeholder="Name this person"
+      style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit">
+    <button class="btn" onclick="savePersonName(${id})">Save</button>
+    <button class="btn sec" onclick="showPerson(${id})">Cancel</button>`;
+  const inp=document.getElementById("personnameinput"); inp.focus();
+  inp.addEventListener("keydown",e=>{if(e.key==="Enter")savePersonName(id);});
+}
+async function savePersonName(id){
+  const name=document.getElementById("personnameinput").value.trim();
+  await jpost("/api/faces/person/rename",{person_id:id,name});
+  showPerson(id);
+}
+function openPersonFromModal(id){
+  closeModal(); NAV++; S.section="faces"; renderNav(); showPerson(id);
+}
+
 function renderSoon(m,id){
-  const S2={faces:["🙂","Faces","Detect and cluster people locally, then pick a person to see all their photos."],
-    places:["📍","Places","Reverse-geocode coordinates into place names and browse by location."],
+  const S2={places:["📍","Places","Reverse-geocode coordinates into place names and browse by location."],
     situations:["🔎","Situations","Search by content — “beach sunset”, “birthday” — using local image embeddings."]}[id];
   m.innerHTML=`<h2 class="sec">${S2[1]}</h2><div class="soonbox"><div class="big">${S2[0]}</div>
     <p>${S2[2]}</p><p class="muted">Coming in a later phase.</p></div>`;
@@ -804,10 +1003,14 @@ async function openItem(id){
   const dims=it.meta&&it.meta.width?`${it.meta.width}×${it.meta.height}`:"";
   const cam=it.meta&&it.meta.model?((it.meta.make||"")+" "+it.meta.model).trim():"";
   const gps=it.gps?`<a href="https://www.openstreetmap.org/?mlat=${it.gps.lat}&mlon=${it.gps.lon}&zoom=14" target="_blank">${it.gps.lat.toFixed(5)}, ${it.gps.lon.toFixed(5)}</a>`:"";
+  const ppl=(it.people||[]).filter(p=>p.person_id);
+  const pplHtml=ppl.length?`<div class="kv"><span class="k">People</span></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">`+
+    ppl.map(p=>`<span class="chip" onclick="openPersonFromModal(${p.person_id})">${p.name?esc(p.name):"Unnamed"}</span>`).join("")+`</div>`:"";
   document.getElementById("minfo").innerHTML=`<h3>${it.name}</h3>`+
     kv("Date",it.date?it.date.replace("T"," "):"—")+kv("Date source",it.date_source)+
     kv("Type",it.type)+kv("Size",fmtBytes(it.size))+kv("Dimensions",dims)+kv("Camera",cam)+
-    kv("Location",gps)+kv("Description",it.description)+
+    kv("Location",gps)+kv("Description",it.description)+pplHtml+
     `<div class="kv"><span class="k">Path</span></div><div style="font-size:11px;color:var(--muted);word-break:break-all">${it.rel_path}</div>
      <div style="margin-top:12px"><a href="/file/${id}" target="_blank">Open original ↗</a></div>`;
   document.getElementById("modal").classList.add("open");

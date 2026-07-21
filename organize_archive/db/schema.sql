@@ -120,6 +120,46 @@ CREATE TABLE IF NOT EXISTS place_cluster_members (
 );
 CREATE INDEX IF NOT EXISTS idx_placeclustermembers_file ON place_cluster_members(file_id);
 
+-- ---- Phase 6: faces --------------------------------------------------------
+
+-- A person is an auto-discovered cluster of face embeddings the user can name.
+-- Rebuilt by faces/cluster.py; names are preserved across rebuilds by member
+-- overlap (same trick as place_clusters).
+CREATE TABLE IF NOT EXISTS persons (
+    id            INTEGER PRIMARY KEY,
+    name          TEXT,               -- user-assigned; NULL = unnamed cluster
+    cover_face_id INTEGER,            -- representative face for the card
+    face_count    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL
+);
+
+-- One detected face. Embedding is a 128-d float32 vector, L2-normalized, so
+-- cosine similarity is a dot product. Box is in ORIGINAL-image pixel coords
+-- (detection may run on a downscaled copy) so face crops stay sharp.
+CREATE TABLE IF NOT EXISTS faces (
+    id         INTEGER PRIMARY KEY,
+    file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    box_x      INTEGER NOT NULL,
+    box_y      INTEGER NOT NULL,
+    box_w      INTEGER NOT NULL,
+    box_h      INTEGER NOT NULL,
+    det_score  REAL,
+    embedding  BLOB NOT NULL,
+    person_id  INTEGER REFERENCES persons(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_faces_file   ON faces(file_id);
+CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
+
+-- Which files have been face-scanned. Presence means "scanned" even when
+-- n_faces = 0, so extraction is resumable and a photo with no faces is not
+-- retried forever (mirrors how a `dates` row means "enriched").
+CREATE TABLE IF NOT EXISTS face_scan (
+    file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    n_faces    INTEGER NOT NULL DEFAULT 0,
+    scanned_at TEXT NOT NULL
+);
+
 -- Matched Google Takeout sidecar, with the fields we consume.
 CREATE TABLE IF NOT EXISTS takeout_sidecar (
     file_id           INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,

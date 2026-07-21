@@ -141,6 +141,17 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/api/map/cluster/"):
                 c = queries.place_cluster_members(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
                 self._json(c) if c else self._json({"error": "not found"}, 404)
+            elif path == "/api/faces/summary":
+                self._json(queries.face_summary(self.cfg.db_path, one("root", int)))
+            elif path == "/api/faces/persons":
+                self._json(queries.face_persons(
+                    self.cfg.db_path, one("root", int),
+                    limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
+            elif path.startswith("/api/faces/person/"):
+                p2 = queries.face_person(
+                    self.cfg.db_path, int(path.rsplit("/", 1)[1]), one("root", int),
+                    limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0))
+                self._json(p2) if p2 else self._json({"error": "not found"}, 404)
             elif path == "/api/dups/summary":
                 self._json(queries.dup_summary(self.cfg.db_path, one("root", int)))
             elif path == "/api/dups":
@@ -163,6 +174,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(j) if j else self._json({"error": "not found"}, 404)
             elif path.startswith("/thumb/"):
                 self._serve_thumb(int(path.rsplit("/", 1)[1]))
+            elif path.startswith("/faceThumb/"):
+                self._serve_face_thumb(int(path.rsplit("/", 1)[1]))
             elif path.startswith("/file/"):
                 self._serve_original(int(path.rsplit("/", 1)[1]))
             else:
@@ -192,7 +205,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(res)
             elif path == "/api/task":
                 kind = body.get("kind")
-                if kind not in ("scan", "enrich", "dedup"):
+                if kind not in ("scan", "enrich", "dedup", "faces"):
                     return self._json({"error": "unknown task"}, 400)
                 root_id = body.get("root_id")
                 root_path = None
@@ -214,6 +227,12 @@ class Handler(BaseHTTPRequestHandler):
                 res = queries.rename_place_cluster(
                     self.cfg.db_path, body.get("cluster_id"), (body.get("name") or "").strip())
                 self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/person/rename":
+                res = queries.rename_person(
+                    self.cfg.db_path, body.get("person_id"), (body.get("name") or "").strip())
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/recluster":
+                self._json(queries.recompute_people(self.cfg.db_path, self.cfg))
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:
@@ -221,10 +240,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- media serving ----------------------------------------------------
     def _serve_thumb(self, fid: int):
-        src = queries.file_location(self.cfg.db_path, fid)
-        if src is None:
+        info = queries.thumb_source(self.cfg.db_path, fid)
+        if info is None:
             return self._json({"error": "not found"}, 404)
-        tp = thumbs.thumb_for(self.cfg.cache_dir, fid, src)
+        src, sha256 = info
+        tp = thumbs.thumb_for(self.cfg.cache_dir, fid, src, sha256=sha256)
+        self._send_file(tp if tp else src)
+
+    def _serve_face_thumb(self, face_id: int):
+        info = queries.face_crop_source(self.cfg.db_path, face_id)
+        if info is None:
+            return self._json({"error": "not found"}, 404)
+        src, sha256, box = info
+        tp = thumbs.face_thumb_for(self.cfg.cache_dir, face_id, src, box, sha256=sha256)
         self._send_file(tp if tp else src)
 
     def _serve_original(self, fid: int):
