@@ -280,7 +280,7 @@ async function renderOverview(m){
   S.dupsum=ds;
   m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
     <div class="statrow">
-      <div class="stat"><div class="k">Files</div><div class="v">${s.total.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Unique files</div><div class="v">${(s.total-ds.duplicates).toLocaleString()} <small>/ ${s.total.toLocaleString()} total</small></div></div>
       <div class="stat"><div class="k">Total size</div><div class="v">${fmtBytes(s.size)}</div></div>
       <div class="stat"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()} <small>/ ${s.total.toLocaleString()}</small></div></div>
