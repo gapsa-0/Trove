@@ -114,16 +114,44 @@
   canvas{max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;}
 
   /* map markers */
-  .mk{width:44px;height:44px;border-radius:8px;overflow:hidden;border:2px solid #fff;
+  .mk{position:relative;width:44px;height:44px;border-radius:8px;overflow:hidden;border:2px solid #fff;
     box-shadow:0 2px 6px #0008;background:var(--panel2);cursor:pointer;}
   .mk img{width:100%;height:100%;object-fit:cover;display:block;}
   .mk.mk-ph{display:flex;align-items:center;justify-content:center;}
   .mk.mk-ph::after{content:"📍";font-size:20px;}
+  .mk.mk-sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent),0 2px 6px #0008;}
   .mk-cluster{position:relative;width:50px;height:50px;border-color:var(--accent);}
   .mk-cluster span{position:absolute;top:-8px;right:-8px;background:var(--accent2);color:#fff;
     font-size:11px;font-weight:700;border-radius:11px;min-width:22px;height:22px;padding:0 5px;
     display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);}
-  .leaflet-container{background:#11141a;font:inherit;}
+  /* Leaflet's own panes/controls use z-index up to ~1000; without this the
+     map isolates none of that and it renders on top of the modal (z-index:20). */
+  .leaflet-container{background:#11141a;font:inherit;position:relative;z-index:0;}
+
+  /* place-cluster collage marker: a small photo grid representing "the place" */
+  .cgrid{display:grid;width:100%;height:100%;gap:1px;}
+  .cgrid img{width:100%;height:100%;object-fit:cover;display:block;}
+  .cgrid.n1{grid-template-columns:1fr;grid-template-rows:1fr;}
+  .cgrid.n2{grid-template-columns:1fr 1fr;grid-template-rows:1fr;}
+  .cgrid.n3{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}
+  .cgrid.n3 img:first-child{grid-row:1/3;}
+  .cgrid.n4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;}
+  .mk-badge{position:absolute;top:-6px;right:-6px;background:var(--accent2);color:#fff;
+    font-size:10px;font-weight:700;border-radius:9px;min-width:18px;height:18px;padding:0 4px;
+    display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);}
+  .leaflet-tooltip{background:var(--panel);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;font-size:11px;padding:2px 7px;box-shadow:0 2px 6px #0008;}
+  .leaflet-tooltip-top:before{border-top-color:var(--panel);}
+
+  /* map layout: map on the left, selected place's photos on the right */
+  .mapwrap{display:flex;gap:14px;align-items:flex-start;}
+  #lmap{flex:1;min-width:0;height:600px;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  #mapside{width:300px;flex:none;height:600px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:16px;overflow:auto;}
+  #mapside .empty{color:var(--muted);text-align:center;padding:70px 10px;font-size:13px;}
+  #mapside .mapside-name{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:14px;font-weight:600;margin-bottom:4px;}
+  @media (max-width:900px){.mapwrap{flex-direction:column;}#lmap,#mapside{width:100%;height:360px;}}
 
   /* grid */
   .grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
@@ -497,33 +525,90 @@ async function drawTimeline(bucket){
   });
 }
 
-/* ---------- map (Leaflet: clustered thumbnails, optional basemap) ---------- */
-let MAP=null, MAP_LAYER=null, MAP_TILES=null, MAP_PTS=[];
+/* ---------- map (Leaflet: place clusters, optional basemap) ----------
+   Photos within 300m of each other are grouped server-side into one named
+   "place" (organize_archive/geo/clusters.py). The screen-pixel bucketing
+   below is a second, purely visual layer on top of that: at far zoom it
+   still merges nearby PLACES into one numbered bubble; at close zoom each
+   place stands alone as a small thumbnail collage + name. ---------- */
+let MAP=null, MAP_LAYER=null, MAP_TILES=null, MAP_CLUSTERS=[];
 function basemapOn(){ return localStorage.getItem("basemap")!=="off"; }
 async function renderMap(m){
   m.innerHTML=`<h2 class="sec">Map</h2>
     <div class="chips">
       <span class="muted" id="mapnote">Loading…</span>
-      <label style="margin-left:auto;font-size:12px;cursor:pointer">
+      <button class="btn sec" style="margin-left:auto" onclick="recomputeClusters(this)">Recompute places</button>
+      <label style="font-size:12px;cursor:pointer">
         <input type="checkbox" id="basemap" ${basemapOn()?"checked":""} onchange="toggleBasemap()"> Street map
       </label>
     </div>
-    <div id="lmap" style="height:600px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>
-    <div class="muted" style="margin-top:8px;font-size:12px">Photos cluster by location — click a cluster to zoom in, a thumbnail to open it.
+    <div class="mapwrap">
+      <div id="lmap"></div>
+      <div id="mapside"><div class="empty">Click a place on the map to see its photos here.</div></div>
+    </div>
+    <div class="muted" style="margin-top:8px;font-size:12px">Photos within 300m of each other are grouped into one named place — click a place to browse it; zoom out and nearby places bundle into a numbered cluster.
       <b>Street map</b> fetches map tiles online (only coordinates are sent — your photos never leave this machine).</div>`;
   if(MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
-  const {points}=await jget("/api/map?root="+S.arch.id);
-  MAP_PTS=points;
-  document.getElementById("mapnote").textContent=points.length
-    ? `${points.length.toLocaleString()} geolocated items`
+  S.mapSel=null;
+  const {clusters}=await jget("/api/map/clusters?root="+S.arch.id);
+  MAP_CLUSTERS=clusters;
+  const total=clusters.reduce((a,c)=>a+c.count,0);
+  document.getElementById("mapnote").textContent=clusters.length
+    ? `${total.toLocaleString()} geolocated items in ${clusters.length.toLocaleString()} places`
     : "No geolocated media yet — run Extract (needs GPS in Takeout or EXIF).";
   MAP=L.map("lmap",{worldCopyJump:true,attributionControl:false});
   applyBasemap();
-  if(!points.length){ MAP.setView([0,0],2); return; }
-  const b=L.latLngBounds(points.map(p=>[p.lat,p.lon]));
+  if(!clusters.length){ MAP.setView([0,0],2); return; }
+  const b=L.latLngBounds(clusters.map(c=>[c.lat,c.lon]));
   MAP.fitBounds(b,{padding:[40,40],maxZoom:14});
   MAP.on("moveend zoomend",drawClusters);
   drawClusters();
+}
+async function recomputeClusters(btn){
+  btn.disabled=true; btn.textContent="Recomputing…";
+  await jpost("/api/map/clusters/recompute",{root_id:S.arch.id});
+  renderMap(document.getElementById("main"));
+}
+function collageHTML(ids){
+  if(!ids.length)return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:20px">📍</div>`;
+  const n=Math.min(ids.length,4);
+  const imgs=ids.slice(0,4).map(id=>`<img src="/thumb/${id}" loading="lazy" onerror="this.remove()">`).join("");
+  return `<div class="cgrid n${n}">${imgs}</div>`;
+}
+async function selectPlaceCluster(id){
+  S.mapSel=id;
+  drawClusters();
+  const side=document.getElementById("mapside");
+  side.innerHTML=`<div class="muted">Loading…</div>`;
+  const c=await jget("/api/map/cluster/"+id);
+  if(S.mapSel!==id)return; // superseded by a newer click
+  const safeName=(c.name||"").replace(/'/g,"\\'").replace(/"/g,"&quot;");
+  side.innerHTML=`
+    <div class="mapside-name" id="mapsidename">
+      <span id="mapsidenametext">${c.name?c.name:'<span class="muted">Unnamed place</span>'}</span>
+      <button class="linkbtn" onclick="editClusterName(${id},'${safeName}')">${c.name?"Rename":"Name this place"}</button>
+    </div>
+    <div class="muted" style="margin:2px 0 10px;font-size:12px">${c.members.length.toLocaleString()} item${c.members.length===1?"":"s"}</div>
+    <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>`;
+  const grid=document.getElementById("mapsidegrid");
+  c.members.forEach(it=>grid.appendChild(tile(it)));
+}
+function editClusterName(id, current){
+  const box=document.getElementById("mapsidename");
+  box.innerHTML=`<input id="mapsidenameinput" value="${current}" placeholder="Name this place"
+      style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit">
+    <div style="margin-top:6px;display:flex;gap:8px">
+      <button class="btn" onclick="saveClusterName(${id})">Save</button>
+      <button class="btn sec" onclick="selectPlaceCluster(${id})">Cancel</button>
+    </div>`;
+  document.getElementById("mapsidenameinput").focus();
+}
+async function saveClusterName(id){
+  const name=document.getElementById("mapsidenameinput").value.trim();
+  await jpost("/api/map/cluster/rename",{cluster_id:id,name});
+  const mc=MAP_CLUSTERS.find(c=>c.id===id); if(mc)mc.name=name||null;
+  drawClusters();
+  selectPlaceCluster(id);
 }
 function applyBasemap(){
   if(!MAP)return;
@@ -546,28 +631,31 @@ function drawClusters(){
   if(!MAP)return;
   if(MAP_LAYER)MAP.removeLayer(MAP_LAYER);
   MAP_LAYER=L.layerGroup().addTo(MAP);
-  const R=54; // px cluster radius
+  const R=54; // px screen-bucket radius -- groups nearby PLACES at low zoom
   const bounds=MAP.getBounds(), buckets={};
-  MAP_PTS.forEach(p=>{
-    if(!bounds.contains([p.lat,p.lon]))return;
-    const pt=MAP.latLngToContainerPoint([p.lat,p.lon]);
+  MAP_CLUSTERS.forEach(c=>{
+    if(!bounds.contains([c.lat,c.lon]))return;
+    const pt=MAP.latLngToContainerPoint([c.lat,c.lon]);
     const key=Math.round(pt.x/R)+"_"+Math.round(pt.y/R);
-    (buckets[key]=buckets[key]||[]).push(p);
+    (buckets[key]=buckets[key]||[]).push(c);
   });
   Object.values(buckets).forEach(grp=>{
-    const lat=grp.reduce((a,p)=>a+p.lat,0)/grp.length;
-    const lon=grp.reduce((a,p)=>a+p.lon,0)/grp.length;
+    const lat=grp.reduce((a,c)=>a+c.lat,0)/grp.length;
+    const lon=grp.reduce((a,c)=>a+c.lon,0)/grp.length;
     if(grp.length===1){
-      const p=grp[0];
+      const c=grp[0];
+      const badge=c.count>c.thumb_ids.length?`<span class="mk-badge">${c.count>999?"999+":c.count}</span>`:"";
       const icon=L.divIcon({className:"",iconSize:[46,46],html:
-        `<div class="mk"><img src="/thumb/${p.id}" loading="lazy" onerror="this.parentNode.classList.add('mk-ph');this.remove()"></div>`});
-      L.marker([lat,lon],{icon}).addTo(MAP_LAYER).on("click",()=>openItem(p.id));
+        `<div class="mk${c.id===S.mapSel?" mk-sel":""}">${collageHTML(c.thumb_ids)}${badge}</div>`});
+      const mk=L.marker([lat,lon],{icon}).addTo(MAP_LAYER).on("click",()=>selectPlaceCluster(c.id));
+      mk.bindTooltip(c.name||"Unnamed place",{direction:"top",offset:[0,-24],opacity:0.95});
     }else{
-      const p=grp[0];
+      const total=grp.reduce((a,c)=>a+c.count,0);
+      const rep=grp[0].thumb_ids[0];
       const icon=L.divIcon({className:"",iconSize:[52,52],html:
-        `<div class="mk mk-cluster"><img src="/thumb/${p.id}" onerror="this.remove()"><span>${grp.length}</span></div>`});
+        `<div class="mk mk-cluster">${rep?`<img src="/thumb/${rep}" onerror="this.remove()">`:""}<span>${total.toLocaleString()}</span></div>`});
       L.marker([lat,lon],{icon}).addTo(MAP_LAYER).on("click",()=>{
-        MAP.flyToBounds(L.latLngBounds(grp.map(q=>[q.lat,q.lon])),{padding:[60,60],maxZoom:16});
+        MAP.flyToBounds(L.latLngBounds(grp.map(c=>[c.lat,c.lon])),{padding:[60,60],maxZoom:16});
       });
     }
   });

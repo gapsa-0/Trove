@@ -98,6 +98,28 @@ CREATE TABLE IF NOT EXISTS dup_members (
 );
 CREATE INDEX IF NOT EXISTS idx_dupmembers_file ON dup_members(file_id);
 
+-- ---- Phase: geo place clustering ------------------------------------------
+
+-- Photos within radius_m of each other, grouped into one nameable place.
+-- Rebuilt from scratch per root by geo/clusters.py (idempotent).
+CREATE TABLE IF NOT EXISTS place_clusters (
+    id            INTEGER PRIMARY KEY,
+    root_id       INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+    name          TEXT,
+    lat           REAL NOT NULL,       -- centroid
+    lon           REAL NOT NULL,
+    member_count  INTEGER NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_placeclusters_root ON place_clusters(root_id);
+
+CREATE TABLE IF NOT EXISTS place_cluster_members (
+    cluster_id  INTEGER NOT NULL REFERENCES place_clusters(id) ON DELETE CASCADE,
+    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    PRIMARY KEY (cluster_id, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_placeclustermembers_file ON place_cluster_members(file_id);
+
 -- Matched Google Takeout sidecar, with the fields we consume.
 CREATE TABLE IF NOT EXISTS takeout_sidecar (
     file_id           INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,

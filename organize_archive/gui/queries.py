@@ -162,18 +162,100 @@ def timeline(db_path: str, root_id=None, bucket="month") -> dict:
         conn.close()
 
 
-def map_points(db_path: str, root_id=None, limit=5000) -> dict:
+def place_clusters(db_path: str, root_id: int) -> dict:
+    """List of place clusters for a root, computing them the first time
+    they're requested (subsequent calls just read the cached rows)."""
     conn = db.open_readonly(db_path)
     try:
-        rc, rp = _root_clause(root_id)
+        has_rows = conn.execute(
+            "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (root_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not has_rows:
+        recompute_place_clusters(db_path, root_id)
+    return _read_place_clusters(db_path, root_id)
+
+
+def _read_place_clusters(db_path: str, root_id: int) -> dict:
+    conn = db.open_readonly(db_path)
+    try:
+        clusters = conn.execute(
+            """SELECT id, name, lat, lon, member_count
+               FROM place_clusters WHERE root_id=?
+               ORDER BY member_count DESC""", (root_id,)).fetchall()
+        members = conn.execute(
+            """SELECT pcm.cluster_id, pcm.file_id
+               FROM place_cluster_members pcm
+               JOIN place_clusters pc ON pc.id=pcm.cluster_id
+               WHERE pc.root_id=? ORDER BY pcm.cluster_id, pcm.file_id""",
+            (root_id,)).fetchall()
+        thumbs: dict[int, list] = {}
+        for m in members:
+            ids = thumbs.setdefault(m["cluster_id"], [])
+            if len(ids) < 4:
+                ids.append(m["file_id"])
+        return {"clusters": [{
+            "id": c["id"], "name": c["name"], "lat": c["lat"], "lon": c["lon"],
+            "count": c["member_count"], "thumb_ids": thumbs.get(c["id"], []),
+        } for c in clusters]}
+    finally:
+        conn.close()
+
+
+def recompute_place_clusters(db_path: str, root_id: int) -> dict:
+    from ..geo.clusters import cluster_places
+    conn = db.connect(db_path)
+    try:
+        stats = cluster_places(conn, root_id)
+        return {"clusters": stats.clusters, "points": stats.points}
+    finally:
+        conn.close()
+
+
+def place_cluster_members(db_path: str, cluster_id: int) -> dict | None:
+    conn = db.open_readonly(db_path)
+    try:
+        c = conn.execute(
+            "SELECT id, name, lat, lon FROM place_clusters WHERE id=?",
+            (cluster_id,)).fetchone()
+        if not c:
+            return None
         rows = conn.execute(
-            f"""SELECT f.id, g.lat, g.lon, f.media_type mt
-                FROM files f JOIN geo g ON g.file_id=f.id
-                WHERE {_VISIBLE}{rc} AND g.lat IS NOT NULL
-                LIMIT ?""", (*rp, limit)).fetchall()
-        return {"points": [
-            {"id": r["id"], "lat": r["lat"], "lon": r["lon"], "type": r["mt"]}
-            for r in rows]}
+            """SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
+                      d.date_source AS dsrc,
+                      EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps
+               FROM place_cluster_members pcm
+               JOIN files f ON f.id=pcm.file_id
+               LEFT JOIN dates d ON d.file_id=f.id
+               WHERE pcm.cluster_id=?
+               ORDER BY (d.best_datetime IS NULL), d.best_datetime""",
+            (cluster_id,)).fetchall()
+        return {
+            "id": c["id"], "name": c["name"], "lat": c["lat"], "lon": c["lon"],
+            "members": [{
+                "id": r["id"], "type": r["media_type"],
+                "name": os.path.basename(r["rel_path"]),
+                "date": r["dt"], "date_source": r["dsrc"],
+                "has_gps": bool(r["has_gps"]),
+            } for r in rows],
+        }
+    finally:
+        conn.close()
+
+
+def rename_place_cluster(db_path: str, cluster_id, name: str) -> dict:
+    if not cluster_id:
+        return {"error": "missing cluster_id"}
+    conn = db.connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE place_clusters SET name=? WHERE id=?",
+            (name or None, cluster_id))
+        conn.commit()
+        if cur.rowcount == 0:
+            return {"error": "not found"}
+        return {"ok": True, "name": name or None}
     finally:
         conn.close()
 

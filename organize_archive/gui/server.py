@@ -132,10 +132,13 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/timeline":
                 self._json(queries.timeline(self.cfg.db_path, one("root", int),
                                             one("bucket", str, "month")))
-            elif path == "/api/map":
-                self._json(queries.map_points(self.cfg.db_path, one("root", int)))
             elif path == "/api/auto":
                 self._json(self.jobs.auto_status())
+            elif path == "/api/map/clusters":
+                self._json(queries.place_clusters(self.cfg.db_path, one("root", int)))
+            elif path.startswith("/api/map/cluster/"):
+                c = queries.place_cluster_members(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
+                self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/dups/summary":
                 self._json(queries.dup_summary(self.cfg.db_path, one("root", int)))
             elif path == "/api/dups":
@@ -202,6 +205,13 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/auto":
                 self.jobs.set_auto_paused(bool(body.get("paused", False)))
                 self._json(self.jobs.auto_status())
+            elif path == "/api/map/clusters/recompute":
+                self._json(queries.recompute_place_clusters(
+                    self.cfg.db_path, body.get("root_id")))
+            elif path == "/api/map/cluster/rename":
+                res = queries.rename_place_cluster(
+                    self.cfg.db_path, body.get("cluster_id"), (body.get("name") or "").strip())
+                self._json(res, 400 if "error" in res else 200)
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:
