@@ -116,8 +116,17 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/icon-"):
                 size = 512 if "512" in path else 192
                 self._bytes(icons.app_icon(self.cfg.cache_dir, size), "image/png")
+            elif path.startswith("/vendor/"):
+                name = path.rsplit("/", 1)[1]
+                vf = (Path(__file__).with_name("vendor") / name)
+                if vf.is_file() and ".." not in name:
+                    self._send_file(vf)
+                else:
+                    self._json({"error": "not found"}, 404)
             elif path == "/api/archives":
                 self._json({"archives": queries.archives(self.cfg.db_path)})
+            elif path == "/api/freshness":
+                self._json(queries.freshness(self.cfg.db_path, one("root", int)))
             elif path == "/api/summary":
                 self._json(queries.summary(self.cfg.db_path, one("root", int)))
             elif path == "/api/timeline":

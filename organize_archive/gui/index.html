@@ -7,6 +7,8 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#14161a">
 <link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<script src="/vendor/leaflet.js"></script>
 <script>
   if ("serviceWorker" in navigator)
     window.addEventListener("load", () =>
@@ -76,13 +78,38 @@
   .num{text-align:right;font-variant-numeric:tabular-nums;}
 
   /* tasks */
-  .tasks{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .taskcard{display:flex;align-items:center;gap:14px;padding:12px 4px;border-bottom:1px solid var(--line);}
+  .taskcard:last-child{border-bottom:none;}
+  .taskcard .ico{font-size:20px;width:26px;text-align:center;flex:none;}
+  .taskcard .body{flex:1;min-width:0;}
+  .taskcard .t{font-weight:600;font-size:13.5px;}
+  .taskcard .d{font-size:12px;color:var(--muted);margin-top:2px;}
+  .taskcard .d.pending{color:#e6b45e;}
+  .taskcard .d.ok{color:var(--good);}
+  .taskcard .act{flex:none;}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+  .dot.ok{background:var(--good);} .dot.pending{background:#e6b45e;} .dot.check{background:var(--muted);}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-right:6px;vertical-align:middle;}
   .job{margin-top:12px;font-size:13px;}
   .progress{background:var(--panel2);border-radius:6px;height:14px;overflow:hidden;margin:6px 0;}
   .progfill{height:100%;background:var(--good);width:0;transition:width .3s;}
   .job .cur{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   canvas{max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;}
+
+  /* map markers */
+  .mk{width:44px;height:44px;border-radius:8px;overflow:hidden;border:2px solid #fff;
+    box-shadow:0 2px 6px #0008;background:var(--panel2);cursor:pointer;}
+  .mk img{width:100%;height:100%;object-fit:cover;display:block;}
+  .mk.mk-ph{display:flex;align-items:center;justify-content:center;}
+  .mk.mk-ph::after{content:"📍";font-size:20px;}
+  .mk-cluster{position:relative;width:50px;height:50px;border-color:var(--accent);}
+  .mk-cluster span{position:absolute;top:-8px;right:-8px;background:var(--accent2);color:#fff;
+    font-size:11px;font-weight:700;border-radius:11px;min-width:22px;height:22px;padding:0 5px;
+    display:flex;align-items:center;justify-content:center;border:2px solid var(--bg);}
+  .leaflet-container{background:#11141a;font:inherit;}
 
   /* grid */
   .grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
@@ -216,6 +243,7 @@ function renderNav(){
   });
 }
 function showSection(id){
+  if(id!=="map" && MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
   S.section=id; renderNav(); stopPoll();
   if(S.arch)location.hash=`/archive/${S.arch.id}/${id}`;
   const m=document.getElementById("main");
@@ -240,10 +268,9 @@ async function renderOverview(m){
       <div class="stat"><div class="k">Date range</div><div class="v" style="font-size:14px">${(s.date_min||"—").slice(0,10)}<br>${(s.date_max||"—").slice(0,10)}</div></div>
     </div>
     <div class="panel"><h3>Tasks</h3>
-      <div class="tasks">
-        <button class="btn" id="btn-scan" onclick="runTask('scan')">▶ Scan (index files)</button>
-        <button class="btn sec" id="btn-enrich" onclick="runTask('enrich')">✦ Enrich (dates · GPS · metadata)</button>
-        ${need?'<span class="badge-warn">Enrich pending — timeline/map need it</span>':'<span class="muted">✓ up to date</span>'}
+      <div id="taskcards">
+        <div class="taskcard" id="task-scan"></div>
+        <div class="taskcard" id="task-enrich"></div>
       </div>
       <div id="jobarea"></div>
     </div>
@@ -258,7 +285,56 @@ async function renderOverview(m){
       <td class="num">${fmtBytes(t.size)}</td>`;
     tbl.appendChild(tr);
   });
+  S.fresh=null;
+  renderTaskCards();          // draws "checking…" then fills in
+  loadFreshness();
   refreshJobs();
+}
+
+// Task-card state: reflect whether work is actually pending.
+function taskCardHTML(kind, running){
+  const f=S.fresh, ic=kind==="scan"?"🔎":"✦";
+  const title=kind==="scan"?"Scan files":"Extract dates, places & metadata";
+  if(running){
+    return card(ic,title,`<span class="spin"></span>Working…`,"","");
+  }
+  if(f===null){
+    return card(ic,title,`<span class="spin"></span>Checking…`,"","");
+  }
+  if(kind==="scan"){
+    if(f.exists===false)
+      return card(ic,title,`<span class="dot pending"></span>Folder not found`,"pending","");
+    if(f.new_files>0)
+      return card(ic,title,`<span class="dot pending"></span>${f.new_files.toLocaleString()} new files to index`,"pending",
+        btn("Scan new files",`runTask('scan')`,false));
+    return card(ic,title,`<span class="dot ok"></span>All ${f.indexed.toLocaleString()} files indexed`,"ok",
+      btn("Rescan",`runTask('scan')`,true));
+  } else {
+    if(f.not_enriched>0)
+      return card(ic,title,`<span class="dot pending"></span>${f.not_enriched.toLocaleString()} files need dates & places`,"pending",
+        btn("Extract now",`runTask('enrich')`,false));
+    if(!f.indexed)
+      return card(ic,title,`<span class="dot check"></span>Scan first`,"","");
+    return card(ic,title,`<span class="dot ok"></span>Dates, places & metadata complete`,"ok",
+      btn("Re-extract",`runTask('enrich')`,true));
+  }
+}
+function card(ico,title,desc,cls,action){
+  return `<div class="ico">${ico}</div><div class="body"><div class="t">${title}</div>
+    <div class="d ${cls}">${desc}</div></div><div class="act">${action}</div>`;
+}
+function btn(label,onclick,secondary){
+  return `<button class="btn ${secondary?'sec':''}" onclick="${onclick}">${label}</button>`;
+}
+function renderTaskCards(){
+  const active=S.activeJobs||{};
+  const cs=document.getElementById("task-scan"), ce=document.getElementById("task-enrich");
+  if(cs)cs.innerHTML=taskCardHTML("scan",!!active.scan);
+  if(ce)ce.innerHTML=taskCardHTML("enrich",!!active.enrich);
+}
+async function loadFreshness(){
+  try{ S.fresh=await jget("/api/freshness?root="+S.arch.id); }catch(e){ S.fresh={error:1}; }
+  renderTaskCards();
 }
 async function runTask(kind){
   const r=await jpost("/api/task",{kind:kind,root_id:S.arch.id});
@@ -269,92 +345,166 @@ async function refreshJobs(){
   const area=document.getElementById("jobarea"); if(!area)return;
   const {jobs}=await jget("/api/jobs?root="+S.arch.id);
   const active=jobs.filter(j=>j.status==="running");
+  S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich")};
+  renderTaskCards();
   area.innerHTML="";
-  (active.length?active:jobs.slice(0,1)).forEach(j=>{
+  active.forEach(j=>{
     const pct=j.percent!=null?j.percent:0;
-    const st=j.status==="running"?`${pct}%`:j.status;
     const div=document.createElement("div"); div.className="job";
-    div.innerHTML=`<b>${j.kind}</b> — ${st} <span class="muted">(${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""}, ${j.elapsed}s)</span>
-      <div class="progress"><div class="progfill" style="width:${pct}%;${j.status==='error'?'background:#e06c6c':''}"></div></div>
-      <div class="cur">${j.status==='running'?(j.current||''):(j.message||'')}</div>`;
+    div.innerHTML=`<div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
+      <div class="cur">${j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
     area.appendChild(div);
   });
-  const scanning=active.some(j=>j.kind==="scan"), enriching=active.some(j=>j.kind==="enrich");
-  const bs=document.getElementById("btn-scan"), be=document.getElementById("btn-enrich");
-  if(bs)bs.disabled=scanning; if(be)be.disabled=enriching;
-  if(!active.length){stopPoll(); if(jobs.length&&jobs[0].status==="done"){/*refresh stats*/ if(S.section==="overview")renderOverview(document.getElementById("main"));}}
+  if(!active.length){
+    stopPoll();
+    if(jobs.length && (jobs[0].status==="done"||jobs[0].status==="cancelled")){
+      loadFreshness();
+      if(S.section==="overview")renderOverview(document.getElementById("main"));
+    }
+  }
 }
 function startPoll(){stopPoll(); S.poll=setInterval(refreshJobs,1200); refreshJobs();}
 function stopPoll(){if(S.poll){clearInterval(S.poll);S.poll=null;}}
 
 /* ---------- timeline ---------- */
+const TL_COL={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#8b93a3"};
 async function renderTimeline(m){
   m.innerHTML=`<h2 class="sec">Timeline</h2>
-    <div class="chips"><span class="chip" onclick="drawTimeline('month')">By month</span>
-      <span class="chip" onclick="drawTimeline('year')">By year</span>
-      <span class="muted" id="tlnote"></span></div>
-    <canvas id="tlc" width="1100" height="360"></canvas>`;
+    <div class="chips"><span class="chip" id="tl-month" onclick="drawTimeline('month')">By month</span>
+      <span class="chip" id="tl-year" onclick="drawTimeline('year')">By year</span></div>
+    <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
+    <canvas id="tlc" width="1180" height="380"></canvas>
+    <div class="muted" style="margin-top:8px;font-size:12px">Each line is scaled to its own peak so every type stays visible — compare shapes, not heights. Peak counts are in the legend.</div>`;
   drawTimeline("month");
 }
+function smoothPath(ctx,pts){        // Catmull-Rom → bezier, monotone-ish
+  if(pts.length<2){return;}
+  ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||p2;
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+    ctx.bezierCurveTo(c1x,c1y,c2x,c2y,p2[0],p2[1]);
+  }
+}
 async function drawTimeline(bucket){
+  document.getElementById("tl-month").style.background=bucket==="month"?"var(--accent2)":"";
+  document.getElementById("tl-year").style.background=bucket==="year"?"var(--accent2)":"";
   const {series}=await jget(`/api/timeline?root=${S.arch.id}&bucket=${bucket}`);
   const cv=document.getElementById("tlc"); if(!cv)return;
-  const ctx=cv.getContext("2d"); const W=cv.width,H=cv.height,pad=40;
+  const ctx=cv.getContext("2d"); const W=cv.width,H=cv.height,padL=46,padR=16,padT=16,padB=28;
   ctx.clearRect(0,0,W,H);
-  document.getElementById("tlnote").textContent=series.length?`${series.length} periods`:"No dated media yet — run Enrich.";
-  if(!series.length)return;
-  const max=Math.max(...series.map(s=>s.total),1);
-  const n=series.length, bw=(W-2*pad)/n;
-  const colOf={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#6b7280"};
-  // axes
-  ctx.strokeStyle="#2e343f"; ctx.beginPath(); ctx.moveTo(pad,H-pad); ctx.lineTo(W-pad,H-pad); ctx.stroke();
-  series.forEach((s,i)=>{
-    const x=pad+i*bw; let y=H-pad;
-    ["image","video","audio","document","archive","other"].forEach(t=>{
-      if(!s[t])return; const h=(H-2*pad)*s[t]/max;
-      ctx.fillStyle=colOf[t]||"#6b7280"; ctx.fillRect(x+1,y-h,Math.max(bw-2,1),h); y-=h;
-    });
+  const leg=document.getElementById("tllegend"); leg.innerHTML="";
+  if(!series.length){leg.innerHTML='<span class="muted">No dated media yet — run Extract on the Overview tab.</span>';return;}
+  const types=["image","video","audio","document","archive","other"]
+    .filter(t=>series.some(s=>s[t]));
+  const n=series.length;
+  const X=i=> padL + (n===1?(W-padL-padR)/2 : i*(W-padL-padR)/(n-1));
+  const Y=(v,mx)=> H-padB - (mx? v/mx*(H-padT-padB):0);
+  // grid baseline
+  ctx.strokeStyle="#2a2f3a"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(padL,H-padB); ctx.lineTo(W-padR,H-padB); ctx.stroke();
+  // per-type normalized line + soft fill
+  types.forEach(t=>{
+    const mx=Math.max(...series.map(s=>s[t]||0),1);
+    const pts=series.map((s,i)=>[X(i),Y(s[t]||0,mx)]);
+    // fill
+    ctx.beginPath(); smoothPath(ctx,pts);
+    ctx.lineTo(pts[n-1][0],H-padB); ctx.lineTo(pts[0][0],H-padB); ctx.closePath();
+    ctx.fillStyle=TL_COL[t]+"22"; ctx.fill();
+    // line
+    ctx.beginPath(); smoothPath(ctx,pts);
+    ctx.strokeStyle=TL_COL[t]; ctx.lineWidth=2; ctx.stroke();
   });
   // x labels (sparse)
   ctx.fillStyle="#9aa3b2"; ctx.font="10px system-ui"; ctx.textAlign="center";
-  const step=Math.ceil(n/12);
-  series.forEach((s,i)=>{ if(i%step===0){ctx.fillText(s.period,pad+i*bw+bw/2,H-pad+14);} });
-  // y labels
-  ctx.textAlign="right"; ctx.fillText(max,pad-6,pad+4); ctx.fillText("0",pad-6,H-pad);
-  // legend
-  ctx.textAlign="left"; let lx=pad;
-  Object.entries({image:"image",video:"video",audio:"audio",document:"doc"}).forEach(([t,l])=>{
-    ctx.fillStyle=colOf[t]; ctx.fillRect(lx,10,10,10); ctx.fillStyle="#9aa3b2"; ctx.fillText(l,lx+14,19); lx+=70;
+  const step=Math.max(1,Math.ceil(n/12));
+  series.forEach((s,i)=>{ if(i%step===0||i===n-1)ctx.fillText(s.period,X(i),H-padB+14); });
+  // legend with per-type peak
+  types.forEach(t=>{
+    const mx=Math.max(...series.map(s=>s[t]||0),0);
+    const tot=series.reduce((a,s)=>a+(s[t]||0),0);
+    const sp=document.createElement("span");
+    sp.innerHTML=`<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${TL_COL[t]};margin-right:6px"></span>
+      ${t} <span class="muted">· ${tot.toLocaleString()} · peak ${mx.toLocaleString()}</span>`;
+    leg.appendChild(sp);
   });
 }
 
-/* ---------- map (offline scatter) ---------- */
+/* ---------- map (Leaflet: clustered thumbnails, optional basemap) ---------- */
+let MAP=null, MAP_LAYER=null, MAP_TILES=null, MAP_PTS=[];
+function basemapOn(){ return localStorage.getItem("basemap")!=="off"; }
 async function renderMap(m){
   m.innerHTML=`<h2 class="sec">Map</h2>
-    <div class="muted" style="margin-bottom:10px" id="mapnote">Loading…</div>
-    <canvas id="mapc" width="1100" height="560" style="cursor:crosshair"></canvas>
-    <div class="muted" style="margin-top:8px;font-size:12px">Offline plot (equirectangular). Click a point to open it. A street-map basemap is a future opt-in.</div>`;
+    <div class="chips">
+      <span class="muted" id="mapnote">Loading…</span>
+      <label style="margin-left:auto;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="basemap" ${basemapOn()?"checked":""} onchange="toggleBasemap()"> Street map
+      </label>
+    </div>
+    <div id="lmap" style="height:600px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>
+    <div class="muted" style="margin-top:8px;font-size:12px">Photos cluster by location — click a cluster to zoom in, a thumbnail to open it.
+      <b>Street map</b> fetches map tiles online (only coordinates are sent — your photos never leave this machine).</div>`;
+  if(MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
   const {points}=await jget("/api/map?root="+S.arch.id);
-  const cv=document.getElementById("mapc"), ctx=cv.getContext("2d");
-  document.getElementById("mapnote").textContent=points.length?`${points.length.toLocaleString()} geolocated items`:"No geolocated media yet — run Enrich (needs GPS in Takeout/EXIF).";
-  if(!points.length)return;
-  let laMin=90,laMax=-90,loMin=180,loMax=-180;
-  points.forEach(p=>{laMin=Math.min(laMin,p.lat);laMax=Math.max(laMax,p.lat);
-    loMin=Math.min(loMin,p.lon);loMax=Math.max(loMax,p.lon);});
-  const padLa=(laMax-laMin)*.08+.01, padLo=(loMax-loMin)*.08+.01;
-  laMin-=padLa;laMax+=padLa;loMin-=padLo;loMax+=padLo;
-  const W=cv.width,H=cv.height;
-  const proj=p=>[ (p.lon-loMin)/(loMax-loMin)*W, H-(p.lat-laMin)/(laMax-laMin)*H ];
-  ctx.fillStyle="#1c1f26"; ctx.fillRect(0,0,W,H);
-  const xy=points.map(p=>({p,c:proj(p)}));
-  ctx.fillStyle="rgba(91,157,255,.7)";
-  xy.forEach(({c})=>{ctx.beginPath();ctx.arc(c[0],c[1],3,0,7);ctx.fill();});
-  cv.onclick=e=>{
-    const r=cv.getBoundingClientRect(), mx=(e.clientX-r.left)*W/r.width, my=(e.clientY-r.top)*H/r.height;
-    let best=null,bd=1e9;
-    xy.forEach(({p,c})=>{const d=(c[0]-mx)**2+(c[1]-my)**2; if(d<bd){bd=d;best=p;}});
-    if(best&&bd<200)openItem(best.id);
-  };
+  MAP_PTS=points;
+  document.getElementById("mapnote").textContent=points.length
+    ? `${points.length.toLocaleString()} geolocated items`
+    : "No geolocated media yet — run Extract (needs GPS in Takeout or EXIF).";
+  MAP=L.map("lmap",{worldCopyJump:true,attributionControl:false});
+  applyBasemap();
+  if(!points.length){ MAP.setView([0,0],2); return; }
+  const b=L.latLngBounds(points.map(p=>[p.lat,p.lon]));
+  MAP.fitBounds(b,{padding:[40,40],maxZoom:14});
+  MAP.on("moveend zoomend",drawClusters);
+  drawClusters();
+}
+function applyBasemap(){
+  if(!MAP)return;
+  if(basemapOn()){
+    if(!MAP_TILES){
+      MAP_TILES=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19});
+    }
+    MAP_TILES.addTo(MAP);
+    document.getElementById("lmap").style.background="";
+  }else if(MAP_TILES){
+    MAP.removeLayer(MAP_TILES);
+    document.getElementById("lmap").style.background="#11141a";
+  }
+}
+function toggleBasemap(){
+  localStorage.setItem("basemap",document.getElementById("basemap").checked?"on":"off");
+  applyBasemap();
+}
+function drawClusters(){
+  if(!MAP)return;
+  if(MAP_LAYER)MAP.removeLayer(MAP_LAYER);
+  MAP_LAYER=L.layerGroup().addTo(MAP);
+  const R=54; // px cluster radius
+  const bounds=MAP.getBounds(), buckets={};
+  MAP_PTS.forEach(p=>{
+    if(!bounds.contains([p.lat,p.lon]))return;
+    const pt=MAP.latLngToContainerPoint([p.lat,p.lon]);
+    const key=Math.round(pt.x/R)+"_"+Math.round(pt.y/R);
+    (buckets[key]=buckets[key]||[]).push(p);
+  });
+  Object.values(buckets).forEach(grp=>{
+    const lat=grp.reduce((a,p)=>a+p.lat,0)/grp.length;
+    const lon=grp.reduce((a,p)=>a+p.lon,0)/grp.length;
+    if(grp.length===1){
+      const p=grp[0];
+      const icon=L.divIcon({className:"",iconSize:[46,46],html:
+        `<div class="mk"><img src="/thumb/${p.id}" loading="lazy" onerror="this.parentNode.classList.add('mk-ph');this.remove()"></div>`});
+      L.marker([lat,lon],{icon}).addTo(MAP_LAYER).on("click",()=>openItem(p.id));
+    }else{
+      const p=grp[0];
+      const icon=L.divIcon({className:"",iconSize:[52,52],html:
+        `<div class="mk mk-cluster"><img src="/thumb/${p.id}" onerror="this.remove()"><span>${grp.length}</span></div>`});
+      L.marker([lat,lon],{icon}).addTo(MAP_LAYER).on("click",()=>{
+        MAP.flyToBounds(L.latLngBounds(grp.map(q=>[q.lat,q.lon])),{padding:[60,60],maxZoom:16});
+      });
+    }
+  });
 }
 
 /* ---------- browse ---------- */
