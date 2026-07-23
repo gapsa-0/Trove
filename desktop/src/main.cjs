@@ -41,7 +41,13 @@ function backendCommand() {
   if (process.env.ARCHIVE_BACKEND) return { command: process.env.ARCHIVE_BACKEND, args: [] };
   // Running the source checkout is intentionally explicit and does not use oa gui,
   // because that command opens a browser itself.
-  const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+  // Resolve explicit relative paths from the terminal's working directory. The
+  // backend itself starts from the checkout root, so passing one unchanged would
+  // otherwise resolve it from a different directory.
+  const configuredPython = process.env.PYTHON;
+  const python = configuredPython && (configuredPython.startsWith(".") || path.isAbsolute(configuredPython))
+    ? path.resolve(process.cwd(), configuredPython)
+    : configuredPython || (process.platform === "win32" ? "python" : "python3");
   return { command: python, args: ["-m", "organize_archive.desktop"] };
 }
 

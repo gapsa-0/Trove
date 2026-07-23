@@ -87,8 +87,14 @@ def _embed(cfg, inputs: list[dict], *, input_type: str) -> list[list[float]]:
 
 
 def embed_query(cfg, query: str, _db_path: str) -> list[float]:
-    return _embed(cfg, [{"content": [{"type": "text", "text": query}]}],
-                  input_type="query")[0]
+    return embed_queries(cfg, [query], _db_path)[0]
+
+
+def embed_queries(cfg, queries: list[str], _db_path: str) -> list[list[float]]:
+    """Embed related search formulations together in one Voyage request."""
+    return _embed(cfg, [
+        {"content": [{"type": "text", "text": query}]} for query in queries
+    ], input_type="query")
 
 
 def embed_parts(cfg, parts: list[dict]) -> list[list[float]]:

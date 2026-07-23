@@ -7,15 +7,19 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#14161a">
 <link rel="icon" href="/icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vendor/leaflet.css">
 <script src="/vendor/leaflet.js"></script>
 <script>
   if ("serviceWorker" in navigator)
     window.addEventListener("load", () =>
       navigator.serviceWorker.register("/sw.js").catch(()=>{}));
+  (() => {
+    const saved = localStorage.getItem("archiveTheme");
+    const dark = saved ? saved === "dark"
+      : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.querySelector('meta[name="theme-color"]').content = dark ? "#101014" : "#f5f5f7";
+  })();
 </script>
 <style>
   :root{--bg:#14161a;--panel:#1c1f26;--panel2:#252a33;--line:#2e343f;
@@ -65,8 +69,12 @@
   nav .back{font-size:12px;color:var(--muted);cursor:pointer;display:block;padding:4px 8px;margin-bottom:8px;}
   nav .arch{font-size:13px;padding:4px 8px 12px;border-bottom:1px solid var(--line);
     margin-bottom:8px;word-break:break-word;}
-  .navitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;
-    cursor:pointer;color:var(--text);font-size:13.5px;}
+  /* Navigation is made from buttons so it works with a keyboard. Reset the
+     browser button chrome here; otherwise Chromium renders bright native
+     buttons in the dark sidebar. */
+  .navitem{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;
+    text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--text);
+    font-size:13.5px;line-height:1.25;}
   .navitem:hover{background:var(--panel2);}
   .navitem.active{background:var(--accent2);color:#fff;}
   .navitem.soon{color:var(--muted);cursor:default;}
@@ -126,6 +134,7 @@
     border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-right:6px;vertical-align:middle;}
   .job{margin-top:12px;font-size:13px;}
   .job .what{font-size:12px;color:var(--text);margin-bottom:3px;}
+  .job.error .what{color:var(--bad,#e06c6c);}
   .progress{background:var(--panel2);border-radius:6px;height:14px;overflow:hidden;margin:6px 0;}
   .progfill{height:100%;background:var(--good);width:0;transition:width .3s;}
   .job .cur{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -224,6 +233,13 @@
   .pcard .pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pcard .pname.un{color:var(--muted);font-weight:400;font-style:italic;}
   .pcard .pcount{font-size:11px;color:var(--muted);margin-top:2px;}
+  .place-gallery-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    margin:24px 2px 12px;}
+  .place-gallery-head h3{margin:0;font-size:18px;}
+  .placecollage{width:100%;aspect-ratio:1;background:var(--panel2);overflow:hidden;}
+  .placecollage>.cgrid{width:100%;height:100%;}
+  .placecollage>.placeempty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;
+    color:var(--muted);font-size:30px;}
 
   /* "Same person?" review card, shown above the people grid */
   .suggest{background:var(--panel);border:1px solid var(--line);border-radius:12px;
@@ -330,23 +346,399 @@
   #app.on{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh;} nav{width:auto;background:var(--charcoal);border-right-color:var(--accent-dim);padding:18px 10px;height:100vh;}
   nav .brand{font-family:"Bebas Neue",Impact,sans-serif;font-size:22px;letter-spacing:.09em;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent-dim);padding:9px 8px 12px;}
   nav .arch{font-family:"Newsreader",Georgia,serif;border-bottom-color:var(--line);padding-bottom:16px}.navitem{border-radius:4px;font-family:"Bebas Neue",Impact,sans-serif;letter-spacing:.08em;font-size:15px;padding:10px;position:relative;}
-  .navitem.active{background:linear-gradient(90deg,var(--accent-dim),transparent);color:var(--parchment)}.navitem.active:before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:2px;background:var(--accent)}
+  .navitem{border:1px solid transparent;background:transparent;color:var(--parchment)}.navitem:hover{background:var(--surface2);color:var(--parchment)}.navitem.active{background:linear-gradient(90deg,var(--accent-dim),transparent);border-color:var(--accent-dim);color:var(--parchment)}.navitem.active:before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:2px;background:var(--accent)}
   .gstat{border-top-color:var(--accent-dim)} main{height:auto;min-height:100vh;padding:34px 42px 60px;overflow:visible;}h2.sec{font-size:34px;font-weight:500;margin-bottom:22px;}
   .panel,.stat,.dupgroup,.pcard,.suggest{border-radius:0;border-color:var(--line);box-shadow:none}.panel{padding:18px;background:var(--surface)}.stat{background:transparent;padding:12px}.stat .k,.isec>.h{color:var(--muted)}
   .grid{gap:4px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}.tile{border-radius:0;border:0;background:var(--surface2)}.tile:hover{outline:2px solid var(--accent);outline-offset:-2px}.tile .cap{font-size:10px}
   .date-heading{grid-column:1/-1;font-family:"Playfair Display",Georgia,serif;font-size:28px;padding:30px 0 5px;border-bottom:1px solid var(--accent-dim)}
   .fsel{border-radius:0;background:var(--surface);border-color:var(--line)}.filterbar{border-top:1px solid var(--accent-dim);padding-top:12px}.chips{font-size:11px}.linkbtn{color:var(--tungsten)}
+  .library-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin-bottom:16px;border:1px solid var(--line);background:linear-gradient(135deg,var(--surface),#191816)}
+  .library-search input{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--line);border-radius:0;background:var(--asphalt);color:var(--text);font:inherit;}
+  .library-search input::placeholder{color:var(--muted);opacity:.8}.library-search input:focus{outline:none;border-color:var(--tungsten)}
+  .library-search .search-note{width:100%;font-size:11px;color:var(--muted)}
   .modal{background:#000e}.viewer{max-width:100vw;max-height:100vh;border:0;border-radius:0;background:var(--asphalt)}.viewer .media{max-width:calc(100vw - 370px);}.viewer .media img,.viewer .media video{max-width:calc(100vw - 370px);max-height:100vh}.viewer .info{width:370px;max-height:100vh;background:var(--surface);padding:24px}.close{color:var(--parchment)}
   @media(max-width:800px){#app.on{display:block}nav{position:sticky;width:100%;height:auto;z-index:10;flex-direction:row;align-items:center;padding:8px;overflow:auto}nav .brand{border:0;padding:3px 8px}.back,.arch,.gstat{display:none!important}#navitems{display:flex;gap:2px}.navitem{white-space:nowrap;padding:7px 8px}.navitem span:first-child{display:none}main{padding:24px 16px}.setup-form{flex-direction:column}.viewer{align-self:stretch}.viewer .media,.viewer .media img,.viewer .media video{max-width:100vw}.viewer .info{position:absolute;right:0;bottom:0;width:100%;max-height:42vh;border-top:1px solid var(--line)}}
   @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+  /* Light Photos library — intentionally a complete visual reset of the
+     experimental Noir treatment above.  Keep the application dependency-free;
+     this is presentation, not a new frontend framework. */
+  :root{--bg:#f5f5f7;--panel:#ffffff;--panel2:#f0f0f2;--line:#d9d9de;
+    --text:#1d1d1f;--muted:#6e6e73;--accent:#007aff;--accent2:#0066d6;
+    --good:#34a853;--focus:#007aff;--asphalt:#f5f5f7;--charcoal:#ffffff;
+    --surface:#ffffff;--surface2:#f0f0f2;--parchment:#1d1d1f;
+    --parchment-muted:#6e6e73;--parchment-faint:#d9d9de;--accent-dim:#cfe4ff;}
+  body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+  body:before{display:none} h1,h2,h3,.display{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.025em}
+  .btn{border-radius:8px;background:var(--accent);font-size:13px;font-weight:500;letter-spacing:0;text-transform:none}.btn:hover{background:var(--accent2)}.btn.sec{background:var(--panel);color:var(--accent);border-color:var(--line)}
+  #picker{max-width:930px;padding:60px 28px;align-items:flex-start}.welcome{max-width:760px;margin:auto;padding-top:50px}.welcome .eyebrow,.eyebrow{color:var(--muted);letter-spacing:0;text-transform:none;font-size:15px}.welcome h1{font-size:48px;line-height:1.1;margin:8px 0 12px}.welcome .sub{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:21px;color:var(--muted);line-height:1.35}.setup-form{max-width:700px;margin:30px 0 12px}.setup-form input{background:#fff;border-color:var(--line);border-radius:9px;padding:12px}.privacy-note{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--muted);font-size:13px}.archive-list-title{letter-spacing:0;text-transform:none;font-size:17px;color:var(--text);margin-top:42px;font-weight:600}
+  .card{border-radius:12px;background:var(--panel);border-color:var(--line);box-shadow:0 1px 2px #0000000a}.card:hover{border-color:#a9a9af}.card.add{border-radius:12px}.remove-archive{border-radius:7px;color:#d93025;border-color:#f3c7c3}
+  #app.on{grid-template-columns:248px minmax(0,1fr);background:var(--bg)}nav{background:#fbfbfc;border-right-color:var(--line);padding:18px 12px}nav .brand{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:18px;letter-spacing:-.02em;border:0;padding:8px 10px 18px}nav .brand img{filter:none}.navtoggle{font-family:inherit}.arch{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;border-bottom-color:var(--line)!important;padding-bottom:14px!important}.navitem{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0;font-size:14px;font-weight:500;border-radius:7px;padding:9px 10px;color:#3a3a3c}.navitem.active{background:#e5e5ea;color:var(--text)}.navitem.active:before{display:none}.navitem:hover{background:#ededf0}.gstat{border-top-color:var(--line)}
+  main{padding:34px 42px 70px;background:var(--bg)}h2.sec{font-size:32px;font-weight:700;margin-bottom:18px}.panel,.stat,.dupgroup,.pcard,.suggest{border-radius:12px;border-color:var(--line);background:var(--panel);box-shadow:0 1px 2px #00000008}.panel{padding:18px}.stat{padding:14px}.stat .k,.isec>.h{color:var(--muted)}.stat .v{font-size:24px}.grid{gap:5px;grid-template-columns:repeat(auto-fill,minmax(168px,1fr))}.tile{border-radius:6px;background:#e5e5ea;outline:0}.tile:hover{outline:2px solid var(--accent);outline-offset:-2px}.date-heading{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:22px;font-weight:650;border-bottom:0;padding:28px 0 8px}.filterbar{border-top:0;padding-top:0}.fsel{border-radius:7px;background:#fff;border-color:var(--line)}.linkbtn{color:var(--accent)}
+  .modal{background:#000b}.viewer{border-radius:12px;overflow:hidden;background:#000}.viewer .info{background:#fff;color:var(--text)}.viewer .media{background:#000}.close{color:#fff}.kv{border-bottom-color:var(--line)}
+  @media(max-width:800px){nav{background:#fff}main{padding:24px 16px}.navitem{font-size:13px}.welcome{padding-top:12px}.welcome h1{font-size:38px}}
+
+  /* Archive 3.0 — a single, deliberate visual system inspired by the quiet,
+     photo-first restraint of native media libraries. This final layer supersedes
+     the earlier experiments while preserving every existing behavior. */
+  :root{
+    color-scheme:light;
+    --bg:#f5f5f7;--bg-elevated:#ffffff;--panel:#ffffff;--panel2:#f2f2f7;
+    --sidebar:rgba(247,247,249,.82);--line:rgba(60,60,67,.14);
+    --line-strong:rgba(60,60,67,.23);--text:#1d1d1f;--muted:#6e6e73;
+    --faint:#8e8e93;--accent:#007aff;--accent2:#006ee6;--accent-soft:rgba(0,122,255,.12);
+    --good:#28a745;--bad:#d70015;--warning:#c77c00;--focus:#007aff;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.035);
+    --shadow-md:0 18px 55px rgba(0,0,0,.14),0 2px 10px rgba(0,0,0,.08);
+    --radius-sm:10px;--radius:16px;--radius-lg:22px;
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#101014;--bg-elevated:#1c1c1e;--panel:#1c1c1e;--panel2:#2c2c2e;
+    --sidebar:rgba(24,24,27,.82);--line:rgba(255,255,255,.1);
+    --line-strong:rgba(255,255,255,.18);--text:#f5f5f7;--muted:#a1a1a6;
+    --faint:#7c7c80;--accent:#0a84ff;--accent2:#2997ff;--accent-soft:rgba(10,132,255,.17);
+    --good:#30d158;--bad:#ff453a;--warning:#ffd60a;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.24),0 7px 22px rgba(0,0,0,.16);
+    --shadow-md:0 22px 65px rgba(0,0,0,.5),0 2px 12px rgba(0,0,0,.3);
+  }
+  html{background:var(--bg);scrollbar-color:var(--line-strong) transparent}
+  body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+    background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1,h2,h3,.display{font-family:inherit;letter-spacing:-.025em}
+  a,.linkbtn{color:var(--accent)}
+  ::selection{background:var(--accent-soft)}
+
+  .btn{min-height:36px;padding:8px 15px;border:0;border-radius:10px;background:var(--accent);
+    color:#fff;font-size:13px;font-weight:600;letter-spacing:-.005em;text-transform:none;
+    box-shadow:0 1px 1px rgba(0,0,0,.06);transition:transform .15s,background .15s,opacity .15s}
+  .btn:hover{background:var(--accent2);transform:translateY(-1px)}
+  .btn:active{transform:translateY(0);opacity:.84}
+  .btn.sec{background:var(--panel2);color:var(--text);border:1px solid var(--line);box-shadow:none}
+  .btn.sec:hover{background:var(--line);border-color:var(--line-strong)}
+  .btn:disabled{background:var(--panel2);border-color:var(--line);color:var(--faint);box-shadow:none}
+  button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{
+    outline:3px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:2px}
+
+  /* Archive selection */
+  #picker{max-width:1040px;min-height:100vh;padding:72px 36px;display:flex;align-items:flex-start}
+  .welcome{width:100%;max-width:860px;margin:0 auto;padding-top:4vh}
+  .welcome .eyebrow,.eyebrow{font-size:13px;font-weight:650;color:var(--accent);
+    letter-spacing:.01em;text-transform:none}
+  .welcome h1{font-size:clamp(42px,6vw,66px);font-weight:750;line-height:1.02;
+    letter-spacing:-.052em;margin:14px 0 16px;max-width:760px}
+  .welcome .sub{font:400 clamp(18px,2.3vw,23px)/1.38 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    letter-spacing:-.018em;color:var(--muted);max-width:720px}
+  .setup-form{display:flex;gap:10px;max-width:720px;margin:34px 0 12px;padding:7px;
+    background:var(--panel);border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow-sm)}
+  .setup-form input{flex:1;min-width:0;border:0;border-radius:9px;background:transparent;color:var(--text);
+    padding:10px 11px;font-size:14px}
+  .setup-form input:focus{outline:0}
+  .privacy-note{font:400 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--muted);max-width:700px}
+  .archive-list-title{margin:54px 0 14px;font-size:20px;font-weight:700;letter-spacing:-.025em;color:var(--text)}
+  .appearance-fab{position:fixed;top:22px;right:24px;z-index:5;display:flex;align-items:center;gap:8px;
+    height:36px;padding:0 12px;border:1px solid var(--line);border-radius:99px;background:var(--sidebar);
+    color:var(--muted);font:600 12px/1 inherit;cursor:pointer;box-shadow:var(--shadow-sm);
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  .appearance-fab:hover{color:var(--text);border-color:var(--line-strong)}
+  .appearance-fab .theme-icon,.appearance-fab .theme-icon svg{width:16px;height:16px}
+  .cards{gap:14px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+  .card{padding:18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);
+    box-shadow:var(--shadow-sm);transition:transform .18s,border-color .18s,box-shadow .18s}
+  .card:hover{transform:translateY(-2px);border-color:var(--line-strong);
+    box-shadow:0 10px 30px rgba(0,0,0,.08)}
+  .card h3{font-size:16px;font-weight:650}.card .path{margin-top:5px;color:var(--muted)}
+  .card .stats{margin-top:14px}.card .cardfoot{padding-top:12px;border-top:1px solid var(--line)}
+  .card.add{min-height:136px;border:1px dashed var(--line-strong);border-radius:var(--radius);
+    background:transparent;box-shadow:none;color:var(--accent);font-weight:600}
+  .remove-archive{border:0;border-radius:7px;background:transparent;color:var(--bad);padding:5px 8px}
+  .remove-archive:hover{background:color-mix(in srgb,var(--bad) 10%,transparent);color:var(--bad)}
+
+  /* Shell and sidebar */
+  #app.on{display:grid;grid-template-columns:252px minmax(0,1fr);min-height:100vh;background:var(--bg)}
+  nav{position:sticky;top:0;width:auto;height:100vh;padding:18px 13px 12px;overflow:auto;
+    background:var(--sidebar);border-right:1px solid var(--line);
+    backdrop-filter:saturate(180%) blur(28px);-webkit-backdrop-filter:saturate(180%) blur(28px)}
+  nav .brand{height:45px;padding:5px 8px 14px;gap:10px;border:0;font-family:inherit;font-size:16px;
+    font-weight:720;letter-spacing:-.025em}
+  nav .brand img{width:25px;height:25px;border-radius:7px!important;box-shadow:0 1px 4px rgba(0,0,0,.16)}
+  nav .navtoggle{display:flex;align-items:center;justify-content:center;width:26px;height:26px;margin-left:auto;
+    padding:0;border-radius:7px;color:var(--muted);font-size:14px}
+  nav .navtoggle:hover{background:var(--line);color:var(--text)}
+  nav .back{margin:7px 2px 3px;padding:7px 8px;border-radius:8px;color:var(--accent);font-size:12px;font-weight:550}
+  nav .back:hover{background:var(--accent-soft)}
+  .back-control,nav .back-control{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;
+    color:var(--accent);font:550 12px/1.2 inherit;text-align:left;cursor:pointer}
+  .back-control svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;
+    stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  nav .arch{margin:0 2px 12px;padding:5px 8px 13px;border-bottom:1px solid var(--line);
+    color:var(--muted);font-size:12px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #navitems{display:flex;flex-direction:column;gap:2px}
+  .navitem{min-height:39px;gap:11px;padding:8px 10px;border:0;border-radius:9px;background:transparent;
+    color:var(--text);font-family:inherit;font-size:13.5px;font-weight:550;letter-spacing:-.005em}
+  .navitem:hover{background:var(--line);color:var(--text)}
+  .navitem.active{background:var(--accent-soft);color:var(--accent)}
+  .navitem.active:before{display:none}
+  .navicon{display:flex;align-items:center;justify-content:center;width:19px;height:19px;flex:none}
+  .navicon svg,.theme-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;
+    stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+  .theme-toggle{display:flex;align-items:center;gap:11px;width:100%;min-height:39px;margin-top:auto;
+    padding:8px 10px;border:0;border-radius:9px;background:transparent;color:var(--muted);
+    font:550 13px/1.2 inherit;text-align:left;cursor:pointer}
+  .theme-toggle:hover{background:var(--line);color:var(--text)}
+  .theme-icon{display:flex;width:19px;height:19px;align-items:center;justify-content:center;flex:none}
+  .gstat{margin-top:4px;padding:12px 9px 5px;border-top:1px solid var(--line);font-size:11px}
+  .dot{width:7px;height:7px}.dot.ok{box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 14%,transparent)}
+  nav.collapsed{width:68px;padding-left:9px;padding-right:9px}
+  nav.collapsed .brand{justify-content:center;padding-left:0;padding-right:0}
+  nav.collapsed .brand img{display:none}
+  nav.collapsed .brandtxt,nav.collapsed .back,nav.collapsed .arch,
+  nav.collapsed .navitem span:nth-of-type(2),nav.collapsed .navitem .tag,
+  nav.collapsed .theme-label{display:none}
+  nav.collapsed .navtoggle{margin:0}
+  nav.collapsed .navitem,nav.collapsed .theme-toggle{justify-content:center;padding:8px}
+  nav.collapsed .theme-toggle{margin-top:auto}
+  #app.on:has(nav.collapsed){grid-template-columns:68px minmax(0,1fr)}
+
+  /* Main content and overview */
+  main{height:100vh;min-height:0;overflow:auto;padding:42px clamp(28px,4vw,62px) 80px;background:var(--bg)}
+  main>h2.sec,main>.eyebrow+ h2.sec{font-size:34px;font-weight:740;line-height:1.08;
+    letter-spacing:-.042em;margin:0 0 25px}
+  main>.eyebrow{margin:2px 0 7px;color:var(--muted);font-size:12px}
+  .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;margin:0 0 28px}
+  .pagehead .eyebrow{margin-bottom:6px;color:var(--muted);font-size:12px}
+  .pagehead h2.sec{margin:0;font-size:36px;font-weight:750;line-height:1.06;letter-spacing:-.045em}
+  .pagehead p{margin:8px 0 0;color:var(--muted);font-size:14px}
+  .statrow{gap:13px;grid-template-columns:repeat(4,minmax(140px,1fr));margin-bottom:22px}
+  .stat{position:relative;display:flex;align-items:center;gap:13px;min-width:0;padding:17px;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--panel);color:var(--text);font:inherit;text-align:left;
+    box-shadow:var(--shadow-sm);overflow:hidden;transition:transform .18s,border-color .18s;cursor:default}
+  button.stat{cursor:pointer}
+  button.stat:hover{transform:translateY(-2px);border-color:var(--line-strong)}
+  .metric-icon{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:11px}
+  .metric-icon svg,.panel-symbol svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round}
+  .metric-icon.blue{color:#007aff;background:rgba(0,122,255,.12)}
+  .metric-icon.violet{color:#af52de;background:rgba(175,82,222,.12)}
+  .metric-icon.green{color:#28a745;background:rgba(40,167,69,.12)}
+  .metric-icon.orange{color:#ff9500;background:rgba(255,149,0,.14)}
+  .stat .k{font-size:10.5px;font-weight:650;letter-spacing:.045em;color:var(--muted)}
+  .stat .v{margin-top:3px;font-size:24px;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
+  .stat .v small{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:0}
+  .overview-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);gap:18px}
+  .overview-grid .panel{margin:0}
+  .panel-heading{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  .panel-heading h3{margin:0 0 2px}.panel-heading p{margin:0;color:var(--muted);font-size:11px}
+  .panel-symbol{display:flex;align-items:center;justify-content:center;width:34px;height:34px;
+    flex:none;border-radius:10px;background:var(--accent-soft);color:var(--accent)}
+  .health-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .health-task{min-width:0;padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+  .health-task-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:680}
+  .health-task-state{margin:5px 0 0 14px;color:var(--muted);font-size:11px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .health-task.running{border-color:color-mix(in srgb,var(--accent) 35%,var(--line));background:var(--accent-soft)}
+  .health-task.pending{border-color:color-mix(in srgb,var(--warning) 28%,var(--line))}
+  .health-task.error{border-color:color-mix(in srgb,var(--bad) 28%,var(--line))}
+  .map-stats{grid-template-columns:repeat(3,minmax(150px,1fr))}
+  .panel{padding:20px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--panel);box-shadow:var(--shadow-sm);margin-bottom:18px}
+  .panel h3{margin:0 0 14px;font-size:14px;font-weight:680;letter-spacing:-.015em}
+  .progress{height:7px;margin:10px 0;border-radius:99px;background:var(--panel2)}
+  .progfill{border-radius:inherit;background:linear-gradient(90deg,var(--accent),#5ac8fa)}
+  .type-summary-bar{height:8px;border-radius:99px;background:var(--panel2);gap:2px}
+  .type-summary-segment:first-child{border-radius:99px 0 0 99px}
+  .type-summary-segment:last-child{border-radius:0 99px 99px 0}
+  .type-summary-legend{margin:13px 0 7px;font-size:11px;color:var(--muted)}
+  .type-summary-key{width:8px;height:8px;border-radius:50%}
+  table.types td{padding:9px 4px;border-bottom-color:var(--line)}
+
+  /* Library and controls */
+  .library-controls{margin-bottom:18px;padding:9px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--panel);box-shadow:var(--shadow-sm)}
+  .library-search{display:flex;gap:8px;align-items:center;width:100%;margin:0;padding:3px 3px 10px 10px;
+    border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none}
+  .library-search:before{content:"";width:16px;height:16px;flex:none;opacity:.55;
+    background:no-repeat center/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E")}
+  .semantic-composer{flex:1;min-width:190px;min-height:36px;padding:8px 0;border:0;background:transparent;
+    color:var(--text);font-size:14px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere;cursor:text}
+  .semantic-composer:focus{outline:0}
+  .semantic-composer:empty:before{content:attr(data-placeholder);color:var(--muted);pointer-events:none}
+  .search-expansion{display:flex;align-items:center;gap:7px;margin:8px 7px 0 34px;color:var(--muted);
+    font-size:11px;line-height:1.4}
+  .search-expansion[hidden]{display:none}
+  .search-expansion strong{color:var(--text);font-weight:620}
+  .person-token{display:inline-flex;align-items:center;margin:-2px 1px;padding:2px 7px;border:1px solid
+    color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:99px;background:var(--accent-soft);
+    color:var(--accent);font-size:12px;font-weight:650;line-height:18px;vertical-align:1px;cursor:default;
+    position:relative}
+  .person-token:after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 9px);z-index:30;
+    width:max-content;max-width:260px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;
+    background:var(--bg-elevated);color:var(--text);font-size:11px;font-weight:550;line-height:1.3;
+    white-space:normal;box-shadow:var(--shadow-md);opacity:0;visibility:hidden;pointer-events:none;
+    transform:translate(-50%,4px);transition:opacity .12s,transform .12s,visibility .12s}
+  .person-token:hover:after,.person-token:focus:after{opacity:1;visibility:visible;transform:translate(-50%,0)}
+  .person-token:focus{outline:2px solid color-mix(in srgb,var(--accent) 35%,transparent);outline-offset:2px}
+  .library-search .search-note{display:none}
+  .filterbar{gap:8px;margin-bottom:13px;padding:0;border:0}
+  .library-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:9px 4px 1px;margin:0}
+  .library-toolbar .filterbar{margin:0}
+  .library-toolbar .chips{min-height:0;margin:0;justify-content:flex-end;white-space:nowrap}
+  .check-control{display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer}
+  .fsel{height:34px;max-width:210px;padding:6px 30px 6px 10px;border:1px solid var(--line);
+    border-radius:9px;background:var(--panel);color:var(--text);font-size:12px;box-shadow:0 1px 1px rgba(0,0,0,.02)}
+  .fsel:hover{border-color:var(--line-strong)}
+  .multi-filter{position:relative}
+  .multi-filter>summary{display:flex;align-items:center;min-width:150px;list-style:none;white-space:nowrap}
+  .multi-filter>summary::-webkit-details-marker{display:none}
+  .multi-filter>summary:after{content:"";width:6px;height:6px;margin-left:auto;border-right:1.5px solid currentColor;
+    border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-2px);opacity:.55}
+  .multi-filter[open]>summary{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .multi-menu{position:absolute;top:40px;left:0;z-index:12;width:260px;padding:7px;border:1px solid var(--line);
+    border-radius:12px;background:var(--bg-elevated);box-shadow:var(--shadow-md)}
+  .multi-option{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;cursor:pointer;font-size:12.5px}
+  .multi-option:hover{background:var(--panel2)}
+  .multi-help{padding:8px 9px 5px;border-top:1px solid var(--line);color:var(--muted);font-size:10.5px;line-height:1.35}
+  .filter-placeholder{display:flex;align-items:center;opacity:.62;cursor:not-allowed}
+  .chips{min-height:27px;margin-bottom:12px;color:var(--muted)}
+  .chip{padding:5px 10px;border-color:var(--line);border-radius:99px;background:var(--panel);font-size:11px}
+  input[type="checkbox"]{accent-color:var(--accent)}
+  .grid{gap:4px;grid-template-columns:repeat(auto-fill,minmax(175px,1fr))}
+  .tile{border:0;border-radius:5px;background:var(--panel2);box-shadow:none;transition:transform .15s,filter .15s}
+  .tile:hover{z-index:1;outline:3px solid var(--bg);box-shadow:0 0 0 5px var(--accent);transform:scale(1.012)}
+  .tile .cap{padding:22px 8px 6px;font-size:10px;background:linear-gradient(transparent,rgba(0,0,0,.72))}
+  .date-heading{padding:31px 0 9px;border:0;font-size:21px;font-weight:700;letter-spacing:-.025em;color:var(--text)}
+  .more{margin:24px 0}.more .btn{min-width:130px}
+
+  /* People, duplicates, map, settings */
+  .people{gap:14px;grid-template-columns:repeat(auto-fill,minmax(145px,1fr))}
+  .pcard{border:0;border-radius:14px;background:var(--panel);box-shadow:var(--shadow-sm);
+    transition:transform .18s,box-shadow .18s}
+  .pcard:hover{transform:translateY(-3px);box-shadow:0 12px 30px rgba(0,0,0,.11)}
+  .pcard .face,.facecollage{background:var(--panel2)}
+  .pcard .pmeta{padding:10px 12px 12px}.pcard .pname{display:block;width:100%;padding:0;border:0;background:transparent;
+    color:var(--text);font-size:13px;font-weight:600;text-align:left;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;cursor:text}
+  .pcard .pname:hover{color:var(--accent)}.pcard .pname.un{color:var(--accent);font-weight:550;font-style:normal}
+  .pcard .pcount{color:var(--muted)}
+  .pcard .pmeta-editing{padding:8px 10px 11px}
+  .pcard .pmeta-editing input,.detail-name-input,.inline-name-editor input{width:100%;min-width:0;padding:6px 8px;border:1px solid var(--accent);
+    border-radius:8px;background:var(--panel2);color:var(--text)}
+  .pcard .pmeta-editing .pcount{margin:4px 2px 0}
+  .person-name-button{min-width:0;padding:3px 5px;margin-left:-5px;border:0;border-radius:6px;background:transparent;
+    color:var(--text);font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    text-align:left;cursor:text}
+  .person-name-button:hover{background:var(--panel2);color:var(--accent)}
+  .person-name-button.un{color:var(--accent);font-weight:550;font-style:normal}
+  .detail-name-input{max-width:360px;font-size:15px}
+  .suggest{max-width:620px;padding:20px;border-radius:var(--radius);border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .suggest .sug-face>img,.suggest .sug-face .facecollage{border-radius:13px}
+  .suggest .sug-btns button{border-radius:9px;background:var(--panel2);color:var(--text)}
+  .dupgroup{padding:16px;border-radius:var(--radius);border-color:var(--line);background:var(--panel);box-shadow:var(--shadow-sm)}
+  .duptile>img,.duptile>.ph{border-radius:10px;border-color:var(--line);background:var(--panel2)}
+  .mapwrap{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+  .mapwrap.has-selection{grid-template-columns:minmax(0,1fr) minmax(290px,34%)}
+  #lmap,#mapside{width:100%;height:clamp(480px,66vh,680px);border-color:var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+  #mapside{display:none;padding:17px;background:var(--panel)}
+  .mapwrap.has-selection #mapside{display:block}
+  .map-empty{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:min(390px,calc(100% - 40px));
+    padding:24px;border:1px solid var(--line);border-radius:16px;background:color-mix(in srgb,var(--panel) 94%,transparent);
+    text-align:center;box-shadow:var(--shadow-md);backdrop-filter:blur(16px)}
+  .map-empty .big{font-size:28px}.map-empty h3{margin:8px 0 4px}.map-empty p{margin:0;color:var(--muted)}
+  .map-footnote{margin-top:11px;color:var(--muted);font-size:11.5px}
+  .mapside-name .close-side{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:var(--panel2);
+    color:var(--muted);cursor:pointer}
+  .mapside-title{min-width:0;flex:1}.mapside-title .person-name-button{display:block;width:100%;font-size:14px}
+  .mapside-title>span{display:block;margin:2px 5px 0;font-size:11px}
+  .mapside-actions{display:flex;align-items:center;gap:10px}
+  .inline-name-editor{width:100%}
+  .leaflet-container{background:var(--panel2)}
+  .leaflet-tooltip{background:var(--panel);color:var(--text);border-color:var(--line);border-radius:8px;box-shadow:var(--shadow-sm)}
+  :root[data-theme="dark"] .leaflet-bar a,
+  :root[data-theme="dark"] .leaflet-control-attribution{
+    background:rgba(28,28,30,.9);color:var(--muted);border-color:var(--line)}
+  :root[data-theme="dark"] .leaflet-bar a:hover,
+  :root[data-theme="dark"] .leaflet-bar a:focus{background:var(--panel2);color:var(--text)}
+  :root[data-theme="dark"] .leaflet-control-attribution a{color:var(--accent)}
+  canvas{border-color:var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-sm)}
+  .taskcard{border-bottom-color:var(--line)}
+  .facetopbar{top:-42px;margin:0 0 17px;padding:14px 0;background:color-mix(in srgb,var(--bg) 88%,transparent);
+    border-bottom-color:var(--line);backdrop-filter:blur(20px)}
+  .facetopbar .back-control{min-height:32px;padding:6px 9px 6px 7px;border-radius:9px;font-size:13px}
+  .facetopbar .back-control:hover{background:var(--accent-soft);text-decoration:none}
+  .not-person-button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:5px 9px;
+    border:0;border-radius:8px;background:transparent;color:var(--bad);font:550 12px/1.2 inherit;
+    cursor:pointer;white-space:nowrap}
+  .not-person-button svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;
+    stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .not-person-button:hover{background:color-mix(in srgb,var(--bad) 10%,transparent)}
+  code{padding:2px 5px;border-radius:5px;background:var(--panel2);font-size:.9em}
+
+  /* Viewer */
+  .modal{padding:18px;background:rgba(0,0,0,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  .viewer{width:auto;max-width:calc(100vw - 36px);max-height:calc(100vh - 36px);border:1px solid rgba(255,255,255,.1);
+    border-radius:18px;background:#050505;box-shadow:var(--shadow-md)}
+  .viewer .media{max-width:calc(100vw - 390px);background:#050505}
+  .viewer .media img,.viewer .media video{max-width:calc(100vw - 390px);max-height:calc(100vh - 36px)}
+  .viewer .info{width:355px;max-height:calc(100vh - 36px);padding:23px;background:var(--panel);color:var(--text)}
+  .viewer .info h3{font-size:15px}.kv{padding:7px 0;border-bottom-color:var(--line)}
+  .isec{margin-top:20px}.isec>.h{margin-bottom:9px;font-size:10px;font-weight:700;letter-spacing:.08em}
+  .facecrop{border-radius:10px;border-color:var(--line)}
+  .dtrow input{border-color:var(--line);background:var(--panel2);color:var(--text)}
+  .close{top:20px;right:24px;display:flex;align-items:center;justify-content:center;width:34px;height:34px;
+    border-radius:50%;background:rgba(30,30,30,.62);font-size:25px;line-height:1;color:#fff;backdrop-filter:blur(14px)}
+  #toast{padding:11px 16px;border-color:var(--line);border-radius:11px;background:var(--bg-elevated);
+    color:var(--text);box-shadow:var(--shadow-md)}
+
+  @media(max-width:1050px){
+    .statrow{grid-template-columns:repeat(2,minmax(150px,1fr))}
+    .overview-grid{grid-template-columns:1fr}
+    #app.on{grid-template-columns:220px minmax(0,1fr)}
+  }
+  @media(max-width:800px){
+    #app.on,#app.on:has(nav.collapsed){display:block}
+    nav,nav.collapsed{position:sticky;top:0;z-index:10;width:100%;height:61px;padding:8px 10px;
+      display:flex;flex-direction:row;align-items:center;overflow:auto;border-right:0;border-bottom:1px solid var(--line)}
+    nav .brand,nav.collapsed .brand{height:auto;padding:3px 7px;flex:none}
+    nav .brand img,nav.collapsed .brand img{display:block}
+    nav .brandtxt,.navtoggle,nav .back,nav .arch,.gstat,.theme-label{display:none!important}
+    .facetopbar .back-control{display:inline-flex!important}
+    #navitems{display:flex;flex-direction:row;gap:3px}
+    .navitem,.theme-toggle,nav.collapsed .theme-toggle{width:39px;min-width:39px;height:39px;justify-content:center;padding:8px;margin:0}
+    .navitem span:nth-of-type(2){display:none}
+    .theme-toggle{margin-left:auto}
+    main{height:auto;min-height:calc(100vh - 61px);padding:29px 16px 60px}
+    main>h2.sec,main>.eyebrow+ h2.sec{font-size:30px}
+    .pagehead{align-items:flex-start;flex-direction:column;gap:18px}.pagehead h2.sec{font-size:32px}
+    .library-search{width:100%}.library-toolbar{align-items:flex-start;flex-direction:column;gap:8px}
+    .library-toolbar .chips{width:100%;justify-content:space-between}
+    .mapwrap.has-selection{grid-template-columns:1fr}#mapside,.mapwrap.has-selection #mapside{height:auto;max-height:480px}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:3px}
+    .viewer{align-self:stretch;flex-direction:column}.viewer .media,.viewer .media img,.viewer .media video{max-width:100%;max-height:58vh}
+    .viewer .info{position:static;width:100%;max-height:38vh;border-top:1px solid var(--line)}
+    .setup-form{flex-direction:column;padding:8px}.setup-form .btn{width:100%}
+  }
+  @media(max-width:520px){
+    #picker{padding:38px 18px}.welcome h1{font-size:40px}.welcome .sub{font-size:18px}
+    .appearance-fab{top:12px;right:12px}.appearance-fab .theme-label{display:none}.appearance-fab{width:36px;padding:0;justify-content:center}
+    .cards{grid-template-columns:1fr}.statrow{grid-template-columns:1fr 1fr;gap:8px}
+    .stat{padding:14px}.stat .v{font-size:22px}
+    .library-search{flex-wrap:wrap;padding:5px}.library-search:before{display:none}.semantic-composer{min-width:120px;padding-left:7px}.library-search .btn{width:100%}
+    .multi-menu{position:fixed;left:16px;right:16px;top:auto;width:auto}
+    .health-grid{grid-template-columns:1fr}
+    .map-stats{grid-template-columns:1fr}
+  }
 </style>
 </head>
 <body>
 
 <!-- ARCHIVE PICKER -->
 <div id="picker">
-  <div class="welcome"><div class="eyebrow">A local memory room</div><h1>ARCHIVE</h1>
-  <div class="sub">A quiet place to explore the photographs, films, and records already on this computer.</div>
+  <button class="appearance-fab" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
+    <span class="theme-icon" aria-hidden="true"></span>
+    <span class="theme-label">Dark appearance</span>
+  </button>
+  <div class="welcome"><div class="eyebrow">organize_archive</div><h1>Your library, all in one place.</h1>
+  <div class="sub">Bring together the photographs, films, and records that already live on this computer.</div>
   <form class="setup-form" onsubmit="return addArchiveFromForm(event)"><input id="archive-path" aria-label="Media folder path" placeholder="/path/to/media folder"><button class="btn" id="choose-folder" type="submit">Choose media folder</button></form>
   <div class="privacy-note">Files are catalogued in place. They are never moved, edited, uploaded, or deleted. You can add more folders whenever you need.</div>
   <div class="archive-list-title" id="archive-list-title">Your archives</div><div class="cards" id="archcards"></div></div>
@@ -358,9 +750,16 @@
     <div class="brand"><img src="/icon-192.png" width="22" height="22" style="border-radius:5px">
       <span class="brandtxt">organize_archive</span>
       <span class="navtoggle" onclick="toggleNav()" title="Collapse sidebar">«</span></div>
-    <span class="back" onclick="toPicker()">← all archives</span>
+    <button class="back back-control" type="button" onclick="toPicker()" aria-label="Back to all archives">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      <span>All archives</span>
+    </button>
     <div class="arch" id="archname"></div>
     <div id="navitems"></div>
+    <button class="theme-toggle" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
+      <span class="theme-icon" aria-hidden="true"></span>
+      <span class="theme-label">Dark appearance</span>
+    </button>
     <div id="gstat" class="gstat"></div>
   </nav>
   <main id="main"></main>
@@ -374,27 +773,120 @@
 
 <script>
 const TYPE_ICON={image:"🖼️",video:"🎞️",audio:"🎵",document:"📄",archive:"🗜️",other:"📦"};
-const TYPE_COL={image:"#B5614A",video:"#E8A842",audio:"#b8c47b",document:"#A89E8A",archive:"#6B3828",other:"#3A352C"};
+const TYPE_COL={image:"#ff375f",video:"#ff9f0a",audio:"#30d158",document:"#64d2ff",archive:"#bf5af2",other:"#8e8e93"};
+const ICONS={
+  overview:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
+  library:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 2-2L20 19"/></svg>',
+  timeline:'<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg>',
+  people:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.3 2.3-5 5.5-5s5 1.7 5.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M15.5 15c2.8-.5 4.6.8 5 3.5"/></svg>',
+  places:'<svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  dups:'<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h1"/></svg>',
+  settings:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
+  sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon:'<svg viewBox="0 0 24 24"><path d="M20.5 15.3A9 9 0 0 1 8.7 3.5 9 9 0 1 0 20.5 15.3Z"/></svg>'
+};
 const SECTIONS=[
-  {id:"library",label:"Library",icon:"▦"},
-  {id:"timeline",label:"Timeline",icon:"◷"},
-  {id:"people",label:"People",icon:"◉"},
-  {id:"places",label:"Places",icon:"⌖"},
-  {id:"dups",label:"Duplicates",icon:"≡"},
-  {id:"folders",label:"Folders",icon:"□"},
-  {id:"settings",label:"Archive settings",icon:"⚙"},
+  {id:"overview",label:"Overview"},
+  {id:"library",label:"Library"},
+  {id:"timeline",label:"Timeline"},
+  {id:"people",label:"People"},
+  {id:"places",label:"Places"},
+  {id:"dups",label:"Duplicates"},
+  {id:"settings",label:"Settings"},
 ];
-const S={arch:null, section:"library", grid:{offset:0,year:null,month:null,type:null},
-  timeline:{bucket:"month",year:"",month:"",person:"",place:""}, poll:null};
+const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null},
+  timeline:{bucket:"month",year:"",month:"",people:[],place:""}, poll:null};
+let LOCAL_TRANSLATOR_PROMISE=null,SEARCH_SUBMISSION=0;
 // Bumped on every user navigation (section switch / archive open). Async renders
 // capture it and bail if it changed while they were awaiting, so a slow fetch can
 // never paint a stale section over the one the user just picked.
 let NAV=0;
 
+// Checkbox filter menus behave like native popovers: only one stays open, and
+// clicking elsewhere or pressing Escape dismisses it without changing choices.
+document.addEventListener("pointerdown",event=>{
+  document.querySelectorAll(".multi-filter[open]").forEach(menu=>{
+    if(!menu.contains(event.target))menu.removeAttribute("open");
+  });
+});
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape")
+    document.querySelectorAll(".multi-filter[open]").forEach(menu=>menu.removeAttribute("open"));
+});
+document.addEventListener("toggle",event=>{
+  if(event.target.matches&&event.target.matches(".multi-filter[open]"))
+    document.querySelectorAll(".multi-filter[open]").forEach(menu=>{
+      if(menu!==event.target)menu.removeAttribute("open");
+    });
+},true);
+
+function currentTheme(){return document.documentElement.dataset.theme==="dark"?"dark":"light";}
+function syncThemeControl(){
+  const dark=currentTheme()==="dark";
+  document.querySelectorAll(".theme-toggle,.appearance-fab").forEach(button=>{
+    button.querySelector(".theme-icon").innerHTML=dark?ICONS.sun:ICONS.moon;
+    button.querySelector(".theme-label").textContent=dark?"Light appearance":"Dark appearance";
+    button.title=dark?"Use light appearance":"Use dark appearance";
+  });
+}
+function toggleTheme(){
+  const next=currentTheme()==="dark"?"light":"dark";
+  document.documentElement.dataset.theme=next;
+  localStorage.setItem("archiveTheme",next);
+  document.querySelector('meta[name="theme-color"]').content=next==="dark"?"#101014":"#f5f5f7";
+  syncThemeControl();
+  syncMapTiles();
+}
+
 function fmtBytes(n){if(n==null)return "—";const u=["B","KB","MB","GB","TB"];let i=0,f=n;
   while(f>=1024&&i<4){f/=1024;i++;}return f.toFixed(1)+" "+u[i];}
 async function jget(u){return (await fetch(u,{cache:"no-store"})).json();}
 async function jpost(u,b){return (await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})})).json();}
+function clearlyEnglishSearch(text){
+  // Short-query language detection is unreliable, but these structural words
+  // are strong English signals and prevent feeding an already-English phrase
+  // such as "besides a lake" through the Spanish translator. Ambiguous words
+  // shared with Spanish ("a", "no", "me") are deliberately excluded.
+  const signals=new Set(["the","this","that","these","those","is","are","was","were",
+    "with","without","beside","besides","near","by","at","of","and","or","from","to",
+    "in","on","under","over","between","inside","outside","during"]);
+  return normalizedWords(text).split(" ").some(word=>signals.has(word));
+}
+async function localEnglishTranslation(text){
+  if(!text||!text.match(/\p{L}/u)||clearlyEnglishSearch(text))return "";
+  try{
+    if(!LOCAL_TRANSLATOR_PROMISE){
+      LOCAL_TRANSLATOR_PROMISE=import("/vendor/bergamot-translator.js").then(module=>
+        new module.LatencyOptimisedTranslator({
+          pivotLanguage:null,
+          registryUrl:"/vendor/translation-es-en.json",
+          cacheSize:256,
+          downloadTimeout:15000
+        })
+      );
+    }
+    const translator=await LOCAL_TRANSLATOR_PROMISE;
+    const response=await translator.translate({from:"es",to:"en",text,html:false});
+    const translated=(response&&response.target&&response.target.text||"")
+      .replace(/\s+/g," ").trim().toLocaleLowerCase();
+    return normalizedWords(translated)===normalizedWords(text)?"":translated;
+  }catch(error){
+    // Translation improves recall but is never required for search. Reset a
+    // failed loader so a transient worker/model error can recover next time.
+    console.warn("Local Spanish search expansion unavailable:",error);
+    LOCAL_TRANSLATOR_PROMISE=null;
+    return "";
+  }
+}
+function visualSearchExpansion(translation){
+  if(!translation)return "";
+  const words=new Set(normalizedWords(translation).split(" "));
+  // Voyage is matching text to image vectors. A lightweight photographic cue
+  // helps terse translated locations ("in the lake") align with actual photos
+  // without changing the translation shown to the user.
+  return ["photo","photos","picture","pictures","image","images"].some(word=>words.has(word))
+    ?translation:`${translation} photo`;
+}
 // Serialize all persistence through ONE in-flight write. A GUI write can block for
 // a few seconds waiting for the background pipeline's single SQLite writer; firing
 // several at once ties up the browser's ~6 connections with stalled POSTs and the
@@ -441,7 +933,7 @@ async function addArchiveFromForm(event){
   if(r.error){toast(r.error,true);return false;}
   field.value="";await loadPicker();
   const a=ARCHIVES.find(x=>x.id===r.id)||{id:r.id,path:r.path,name:r.path.split("/").filter(Boolean).pop(),files:0,size:0,exists:true};
-  openArchive(a,"library"); return false;
+  openArchive(a,"overview"); return false;
 }
 async function removeArchive(a){
   const message=`Remove “${a.name}” from organize_archive?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
@@ -455,16 +947,17 @@ async function removeArchive(a){
 /* ---------- archive shell ---------- */
 function openArchive(a,section){
   if(S.arch && S.arch.id!==a.id) jpost("/api/archive/close",{root_id:S.arch.id});
+  resetSectionViews();
   // Don't carry a previous archive's idle status into this one. Until its disk
   // check finishes, we genuinely do not know whether work is waiting.
-  S.arch=a; S.section=section||"library"; S.fresh=null; S.activeJobs={};
+  S.arch=a; S.section=section||"overview"; S.fresh=null; S.activeJobs={};
   S.syncChecked=false; S.syncCheckFailed=false; S.wasActive=false;
   document.getElementById("picker").style.display="none";
   document.getElementById("app").classList.add("on");
   document.getElementById("archname").textContent=a.name;
   location.hash=`/archive/${a.id}/${S.section}`;
   jpost("/api/archive/open",{root_id:a.id});
-  renderNav(); showSection(S.section); startGlobalStatus();
+  showSection(S.section); startGlobalStatus();
 }
 
 /* ---------- persistent pipeline status (sidebar, shown on every section) ----
@@ -502,7 +995,26 @@ function renderGstat(jobs){
 }
 async function gstatTick(){
   if(!S.arch){stopGlobalStatus();return;}
-  try{ const {jobs}=await jget("/api/jobs?root="+S.arch.id); renderGstat(jobs); }catch(e){}
+  try{
+    const {jobs}=await jget("/api/jobs?root="+S.arch.id);
+    renderGstat(jobs);
+    // A library opened just before the scanner commits its first batch used to
+    // remain an empty wall until the user manually changed a filter or route.
+    // Refresh only that empty state, so active browsing is never interrupted.
+    const scanning=jobs.some(j=>j.kind==="scan"&&j.status==="running"), g=S.grid;
+    if(scanning && S.section==="library" && g && g.loaded===0 && !g.refreshing){
+      g.refreshing=true;
+      setTimeout(()=>{
+        if(S.section==="library" && S.grid===g && g.loaded===0){
+          g.offset=0; g.gen++; g.lastHeading=null;
+          const grid=document.getElementById("grid"); if(grid)grid.innerHTML="";
+          loadGrid().finally(()=>{ if(S.grid===g)g.refreshing=false; });
+        }else if(S.grid===g){
+          g.refreshing=false;
+        }
+      }, 1500);
+    }
+  }catch(e){}
 }
 function startGlobalStatus(){ stopGlobalStatus(); S.gpoll=setInterval(gstatTick,2000); gstatTick(); }
 function stopGlobalStatus(){ if(S.gpoll){clearInterval(S.gpoll);S.gpoll=null;} }
@@ -511,9 +1023,17 @@ function applyHash(){
   if(m){const a=ARCHIVES.find(x=>x.id==+m[1]); if(a){openArchive(a,m[2]);return true;}}
   return false;
 }
+window.addEventListener("hashchange",()=>{
+  const match=(location.hash||"").match(/#\/archive\/(\d+)\/(\w+)/);
+  if(!match)return;
+  const archive=ARCHIVES.find(item=>item.id===Number(match[1]));
+  if(!archive)return;
+  if(S.arch&&S.arch.id===archive.id)showSection(match[2]);
+  else openArchive(archive,match[2]);
+});
 function toPicker(){
   if(S.arch) jpost("/api/archive/close",{root_id:S.arch.id});
-  stopPoll(); stopGlobalStatus(); S.arch=null;
+  stopPoll(); stopGlobalStatus(); resetSectionViews(); S.arch=null;
   document.getElementById("app").classList.remove("on");
   document.getElementById("picker").style.display="block";
   loadPicker();
@@ -527,9 +1047,10 @@ function renderNav(){
     const d=document.createElement("button"); d.type="button";
     d.className="navitem"+(s.id===S.section?" active":"");
     d.title=s.label;d.setAttribute("aria-current",s.id===S.section?"page":"false");
-    d.innerHTML=`<span aria-hidden="true">${s.icon}</span><span>${s.label}</span>`;d.onclick=()=>showSection(s.id);
+    d.innerHTML=`<span class="navicon" aria-hidden="true">${ICONS[s.id]}</span><span>${s.label}</span>`;d.onclick=()=>showSection(s.id);
     el.appendChild(d);
   });
+  syncThemeControl();
 }
 function navCollapsed(){ return localStorage.getItem("navCollapsed")==="1"; }
 function applyNavCollapsed(){
@@ -540,47 +1061,105 @@ function toggleNav(){
   applyNavCollapsed();
 }
 applyNavCollapsed();
-const RENDERERS={library:renderPhotos,timeline:renderTimeline,places:renderMap,
-  people:renderFaces,dups:renderDedup,folders:renderFolders,settings:renderSettings};
-function showSection(id){
-  if(id!=="places" && MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
+const RENDERERS={overview:renderOverview,library:renderPhotos,timeline:renderTimeline,places:renderMap,
+  people:renderFaces,dups:renderDedup,settings:renderSettings};
+const SECTION_VIEWS=new Map();
+const SECTION_READY=new Set();
+let ACTIVE_SECTION=null;
+function resetSectionViews(){
+  const main=document.getElementById("main");
+  if(MAP){MAP.remove();MAP=null;MAP_LAYER=null;MAP_TILES=null;}
+  SECTION_VIEWS.clear();SECTION_READY.clear();ACTIVE_SECTION=null;
+  if(main)main.replaceChildren();
+}
+function stashActiveSection(){
+  if(!ACTIVE_SECTION)return;
+  const main=document.getElementById("main"),section=ACTIVE_SECTION;
+  if(!SECTION_READY.has(section)){
+    main.replaceChildren();ACTIVE_SECTION=null;return;
+  }
+  const fragment=document.createDocumentFragment();
+  const scrollTop=main.scrollTop;
+  while(main.firstChild)fragment.appendChild(main.firstChild);
+  SECTION_VIEWS.set(section,{fragment,scrollTop});
+  ACTIVE_SECTION=null;
+}
+function resumeSection(id){
+  if(id==="overview")startPoll();
+  else if(id==="people"&&document.getElementById("facejob"))startFacePoll();
+  else if(id==="places"&&MAP)setTimeout(()=>{MAP.invalidateSize();drawClusters();},0);
+}
+function showSection(id,reload=false){
+  if(!RENDERERS[id])id="overview";
+  if(ACTIVE_SECTION===id&&!reload)return;
   NAV++; const gen=NAV;
-  S.section=id; renderNav(); stopPoll();
-  if(S.arch)location.hash=`/archive/${S.arch.id}/${id}`;
+  stopPoll();
   const m=document.getElementById("main");
+  if(ACTIVE_SECTION){
+    if(reload&&ACTIVE_SECTION===id){
+      m.replaceChildren();
+      SECTION_VIEWS.delete(id);
+      SECTION_READY.delete(id);
+      ACTIVE_SECTION=null;
+    }else stashActiveSection();
+  }
+  S.section=id; ACTIVE_SECTION=id; renderNav();
+  if(S.arch)location.hash=`/archive/${S.arch.id}/${id}`;
+  const saved=SECTION_VIEWS.get(id);
+  if(saved&&!reload){
+    SECTION_VIEWS.delete(id);
+    m.appendChild(saved.fragment);
+    requestAnimationFrame(()=>{if(ACTIVE_SECTION===id)m.scrollTop=saved.scrollTop;});
+    resumeSection(id);
+    return;
+  }
+  SECTION_READY.delete(id);
+  m.scrollTop=0;
   m.innerHTML='<div class="muted" style="padding:30px">Loading…</div>';
   const fn=RENDERERS[id]||(mm=>renderSoon(mm,id));
   // Isolate each section render: a throw (bad fetch, JSON error, …) shows an inline
   // error with Retry instead of leaving the previous section's DOM half-replaced.
-  Promise.resolve().then(()=>fn(m)).catch(err=>{
+  Promise.resolve().then(()=>fn(m)).then(()=>{
+    if(gen===NAV&&ACTIVE_SECTION===id)SECTION_READY.add(id);
+  }).catch(err=>{
     if(gen!==NAV)return;
     console.error("section render failed:",id,err);
     m.innerHTML=`<div class="soonbox"><div class="big">⚠️</div>
       <p>Couldn't load this section.</p>
       <p class="muted">${(err&&err.message)||err}</p>
-      <p style="margin-top:14px"><button class="btn sec" onclick="showSection('${id}')">Retry</button></p></div>`;
+      <p style="margin-top:14px"><button class="btn sec" onclick="showSection('${id}',true)">Retry</button></p></div>`;
+    SECTION_READY.add(id);
   });
 }
 
 /* ---------- overview + tasks ---------- */
 async function renderOverview(m){
   const gen=NAV, root=S.arch.id;
-  const [s,ds]=await Promise.all([
-    jget("/api/summary?root="+root), jget("/api/dups/summary?root="+root)]);
+  const [s,ds,fs]=await Promise.all([
+    jget("/api/summary?root="+root),
+    jget("/api/dups/summary?root="+root),
+    jget("/api/faces/summary?root="+root)]);
   if(gen!==NAV)return;   // user switched sections while these were loading
   S.dupsum=ds;
-  m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
+  S.facesum=fs;
+  m.innerHTML=`<div class="pagehead">
+      <div><h2 class="sec">Library overview</h2>
+      <p>Everything important about this archive, at a glance.</p></div>
+    </div>
     <div class="statrow">
-      <div class="stat" style="cursor:pointer" onclick="showSection('photos')"><div class="k">Total files</div><div class="v">${s.total.toLocaleString()} <small>· ${fmtBytes(s.size)}</small></div></div>
-      <div class="stat" style="cursor:pointer" onclick="showSection('dups')"><div class="k">Duplicates</div><div class="v">${ds.duplicates.toLocaleString()} <small>· ${fmtBytes(ds.reclaimable)}</small></div></div>
-      <div class="stat" style="cursor:pointer" onclick="showSection('timeline')"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()}</div></div>
-      <div class="stat" style="cursor:pointer" onclick="showSection('map')"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
+      <button class="stat" onclick="showSection('library')"><span class="metric-icon blue">${ICONS.library}</span><div><div class="k">All media</div><div class="v">${s.total.toLocaleString()}</div></div></button>
+      <button class="stat" onclick="showSection('timeline')"><span class="metric-icon violet">${ICONS.timeline}</span><div><div class="k">With a date</div><div class="v">${s.enriched.toLocaleString()}</div></div></button>
+      <button class="stat" onclick="showSection('places')"><span class="metric-icon green">${ICONS.places}</span><div><div class="k">With a location</div><div class="v">${s.with_gps.toLocaleString()}</div></div></button>
+      <button class="stat" onclick="showSection('dups')"><span class="metric-icon orange">${ICONS.dups}</span><div><div class="k">Duplicate copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div></button>
     </div>
-    <div class="panel"><h3>Archive status</h3>
-      <div id="syncstatus"></div>
-      <div id="jobarea"></div>
-    </div>
-    <div class="panel"><h3>By type</h3><div id="typebar"></div><table class="types" id="typetbl"></table></div>`;
+    <div class="overview-grid">
+      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div></div>
+        <div id="syncstatus"></div><div id="jobarea"></div>
+      </div>
+      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage by type</h3><p>${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div></div>
+        <div id="typebar"></div><table class="types" id="typetbl"></table>
+      </div>
+    </div>`;
   const types=s.types.filter(t=>t.count>0);
   const totalTypes=types.reduce((sum,t)=>sum+t.count,0)||1;
   const typebar=document.getElementById("typebar");
@@ -609,25 +1188,40 @@ async function renderOverview(m){
 function renderSyncPanel(){
   const el=document.getElementById("syncstatus"); if(!el)return;
   const active=S.activeJobs||{};
-  const runningKind=active.scan?"scan":active.enrich?"enrich":active.faces?"faces":active.places?"places":active.dedup?"dedup":active.semantic?"semantic":null;
-  if(runningKind){
-    el.innerHTML=`<div class="d"><span class="spin"></span>${JOB_LABEL[runningKind]} ${jobDescription(runningKind)}</div>`;
-    return;
-  }
   const f=S.fresh, s=S.summary;
-  if(!S.syncChecked){
-    el.innerHTML=`<div class="d"><span class="spin"></span>Looking for new files and pending work…</div>`;
-  } else if(S.syncCheckFailed){
-    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Couldn't check for new files yet — trying again shortly…</div>`;
-  } else if(f&&f.checked&&f.new_files>0){
-    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>${f.new_files.toLocaleString()} new file${f.new_files===1?"":"s"} found — scanning shortly…</div>`;
-  } else if(s&&s.total>s.enriched){
-    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Extracting dates &amp; metadata shortly…</div>`;
-  } else if(f&&f.not_faced>0){
-    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Detecting faces in ${f.not_faced.toLocaleString()} photo${f.not_faced===1?"":"s"} shortly…</div>`;
-  } else {
-    el.innerHTML=`<div class="d ok"><span class="dot ok"></span>Up to date — scanned, dated, faces &amp; duplicates.</div>`;
-  }
+  const checking=!S.syncChecked;
+  const card=(title,state,message,spinning=false)=>`<div class="health-task ${state}">
+    <div class="health-task-head">${spinning?'<span class="spin"></span>':`<span class="dot ${state==="ok"?"ok":state==="pending"?"pending":"check"}"></span>`}${title}</div>
+    <div class="health-task-state">${message}</div></div>`;
+  const scan=active.scan
+    ? card("Scan","running","Scanning files now",true)
+    : S.syncCheckFailed
+      ? card("Scan","error","Check will retry shortly")
+      : checking
+        ? card("Scan","running","Checking for new files",true)
+        : f&&f.new_files>0
+          ? card("Scan","pending",`${f.new_files.toLocaleString()} new file${f.new_files===1?"":"s"} queued`)
+          : card("Scan","ok",`${(s&&s.total||0).toLocaleString()} files catalogued`);
+  const dates=active.enrich
+    ? card("Dates & metadata","running","Reading metadata now",true)
+    : s&&s.total>s.enriched
+      ? card("Dates & metadata","pending",`${(s.total-s.enriched).toLocaleString()} item${s.total-s.enriched===1?"":"s"} waiting`)
+      : card("Dates & metadata","ok",`${(s&&s.enriched||0).toLocaleString()} items dated`);
+  const faces=active.faces
+    ? card("People","running","Detecting faces now",true)
+    : checking
+      ? card("People","running","Checking pending photos",true)
+      : f&&f.not_faced>0
+        ? card("People","pending",`${f.not_faced.toLocaleString()} photo${f.not_faced===1?"":"s"} waiting`)
+        : card("People","ok",S.facesum&&S.facesum.faces
+          ? `${S.facesum.faces.toLocaleString()} face${S.facesum.faces===1?"":"s"} found in ${S.facesum.photos_with_faces.toLocaleString()} photo${S.facesum.photos_with_faces===1?"":"s"}`
+          : `${(S.facesum&&S.facesum.scanned||0).toLocaleString()} photo${S.facesum&&S.facesum.scanned===1?"":"s"} analyzed, no faces found`);
+  const duplicates=active.dedup
+    ? card("Duplicates","running","Comparing media now",true)
+    : card("Duplicates","ok",S.dupsum&&S.dupsum.duplicates
+        ? `${S.dupsum.duplicates.toLocaleString()} redundant cop${S.dupsum.duplicates===1?"y":"ies"} found`
+        : "No redundant copies found");
+  el.innerHTML=`<div class="health-grid">${scan}${dates}${faces}${duplicates}</div>`;
 }
 async function loadFreshness(){
   S.fresh=null;
@@ -700,8 +1294,9 @@ async function renderDateSourceBar(){
 const TL_COL=TYPE_COL;
 async function renderTimeline(m){
   const gen=NAV;
-  S.timeline={bucket:"month",year:"",month:"",person:"",place:""};
-  m.innerHTML=`<h2 class="sec">Timeline</h2>
+  S.timeline={bucket:"month",year:"",month:"",people:[],place:""};
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Timeline</h2>
+      <p>See how your archive grows over time, then narrow it by date, people together, or place.</p></div></div>
     <div class="filterbar" id="tl-filterbar"></div>
     <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
     <canvas id="tlc2" width="1180" height="380"></canvas>
@@ -710,8 +1305,7 @@ async function renderTimeline(m){
     <div class="panel" id="dsbar">Loading…</div>`;
   await buildTimelineFilterBar();
   if(gen!==NAV)return;
-  drawTimeline("month");
-  renderDateSourceBar();
+  await Promise.all([drawTimeline("month"),renderDateSourceBar()]);
 }
 async function buildTimelineFilterBar(){
   const gen=NAV;
@@ -726,12 +1320,9 @@ async function buildTimelineFilterBar(){
       opt("","All years")+years.map(y=>opt(y,y)).join("")+`</select>`+
       `<select class="fsel" id="tl-month-filter" onchange="applyTimelineFilters()" disabled>`+
       opt("","All months")+`</select>`);
-  if(f.people&&f.people.length)
-    parts.push(`<select class="fsel" id="tl-person-filter" onchange="applyTimelineFilters()">`+
-      opt("","Anyone")+f.people.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
-  if(f.places&&f.places.length)
-    parts.push(`<select class="fsel" id="tl-place-filter" onchange="applyTimelineFilters()">`+
-      opt("","Anywhere")+f.places.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
+  parts.push(peopleFilterHTML("tl",f.people||[]));
+  parts.push(`<select class="fsel" id="tl-place-filter" onchange="applyTimelineFilters()" ${f.places&&f.places.length?"":"disabled"} title="${f.places&&f.places.length?"Filter by place":"Name places in Places to enable this filter"}">`+
+    opt("",f.places&&f.places.length?"Places — anywhere":"Places — none named yet")+(f.places||[]).map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
   parts.push(`<button class="linkbtn" id="tl-clear" onclick="clearTimelineFilters()" style="display:none">Clear filters</button>`);
   bar.innerHTML=parts.join("");
   S.timelineOpts=f;
@@ -756,16 +1347,18 @@ function applyTimelineFilters(){
   t.year=selVal("tl-year-filter");
   const mm=selVal("tl-month-filter");
   t.month=(t.year&&mm)?`${t.year}-${mm}`:"";
-  t.person=selVal("tl-person-filter");
+  t.people=checkedPeople("tl");
   t.place=selVal("tl-place-filter");
+  updatePeopleFilterLabel("tl",S.timelineOpts.people||[]);
   const clear=document.getElementById("tl-clear");
-  if(clear)clear.style.display=(t.year||t.person||t.place)?"":"none";
+  if(clear)clear.style.display=(t.year||t.people.length||t.place)?"":"none";
   drawTimeline(t.bucket);
 }
 function clearTimelineFilters(){
-  ["tl-year-filter","tl-person-filter","tl-place-filter"].forEach(id=>{
+  ["tl-year-filter","tl-place-filter"].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value="";
   });
+  clearPeopleChecks("tl");
   const msel=document.getElementById("tl-month-filter");
   if(msel){msel.innerHTML='<option value="">All months</option>';msel.disabled=true;}
   applyTimelineFilters();
@@ -835,14 +1428,14 @@ async function drawTimeline(bucket){
   t.bucket=bucket;
   const p=new URLSearchParams({root:S.arch.id,bucket});
   if(t.year)p.set("year",t.year); if(t.month)p.set("month",t.month);
-  if(t.person)p.set("person",t.person); if(t.place)p.set("place",t.place);
+  t.people.forEach(id=>p.append("person",id)); if(t.place)p.set("place",t.place);
   const {series}=await jget("/api/timeline?"+p);
   const cv2=document.getElementById("tlc2");
   const leg=document.getElementById("tllegend");
   if(!cv2)return;
   if(!series.length){
     cv2.getContext("2d").clearRect(0,0,cv2.width,cv2.height);
-    const filtered=t.year||t.person||t.place;
+    const filtered=t.year||t.people.length||t.place;
     leg.innerHTML=`<span class="muted">${filtered?"No dated media matches these filters.":"No dated media yet, run Extract on the Overview tab."}</span>`;
     return;
   }
@@ -862,43 +1455,95 @@ async function drawTimeline(bucket){
   drawTypeLegend("tllegend", ordered, totalsByType);
 }
 
-/* ---------- map (Leaflet: place clusters, optional basemap) ----------
+/* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
    Photos within 300m of each other are grouped server-side into one named
    "place" (organize_archive/geo/clusters.py). The screen-pixel bucketing
    below is a second, purely visual layer on top of that: at far zoom it
    still merges nearby PLACES into one numbered bubble; at close zoom each
    place stands alone as a small thumbnail collage + name. ---------- */
+const MAP_TILE_STYLES={
+  light:{
+    url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    options:{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
+  },
+  dark:{
+    url:"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    options:{maxZoom:20,subdomains:"abcd",attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'}
+  }
+};
+const MAP_WORLD_BOUNDS=L.latLngBounds(
+  [[-85.0511287798,-1000000],[85.0511287798,1000000]]);
+function themedTileLayer(){
+  const style=MAP_TILE_STYLES[currentTheme()];
+  return L.tileLayer(style.url,style.options);
+}
+function syncMapZoomFloor(map){
+  if(!map)return;
+  // A Web Mercator world is 256 px tall at zoom 0. This fractional zoom
+  // makes it exactly as tall as the map, so zooming out can never expose
+  // empty space beyond its north or south edge.
+  const minZoom=Math.log(map.getSize().y/256)/Math.LN2;
+  map.setMinZoom(minZoom);
+}
+function configureMapViewport(map){
+  syncMapZoomFloor(map);
+  map.on("resize",()=>syncMapZoomFloor(map));
+}
+function replaceMapTiles(map,tiles){
+  if(!map)return tiles;
+  if(tiles)map.removeLayer(tiles);
+  return themedTileLayer().addTo(map);
+}
+function syncMapTiles(){
+  if(MAP)MAP_TILES=replaceMapTiles(MAP,MAP_TILES);
+  if(MPICK)MPICK_TILES=replaceMapTiles(MPICK,MPICK_TILES);
+}
 let MAP=null, MAP_LAYER=null, MAP_TILES=null, MAP_CLUSTERS=[];
-function basemapOn(){ return localStorage.getItem("basemap")!=="off"; }
 async function renderMap(m){
-  m.innerHTML=`<h2 class="sec">Map</h2>
-    <div class="chips">
-      <span class="muted" id="mapnote">Loading…</span>
-      <label style="font-size:12px;cursor:pointer;margin-left:auto">
-        <input type="checkbox" id="basemap" ${basemapOn()?"checked":""} onchange="toggleBasemap()"> Street map
-      </label>
+  const gen=NAV,root=S.arch.id;
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Places</h2>
+      <p>Explore geolocated media and give meaningful names to the places you return to.</p></div></div>
+    <div class="statrow map-stats">
+      <div class="stat"><div><div class="k">Photos with location</div><div class="v" id="map-photo-count">—</div></div></div>
+      <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">—</div></div></div>
+      <div class="stat"><div><div class="k">Named places</div><div class="v" id="map-named-count">—</div></div></div>
     </div>
     <div class="mapwrap">
       <div id="lmap"></div>
-      <div id="mapside"><div class="empty">Click a place on the map to see its photos here.</div></div>
+      <div id="mapside"></div>
     </div>
-    <div class="muted" style="margin-top:8px;font-size:12px">Photos within 300m of each other are grouped into one named place — click a place to browse it; zoom out and nearby places bundle into a numbered cluster.
-      <b>Street map</b> fetches map tiles online (only coordinates are sent — your photos never leave this machine).</div>`;
+    <div class="map-footnote">Nearby photos are grouped into places. Street map tiles are fetched online using coordinates only; your media stays on this computer.</div>
+    <div id="placegallery"></div>`;
   if(MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
   S.mapSel=null;
-  const {clusters}=await jget("/api/map/clusters?root="+S.arch.id);
+  const {clusters}=await jget("/api/map/clusters?root="+root);
+  if(gen!==NAV)return;
   MAP_CLUSTERS=clusters;
-  const total=clusters.reduce((a,c)=>a+c.count,0);
-  document.getElementById("mapnote").textContent=clusters.length
-    ? `${total.toLocaleString()} geolocated items in ${clusters.length.toLocaleString()} places`
-    : "No geolocated media yet — places appear automatically as GPS is found in Takeout or EXIF.";
-  MAP=L.map("lmap",{worldCopyJump:true,attributionControl:false});
-  applyBasemap();
-  if(!clusters.length){ MAP.setView([0,0],2); return; }
+  updateMapStats();
+  renderPlaceGallery();
+  MAP=L.map("lmap",{
+    worldCopyJump:true,zoomSnap:0,
+    maxBounds:MAP_WORLD_BOUNDS,maxBoundsViscosity:1
+  });
+  configureMapViewport(MAP);
+  MAP_TILES=themedTileLayer().addTo(MAP);
+  if(!clusters.length){
+    MAP.setView([0,0],2);
+    document.querySelector(".mapwrap").insertAdjacentHTML("beforeend",`<div class="map-empty">
+      <div class="big">⌖</div><h3>No locations yet</h3>
+      <p>Places will appear here automatically when Archive finds GPS information in EXIF or Takeout metadata.</p></div>`);
+    return;
+  }
   const b=L.latLngBounds(clusters.map(c=>[c.lat,c.lon]));
   MAP.fitBounds(b,{padding:[40,40],maxZoom:14});
   MAP.on("moveend zoomend",drawClusters);
   drawClusters();
+}
+function updateMapStats(){
+  const total=MAP_CLUSTERS.reduce((sum,cluster)=>sum+cluster.count,0);
+  const named=MAP_CLUSTERS.filter(cluster=>cluster.name&&cluster.name.trim()).length;
+  const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value.toLocaleString();};
+  set("map-photo-count",total);set("map-place-count",MAP_CLUSTERS.length);set("map-named-count",named);
 }
 function collageHTML(ids){
   if(!ids.length)return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:20px">📍</div>`;
@@ -906,57 +1551,121 @@ function collageHTML(ids){
   const imgs=ids.slice(0,4).map(id=>`<img src="/thumb/${id}" loading="lazy" onerror="this.remove()">`).join("");
   return `<div class="cgrid n${n}">${imgs}</div>`;
 }
+function placeCollage(ids){
+  ids=(ids||[]).filter(Boolean).slice(0,4);
+  if(!ids.length)return `<div class="placecollage"><div class="placeempty">📍</div></div>`;
+  return `<div class="placecollage">${collageHTML(ids)}</div>`;
+}
+function renderPlaceGallery(){
+  const wrap=document.getElementById("placegallery");if(!wrap)return;
+  if(!MAP_CLUSTERS.length){wrap.innerHTML="";return;}
+  wrap.innerHTML=`<div class="place-gallery-head"><h3>Places</h3>
+      <span class="muted">Named places first · then most photos</span></div>
+    <div class="people" id="placegrid"></div>`;
+  const grid=document.getElementById("placegrid");
+  [...MAP_CLUSTERS].sort((a,b)=>{
+    const aUnnamed=!(a.name&&a.name.trim()),bUnnamed=!(b.name&&b.name.trim());
+    return aUnnamed-bUnnamed||b.count-a.count||a.id-b.id;
+  }).forEach(place=>grid.appendChild(placeCard(place)));
+}
+function placeCard(place){
+  const card=document.createElement("div");card.className="pcard";
+  card.onclick=()=>showPlaceFromGallery(place.id);
+  const name=place.name?esc(place.name):"Name this place";
+  card.innerHTML=placeCollage(place.thumb_ids)+`<div class="pmeta">
+    <button class="pname ${place.name?"":"un"}" type="button">${name}</button>
+    <div class="pcount">${place.count.toLocaleString()} photo${place.count===1?"":"s"}</div></div>`;
+  card.querySelector(".pname").onclick=event=>{
+    event.stopPropagation();
+    editPlaceCardName(card,place);
+  };
+  return card;
+}
+function showPlaceFromGallery(id){
+  const place=MAP_CLUSTERS.find(cluster=>cluster.id===id);
+  if(MAP&&place)MAP.flyTo([place.lat,place.lon],Math.max(MAP.getZoom(),14));
+  selectPlaceCluster(id);
+  document.getElementById("lmap")?.scrollIntoView({behavior:"smooth",block:"center"});
+}
+function editPlaceCardName(card,place){
+  const meta=card.querySelector(".pmeta");if(!meta)return;
+  card.onclick=null;
+  meta.className="pmeta pmeta-editing";
+  meta.innerHTML=`<input value="${esc(place.name||"")}" placeholder="Place name" aria-label="Place name">
+    <div class="pcount">${place.count.toLocaleString()} photo${place.count===1?"":"s"} · Enter or click away to save</div>`;
+  const input=meta.querySelector("input");
+  input.onclick=event=>event.stopPropagation();
+  let finished=false;
+  input.addEventListener("blur",()=>{if(!finished){finished=true;savePlaceCardName(card,place,input);}});
+  input.addEventListener("keydown",event=>{
+    if(event.key==="Enter"){event.preventDefault();input.blur();}
+    if(event.key==="Escape"){finished=true;card.replaceWith(placeCard(place));}
+  });
+  input.focus();input.select();
+}
+async function savePlaceCardName(card,place,input){
+  const name=input.value.trim();
+  if(name===(place.name||"")){card.replaceWith(placeCard(place));return;}
+  input.disabled=true;
+  let result;
+  try{result=await jpost("/api/map/cluster/rename",{cluster_id:place.id,name});}
+  catch(error){result={error:String(error)};}
+  if(!result||result.error){
+    toast("Couldn’t save the place name.",true);card.replaceWith(placeCard(place));return;
+  }
+  place.name=name||null;
+  updateMapStats();
+  renderPlaceGallery();
+  drawClusters();
+  if(S.mapSel===place.id)selectPlaceCluster(place.id);
+}
 async function selectPlaceCluster(id){
   S.mapSel=id;
-  drawClusters();
   const side=document.getElementById("mapside");
+  const wrap=side&&side.closest(".mapwrap");
+  if(wrap)wrap.classList.add("has-selection");
+  setTimeout(()=>{if(MAP){MAP.invalidateSize();drawClusters();}},0);
   side.innerHTML=`<div class="muted">Loading…</div>`;
   const c=await jget("/api/map/cluster/"+id);
   if(S.mapSel!==id)return; // superseded by a newer click
-  const safeName=(c.name||"").replace(/'/g,"\\'").replace(/"/g,"&quot;");
+  const safeName=(c.name||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
+  const displayName=c.name?esc(c.name):"Name this place";
   side.innerHTML=`
     <div class="mapside-name" id="mapsidename">
-      <span id="mapsidenametext">${c.name?c.name:'<span class="muted">Unnamed place</span>'}</span>
-      <button class="linkbtn" onclick="editClusterName(${id},'${safeName}')">${c.name?"Rename":"Name this place"}</button>
+      <div class="mapside-title"><button class="person-name-button ${c.name?"":"un"}" onclick="editClusterName(${id},'${safeName}')">${displayName}</button>
+        <span class="muted">${c.members.length.toLocaleString()} item${c.members.length===1?"":"s"}</span></div>
+      <div class="mapside-actions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place">×</button></div>
     </div>
-    <div class="muted" style="margin:2px 0 10px;font-size:12px">${c.members.length.toLocaleString()} item${c.members.length===1?"":"s"}</div>
     <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>`;
   const grid=document.getElementById("mapsidegrid");
   c.members.forEach(it=>grid.appendChild(tile(it)));
 }
 function editClusterName(id, current){
   const box=document.getElementById("mapsidename");
-  box.innerHTML=`<input id="mapsidenameinput" value="${current}" placeholder="Name this place"
-      style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit">
-    <div style="margin-top:6px;display:flex;gap:8px">
-      <button class="btn" onclick="saveClusterName(${id})">Save</button>
-      <button class="btn sec" onclick="selectPlaceCluster(${id})">Cancel</button>
-    </div>`;
-  document.getElementById("mapsidenameinput").focus();
+  box.innerHTML=`<div class="inline-name-editor"><input id="mapsidenameinput" value="${esc(current)}" placeholder="e.g. Grandma’s house" aria-label="Place name"></div>`;
+  const input=document.getElementById("mapsidenameinput");input.focus();input.select();
+  let finished=false;
+  input.addEventListener("blur",()=>{if(!finished){finished=true;saveClusterName(id,input);}});
+  input.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){e.preventDefault();input.blur();}
+    if(e.key==="Escape"){finished=true;selectPlaceCluster(id);}
+  });
 }
-async function saveClusterName(id){
-  const name=document.getElementById("mapsidenameinput").value.trim();
-  await jpost("/api/map/cluster/rename",{cluster_id:id,name});
+async function saveClusterName(id,input){
+  const name=input.value.trim();input.disabled=true;
+  const result=await jpost("/api/map/cluster/rename",{cluster_id:id,name});
+  if(!result||result.error){toast("Couldn’t save the place name.",true);selectPlaceCluster(id);return;}
   const mc=MAP_CLUSTERS.find(c=>c.id===id); if(mc)mc.name=name||null;
+  updateMapStats();
+  renderPlaceGallery();
   drawClusters();
   selectPlaceCluster(id);
 }
-function applyBasemap(){
-  if(!MAP)return;
-  if(basemapOn()){
-    if(!MAP_TILES){
-      MAP_TILES=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19});
-    }
-    MAP_TILES.addTo(MAP);
-    document.getElementById("lmap").style.background="";
-  }else if(MAP_TILES){
-    MAP.removeLayer(MAP_TILES);
-    document.getElementById("lmap").style.background="#11141a";
-  }
-}
-function toggleBasemap(){
-  localStorage.setItem("basemap",document.getElementById("basemap").checked?"on":"off");
-  applyBasemap();
+function closePlaceCluster(){
+  S.mapSel=null;
+  const wrap=document.querySelector(".mapwrap");if(wrap)wrap.classList.remove("has-selection");
+  const side=document.getElementById("mapside");if(side)side.innerHTML="";
+  setTimeout(()=>{if(MAP){MAP.invalidateSize();drawClusters();}},0);
 }
 function drawClusters(){
   if(!MAP)return;
@@ -979,7 +1688,7 @@ function drawClusters(){
       const icon=L.divIcon({className:"",iconSize:[46,46],html:
         `<div class="mk${c.id===S.mapSel?" mk-sel":""}">${collageHTML(c.thumb_ids)}${badge}</div>`});
       const mk=L.marker([lat,lon],{icon}).addTo(MAP_LAYER).on("click",()=>selectPlaceCluster(c.id));
-      mk.bindTooltip(c.name||"Unnamed place",{direction:"top",offset:[0,-24],opacity:0.95});
+      mk.bindTooltip(c.name||"Name this place",{direction:"top",offset:[0,-24],opacity:0.95});
     }else{
       const total=grp.reduce((a,c)=>a+c.count,0);
       const rep=grp[0].thumb_ids[0];
@@ -998,23 +1707,33 @@ const MONTH_NAMES=["January","February","March","April","May","June","July",
 async function renderPhotos(m){
   const gen=NAV;
   S.gallery=[];
-  S.grid={offset:0,loaded:0,gen:0,year:"",month:"",type:"",person:"",place:"",dups:false,query:""};
-  m.innerHTML=`<div class="eyebrow">${esc(S.arch.name)}</div><h2 class="sec">Library</h2>
-    <div class="panel" style="padding:12px 14px">
-      <form onsubmit="return semanticSubmit(event)" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="semantic-q" aria-label="Search visible media" placeholder="Filter visible media by file name"
-          style="flex:1;min-width:220px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit">
-        <button class="btn" type="submit">Filter</button>
-      </form>
-      <div id="semantic-status" class="muted" style="font-size:12px;margin-top:8px">Search stays on this computer. Filters and date groups refine the wall below.</div>
+  S.grid={offset:0,loaded:0,gen:0,year:"",month:"",type:"",people:[],inferredPeople:[],
+    place:"",rawQuery:"",query:"",expandedQuery:"",expandedEmbeddingQuery:""};
+  m.innerHTML=`<div class="pagehead">
+      <div><h2 class="sec">Library</h2>
+      <p>Browse and search every item, with filters that work together.</p></div>
     </div>
-    <div class="filterbar" id="filterbar"></div>
-    <div class="chips">
-      <label style="font-size:12px;cursor:pointer"><input type="checkbox" id="showdups" onchange="toggleDups()"> Show hidden duplicates</label>
-      <span class="muted" id="gridcount" style="margin-left:auto"></span>
+    <div class="library-controls">
+      <form class="library-search" onsubmit="return semanticSubmit(event)">
+        <div class="semantic-composer" id="semantic-q" contenteditable="true" role="textbox"
+          aria-label="Search your library by description" data-placeholder="Search your library — describe anything"
+          spellcheck="true" oninput="onSemanticComposerInput()" onkeydown="onSemanticComposerKeydown(event)"
+          onpaste="onSemanticComposerPaste(event)"></div>
+        <button class="btn" type="submit">Search</button>
+      </form>
+      <div class="search-expansion" id="search-expansion" hidden></div>
+      <div class="library-toolbar">
+        <div class="filterbar" id="filterbar"></div>
+        <div class="chips">
+          <span class="muted" id="gridcount"></span>
+        </div>
+      </div>
     </div>
     <div class="grid" id="grid"></div><div class="more" id="gmore" style="display:none">
     <button class="btn sec" onclick="loadGrid()">Load more</button></div>`;
+  const composer=document.getElementById("semantic-q");
+  composer.addEventListener("compositionstart",()=>S.composerComposing=true);
+  composer.addEventListener("compositionend",()=>{S.composerComposing=false;renderSemanticComposer(false);});
   await buildFilterBar();
   if(gen!==NAV)return;
   loadGrid();
@@ -1037,12 +1756,197 @@ async function updateSemanticStatus(){
     if(j||s.pending)setTimeout(updateSemanticStatus, 2000);
   }catch(e){el.textContent="Semantic search needs VOYAGE_API_KEY in the app environment.";}
 }
-function semanticSubmit(ev){
+function normalizedWords(value){
+  return (value||"").normalize("NFD").replace(/\p{M}/gu,"").toLocaleLowerCase()
+    .replace(/[’']/g,"").replace(/[^\p{L}\p{N}]+/gu," ").trim();
+}
+function editDistance(a,b){
+  const row=Array.from({length:b.length+1},(_,i)=>i);
+  for(let i=1;i<=a.length;i++){
+    let diagonal=row[0];row[0]=i;
+    for(let j=1;j<=b.length;j++){
+      const above=row[j],cost=a[i-1]===b[j-1]?0:1;
+      row[j]=Math.min(row[j]+1,row[j-1]+1,diagonal+cost);diagonal=above;
+    }
+  }
+  return row[b.length];
+}
+function personWordMatches(queryWord,nameWord){
+  if(queryWord===nameWord)return {matched:true,exact:true};
+  // Only the typed word may be a prefix of the name. This lets "mari " match
+  // María but prevents a longer unrelated word such as "marinero" from doing so.
+  if(queryWord.length>=4&&nameWord.startsWith(queryWord))return {matched:true,exact:false};
+  if(queryWord.length>=5&&Math.abs(nameWord.length-queryWord.length)<=1&&
+      editDistance(nameWord,queryWord)<=1)return {matched:true,exact:false};
+  return {matched:false,exact:false};
+}
+function extractPeopleMentions(query,people,commitEnd=false){
+  const wordPattern=/[\p{L}\p{M}]+(?:[’'][\p{L}\p{M}]+)*/gu;
+  const words=[...query.matchAll(wordPattern)].map(match=>{
+    const source=match[0],withoutPossessive=source.replace(/[’']s$/iu,"");
+    return {start:match.index,end:match.index+withoutPossessive.length,source:withoutPossessive,
+      norm:normalizedWords(withoutPossessive)};
+  });
+  const candidates=[];
+  (people||[]).forEach(person=>{
+    const nameWords=normalizedWords(person.name).split(" ").filter(Boolean);
+    if(!nameWords.length)return;
+    for(let i=0;i+nameWords.length<=words.length;i++){
+      let exact=0,matched=true;
+      for(let j=0;j<nameWords.length;j++){
+        const result=personWordMatches(words[i+j].norm,nameWords[j]);
+        if(!result.matched){matched=false;break;}
+        if(result.exact)exact++;
+      }
+      if(matched)candidates.push({person,start:words[i].start,end:words[i+nameWords.length-1].end,
+        source:query.slice(words[i].start,words[i+nameWords.length-1].end),
+        wordCount:nameWords.length,exact});
+    }
+  });
+  // Prefer the longest and most exact name at each position. Equally-good
+  // ambiguous prefixes are left as text instead of silently choosing a person.
+  const mentions=[];let usedUntil=-1;
+  [...new Set(candidates.map(candidate=>candidate.start))].sort((a,b)=>a-b).forEach(start=>{
+    if(start<usedUntil)return;
+    const here=candidates.filter(candidate=>candidate.start===start)
+      .sort((a,b)=>b.wordCount-a.wordCount||b.exact-a.exact);
+    if(!here.length)return;
+    const best=here[0],tied=here.filter(candidate=>
+      candidate.wordCount===best.wordCount&&candidate.exact===best.exact);
+    if(tied.length>1)return;
+    const next=query.slice(best.end,best.end+1);
+    best.committed=commitEnd||
+      best.end<query.length&&!!next.match(/[^\p{L}\p{M}]/u)||
+      best.end===query.length&&best.exact===best.wordCount;
+    mentions.push(best);usedUntil=best.end;
+  });
+  return mentions;
+}
+function peopleMentionedInQuery(query,people){
+  return [...new Set(extractPeopleMentions(query,people,true).map(
+    mention=>String(mention.person.id)))];
+}
+function semanticTextWithoutPeople(query,mentions){
+  let cursor=0,output="";
+  mentions.forEach(mention=>{output+=query.slice(cursor,mention.start)+" ";cursor=mention.end;});
+  output+=query.slice(cursor);
+  return output.replace(/\s+/g," ").replace(/^\s*[’']s\b\s*/i,"")
+    .replace(/^\s*(?:and|with|y|con)\b\s*/i,"")
+    .replace(/\s+([,.;!?])/g,"$1").trim();
+}
+function semanticComposerText(){
+  const composer=document.getElementById("semantic-q");
+  return composer?(composer.textContent||"").replace(/\u00a0/g," "):"";
+}
+function semanticComposerCaret(){
+  const composer=document.getElementById("semantic-q"),selection=getSelection();
+  if(!composer||!selection.rangeCount||!composer.contains(selection.anchorNode))return null;
+  const range=selection.getRangeAt(0).cloneRange();range.selectNodeContents(composer);
+  range.setEnd(selection.anchorNode,selection.anchorOffset);return range.toString().length;
+}
+function setSemanticComposerCaret(offset){
+  const composer=document.getElementById("semantic-q");if(!composer||offset==null)return;
+  const range=document.createRange();let remaining=offset;
+  for(const node of composer.childNodes){
+    const length=(node.textContent||"").length;
+    if(node.nodeType===Node.TEXT_NODE&&remaining<=length){
+      range.setStart(node,remaining);range.collapse(true);
+      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);return;
+    }
+    if(node.nodeType===Node.ELEMENT_NODE&&remaining<=length){
+      // Person tokens are contenteditable=false, so a caret restored inside one
+      // leaves the composer focused but unable to accept the next character.
+      // Treat the whole token as one atomic item and restore at its edge.
+      if(remaining===0)range.setStartBefore(node);
+      else range.setStartAfter(node);
+      range.collapse(true);
+      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);return;
+    }
+    remaining-=length;
+  }
+  range.selectNodeContents(composer);range.collapse(false);
+  const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+}
+function renderSemanticComposer(commitEnd=false){
+  const composer=document.getElementById("semantic-q");if(!composer||S.composerComposing)return;
+  const query=semanticComposerText(),caret=semanticComposerCaret();
+  const mentions=extractPeopleMentions(query,(S.filterOpts&&S.filterOpts.people)||[],commitEnd)
+    .filter(mention=>mention.committed);
+  const fragment=document.createDocumentFragment();let cursor=0;
+  mentions.forEach(mention=>{
+    if(mention.start>cursor)fragment.append(document.createTextNode(query.slice(cursor,mention.start)));
+    const token=document.createElement("span");
+    token.className="person-token";
+    token.dataset.personId=mention.person.id;
+    token.contentEditable="false";
+    token.dataset.tooltip=`Filters to media containing ${mention.person.name}`;
+    token.tabIndex=0;
+    token.setAttribute("aria-label",`${mention.person.name}, person filter`);
+    token.textContent=mention.source;
+    fragment.append(token);cursor=mention.end;
+  });
+  if(cursor<query.length)fragment.append(document.createTextNode(query.slice(cursor)));
+  composer.replaceChildren(fragment);
+  if(caret!=null){
+    composer.focus({preventScroll:true});
+    setSemanticComposerCaret(caret);
+  }
+}
+function onSemanticComposerInput(){renderSemanticComposer(false);}
+function onSemanticComposerKeydown(event){
+  if(event.key==="Enter"){event.preventDefault();event.currentTarget.closest("form").requestSubmit();}
+}
+function onSemanticComposerPaste(event){
+  event.preventDefault();
+  document.execCommand("insertText",false,event.clipboardData.getData("text/plain"));
+}
+function setPeopleChecks(prefix,ids){
+  const chosen=new Set(ids.map(String));
+  document.querySelectorAll(`#${prefix}-people-filter input[type="checkbox"]`)
+    .forEach(input=>input.checked=chosen.has(input.value));
+}
+function renderSearchExpansion(){
+  const el=document.getElementById("search-expansion"),g=S.grid;
+  if(!el||!g||!g.expandedQuery){if(el)el.hidden=true;return;}
+  el.hidden=false;
+  el.innerHTML=`<span>Searching locally in English: <strong>${esc(g.expandedQuery)}</strong></span>`;
+}
+async function semanticSubmit(ev){
   ev.preventDefault();
-  const q=(document.getElementById("semantic-q").value||"").trim().toLowerCase();
-  document.querySelectorAll("#grid .tile").forEach(tile=>tile.hidden=!!q&&!tile.dataset.name.includes(q));
-  const count=[...document.querySelectorAll("#grid .tile")].filter(tile=>!tile.hidden).length;
-  document.getElementById("gridcount").textContent=q?`${count} visible match${count===1?"":"es"}`:"";
+  const submission=++SEARCH_SUBMISSION,form=ev.currentTarget;
+  const submit=form.querySelector('button[type="submit"]'),oldLabel=submit.textContent;
+  const rawQuery=semanticComposerText().trim();
+  const g=S.grid;
+  const mentions=extractPeopleMentions(rawQuery,(S.filterOpts&&S.filterOpts.people)||[],true);
+  const mentioned=[...new Set(mentions.map(mention=>String(mention.person.id)))];
+  const previouslyInferred=new Set((g.inferredPeople||[]).map(String));
+  const manuallySelected=checkedPeople("f").filter(id=>!previouslyInferred.has(String(id)));
+  const selected=[...new Set([...manuallySelected,...mentioned])];
+  setPeopleChecks("f",selected);
+  g.inferredPeople=mentioned;
+  g.people=selected;
+  updatePeopleFilterLabel("f",S.filterOpts.people||[]);
+  const menu=document.getElementById("f-people-filter");if(menu)menu.removeAttribute("open");
+  // The visible sentence stays intact, but recognized names are represented by
+  // structured filters and removed from the text embedded by Voyage.
+  g.rawQuery=rawQuery;
+  // Natural-language image retrieval should not depend on how Caps Lock was
+  // used. Keep rawQuery intact for the composer, but normalize the text sent
+  // through translation and semantic embedding.
+  g.query=semanticTextWithoutPeople(rawQuery,mentions).toLocaleLowerCase();
+  renderSemanticComposer(true);
+  if(submit){submit.disabled=true;submit.textContent="Searching…";}
+  const expandedQuery=await localEnglishTranslation(g.query);
+  if(submission!==SEARCH_SUBMISSION||S.grid!==g)return false;
+  g.expandedQuery=expandedQuery;
+  g.expandedEmbeddingQuery=visualSearchExpansion(expandedQuery);
+  renderSearchExpansion();
+  if(submit){submit.disabled=false;submit.textContent=oldLabel;}
+  g.offset=0; g.loaded=0; g.gen++; g.lastHeading=null;
+  S.gallery=[];
+  const grid=document.getElementById("grid"); if(grid)grid.innerHTML="";
+  updateClearBtn();
+  loadGrid();
   return false;
 }
 async function buildFilterBar(){
@@ -1063,14 +1967,13 @@ async function buildFilterBar(){
   if(f.types&&f.types.length>1)
     parts.push(`<select class="fsel" id="f-type" onchange="applyFilters()">`+
       opt("","All types")+f.types.map(t=>opt(t,cap(t))).join("")+`</select>`);
-  if(f.people&&f.people.length)
-    parts.push(`<select class="fsel" id="f-person" onchange="applyFilters()">`+
-      opt("","Anyone")+f.people.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
-  if(f.places&&f.places.length)
-    parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()">`+
-      opt("","Anywhere")+f.places.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
+  // People is a checkbox menu because several people can be joined together.
+  parts.push(peopleFilterHTML("f",f.people||[]));
+  parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()" ${f.places&&f.places.length?"":"disabled"} title="${f.places&&f.places.length?"Filter by place":"Name places in Places to enable this filter"}">`+
+    opt("",f.places&&f.places.length?"Places — anywhere":"Places — none named yet")+(f.places||[]).map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
   parts.push(`<button class="linkbtn" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
   bar.innerHTML=parts.join("");
+  renderSemanticComposer(false);
 }
 function onYearChange(){
   const y=document.getElementById("f-year").value;
@@ -1090,14 +1993,43 @@ function onYearChange(){
   applyFilters();
 }
 function selVal(id){const e=document.getElementById(id);return e?e.value:"";}
+function peopleFilterHTML(prefix,people){
+  if(!people.length)
+    return `<span class="fsel filter-placeholder" title="Name people in People to enable this filter">People — none named yet</span>`;
+  return `<details class="multi-filter" id="${prefix}-people-filter">
+    <summary class="fsel"><span id="${prefix}-people-label">People — anyone</span></summary>
+    <div class="multi-menu">${people.map(p=>`<label class="multi-option">
+      <input type="checkbox" value="${p.id}" onchange="onPeopleFilterChange('${prefix}')"><span>${esc(p.name)}</span>
+    </label>`).join("")}
+    <div class="multi-help">Selecting more than one person shows media containing everyone selected.</div></div>
+  </details>`;
+}
+function checkedPeople(prefix){
+  return [...document.querySelectorAll(`#${prefix}-people-filter input:checked`)].map(e=>e.value);
+}
+function clearPeopleChecks(prefix){
+  document.querySelectorAll(`#${prefix}-people-filter input:checked`).forEach(e=>e.checked=false);
+}
+function updatePeopleFilterLabel(prefix,people){
+  const label=document.getElementById(`${prefix}-people-label`); if(!label)return;
+  const ids=checkedPeople(prefix), names=ids.map(id=>(people.find(p=>String(p.id)===id)||{}).name).filter(Boolean);
+  label.textContent=!names.length?"People — anyone":names.length===1?names[0]:
+    names.length===2?`${names[0]} + ${names[1]}`:`${names.length} people together`;
+  label.closest("summary").title=names.length>1?"Only media containing all selected people":names.join("");
+}
+function onPeopleFilterChange(prefix){
+  if(prefix==="tl")applyTimelineFilters();
+  else{if(S.grid)S.grid.inferredPeople=[];applyFilters();}
+}
 function applyFilters(){
   const g=S.grid;
   g.year=selVal("f-year");
   const mm=selVal("f-month");
   g.month=(g.year&&mm)?`${g.year}-${mm}`:"";
   g.type=selVal("f-type");
-  g.person=selVal("f-person");
+  g.people=checkedPeople("f");
   g.place=selVal("f-place");
+  updatePeopleFilterLabel("f",S.filterOpts.people||[]);
   g.offset=0; g.loaded=0; g.gen++;
   g.lastHeading=null;
   S.gallery=[];
@@ -1106,53 +2038,58 @@ function applyFilters(){
   loadGrid();
 }
 function clearFilters(){
-  ["f-year","f-type","f-person","f-place"].forEach(id=>{const e=document.getElementById(id);if(e)e.value="";});
+  ["f-year","f-type","f-place"].forEach(id=>{const e=document.getElementById(id);if(e)e.value="";});
+  clearPeopleChecks("f");
+  S.grid.inferredPeople=[];
   const msel=document.getElementById("f-month");
   if(msel){msel.innerHTML='<option value="">All months</option>';msel.disabled=true;}
   applyFilters();
 }
 function updateClearBtn(){
   const g=S.grid, b=document.getElementById("f-clear");
-  if(b)b.style.display=(g.year||g.month||g.type||g.person||g.place)?"inline":"none";
-}
-function toggleDups(){
-  S.grid.dups=document.getElementById("showdups").checked;
-  S.grid.offset=0; S.grid.loaded=0; S.grid.gen++;
-  S.grid.lastHeading=null;
-  S.gallery=[];
-  document.getElementById("grid").innerHTML=""; loadGrid();
+  if(b)b.style.display=(g.year||g.month||g.type||g.people.length||g.place)?"inline":"none";
 }
 async function loadGrid(){
-  const g=S.grid, gen=g.gen, p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
-  if(g.dups)p.set("dups","1");
+  const g=S.grid, gen=g.gen,grid=document.getElementById("grid"),
+    more=document.getElementById("gmore"),gc=document.getElementById("gridcount");
+  if(!grid)return;
+  const p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
   if(g.type)p.set("type",g.type); if(g.year)p.set("year",g.year);
   if(g.month)p.set("month",g.month);
-  if(g.person)p.set("person",g.person); if(g.place)p.set("place",g.place);
-  if(g.query)p.set("q",g.query);
-  const res=await jget("/api/media?"+p);
+  g.people.forEach(id=>p.append("person",id)); if(g.place)p.set("place",g.place);
+  if(g.query){
+    // When local translation succeeds it replaces, rather than supplements,
+    // the Spanish semantic query. This avoids admitting weak matches unique to
+    // the original-language vector. English and fallback searches use g.query.
+    p.append("q",g.expandedEmbeddingQuery||g.query);
+  }
+  const endpoint=g.query?"/api/browse/semantic/search?":"/api/media?";
+  const res=await jget(endpoint+p);
   // Bail if a newer filter change (or a section switch) superseded this fetch
   // while it was in flight, so a slow response can't paint stale tiles.
   if(S.grid!==g||g.gen!==gen)return;
-  const grid=document.getElementById("grid"); if(!grid)return;
   // A failed/empty response has no items array; treat it as "no more" so a
   // clear+fetch that errors can't leave a bare "Load more" button behind.
   const items=(res&&res.items)||[];
   S.gallery=(S.gallery||[]).concat(items.map(it=>it.id));
   items.forEach(it=>{
-    const heading=it.date?(it.date.slice(0,7)||"Unknown date"):"Unknown date";
-    if(g.lastHeading!==heading){
-      const h=document.createElement("div");h.className="date-heading";h.textContent=it.date?fmtDate(it.date.slice(0,7)):"Unknown date";
-      grid.appendChild(h);g.lastHeading=heading;
+    // Semantic results are relevance-ranked, not chronological; date headings
+    // would incorrectly imply that each group is ordered by date.
+    if(!g.query){
+      const heading=it.date?(it.date.slice(0,7)||"Unknown date"):"Unknown date";
+      if(g.lastHeading!==heading){
+        const h=document.createElement("div");h.className="date-heading";h.textContent=it.date?fmtDate(it.date.slice(0,7)):"Unknown date";
+        grid.appendChild(h);g.lastHeading=heading;
+      }
     }
     grid.appendChild(tile(it));
   });
   const count=(res&&res.count)||0;
   g.offset+=count; g.loaded+=count;
-  document.getElementById("gmore").style.display=count>=120?"block":"none";
+  if(more)more.style.display=(res&&res.total!=null?g.offset<res.total:count>=120)?"block":"none";
   if(!g.loaded)
     grid.innerHTML=`<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${res&&res.error?esc(res.error):"No media matches these filters."}</div>`;
-  const gc=document.getElementById("gridcount");
-  if(gc)gc.textContent=g.loaded?`${g.loaded.toLocaleString()} ${g.query?"semantic results":"shown"}${count>=120?"+":""}`:"";
+  if(gc)gc.textContent=g.loaded?`${g.loaded.toLocaleString()} ${g.query?"semantic results":"shown"}${res&&res.total>g.loaded?"+":""}`:"";
 }
 function tile(it){
   const d=document.createElement("button"); d.type="button";d.className="tile";d.dataset.name=(it.name||"").toLowerCase();d.setAttribute("aria-label",it.name||"Open media item"); d.onclick=()=>openItem(it.id);
@@ -1169,14 +2106,16 @@ function ph(icon){const s=document.createElement("div");s.className="ph";s.textC
 
 /* ---------- source folders + archive maintenance ---------- */
 async function renderFolders(m){
-  m.innerHTML=`<div class="eyebrow">Source tree</div><h2 class="sec">Folders</h2><div class="panel"><div class="muted">Reading folders…</div></div>`;
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Folders</h2><p>See where the original files in this archive live.</p></div></div><div class="panel"><div class="muted">Reading folders…</div></div>`;
   const res=await jget("/api/folders?root="+S.arch.id); const folders=res.folders||[];
-  m.innerHTML=`<div class="eyebrow">Source tree</div><h2 class="sec">Folders</h2><div class="panel"><p class="muted">Browse the folders where the originals already live. Nothing here changes those files.</p><div class="folder-list">${folders.length?folders.map(f=>`<div class="taskcard"><span class="ico">□</span><div class="body"><div class="t">${esc(f.path)}</div></div><div class="num">${f.count.toLocaleString()}</div></div>`).join(""):'<div class="muted">No catalogued files yet.</div>'}</div></div>`;
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Folders</h2><p>See where the original files in this archive live. Nothing here changes them.</p></div></div><div class="panel"><div class="folder-list">${folders.length?folders.map(f=>`<div class="taskcard"><span class="ico">□</span><div class="body"><div class="t">${esc(f.path)}</div></div><div class="num">${f.count.toLocaleString()}</div></div>`).join(""):'<div class="muted">No catalogued files yet.</div>'}</div></div>`;
 }
 async function renderSettings(m){
-  const [summary,jobs]=await Promise.all([jget("/api/summary?root="+S.arch.id),jget("/api/jobs?root="+S.arch.id)]);
+  const gen=NAV,root=S.arch.id;
+  const [summary,jobs]=await Promise.all([jget("/api/summary?root="+root),jget("/api/jobs?root="+root)]);
+  if(gen!==NAV)return;
   const running=(jobs.jobs||[]).find(j=>j.status==="running");
-  m.innerHTML=`<div class="eyebrow">Archive care</div><h2 class="sec">Archive settings</h2>
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Archive settings</h2><p>Review this archive’s source, processing status, and local application details.</p></div></div>
     <div class="panel"><h3>Source</h3><div class="path muted">${esc(S.arch.path)}</div><p class="privacy-note">This archive is catalogued and processed on this computer. The source files are never moved, edited, uploaded, or deleted.</p></div>
     <div class="panel"><h3>Archive activity</h3>${running?`<p><span class="spin"></span>${JOB_LABEL[running.kind]||running.kind}</p><div class="progress"><div class="progfill" style="width:${running.percent||0}%"></div></div><div class="muted">${running.current||jobDescription(running.kind)}</div>`:`<p><span class="dot ok"></span> No work needs attention.</p>`}<p class="muted">${summary.total.toLocaleString()} catalogued files · ${fmtBytes(summary.size)}</p></div>
     <div class="panel" id="desktop-about" style="display:none"></div>
@@ -1196,16 +2135,17 @@ async function removeCurrentArchive(){
 
 /* ---------- duplicates ---------- */
 async function renderDedup(m){
-  const root=S.arch.id;
+  const gen=NAV,root=S.arch.id;
   const ds=await jget("/api/dups/summary?root="+root);
+  if(gen!==NAV)return;
   if(!ds.groups){
-    m.innerHTML=`<h2 class="sec">Duplicates</h2>
+    m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
       <div class="soonbox"><div class="big">🧹</div>
       <p>No duplicates found yet.</p>
       <p class="muted">This runs automatically once files are scanned and dated — see the Overview tab for progress. Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
     return;
   }
-  m.innerHTML=`<h2 class="sec">Duplicates</h2>
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
     <div class="statrow">
       <div class="stat"><div class="k">Duplicate groups</div><div class="v">${ds.groups.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
@@ -1217,8 +2157,9 @@ async function renderDedup(m){
   S.dupoff=0; document.getElementById("dupgroups").innerHTML=""; loadDupGroups();
 }
 async function loadDupGroups(){
+  const wrap=document.getElementById("dupgroups"),more=document.getElementById("dupmore");
+  if(!wrap)return;
   const res=await jget(`/api/dups?root=${S.arch.id}&offset=${S.dupoff}&limit=40`);
-  const wrap=document.getElementById("dupgroups");
   res.groups.forEach(g=>{
     const row=document.createElement("div"); row.className="dupgroup";
     const head=`<div class="dghead"><b>${g.count}×</b> · ${fmtBytes(g.size_each)} each ·
@@ -1238,7 +2179,7 @@ async function loadDupGroups(){
     wrap.appendChild(row);
   });
   S.dupoff+=res.count;
-  document.getElementById("dupmore").style.display=res.count>=40?"block":"none";
+  if(more)more.style.display=res.count>=40?"block":"none";
 }
 /* ---------- faces / people ---------- */
 function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -1250,13 +2191,13 @@ async function renderFaces(m){
   const sum=await jget("/api/faces/summary?root="+root);
   if(gen!==NAV)return;
   if(!sum.backend_available){
-    m.innerHTML=`<h2 class="sec">Faces</h2><div class="soonbox"><div class="big">🙂</div>
+    m.innerHTML=`<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces and organize them with names.</p></div></div><div class="soonbox"><div class="big">🙂</div>
       <p>Face detection needs OpenCV's DNN face module.</p>
       <p class="muted">Install a modern <code>opencv-python</code> (the <code>media</code> extra) and reopen this tab.</p></div>`;
     return;
   }
   S.faceSum=sum;
-  m.innerHTML=`<h2 class="sec">Faces — ${S.arch.name}</h2>
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces, review matches, and add names without leaving this page.</p></div></div>
     <div class="statrow">
       <div class="stat"><div class="k">People</div><div class="v" id="fs-people">${sum.people.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Faces</div><div class="v" id="fs-faces">${sum.faces.toLocaleString()}</div></div>
@@ -1297,6 +2238,9 @@ async function faceTick(){
     jget("/api/jobs?root="+S.arch.id),
     jget("/api/faces/summary?root="+S.arch.id)]);
   const fj=jobs.find(j=>j.kind==="faces"&&j.status==="running");
+  // Jobs are returned newest-first. Keep a failed attempt visible during the
+  // scheduler's short retry pause instead of making the progress panel blink.
+  const failedFace=jobs.find(j=>j.kind==="faces"&&j.status==="error");
   const wasRunning=S.faceJobRunning; S.faceJobRunning=!!fj;
   const prev=S.faceSum||{}; S.faceSum=sum;
   setText("fs-people",sum.people.toLocaleString());
@@ -1310,6 +2254,11 @@ async function faceTick(){
     area.innerHTML=`<div class="job"><div class="what">${jobDescription("faces")}</div><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
       <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total?"/"+fj.total.toLocaleString():""} · ${fj.elapsed}s${fj.current?" · "+fj.current:""}</div></div>`;
     if(sum.people!==prev.people||sum.faces!==prev.faces) renderPeople();
+  } else if(failedFace && sum.unscanned>0) {
+    const detail=failedFace.message||"The face worker stopped before reporting progress.";
+    area.innerHTML=`<div class="job error"><div class="what">Face detection paused — retrying automatically.</div>
+      <div class="cur">${esc(detail)}</div></div>`;
+    if(wasRunning) renderPeople();
   } else {
     area.innerHTML="";
     if(wasRunning) renderPeople();   // final pass finished → refresh grid
@@ -1345,7 +2294,7 @@ function renderSuggest(){
   const left=Math.max(1, (st.total||st.list.length)-st.idx);
   const face=o=>`<div class="sug-face">
       ${faceCollage(o.faces_preview&&o.faces_preview.length?o.faces_preview:[o.cover_face_id])}
-      <div class="sug-lbl">${o.name?esc(o.name):('Unnamed #'+o.id)}</div>
+      <div class="sug-lbl">${o.name?esc(o.name):"Name this person"}</div>
       <div class="sug-cnt">${o.faces.toLocaleString()} face${o.faces===1?'':'s'}</div></div>`;
   w.innerHTML=`<div class="suggest">
     <div class="sug-head">Same person? <span class="muted">· ${left.toLocaleString()} to review · ${Math.round(s.sim*100)}% match</span></div>
@@ -1408,9 +2357,39 @@ function faceCollage(ids){
 function personCard(p){
   const d=document.createElement("div"); d.className="pcard"; d.onclick=()=>showPerson(p.id);
   const cover=faceCollage(p.faces_preview&&p.faces_preview.length?p.faces_preview:[p.cover_face_id]);
-  const nm=p.name?`<div class="pname">${esc(p.name)}</div>`:`<div class="pname un">Unnamed #${p.id}</div>`;
-  d.innerHTML=cover+`<div class="pmeta">${nm}<div class="pcount">${p.photos.toLocaleString()} photo${p.photos===1?"":"s"}</div></div>`;
+  const nm=p.name?esc(p.name):"Name this person";
+  d.innerHTML=cover+`<div class="pmeta"><button class="pname ${p.name?"":"un"}" type="button">${nm}</button>
+    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos===1?"":"s"}</div></div>`;
+  d.querySelector(".pname").onclick=e=>{e.stopPropagation();editPersonCardName(d,p);};
   return d;
+}
+function editPersonCardName(card,p){
+  const meta=card.querySelector(".pmeta");if(!meta)return;
+  card.onclick=null;
+  meta.className="pmeta pmeta-editing";
+  meta.innerHTML=`<input value="${esc(p.name||"")}" placeholder="Person’s name" aria-label="Person’s name">
+    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos===1?"":"s"} · Enter or click away to save</div>`;
+  const input=meta.querySelector("input");
+  input.onclick=e=>e.stopPropagation();
+  let finished=false;
+  input.addEventListener("blur",()=>{if(!finished){finished=true;savePersonCardName(card,p,input);}});
+  input.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){e.preventDefault();input.blur();}
+    if(e.key==="Escape"){finished=true;card.replaceWith(personCard(p));}
+  });
+  input.focus();input.select();
+}
+async function savePersonCardName(card,p,input){
+  const name=input.value.trim();
+  if(name===(p.name||"")){card.replaceWith(personCard(p));return;}
+  input.disabled=true;
+  let result;
+  try{result=await jpost("/api/faces/person/rename",{person_id:p.id,name});}
+  catch(e){result={error:String(e)};}
+  if(!result||result.error){
+    toast("Couldn’t save the person’s name.",true);card.replaceWith(personCard(p));return;
+  }
+  await renderPeopleGrid();
 }
 async function showPerson(id){
   stopPoll();
@@ -1421,15 +2400,20 @@ async function showPerson(id){
   const r=await jget("/api/faces/person/"+id+"?root="+S.arch.id+"&limit=120");
   if(!r||r.error){m.innerHTML='<div class="soonbox">Person not found.</div>';return;}
   S.faceGrid.offset=r.count;
-  const nm=r.name?esc(r.name):"Unnamed person #"+id;
+  const nm=r.name?esc(r.name):"Name this person";
   const nmCls=r.name?"nm":"nm un";
   const safe=(r.name||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   m.innerHTML=`<div class="facetopbar">
-      <span class="back" onclick="backToPeople()">← People</span>
+      <button class="back back-control" type="button" onclick="backToPeople()" aria-label="Back to People">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        <span>People</span>
+      </button>
       <div class="ftb-name" id="personname">
-        <span class="${nmCls}">${nm}</span>
-        <button class="linkbtn" onclick="editPersonName(${id},'${safe}')">${r.name?"Rename":"Name this person"}</button>
-        <button class="linkbtn" onclick="hidePerson(${id})" title="Mark as a doll / animal / cartoon and remove from People">Not a person</button>
+        <button class="person-name-button ${nmCls}" onclick="editPersonName(${id},'${safe}')">${nm}</button>
+        <button class="not-person-button" type="button" onclick="hidePerson(${id})" title="Mark as a doll / animal / cartoon and remove from People">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4 19c.5-3.3 2.5-5 6-5 1.2 0 2.2.2 3 .6M16 15l5 5m0-5-5 5"/></svg>
+          <span>Not a person</span>
+        </button>
       </div>
       <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos===1?"":"s"}</span>
     </div>
@@ -1449,31 +2433,23 @@ async function loadPersonMore(){
 function backToPeople(){ renderFaces(document.getElementById("main")); }
 function editPersonName(id,current){
   const box=document.getElementById("personname"); if(!box)return;
-  box.innerHTML=`<input id="personnameinput" value="${esc(current)}" placeholder="Name this person"
-      style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit">
-    <button class="btn" onclick="savePersonName(${id})">Save</button>
-    <button class="btn sec" onclick="showPerson(${id})">Cancel</button>`;
-  const inp=document.getElementById("personnameinput"); inp.focus();
-  inp.addEventListener("keydown",e=>{if(e.key==="Enter")savePersonName(id);});
+  box.innerHTML=`<input class="detail-name-input" id="personnameinput" value="${esc(current)}" placeholder="Person’s name" aria-label="Person’s name">`;
+  const inp=document.getElementById("personnameinput"); inp.focus();inp.select();
+  let finished=false;
+  inp.addEventListener("blur",()=>{if(!finished){finished=true;savePersonName(id,inp);}});
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){e.preventDefault();inp.blur();}
+    if(e.key==="Escape"){finished=true;showPerson(id);}
+  });
 }
-async function savePersonName(id){
-  const inp=document.getElementById("personnameinput");
-  const btn=inp&&inp.parentElement?inp.parentElement.querySelector("button.btn"):null;
+async function savePersonName(id,inp){
   const name=inp.value.trim();
-  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  inp.disabled=true;
   let r;
   try{ r=await jpost("/api/faces/person/rename",{person_id:id,name}); }
   catch(e){ r={error:String(e)}; }
   if(!r||r.error){
-    // Keep the edit box open so the typed name isn't lost, and say what happened.
-    if(btn){btn.disabled=false;btn.textContent="Save";}
-    let err=document.getElementById("personnameerr");
-    if(!err){err=document.createElement("span");err.id="personnameerr";
-      err.style.cssText="color:var(--bad,#e06c6c);font-size:12px;margin-left:6px";
-      (inp.parentElement||document.body).appendChild(err);}
-    err.textContent=(r&&r.error)?("Couldn’t save — "+r.error):"Couldn’t save — try again";
-    inp.focus();
-    return;
+    toast((r&&r.error)?("Couldn’t save — "+r.error):"Couldn’t save the person’s name.",true);
   }
   showPerson(id);
 }
@@ -1522,7 +2498,7 @@ function renderInfo(){
   else if(!(it.people||[]).length) faces=`<div class="muted" style="font-size:12px">No faces detected.</div>`;
   else faces=`<div class="facelist">`+it.people.map(faceRow).join("")+`</div>`;
   // place
-  const placeTxt=it.place?(it.place.name?esc(it.place.name):'<span class="muted">Unnamed place</span>')
+  const placeTxt=it.place?(it.place.name?esc(it.place.name):'<span class="muted">Name this place</span>')
                         :'<span class="muted">No place set</span>';
   document.getElementById("minfo").innerHTML=`<h3>${esc(it.name)}</h3>`+
     `<div class="isec"><div class="h">People</div>${faces}</div>`+
@@ -1546,7 +2522,7 @@ function faceRow(f){
   named.forEach(p=>{opts+=`<option value="${p.id}"${p.id===f.person_id?" selected":""}>${esc(p.name)}</option>`;});
   if(!named.length&&!isNamed)
     return `<div class="facerow"><img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
-      <span class="muted" style="font-size:12px">Name people in the Faces section to label them here.</span></div>`;
+      <span class="muted" style="font-size:12px">Name people in the People section to label them here.</span></div>`;
   return `<div class="facerow">
     <img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
     <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select></div>`;
@@ -1637,8 +2613,8 @@ function onPlaceSelect(pid){
     .then(r=>{if(!(r&&r.ok))revert("Couldn’t update the place — "+((r&&r.error)||"try again"));})
     .catch(()=>revert("Couldn’t update the place — connection error"));
 }
-let MPICK=null,MPICK_MARK=null,MPICK_LL=null;
-function closePick(){if(MPICK){MPICK.remove();MPICK=null;}MPICK_MARK=null;MPICK_LL=null;}
+let MPICK=null,MPICK_TILES=null,MPICK_MARK=null,MPICK_LL=null;
+function closePick(){if(MPICK){MPICK.remove();MPICK=null;}MPICK_TILES=null;MPICK_MARK=null;MPICK_LL=null;}
 function newPlace(){
   const host=document.getElementById("p-pick");
   host.innerHTML=`
@@ -1649,8 +2625,12 @@ function newPlace(){
     <div class="btnrow"><button class="btn" id="np-save" onclick="saveNewPlace()" disabled>Create & attach</button>
       <button class="btn sec" onclick="closePick();editPlace()">Cancel</button></div>`;
   const start=MITEM.gps?[MITEM.gps.lat,MITEM.gps.lon]:null;
-  MPICK=L.map("np-map",{attributionControl:false});
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(MPICK);
+  MPICK=L.map("np-map",{
+    worldCopyJump:true,zoomSnap:0,
+    maxBounds:MAP_WORLD_BOUNDS,maxBoundsViscosity:1
+  });
+  configureMapViewport(MPICK);
+  MPICK_TILES=themedTileLayer().addTo(MPICK);
   if(start){MPICK.setView(start,15);dropPin(start[0],start[1]);}else MPICK.setView([20,0],1);
   MPICK.on("click",e=>dropPin(e.latlng.lat,e.latlng.lng));
   setTimeout(()=>MPICK&&MPICK.invalidateSize(),60);
@@ -1695,6 +2675,7 @@ document.addEventListener("keydown",e=>{
   if(next!=null){e.preventDefault();openItem(next);}
 });
 
+syncThemeControl();
 loadPicker().then(applyHash);
 </script>
 </body>

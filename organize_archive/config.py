@@ -70,6 +70,9 @@ class Config:
     semantic_embedding_model: str = "voyage-multimodal-3.5"
     semantic_embedding_dimensions: int = 1024
     semantic_inline_max_bytes: int = 20 * 1024 * 1024
+    # Hide weak semantic matches. This is cosine similarity, so valid values
+    # range from -1 to 1; tune it upward for fewer, more precise results.
+    semantic_search_min_similarity: float = 0.25
 
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter

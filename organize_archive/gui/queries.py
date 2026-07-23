@@ -283,7 +283,7 @@ def date_sources(db_path: str, root_id=None) -> dict:
 
 
 def timeline(db_path: str, root_id=None, bucket="month", year=None, month=None,
-             person_id=None, cluster_id=None) -> dict:
+             person_id=None, person_ids=None, cluster_id=None) -> dict:
     """Frequency of matching, non-hidden media over time.
 
     bucket is 'month' or 'year'. The remaining arguments mirror Browse filters
@@ -306,9 +306,13 @@ def timeline(db_path: str, root_id=None, bucket="month", year=None, month=None,
             params.append(month)
         # Filter through memberships rather than joins: a file with more than
         # one face or cluster row must still contribute only one chart count.
-        if person_id:
+        # Each membership predicate is joined with AND, so choosing multiple
+        # people means "media containing everyone selected", not either person.
+        selected_people = list(dict.fromkeys(
+            person_ids or ([person_id] if person_id else [])))
+        for selected_person in selected_people:
             where.append("f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=?)")
-            params.append(person_id)
+            params.append(selected_person)
         if cluster_id:
             where.append(
                 "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm "
@@ -352,7 +356,8 @@ def _read_place_clusters(db_path: str, root_id: int) -> dict:
         clusters = conn.execute(
             """SELECT id, name, lat, lon, member_count
                FROM place_clusters WHERE root_id=?
-               ORDER BY member_count DESC""", (root_id,)).fetchall()
+               ORDER BY CASE WHEN NULLIF(TRIM(name), '') IS NULL THEN 1 ELSE 0 END,
+                        member_count DESC, id""", (root_id,)).fetchall()
         members = conn.execute(
             """SELECT pcm.cluster_id, pcm.file_id
                FROM place_cluster_members pcm
@@ -432,11 +437,10 @@ def rename_place_cluster(db_path: str, cluster_id, name: str) -> dict:
 # -- media grid + detail ----------------------------------------------------
 
 def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
-          person_id=None, cluster_id=None,
-          include_dups=False, limit=120, offset=0) -> dict:
+          person_id=None, person_ids=None, cluster_id=None, limit=120, offset=0) -> dict:
     conn = db.open_readonly(db_path)
     try:
-        where = [_VISIBLE if include_dups else _NOT_HIDDEN]
+        where = [_NOT_HIDDEN]
         params: list = []
         rc, rp = _root_clause(root_id)
         if rc:
@@ -459,9 +463,11 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
         # the person case it picked idx_faces_person, pulling *all* of that
         # person's faces on each of the 150k iterations, which pushed the
         # request past 120s and left the grid stuck on a bare "Load more".
-        if person_id:
+        selected_people = list(dict.fromkeys(
+            person_ids or ([person_id] if person_id else [])))
+        for selected_person in selected_people:
             where.append("f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=?)")
-            params.append(person_id)
+            params.append(selected_person)
         if cluster_id:
             where.append(
                 "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm "
@@ -593,12 +599,19 @@ def semantic_pending(db_path: str, root_id=None) -> int:
 
 
 def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
-                    year=None, month=None, mtype=None, person_id=None,
-                    cluster_id=None, include_dups=False, limit=120, offset=0) -> dict:
-    """Rank locally stored normalized vectors. Voyage is called only for query."""
+                    year=None, month=None, mtype=None, person_id=None, person_ids=None,
+                    cluster_id=None, min_similarity=-1.0, limit=120, offset=0,
+                    alternate_vectors=None) -> dict:
+    """Rank locally stored vectors against the original and optional expansions.
+
+    Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score
+    preserves strong matches from either wording; the small penalty keeps the
+    words the user actually typed ahead when both formulations are equivalent.
+    Voyage is called only for the query vectors.
+    """
     conn = db.open_readonly(db_path)
     try:
-        where = [_VISIBLE if include_dups else _NOT_HIDDEN,
+        where = [_NOT_HIDDEN,
                  "e.status='indexed'", "e.embedding IS NOT NULL"]
         params: list = []
         rc, rp = _root_clause(root_id)
@@ -610,8 +623,11 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
             where.append("substr(d.best_datetime,1,4)=?"); params.append(str(year))
         if month:
             where.append("substr(d.best_datetime,1,7)=?"); params.append(month)
-        if person_id:
-            where.append("f.id IN (SELECT file_id FROM faces WHERE person_id=?)"); params.append(person_id)
+        selected_people = list(dict.fromkeys(
+            person_ids or ([person_id] if person_id else [])))
+        for selected_person in selected_people:
+            where.append("f.id IN (SELECT file_id FROM faces WHERE person_id=?)")
+            params.append(selected_person)
         if cluster_id:
             where.append("f.id IN (SELECT file_id FROM place_cluster_members WHERE cluster_id=?)")
             params.append(cluster_id)
@@ -623,16 +639,32 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
                 FROM semantic_embeddings e JOIN files f ON f.id=e.file_id
                 LEFT JOIN dates d ON d.file_id=f.id
                 WHERE {' AND '.join(where)}""", params).fetchall()
-        q = tuple(query_vector)
+        vectors = [(tuple(query_vector), 0.0)]
+        vectors.extend((tuple(vector), float(penalty))
+                       for vector, penalty in (alternate_vectors or []))
+        prepared = [
+            (vector, math.sqrt(math.sumprod(vector, vector)), penalty)
+            for vector, penalty in vectors
+        ]
+        prepared = [item for item in prepared if item[1]]
+        if not prepared:
+            return {"items": [], "offset": offset, "limit": limit,
+                    "count": 0, "total": 0}
         ranked = []
         for row in rows:
             try:
-                vector = struct.unpack(f"<{len(q)}f", row["embedding"])
+                vector = struct.unpack(f"<{len(prepared[0][0])}f", row["embedding"])
             except struct.error:
                 continue
-            # Voyage returns normalized retrieval vectors, so cosine similarity
-            # is their dot product.
-            ranked.append((math.sumprod(q, vector), row))
+            vector_norm = math.sqrt(math.sumprod(vector, vector))
+            if not vector_norm:
+                continue
+            score = max(
+                math.sumprod(query, vector) / (query_norm * vector_norm) - penalty
+                for query, query_norm, penalty in prepared
+            )
+            if score >= min_similarity:
+                ranked.append((score, row))
         ranked.sort(key=lambda x: x[0], reverse=True)
         page = ranked[offset:offset + limit]
         items = [{
@@ -783,8 +815,8 @@ def _preview_faces(conn, pids, k=4) -> dict:
 
 
 def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
-    """People (clusters) that appear in this archive, most faces first. Each
-    carries up to 4 preview faces for a collage card + its photo/face counts."""
+    """People (clusters) in this archive, named people first and then most faces.
+    Each carries up to 4 preview faces for a collage card + photo/face counts."""
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
@@ -795,7 +827,8 @@ def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
                 JOIN persons p ON p.id=fa.person_id
                 WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL{rc}
                 GROUP BY fa.person_id
-                ORDER BY faces DESC, pid
+                ORDER BY CASE WHEN NULLIF(TRIM(p.name), '') IS NULL THEN 1 ELSE 0 END,
+                         faces DESC, pid
                 LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
         prev = _preview_faces(conn, [r["pid"] for r in rows])
         people = [{

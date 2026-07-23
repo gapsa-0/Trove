@@ -116,6 +116,15 @@ class Handler(BaseHTTPRequestHandler):
             v = q.get(k, [None])[0]
             return cast(v) if v not in (None, "") else default
 
+        def many(k, cast=int):
+            """Read repeatable or comma-separated query values, preserving order."""
+            out = []
+            for value in q.get(k, []):
+                for part in value.split(","):
+                    if part and (item := cast(part)) not in out:
+                        out.append(item)
+            return out
+
         try:
             if path == "/api/health":
                 from .. import __version__
@@ -150,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(queries.timeline(
                     self.cfg.db_path, root_id=one("root", int),
                     bucket=one("bucket", str, "month"), year=one("year"),
-                    month=one("month"), person_id=one("person", int),
+                    month=one("month"), person_ids=many("person"),
                     cluster_id=one("place", int)))
             elif path == "/api/dates/sources":
                 self._json(queries.date_sources(self.cfg.db_path, one("root", int)))
@@ -183,8 +192,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(queries.media(
                     self.cfg.db_path, root_id=one("root", int),
                     year=one("year"), month=one("month"), mtype=one("type"),
-                    person_id=one("person", int), cluster_id=one("place", int),
-                    include_dups=one("dups", str) == "1",
+                    person_ids=many("person"), cluster_id=one("place", int),
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path == "/api/browse/filters":
                 self._json(queries.browse_filters(self.cfg.db_path, one("root", int)))
@@ -197,18 +205,28 @@ class Handler(BaseHTTPRequestHandler):
                 status["configured"] = semantic.api_key_available()
                 self._json(status)
             elif path == "/api/browse/semantic/search":
-                query = (one("q") or "").strip()
-                if not query:
+                search_queries = []
+                for value in q.get("q", []):
+                    value = value.strip()
+                    if value and value not in search_queries:
+                        search_queries.append(value)
+                # The first query is the user's wording.  At most one locally
+                # translated expansion is accepted to keep ranking predictable.
+                search_queries = search_queries[:2]
+                if not search_queries:
                     self._json({"error": "A search query is required"}, 400)
                 else:
                     from . import semantic
-                    vector = semantic.embed_query(self.cfg, query, self.cfg.db_path)
+                    vectors = semantic.embed_queries(
+                        self.cfg, search_queries, self.cfg.db_path)
                     self._json(queries.semantic_search(
-                        self.cfg.db_path, vector, root_id=one("root", int),
+                        self.cfg.db_path, vectors[0], root_id=one("root", int),
                         year=one("year"), month=one("month"), mtype=one("type"),
-                        person_id=one("person", int), cluster_id=one("place", int),
-                        include_dups=one("dups", str) == "1",
-                        limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
+                        person_ids=many("person"), cluster_id=one("place", int),
+                        min_similarity=max(-1.0, min(1.0, float(
+                            self.cfg.semantic_search_min_similarity))),
+                        limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0),
+                        alternate_vectors=[(vector, 0.01) for vector in vectors[1:]]))
             elif path.startswith("/api/item/"):
                 it = queries.item(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
                 self._json(it) if it else self._json({"error": "not found"}, 404)
