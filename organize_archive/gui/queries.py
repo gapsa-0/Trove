@@ -662,17 +662,24 @@ def dup_groups(db_path: str, root_id=None, limit=60, offset=0) -> dict:
         for g in groups:
             members = conn.execute(
                 """SELECT f.id, f.media_type, f.rel_path, m.role,
-                          r.path AS root
+                          r.path AS root,
+                          CASE
+                            WHEN m.role='canonical' THEN 'canonical'
+                            WHEN f.sha256 = canonical.sha256 THEN 'identical'
+                            ELSE 'visual'
+                          END AS match_type
                    FROM dup_members m JOIN files f ON f.id=m.file_id
                    JOIN roots r ON r.id=f.root_id
+                   JOIN files canonical ON canonical.id=?
                    WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
-                (g["id"],)).fetchall()
+                (g["canonical_file_id"], g["id"])).fetchall()
             out.append({
                 "id": g["id"], "method": g["method"], "count": g["member_count"],
                 "size_each": g["size_each"], "reclaimable": g["redundant_bytes"],
                 "canonical_id": g["canonical_file_id"],
                 "members": [{
                     "id": m["id"], "type": m["media_type"], "role": m["role"],
+                    "match_type": m["match_type"],
                     "name": os.path.basename(m["rel_path"]),
                     "folder": os.path.dirname(m["rel_path"]),
                 } for m in members],

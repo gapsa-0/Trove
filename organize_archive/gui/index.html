@@ -98,9 +98,10 @@
   .panel h3{margin:0 0 12px;font-size:14px;}
   table.types{width:100%;border-collapse:collapse;font-size:13px;}
   table.types td{padding:6px 4px;border-bottom:1px solid var(--line);}
-  table.types td.bar{width:45%;}
-  .barwrap{background:var(--panel2);border-radius:5px;height:10px;overflow:hidden;}
-  .barfill{height:100%;background:var(--accent);}
+  .type-summary-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--panel2);}
+  .type-summary-segment{min-width:0;transition:width .2s;}
+  .type-summary-legend{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 8px;font-size:12px;}
+  .type-summary-key{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;}
   .num{text-align:right;font-variant-numeric:tabular-nums;}
 
   /* tasks */
@@ -199,6 +200,9 @@
   .duptile.kept>img,.duptile.kept>.ph{border-color:var(--good);}
   .dtcap{font-size:11px;margin-top:3px;}
   .dtcap .keep{color:var(--good);font-weight:600;}
+  .duptag{display:inline-block;border-radius:9px;padding:1px 6px;font-size:10px;font-weight:600;}
+  .duptag.exact{background:#d9f7e6;color:#176b3a;}
+  .duptag.visual{background:#e4e7ff;color:#414eaa;}
   .dtpath{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   /* faces / people */
@@ -328,6 +332,7 @@
 
 <script>
 const TYPE_ICON={image:"🖼️",video:"🎞️",audio:"🎵",document:"📄",archive:"🗜️",other:"📦"};
+const TYPE_COL={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#8b93a3"};
 const SECTIONS=[
   {id:"overview",label:"Overview",icon:"📊"},
   {id:"timeline",label:"Timeline",icon:"📈"},
@@ -507,14 +512,20 @@ async function renderOverview(m){
       <div id="syncstatus"></div>
       <div id="jobarea"></div>
     </div>
-    <div class="panel"><h3>By type</h3><table class="types" id="typetbl"></table></div>`;
+    <div class="panel"><h3>By type</h3><div id="typebar"></div><table class="types" id="typetbl"></table></div>`;
+  const types=s.types.filter(t=>t.count>0);
+  const totalTypes=types.reduce((sum,t)=>sum+t.count,0)||1;
+  const typebar=document.getElementById("typebar");
+  typebar.innerHTML=`<div class="type-summary-bar">${types.map(t=>
+    `<div class="type-summary-segment" style="width:${100*t.count/totalTypes}%;background:${TYPE_COL[t.type]||TYPE_COL.other}" title="${t.type}: ${t.count.toLocaleString()} files"></div>`
+  ).join("")}</div><div class="type-summary-legend">${types.map(t=>
+    `<span><span class="type-summary-key" style="background:${TYPE_COL[t.type]||TYPE_COL.other}"></span>${t.type} <span class="muted">, ${(100*t.count/totalTypes).toFixed(1)}%</span></span>`
+  ).join("")}</div>`;
   const tbl=document.getElementById("typetbl");
-  const max=Math.max(...s.types.map(t=>t.size),1);
-  s.types.forEach(t=>{
+  types.forEach(t=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${TYPE_ICON[t.type]||"📦"} ${t.type}</td>
+    tr.innerHTML=`<td>${t.type}</td>
       <td class="num">${t.count.toLocaleString()}</td>
-      <td class="bar"><div class="barwrap"><div class="barfill" style="width:${100*t.size/max}%"></div></div></td>
       <td class="num">${fmtBytes(t.size)}</td>`;
     tbl.appendChild(tr);
   });
@@ -611,7 +622,7 @@ async function renderDateSourceBar(){
 }
 
 /* ---------- timeline ---------- */
-const TL_COL={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#8b93a3"};
+const TL_COL=TYPE_COL;
 async function renderTimeline(m){
   const gen=NAV;
   S.timeline={bucket:"month",year:"",month:"",person:"",place:""};
@@ -1100,10 +1111,13 @@ async function loadDupGroups(){
       <span class="muted">${fmtBytes(g.reclaimable)} reclaimable</span></div>`;
     const tiles=g.members.map(mm=>{
       const kept=mm.role==="canonical";
+      const tag=kept ? '<span class="keep">✓ kept</span>'
+        : mm.match_type==="identical" ? '<span class="duptag exact">Identical copy</span>'
+        : '<span class="duptag visual">Visual match</span>';
       const thumb=(mm.type==="image"||mm.type==="video")?`<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type]||"📦"}'}))">`
         :`<div class="ph">${TYPE_ICON[mm.type]||"📦"}</div>`;
       return `<div class="duptile ${kept?'kept':''}" title="${mm.folder}" onclick="openItem(${mm.id})">
-        ${thumb}<div class="dtcap">${kept?'<span class=\"keep\">✓ kept</span>':'<span class=\"muted\">copy</span>'}</div>
+        ${thumb}<div class="dtcap">${tag}</div>
         <div class="dtpath">${mm.folder||'/'}</div></div>`;
     }).join("");
     row.innerHTML=head+`<div class="duprow">${tiles}</div>`;
