@@ -7,6 +7,9 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#14161a">
 <link rel="icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vendor/leaflet.css">
 <script src="/vendor/leaflet.js"></script>
 <script>
@@ -300,15 +303,53 @@
     opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   #toast.err{border-color:#c0504d;}
+
+  /* Step 2 — COA Noir archive system.  These overrides intentionally retain
+     the small, dependency-free application while replacing the old dashboard
+     visual language. */
+  :root{--asphalt:#0E0E0E;--charcoal:#141414;--surface:#1C1C1C;--surface2:#252525;
+    --parchment:#F0EAD6;--parchment-muted:#A89E8A;--parchment-faint:#3A352C;
+    --accent:#B5614A;--accent-dim:#6B3828;--accent-rgb:181,97,74;--tungsten:#E8A842;
+    --crimson:#8B2E2E;--bg:var(--asphalt);--panel:var(--surface);--panel2:var(--surface2);
+    --line:var(--parchment-faint);--text:var(--parchment);--muted:var(--parchment-muted);
+    --good:#b8c47b;--focus:var(--tungsten);--space-1:6px;--space-2:10px;--space-3:16px;
+    --space-4:24px;--space-5:36px;}
+  body{font:14px/1.5 "JetBrains Mono","Courier New",monospace;background:var(--asphalt);}
+  body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.025;z-index:50;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");}
+  h1,h2,h3,.display{font-family:"Playfair Display",Georgia,serif;letter-spacing:-.02em;}
+  button,input,select{font:inherit;} button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--focus);outline-offset:2px;}
+  .btn{border-radius:0;background:var(--accent);color:var(--parchment);padding:9px 14px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+  .btn:hover{background:#ce755b}.btn.sec{background:transparent;border-color:var(--parchment-faint)}
+  #picker{max-width:1100px;min-height:100vh;display:flex;align-items:center;padding:48px 30px;}
+  .welcome{max-width:700px}.welcome .eyebrow,.eyebrow{color:var(--accent);font-size:11px;letter-spacing:.14em;text-transform:uppercase;}
+  .welcome h1{font-size:clamp(42px,7vw,78px);line-height:.95;margin:12px 0 18px;}.welcome .sub{font-family:"Newsreader",Georgia,serif;font-size:21px;max-width:650px;}
+  .setup-form{display:flex;gap:8px;margin:28px 0 14px;max-width:660px}.setup-form input{min-width:0;flex:1;padding:12px;border:1px solid var(--line);border-radius:0;background:var(--surface);color:var(--text)}
+  .privacy-note{font-family:"Newsreader",Georgia,serif;color:var(--muted);max-width:680px}.archive-list-title{margin-top:42px;font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+  .card{border-radius:0;background:var(--surface);border-color:var(--line);}.card:hover{border-color:var(--accent)}.card.add{min-height:80px;border-radius:0}.remove-archive{border-radius:0;color:#e59585;border-color:var(--accent-dim)}
+  #app.on{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh;} nav{width:auto;background:var(--charcoal);border-right-color:var(--accent-dim);padding:18px 10px;height:100vh;}
+  nav .brand{font-family:"Bebas Neue",Impact,sans-serif;font-size:22px;letter-spacing:.09em;border-top:1px solid var(--accent);border-bottom:1px solid var(--accent-dim);padding:9px 8px 12px;}
+  nav .arch{font-family:"Newsreader",Georgia,serif;border-bottom-color:var(--line);padding-bottom:16px}.navitem{border-radius:4px;font-family:"Bebas Neue",Impact,sans-serif;letter-spacing:.08em;font-size:15px;padding:10px;position:relative;}
+  .navitem.active{background:linear-gradient(90deg,var(--accent-dim),transparent);color:var(--parchment)}.navitem.active:before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:2px;background:var(--accent)}
+  .gstat{border-top-color:var(--accent-dim)} main{height:auto;min-height:100vh;padding:34px 42px 60px;overflow:visible;}h2.sec{font-size:34px;font-weight:500;margin-bottom:22px;}
+  .panel,.stat,.dupgroup,.pcard,.suggest{border-radius:0;border-color:var(--line);box-shadow:none}.panel{padding:18px;background:var(--surface)}.stat{background:transparent;padding:12px}.stat .k,.isec>.h{color:var(--muted)}
+  .grid{gap:4px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}.tile{border-radius:0;border:0;background:var(--surface2)}.tile:hover{outline:2px solid var(--accent);outline-offset:-2px}.tile .cap{font-size:10px}
+  .date-heading{grid-column:1/-1;font-family:"Playfair Display",Georgia,serif;font-size:28px;padding:30px 0 5px;border-bottom:1px solid var(--accent-dim)}
+  .fsel{border-radius:0;background:var(--surface);border-color:var(--line)}.filterbar{border-top:1px solid var(--accent-dim);padding-top:12px}.chips{font-size:11px}.linkbtn{color:var(--tungsten)}
+  .modal{background:#000e}.viewer{max-width:100vw;max-height:100vh;border:0;border-radius:0;background:var(--asphalt)}.viewer .media{max-width:calc(100vw - 370px);}.viewer .media img,.viewer .media video{max-width:calc(100vw - 370px);max-height:100vh}.viewer .info{width:370px;max-height:100vh;background:var(--surface);padding:24px}.close{color:var(--parchment)}
+  @media(max-width:800px){#app.on{display:block}nav{position:sticky;width:100%;height:auto;z-index:10;flex-direction:row;align-items:center;padding:8px;overflow:auto}nav .brand{border:0;padding:3px 8px}.back,.arch,.gstat{display:none!important}#navitems{display:flex;gap:2px}.navitem{white-space:nowrap;padding:7px 8px}.navitem span:first-child{display:none}main{padding:24px 16px}.setup-form{flex-direction:column}.viewer{align-self:stretch}.viewer .media,.viewer .media img,.viewer .media video{max-width:100vw}.viewer .info{position:absolute;right:0;bottom:0;width:100%;max-height:42vh;border-top:1px solid var(--line)}}
+  @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
 
 <!-- ARCHIVE PICKER -->
 <div id="picker">
-  <h1>organize_archive</h1>
-  <div class="sub">Select an archive, or add a directory to catalog.</div>
-  <div class="cards" id="archcards"></div>
+  <div class="welcome"><div class="eyebrow">A local memory room</div><h1>ARCHIVE</h1>
+  <div class="sub">A quiet place to explore the photographs, films, and records already on this computer.</div>
+  <form class="setup-form" onsubmit="return addArchiveFromForm(event)"><input id="archive-path" aria-label="Media folder path" placeholder="/path/to/media folder"><button class="btn" type="submit">Choose media folder</button></form>
+  <div class="privacy-note">Files are catalogued in place. They are never moved, edited, uploaded, or deleted. You can add more folders whenever you need.</div>
+  <div class="archive-list-title" id="archive-list-title">Your archives</div><div class="cards" id="archcards"></div></div>
 </div>
 
 <!-- APP SHELL -->
@@ -333,17 +374,17 @@
 
 <script>
 const TYPE_ICON={image:"🖼️",video:"🎞️",audio:"🎵",document:"📄",archive:"🗜️",other:"📦"};
-const TYPE_COL={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#8b93a3"};
+const TYPE_COL={image:"#B5614A",video:"#E8A842",audio:"#b8c47b",document:"#A89E8A",archive:"#6B3828",other:"#3A352C"};
 const SECTIONS=[
-  {id:"overview",label:"Overview",icon:"📊"},
-  {id:"timeline",label:"Timeline",icon:"📈"},
-  {id:"map",label:"Map",icon:"🗺️"},
-  {id:"photos",label:"Browse",icon:"🖼️"},
-  {id:"dups",label:"Duplicates",icon:"🧹"},
-  {id:"faces",label:"Faces",icon:"🙂"},
-  {id:"places",label:"Places",icon:"📍",soon:true},
+  {id:"library",label:"Library",icon:"▦"},
+  {id:"timeline",label:"Timeline",icon:"◷"},
+  {id:"people",label:"People",icon:"◉"},
+  {id:"places",label:"Places",icon:"⌖"},
+  {id:"dups",label:"Duplicates",icon:"≡"},
+  {id:"folders",label:"Folders",icon:"□"},
+  {id:"settings",label:"Archive settings",icon:"⚙"},
 ];
-const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null},
+const S={arch:null, section:"library", grid:{offset:0,year:null,month:null,type:null},
   timeline:{bucket:"month",year:"",month:"",person:"",place:""}, poll:null};
 // Bumped on every user navigation (section switch / archive open). Async renders
 // capture it and bail if it changed while they were awaiting, so a slow fetch can
@@ -373,6 +414,7 @@ let ARCHIVES=[];
 async function loadPicker(){
   const {archives}=await jget("/api/archives"); ARCHIVES=archives;
   const el=document.getElementById("archcards"); el.innerHTML="";
+  document.getElementById("archive-list-title").style.display=archives.length?"block":"none";
   archives.forEach(a=>{
     const c=document.createElement("div"); c.className="card"; c.onclick=()=>openArchive(a);
     const warn=a.exists?"":'<span class="badge-warn">⚠ not mounted</span>';
@@ -380,25 +422,28 @@ async function loadPicker(){
     c.innerHTML=`<h3>${a.name} ${warn}</h3><div class="path">${a.path}</div>
       <div class="stats"><span>${a.files.toLocaleString()} files</span>
       <span>${fmtBytes(a.size)}</span>${enr}</div>
-      <div class="cardfoot"><span class="muted">Catalog only</span><button class="remove-archive">Remove</button></div>`;
+      <div class="cardfoot"><span class="muted">Stored locally</span><button class="remove-archive" aria-label="Remove archive">Remove</button></div>`;
     c.querySelector(".remove-archive").onclick=(event)=>{event.stopPropagation();removeArchive(a);};
     el.appendChild(c);
   });
-  const add=document.createElement("div"); add.className="card add";
-  add.innerHTML="+ Add directory"; add.onclick=addArchive; el.appendChild(add);
+  if(archives.length){const add=document.createElement("button"); add.className="card add";
+    add.type="button";add.textContent="+ Add another folder";add.onclick=()=>document.getElementById("archive-path").focus();el.appendChild(add);}
 }
-async function addArchive(){
-  const p=prompt("Full path to the directory to catalog:");
+async function addArchiveFromForm(event){
+  event.preventDefault(); const field=document.getElementById("archive-path");const p=field.value.trim();
   if(!p)return;
   const r=await jpost("/api/archives",{path:p});
-  if(r.error){alert(r.error);return;}
-  await loadPicker();
+  if(r.error){toast(r.error,true);return false;}
+  field.value="";await loadPicker();
+  const a=ARCHIVES.find(x=>x.id===r.id)||{id:r.id,path:r.path,name:r.path.split("/").filter(Boolean).pop(),files:0,size:0,exists:true};
+  openArchive(a,"library"); return false;
 }
 async function removeArchive(a){
   const message=`Remove “${a.name}” from organize_archive?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
   if(!confirm(message))return;
   const r=await jpost("/api/archive/remove",{root_id:a.id});
   if(r.error){alert(r.error);return;}
+  ARCHIVES=ARCHIVES.filter(x=>x.id!==a.id);
   await loadPicker();
 }
 
@@ -407,7 +452,7 @@ function openArchive(a,section){
   if(S.arch && S.arch.id!==a.id) jpost("/api/archive/close",{root_id:S.arch.id});
   // Don't carry a previous archive's idle status into this one. Until its disk
   // check finishes, we genuinely do not know whether work is waiting.
-  S.arch=a; S.section=section||"overview"; S.fresh=null; S.activeJobs={};
+  S.arch=a; S.section=section||"library"; S.fresh=null; S.activeJobs={};
   S.syncChecked=false; S.syncCheckFailed=false; S.wasActive=false;
   document.getElementById("picker").style.display="none";
   document.getElementById("app").classList.add("on");
@@ -474,11 +519,10 @@ window.addEventListener("pagehide",()=>{
 function renderNav(){
   const el=document.getElementById("navitems"); el.innerHTML="";
   SECTIONS.forEach(s=>{
-    const d=document.createElement("div");
-    d.className="navitem"+(s.soon?" soon":"")+(s.id===S.section?" active":"");
-    d.title=s.label+(s.soon?" (soon)":"");
-    d.innerHTML=`<span>${s.icon}</span><span>${s.label}</span>`+(s.soon?'<span class="tag">soon</span>':"");
-    if(!s.soon)d.onclick=()=>showSection(s.id);
+    const d=document.createElement("button"); d.type="button";
+    d.className="navitem"+(s.id===S.section?" active":"");
+    d.title=s.label;d.setAttribute("aria-current",s.id===S.section?"page":"false");
+    d.innerHTML=`<span aria-hidden="true">${s.icon}</span><span>${s.label}</span>`;d.onclick=()=>showSection(s.id);
     el.appendChild(d);
   });
 }
@@ -491,10 +535,10 @@ function toggleNav(){
   applyNavCollapsed();
 }
 applyNavCollapsed();
-const RENDERERS={overview:renderOverview,timeline:renderTimeline,
-  map:renderMap,photos:renderPhotos,dups:renderDedup,faces:renderFaces};
+const RENDERERS={library:renderPhotos,timeline:renderTimeline,places:renderMap,
+  people:renderFaces,dups:renderDedup,folders:renderFolders,settings:renderSettings};
 function showSection(id){
-  if(id!=="map" && MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
+  if(id!=="places" && MAP){MAP.remove();MAP=null;MAP_LAYER=null;}
   NAV++; const gen=NAV;
   S.section=id; renderNav(); stopPoll();
   if(S.arch)location.hash=`/archive/${S.arch.id}/${id}`;
@@ -948,15 +992,16 @@ const MONTH_NAMES=["January","February","March","April","May","June","July",
   "August","September","October","November","December"];
 async function renderPhotos(m){
   const gen=NAV;
+  S.gallery=[];
   S.grid={offset:0,loaded:0,gen:0,year:"",month:"",type:"",person:"",place:"",dups:false,query:""};
-  m.innerHTML=`<h2 class="sec">Browse</h2>
+  m.innerHTML=`<div class="eyebrow">${esc(S.arch.name)}</div><h2 class="sec">Library</h2>
     <div class="panel" style="padding:12px 14px">
       <form onsubmit="return semanticSubmit(event)" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="semantic-q" aria-label="Search archive by content" placeholder="Search by content: beach sunset, birthday, a dog in snow…"
+        <input id="semantic-q" aria-label="Search visible media" placeholder="Filter visible media by file name"
           style="flex:1;min-width:220px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit">
-        <button class="btn" type="submit">Search</button>
+        <button class="btn" type="submit">Filter</button>
       </form>
-      <div id="semantic-status" class="muted" style="font-size:12px;margin-top:8px"></div>
+      <div id="semantic-status" class="muted" style="font-size:12px;margin-top:8px">Search stays on this computer. Filters and date groups refine the wall below.</div>
     </div>
     <div class="filterbar" id="filterbar"></div>
     <div class="chips">
@@ -967,7 +1012,6 @@ async function renderPhotos(m){
     <button class="btn sec" onclick="loadGrid()">Load more</button></div>`;
   await buildFilterBar();
   if(gen!==NAV)return;
-  updateSemanticStatus();
   loadGrid();
 }
 async function updateSemanticStatus(){
@@ -990,10 +1034,10 @@ async function updateSemanticStatus(){
 }
 function semanticSubmit(ev){
   ev.preventDefault();
-  const q=(document.getElementById("semantic-q").value||"").trim();
-  const g=S.grid; g.query=q; g.offset=0; g.loaded=0; g.gen++;
-  document.getElementById("grid").innerHTML="";
-  loadGrid();
+  const q=(document.getElementById("semantic-q").value||"").trim().toLowerCase();
+  document.querySelectorAll("#grid .tile").forEach(tile=>tile.hidden=!!q&&!tile.dataset.name.includes(q));
+  const count=[...document.querySelectorAll("#grid .tile")].filter(tile=>!tile.hidden).length;
+  document.getElementById("gridcount").textContent=q?`${count} visible match${count===1?"":"es"}`:"";
   return false;
 }
 async function buildFilterBar(){
@@ -1050,6 +1094,8 @@ function applyFilters(){
   g.person=selVal("f-person");
   g.place=selVal("f-place");
   g.offset=0; g.loaded=0; g.gen++;
+  g.lastHeading=null;
+  S.gallery=[];
   document.getElementById("grid").innerHTML="";
   updateClearBtn();
   loadGrid();
@@ -1067,6 +1113,8 @@ function updateClearBtn(){
 function toggleDups(){
   S.grid.dups=document.getElementById("showdups").checked;
   S.grid.offset=0; S.grid.loaded=0; S.grid.gen++;
+  S.grid.lastHeading=null;
+  S.gallery=[];
   document.getElementById("grid").innerHTML=""; loadGrid();
 }
 async function loadGrid(){
@@ -1076,7 +1124,7 @@ async function loadGrid(){
   if(g.month)p.set("month",g.month);
   if(g.person)p.set("person",g.person); if(g.place)p.set("place",g.place);
   if(g.query)p.set("q",g.query);
-  const res=await jget((g.query?"/api/browse/semantic/search?":"/api/media?")+p);
+  const res=await jget("/api/media?"+p);
   // Bail if a newer filter change (or a section switch) superseded this fetch
   // while it was in flight, so a slow response can't paint stale tiles.
   if(S.grid!==g||g.gen!==gen)return;
@@ -1084,7 +1132,15 @@ async function loadGrid(){
   // A failed/empty response has no items array; treat it as "no more" so a
   // clear+fetch that errors can't leave a bare "Load more" button behind.
   const items=(res&&res.items)||[];
-  items.forEach(it=>grid.appendChild(tile(it)));
+  S.gallery=(S.gallery||[]).concat(items.map(it=>it.id));
+  items.forEach(it=>{
+    const heading=it.date?(it.date.slice(0,7)||"Unknown date"):"Unknown date";
+    if(g.lastHeading!==heading){
+      const h=document.createElement("div");h.className="date-heading";h.textContent=it.date?fmtDate(it.date.slice(0,7)):"Unknown date";
+      grid.appendChild(h);g.lastHeading=heading;
+    }
+    grid.appendChild(tile(it));
+  });
   const count=(res&&res.count)||0;
   g.offset+=count; g.loaded+=count;
   document.getElementById("gmore").style.display=count>=120?"block":"none";
@@ -1094,7 +1150,7 @@ async function loadGrid(){
   if(gc)gc.textContent=g.loaded?`${g.loaded.toLocaleString()} ${g.query?"semantic results":"shown"}${count>=120?"+":""}`:"";
 }
 function tile(it){
-  const d=document.createElement("div"); d.className="tile"; d.onclick=()=>openItem(it.id);
+  const d=document.createElement("button"); d.type="button";d.className="tile";d.dataset.name=(it.name||"").toLowerCase();d.setAttribute("aria-label",it.name||"Open media item"); d.onclick=()=>openItem(it.id);
   if(it.type==="image"||it.type==="video"){const img=document.createElement("img");img.loading="lazy";
     img.src="/thumb/"+it.id;img.onerror=()=>img.replaceWith(ph(TYPE_ICON[it.type]||"🖼️"));d.appendChild(img);}
   else d.appendChild(ph(TYPE_ICON[it.type]||"📦"));
@@ -1105,6 +1161,26 @@ function tile(it){
   return d;
 }
 function ph(icon){const s=document.createElement("div");s.className="ph";s.textContent=icon;return s;}
+
+/* ---------- source folders + archive maintenance ---------- */
+async function renderFolders(m){
+  m.innerHTML=`<div class="eyebrow">Source tree</div><h2 class="sec">Folders</h2><div class="panel"><div class="muted">Reading folders…</div></div>`;
+  const res=await jget("/api/folders?root="+S.arch.id); const folders=res.folders||[];
+  m.innerHTML=`<div class="eyebrow">Source tree</div><h2 class="sec">Folders</h2><div class="panel"><p class="muted">Browse the folders where the originals already live. Nothing here changes those files.</p><div class="folder-list">${folders.length?folders.map(f=>`<div class="taskcard"><span class="ico">□</span><div class="body"><div class="t">${esc(f.path)}</div></div><div class="num">${f.count.toLocaleString()}</div></div>`).join(""):'<div class="muted">No catalogued files yet.</div>'}</div></div>`;
+}
+async function renderSettings(m){
+  const [summary,jobs]=await Promise.all([jget("/api/summary?root="+S.arch.id),jget("/api/jobs?root="+S.arch.id)]);
+  const running=(jobs.jobs||[]).find(j=>j.status==="running");
+  m.innerHTML=`<div class="eyebrow">Archive care</div><h2 class="sec">Archive settings</h2>
+    <div class="panel"><h3>Source</h3><div class="path muted">${esc(S.arch.path)}</div><p class="privacy-note">This archive is catalogued and processed on this computer. The source files are never moved, edited, uploaded, or deleted.</p></div>
+    <div class="panel"><h3>Archive activity</h3>${running?`<p><span class="spin"></span>${JOB_LABEL[running.kind]||running.kind}</p><div class="progress"><div class="progfill" style="width:${running.percent||0}%"></div></div><div class="muted">${running.current||jobDescription(running.kind)}</div>`:`<p><span class="dot ok"></span> No work needs attention.</p>`}<p class="muted">${summary.total.toLocaleString()} catalogued files · ${fmtBytes(summary.size)}</p></div>
+    <div class="panel"><h3>Remove archive</h3><p class="muted">Removes catalogue records and any exclusive cached thumbnails. Original media remains untouched.</p><button class="btn sec" onclick="removeCurrentArchive()">Remove this archive</button></div>`;
+}
+async function removeCurrentArchive(){
+  const a=S.arch; await removeArchive(a);
+  const still=ARCHIVES.some(x=>x.id===a.id);
+  if(!still)toPicker();
+}
 
 /* ---------- duplicates ---------- */
 async function renderDedup(m){
@@ -1326,8 +1402,8 @@ function personCard(p){
 }
 async function showPerson(id){
   stopPoll();
-  S.section="faces"; renderNav(); S.facePerson=id; S.faceGrid={offset:0};
-  if(S.arch)location.hash=`/archive/${S.arch.id}/faces`;
+  S.section="people"; renderNav(); S.facePerson=id; S.faceGrid={offset:0};
+  if(S.arch)location.hash=`/archive/${S.arch.id}/people`;
   const m=document.getElementById("main");
   m.innerHTML='<div class="muted" style="padding:30px">Loading…</div>';
   const r=await jget("/api/faces/person/"+id+"?root="+S.arch.id+"&limit=120");
@@ -1390,7 +1466,7 @@ async function savePersonName(id){
   showPerson(id);
 }
 function openPersonFromModal(id){
-  closeModal(); NAV++; S.section="faces"; renderNav(); showPerson(id);
+  closeModal(); NAV++; S.section="people"; renderNav(); showPerson(id);
 }
 
 function renderSoon(m,id){
@@ -1599,7 +1675,13 @@ function saveNewPlace(){
 
 function closeModal(){closePick();document.getElementById("modal").classList.remove("open");
   document.getElementById("mmedia").innerHTML="";MITEM=null;}
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){closeModal();return;}
+  if(!MITEM||!document.getElementById("modal").classList.contains("open"))return;
+  if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;
+  const ids=S.gallery||[], at=ids.indexOf(MITEM.id), next=ids[at+(e.key==="ArrowLeft"?-1:1)];
+  if(next!=null){e.preventDefault();openItem(next);}
+});
 
 loadPicker().then(applyHash);
 </script>

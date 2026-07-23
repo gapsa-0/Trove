@@ -528,6 +528,23 @@ def browse_filters(db_path: str, root_id=None) -> dict:
         conn.close()
 
 
+def folders(db_path: str, root_id: int | None, limit: int = 120) -> dict:
+    """Return the archive's source tree as a compact, browseable folder list."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        rows = conn.execute(
+            f"SELECT rel_path FROM files f WHERE {_NOT_HIDDEN}{rc}", rp).fetchall()
+        grouped: dict[str, int] = {}
+        for row in rows:
+            folder = os.path.dirname(row["rel_path"]) or "/"
+            grouped[folder] = grouped.get(folder, 0) + 1
+        items = sorted(grouped.items(), key=lambda x: (-x[1], x[0].lower()))[:limit]
+        return {"folders": [{"path": p, "count": c} for p, c in items]}
+    finally:
+        conn.close()
+
+
 # -- semantic Browse search --------------------------------------------------
 
 def semantic_summary(db_path: str, root_id=None) -> dict:

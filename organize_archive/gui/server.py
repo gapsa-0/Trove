@@ -183,6 +183,9 @@ class Handler(BaseHTTPRequestHandler):
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path == "/api/browse/filters":
                 self._json(queries.browse_filters(self.cfg.db_path, one("root", int)))
+            elif path == "/api/folders":
+                self._json(queries.folders(self.cfg.db_path, one("root", int),
+                                           limit=min(one("limit", int, 120), 500)))
             elif path == "/api/browse/semantic/status":
                 from . import semantic
                 status = queries.semantic_summary(self.cfg.db_path, one("root", int))
@@ -343,6 +346,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(cfg: Config, host="127.0.0.1", port=8756):
     # Apply schema migrations before JobManager starts its automatic scheduler.
     # The scheduler's first tick can query newly added tables/columns.
+    cfg.ensure_dirs()
     conn = db.connect(cfg.db_path)
     try:
         db.init_db(conn)

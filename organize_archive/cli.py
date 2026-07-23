@@ -306,13 +306,8 @@ def cmd_dates(args, cfg: Config) -> int:
 
 
 def cmd_gui(args, cfg: Config) -> int:
-    from pathlib import Path
     from .gui.server import serve
     from .gui import launcher
-
-    if not Path(cfg.db_path).exists():
-        print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
-        return 1
 
     httpd = serve(cfg, port=args.port)
     url = f"http://127.0.0.1:{args.port}/"
