@@ -178,14 +178,26 @@ def cmd_dedup(args, cfg: Config) -> int:
     db.init_db(conn)
     progress = None if args.no_progress else ScanProgress(
         None, show_bytes=False, label="grouping")
-    stats = exact.run(conn, progress=progress)
+    # Keep archive boundaries intact even when several roots share one catalog.
+    # A separate run per root also prevents a copy in one archive from hiding a
+    # file in another archive.
+    stats = exact.DedupStats()
+    roots = conn.execute("SELECT id FROM roots ORDER BY id").fetchall()
+    for root in roots:
+        one = exact.run(conn, cfg, progress=progress, root_id=root[0])
+        stats.groups += one.groups
+        stats.duplicate_files += one.duplicate_files
+        stats.reclaimable_bytes += one.reclaimable_bytes
     if progress is not None:
         progress.close()
     conn.close()
-    print("\nExact deduplication complete:")
+    print("\nDuplicate detection complete (exact + visual image matches):")
     print(f"  duplicate groups   : {stats.groups:,}")
     print(f"  redundant copies   : {stats.duplicate_files:,} (hidden, not deleted)")
     print(f"  reclaimable space  : {_fmt_bytes(stats.reclaimable_bytes)}")
+    if not exact.perceptual_available():
+        print("  note: visual matching needs the optional media dependencies "
+              "(install with: pip install '.[media]')")
     return 0
 
 
@@ -393,7 +405,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_enrich)
 
-    sp = sub.add_parser("dedup", help="Find exact-duplicate files (SHA-256) and group them")
+    sp = sub.add_parser("dedup", help="Group exact duplicates and visually identical image variants")
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_dedup)
 

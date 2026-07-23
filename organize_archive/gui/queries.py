@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import math
 import struct
+import json
 from pathlib import Path
 
 from ..db import database as db
@@ -119,6 +120,109 @@ def add_archive(db_path: str, path: str) -> dict:
         return {"id": rid, "path": str(p.resolve())}
     finally:
         conn.close()
+
+
+def remove_archive(db_path: str, cache_dir: str, root_id: int) -> dict:
+    """Forget one archive and its derived data, without touching its originals.
+
+    The catalog database and thumbnail cache are shared by all configured roots.
+    Cache entries keyed by a content hash are therefore removed only when no
+    remaining file uses that hash.  Model files, icons, and other global cache
+    assets intentionally remain in place.
+    """
+    if not isinstance(root_id, int):
+        return {"error": "root_id is required"}
+    conn = db.connect(db_path)
+    try:
+        root = conn.execute("SELECT path FROM roots WHERE id=?", (root_id,)).fetchone()
+        if not root:
+            return {"error": "archive not found"}
+        root_path = root["path"]
+        files = conn.execute(
+            "SELECT id, sha256 FROM files WHERE root_id=?", (root_id,)
+        ).fetchall()
+        file_ids = [row["id"] for row in files]
+        hashes = {row["sha256"] for row in files if row["sha256"]}
+        face_ids = [row[0] for row in conn.execute(
+            "SELECT id FROM faces WHERE file_id IN (SELECT id FROM files WHERE root_id=?)",
+            (root_id,),
+        )]
+
+        # A legacy whole-catalog dedup group can still contain files from another
+        # root. Remove that group as a whole and unhide its surviving members;
+        # keeping it would leave them pointing at a deleted canonical file.
+        group_ids = [row[0] for row in conn.execute(
+            """SELECT DISTINCT dm.group_id FROM dup_members dm
+               JOIN files f ON f.id=dm.file_id WHERE f.root_id=?""", (root_id,)
+        )]
+        if group_ids:
+            marks = ",".join("?" for _ in group_ids)
+            conn.execute(
+                f"UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IN ({marks})",
+                group_ids,
+            )
+            conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", group_ids)
+
+        # The derived tables attached to files use ON DELETE CASCADE. Persons are
+        # global clusters, so prune only clusters left with no faces afterwards.
+        conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
+        conn.execute("DELETE FROM persons WHERE NOT EXISTS "
+                     "(SELECT 1 FROM faces WHERE faces.person_id=persons.id)")
+
+        # Scan history may cover several roots. Retain those records, minus this
+        # root, rather than losing the other archives' history.
+        for run in conn.execute("SELECT id, roots FROM scan_runs").fetchall():
+            try:
+                paths = json.loads(run["roots"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(paths, list) or root_path not in paths:
+                continue
+            paths = [p for p in paths if p != root_path]
+            if paths:
+                conn.execute("UPDATE scan_runs SET roots=? WHERE id=?",
+                             (json.dumps(paths), run["id"]))
+            else:
+                conn.execute("DELETE FROM scan_runs WHERE id=?", (run["id"],))
+
+        conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
+        # Work out which content-addressed cache files are truly exclusive only
+        # after the root's file rows are gone.
+        removable_hashes = {
+            digest for digest in hashes
+            if conn.execute("SELECT 1 FROM files WHERE sha256=? LIMIT 1", (digest,)).fetchone() is None
+        }
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    cache = Path(cache_dir)
+    removed_cache = 0
+    # Unhashed thumbnails use a file/face id. Those ids are unique to the rows
+    # just removed. Hashed keys can be shared across roots, hence the check above.
+    patterns = (
+        [(cache / "thumbs", f"fid{fid}_*") for fid in file_ids]
+        + [(cache / "faces", f"fid{face_id}_*") for face_id in face_ids]
+        + [(cache / "thumbs", f"{digest}_*") for digest in removable_hashes]
+        + [(cache / "faces", f"{digest}_*") for digest in removable_hashes]
+    )
+    for directory, pattern in patterns:
+        if not directory.is_dir():
+            continue
+        for item in directory.glob(pattern):
+            try:
+                if item.is_file():
+                    item.unlink()
+                    removed_cache += 1
+            except OSError:
+                # A cache miss or a concurrently-regenerated thumbnail must not
+                # turn a completed database removal into an error.
+                pass
+    return {"ok": True, "path": root_path, "files": len(file_ids),
+            "cache_files": removed_cache}
 
 
 # -- dashboard --------------------------------------------------------------
@@ -428,6 +532,7 @@ def browse_filters(db_path: str, root_id=None) -> dict:
 
 def semantic_summary(db_path: str, root_id=None) -> dict:
     """Index state for the Browse semantic-search controls."""
+    from . import semantic
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
@@ -438,7 +543,8 @@ def semantic_summary(db_path: str, root_id=None) -> dict:
             f"""SELECT e.status, COUNT(*) c FROM semantic_embeddings e
                 JOIN files f ON f.id=e.file_id
                 WHERE {_NOT_HIDDEN}{rc} AND e.source_sha256=f.sha256
-                GROUP BY e.status""", rp).fetchall()
+                  AND COALESCE(e.indexer_version, '')=?
+                GROUP BY e.status""", (*rp, semantic.INDEXER_VERSION)).fetchall()
         counts = {r["status"]: r["c"] for r in rows}
         completed = sum(counts.values())
         return {
@@ -472,7 +578,7 @@ def semantic_pending(db_path: str, root_id=None) -> int:
 def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
                     year=None, month=None, mtype=None, person_id=None,
                     cluster_id=None, include_dups=False, limit=120, offset=0) -> dict:
-    """Rank locally stored normalized vectors. Gemini is called only for query."""
+    """Rank locally stored normalized vectors. Voyage is called only for query."""
     conn = db.open_readonly(db_path)
     try:
         where = [_VISIBLE if include_dups else _NOT_HIDDEN,
@@ -507,8 +613,8 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
                 vector = struct.unpack(f"<{len(q)}f", row["embedding"])
             except struct.error:
                 continue
-            # Embedding 2 returns normalized vectors at our configured dimension,
-            # so cosine similarity is their dot product.
+            # Voyage returns normalized retrieval vectors, so cosine similarity
+            # is their dot product.
             ranked.append((math.sumprod(q, vector), row))
         ranked.sort(key=lambda x: x[0], reverse=True)
         page = ranked[offset:offset + limit]
@@ -528,14 +634,13 @@ def dup_summary(db_path: str, root_id=None) -> dict:
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
-        # groups whose canonical is in this archive (a group can span archives)
         row = conn.execute(
             f"""SELECT COUNT(*) groups,
                        COALESCE(SUM(g.member_count-1),0) dups,
                        COALESCE(SUM(g.redundant_bytes),0) bytes
                 FROM dup_groups g
                 JOIN files f ON f.id=g.canonical_file_id
-                WHERE g.method='exact'{rc}""", rp).fetchone()
+                WHERE 1=1{rc}""", rp).fetchone()
         return {"groups": row["groups"], "duplicates": row["dups"],
                 "reclaimable": row["bytes"]}
     finally:
@@ -547,10 +652,10 @@ def dup_groups(db_path: str, root_id=None, limit=60, offset=0) -> dict:
     try:
         rc, rp = _root_clause(root_id)
         groups = conn.execute(
-            f"""SELECT g.id, g.member_count, g.size_each, g.redundant_bytes,
+            f"""SELECT g.id, g.method, g.member_count, g.size_each, g.redundant_bytes,
                        g.canonical_file_id
                 FROM dup_groups g JOIN files f ON f.id=g.canonical_file_id
-                WHERE g.method='exact'{rc}
+                WHERE 1=1{rc}
                 ORDER BY g.redundant_bytes DESC, g.id
                 LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
         out = []
@@ -563,7 +668,7 @@ def dup_groups(db_path: str, root_id=None, limit=60, offset=0) -> dict:
                    WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
                 (g["id"],)).fetchall()
             out.append({
-                "id": g["id"], "count": g["member_count"],
+                "id": g["id"], "method": g["method"], "count": g["member_count"],
                 "size_each": g["size_each"], "reclaimable": g["redundant_bytes"],
                 "canonical_id": g["canonical_file_id"],
                 "members": [{

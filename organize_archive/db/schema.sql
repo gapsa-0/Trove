@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS geo (
 
 CREATE TABLE IF NOT EXISTS dup_groups (
     id                INTEGER PRIMARY KEY,
-    method            TEXT NOT NULL,        -- 'exact' | 'phash'
+    method            TEXT NOT NULL,        -- 'exact' | 'perceptual'
     canonical_file_id INTEGER REFERENCES files(id),
     member_count      INTEGER NOT NULL,
     size_each         INTEGER,              -- bytes per copy (exact groups)
@@ -97,6 +97,19 @@ CREATE TABLE IF NOT EXISTS dup_members (
     PRIMARY KEY (group_id, file_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dupmembers_file ON dup_members(file_id);
+
+-- Perceptual fingerprints are deliberately kept separate from file hashes: the
+-- source SHA makes a changed file automatically eligible to be fingerprinted
+-- again without trusting an old visual signature.
+CREATE TABLE IF NOT EXISTS perceptual_hashes (
+    file_id       INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    source_sha256 TEXT NOT NULL,
+    algorithm     TEXT NOT NULL,
+    hash          TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_perceptual_hashes_algorithm
+    ON perceptual_hashes(algorithm);
 
 -- ---- Phase: geo place clustering ------------------------------------------
 
@@ -194,7 +207,7 @@ CREATE TABLE IF NOT EXISTS takeout_sidecar (
 
 -- ---- Phase 7: multimodal semantic search ---------------------------------
 
--- Gemini Embedding 2 vectors are normalized float32 arrays stored locally.
+-- Remote semantic-embedding vectors are normalized float32 arrays stored locally.
 -- One row also records skipped/failed inputs, making an indexing run resumable
 -- without silently uploading the same unsupported file over and over.
 CREATE TABLE IF NOT EXISTS semantic_embeddings (
@@ -212,9 +225,8 @@ CREATE TABLE IF NOT EXISTS semantic_embeddings (
 CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_status
     ON semantic_embeddings(status);
 
--- Local Gemini quota accounting. Reservations use the model's maximum input
--- size until the response supplies its actual token count, so quota checks are
--- safe even for multimodal inputs whose token count cannot be known locally.
+-- Reserved for provider quota accounting. Existing archives may retain the
+-- historical Gemini usage records; Voyage does not use this table.
 CREATE TABLE IF NOT EXISTS semantic_api_usage (
     id           INTEGER PRIMARY KEY,
     requested_at REAL NOT NULL,

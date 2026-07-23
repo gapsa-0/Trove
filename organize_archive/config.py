@@ -67,12 +67,12 @@ class Config:
     db_path: str = str(DEFAULT_DB_PATH)
     cache_dir: str = str(DEFAULT_CACHE_DIR)
 
-    # Semantic Browse search (Gemini Embedding 2). The API key is deliberately
-    # not a config field: put GEMINI_API_KEY in the ignored project-root .env
+    # Semantic Browse search (Voyage Multimodal 3.5). The API key is deliberately
+    # not a config field: put VOYAGE_API_KEY in the ignored project-root .env
     # file (or process environment), never data/config.json.
-    semantic_embedding_model: str = "gemini-embedding-2"
-    semantic_embedding_dimensions: int = 768
-    semantic_inline_max_bytes: int = 18 * 1024 * 1024
+    semantic_embedding_model: str = "voyage-multimodal-3.5"
+    semantic_embedding_dimensions: int = 1024
+    semantic_inline_max_bytes: int = 20 * 1024 * 1024
 
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter

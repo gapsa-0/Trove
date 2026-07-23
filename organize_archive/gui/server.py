@@ -45,12 +45,18 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- response helpers -------------------------------------------------
     def _json(self, obj, status=200):
-        self._bytes(json.dumps(obj).encode(), "application/json", status)
+        # Archive state changes through POST requests, so serving a heuristic
+        # browser cache entry here makes a completed add/remove appear to have
+        # done nothing until another navigation happens.
+        self._bytes(json.dumps(obj).encode(), "application/json", status,
+                    cache_control="no-store")
 
-    def _bytes(self, body: bytes, content_type: str, status=200):
+    def _bytes(self, body: bytes, content_type: str, status=200, cache_control=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -233,8 +239,38 @@ class Handler(BaseHTTPRequestHandler):
                     if res["path"] not in self.cfg.roots:
                         self.cfg.roots.append(res["path"])
                         self.cfg.save()
-                    self.jobs.nudge()   # start indexing the new path right away
                     self._json(res)
+            elif path == "/api/archive/open":
+                root_id = body.get("root_id")
+                if not isinstance(root_id, int):
+                    self._json({"error": "root_id is required"}, 400)
+                elif not any(a["id"] == root_id and a["exists"]
+                             for a in queries.archives(self.cfg.db_path)):
+                    self._json({"error": "archive not found or unavailable"}, 404)
+                else:
+                    self.jobs.open_archive(root_id)
+                    self._json({"ok": True})
+            elif path == "/api/archive/close":
+                root_id = body.get("root_id")
+                self.jobs.close_archive(root_id if isinstance(root_id, int) else None)
+                self._json({"ok": True})
+            elif path == "/api/archive/remove":
+                root_id = body.get("root_id")
+                if not isinstance(root_id, int):
+                    self._json({"error": "root_id is required"}, 400)
+                elif not self.jobs.stop_archive(root_id):
+                    self._json({"error": "archive is still stopping; try again shortly"}, 409)
+                else:
+                    res = queries.remove_archive(self.cfg.db_path, self.cfg.cache_dir, root_id)
+                    if "error" not in res:
+                        # `roots` is the user-facing registration list as well
+                        # as scan's default input; removing the DB row alone
+                        # would otherwise register it again at the next scan.
+                        removed = Path(res["path"])
+                        self.cfg.roots = [p for p in self.cfg.roots
+                                          if Path(p).expanduser().resolve() != removed]
+                        self.cfg.save()
+                    self._json(res, 400 if "error" in res else 200)
             elif path == "/api/map/cluster/rename":
                 res = queries.rename_place_cluster(
                     self.cfg.db_path, body.get("cluster_id"), (body.get("name") or "").strip())

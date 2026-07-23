@@ -72,32 +72,45 @@ def _gps_from_exif(tags: dict):
     return lat, lon, alt
 
 
-def _pending(conn, batch_size: int):
+def _pending(conn, batch_size: int, root_ids: tuple[int, ...] | None = None):
+    """Return an enrichment batch, optionally restricted to scan roots."""
+    where = "d.file_id IS NULL AND f.present = 1"
+    params: list[int] = []
+    if root_ids:
+        where += " AND f.root_id IN (" + ",".join("?" for _ in root_ids) + ")"
+        params.extend(root_ids)
+    params.append(batch_size)
     return conn.execute(
-        """SELECT f.id, f.rel_path, f.media_type, f.mtime, r.path AS root_path
-           FROM files f JOIN roots r ON r.id = f.root_id
-           LEFT JOIN dates d ON d.file_id = f.id
-           WHERE d.file_id IS NULL AND f.present = 1
-           ORDER BY f.id
-           LIMIT ?""",
-        (batch_size,),
+        f"""SELECT f.id, f.rel_path, f.media_type, f.mtime, r.path AS root_path
+            FROM files f JOIN roots r ON r.id = f.root_id
+            LEFT JOIN dates d ON d.file_id = f.id
+            WHERE {where}
+            ORDER BY f.id
+            LIMIT ?""",
+        params,
     ).fetchall()
 
 
-def enrich(conn, cfg: Config, progress=None, batch_size: int = 80) -> EnrichStats:
+def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
+           root_ids: tuple[int, ...] | None = None) -> EnrichStats:
     stats = EnrichStats()
     matcher = SidecarMatcher()
     reader = ExifReader() if (ExifReader and exif_available()) else None
 
+    where = "d.file_id IS NULL AND f.present=1"
+    params: list[int] = []
+    if root_ids:
+        where += " AND f.root_id IN (" + ",".join("?" for _ in root_ids) + ")"
+        params.extend(root_ids)
     total = conn.execute(
-        """SELECT COUNT(*) FROM files f LEFT JOIN dates d ON d.file_id=f.id
-           WHERE d.file_id IS NULL AND f.present=1"""
+        f"""SELECT COUNT(*) FROM files f LEFT JOIN dates d ON d.file_id=f.id
+            WHERE {where}""", params
     ).fetchone()[0]
     if progress is not None:
         progress.total = total
 
     while True:
-        rows = _pending(conn, batch_size)
+        rows = _pending(conn, batch_size, root_ids)
         if not rows:
             break
 

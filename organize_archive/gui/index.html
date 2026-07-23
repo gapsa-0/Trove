@@ -41,6 +41,10 @@
   .card h3{margin:0 0 4px;font-size:15px;word-break:break-word;}
   .card .path{font-size:11px;color:var(--muted);word-break:break-all;margin-bottom:10px;}
   .card .stats{display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .card .cardfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:13px;}
+  .remove-archive{margin-left:auto;background:transparent;color:#df7773;border:1px solid #814845;
+    border-radius:7px;padding:4px 8px;font-size:11px;cursor:pointer;}
+  .remove-archive:hover{background:#542827;color:#fff;}
   .card.add{display:flex;align-items:center;justify-content:center;border-style:dashed;
     color:var(--muted);font-size:15px;min-height:120px;}
   .badge-warn{color:#e6b45e;font-size:11px;}
@@ -342,7 +346,7 @@ let NAV=0;
 
 function fmtBytes(n){if(n==null)return "—";const u=["B","KB","MB","GB","TB"];let i=0,f=n;
   while(f>=1024&&i<4){f/=1024;i++;}return f.toFixed(1)+" "+u[i];}
-async function jget(u){return (await fetch(u)).json();}
+async function jget(u){return (await fetch(u,{cache:"no-store"})).json();}
 async function jpost(u,b){return (await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})})).json();}
 // Serialize all persistence through ONE in-flight write. A GUI write can block for
 // a few seconds waiting for the background pipeline's single SQLite writer; firing
@@ -369,7 +373,9 @@ async function loadPicker(){
     const enr=a.enriched<a.files?`<span class="badge-warn">${(a.files-a.enriched).toLocaleString()} not enriched</span>`:"";
     c.innerHTML=`<h3>${a.name} ${warn}</h3><div class="path">${a.path}</div>
       <div class="stats"><span>${a.files.toLocaleString()} files</span>
-      <span>${fmtBytes(a.size)}</span>${enr}</div>`;
+      <span>${fmtBytes(a.size)}</span>${enr}</div>
+      <div class="cardfoot"><span class="muted">Catalog only</span><button class="remove-archive">Remove</button></div>`;
+    c.querySelector(".remove-archive").onclick=(event)=>{event.stopPropagation();removeArchive(a);};
     el.appendChild(c);
   });
   const add=document.createElement("div"); add.className="card add";
@@ -380,16 +386,25 @@ async function addArchive(){
   if(!p)return;
   const r=await jpost("/api/archives",{path:p});
   if(r.error){alert(r.error);return;}
-  loadPicker();
+  await loadPicker();
+}
+async function removeArchive(a){
+  const message=`Remove “${a.name}” from organize_archive?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
+  if(!confirm(message))return;
+  const r=await jpost("/api/archive/remove",{root_id:a.id});
+  if(r.error){alert(r.error);return;}
+  await loadPicker();
 }
 
 /* ---------- archive shell ---------- */
 function openArchive(a,section){
+  if(S.arch && S.arch.id!==a.id) jpost("/api/archive/close",{root_id:S.arch.id});
   S.arch=a; S.section=section||"overview";
   document.getElementById("picker").style.display="none";
   document.getElementById("app").classList.add("on");
   document.getElementById("archname").textContent=a.name;
   location.hash=`/archive/${a.id}/${S.section}`;
+  jpost("/api/archive/open",{root_id:a.id});
   renderNav(); showSection(S.section); startGlobalStatus();
 }
 
@@ -423,11 +438,15 @@ function applyHash(){
   return false;
 }
 function toPicker(){
+  if(S.arch) jpost("/api/archive/close",{root_id:S.arch.id});
   stopPoll(); stopGlobalStatus(); S.arch=null;
   document.getElementById("app").classList.remove("on");
   document.getElementById("picker").style.display="block";
   loadPicker();
 }
+window.addEventListener("pagehide",()=>{
+  if(S.arch) navigator.sendBeacon("/api/archive/close", JSON.stringify({root_id:S.arch.id}));
+});
 function renderNav(){
   const el=document.getElementById("navitems"); el.innerHTML="";
   SECTIONS.forEach(s=>{
@@ -919,15 +938,17 @@ async function updateSemanticStatus(){
     const s=await jget("/api/browse/semantic/status?root="+S.arch.id);
     if(!document.getElementById("semantic-status"))return;
     const j=(await jget("/api/jobs?root="+S.arch.id)).jobs.find(x=>x.kind==="semantic"&&x.status==="running");
-    const progress=j?` Indexing ${j.done.toLocaleString()} / ${j.total.toLocaleString()}…`:
+    const progress=j?` Indexing ${j.done.toLocaleString()} / ${j.total.toLocaleString()}${j.current?` · ${j.current}`:""}…`:
       (s.pending?` ${s.pending.toLocaleString()} media still need indexing.`:"");
-    const keyNote=s.configured?"":" Add GEMINI_API_KEY to the root .env file and restart the app.";
+    const keyNote=s.configured?"":" Add VOYAGE_API_KEY to the root .env file and restart the app.";
     el.innerHTML=`<span class="dot ${s.indexed?"ok":"check"}"></span>${s.indexed.toLocaleString()} indexed`
       +`${s.skipped?`, ${s.skipped.toLocaleString()} skipped`:""}${s.errors?`, ${s.errors.toLocaleString()} errors`:""}.`
-      +progress+` <span style="opacity:.8">Indexing sends selected archive media to Gemini; vectors stay local. Quota guard: 100 RPM, 30K TPM, 1K RPD.</span>`
+      +progress+` <span style="opacity:.8">Indexing sends images and MP4 video to Voyage; vectors stay local. Audio, PDFs, and other video formats are skipped.</span>`
       +` <span style="opacity:.8">${j?"Automatic indexing is running.":"Automatic indexing starts when compatible media is pending."}${keyNote}</span>`;
-    if(j)setTimeout(updateSemanticStatus, 2000);
-  }catch(e){el.textContent="Semantic search needs GEMINI_API_KEY in the app environment.";}
+    // The scheduler briefly pauses between resumable batches. Keep polling
+    // while there is remaining work so the status does not appear to vanish.
+    if(j||s.pending)setTimeout(updateSemanticStatus, 2000);
+  }catch(e){el.textContent="Semantic search needs VOYAGE_API_KEY in the app environment.";}
 }
 function semanticSubmit(ev){
   ev.preventDefault();
@@ -1055,7 +1076,7 @@ async function renderDedup(m){
     m.innerHTML=`<h2 class="sec">Duplicates</h2>
       <div class="soonbox"><div class="big">🧹</div>
       <p>No duplicates found yet.</p>
-      <p class="muted">This runs automatically once files are scanned and dated — see the Overview tab for progress. Groups byte-identical copies (same photo across takeouts); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
+      <p class="muted">This runs automatically once files are scanned and dated — see the Overview tab for progress. Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
     return;
   }
   m.innerHTML=`<h2 class="sec">Duplicates</h2>
@@ -1064,7 +1085,7 @@ async function renderDedup(m){
       <div class="stat"><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Reclaimable</div><div class="v">${fmtBytes(ds.reclaimable)}</div></div>
     </div>
-    <div class="muted" style="margin-bottom:12px">Byte-identical copies. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>
+    <div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>
     <div id="dupgroups"></div>
     <div class="more" id="dupmore" style="display:none"><button class="btn sec" onclick="loadDupGroups()">Load more</button></div>`;
   S.dupoff=0; document.getElementById("dupgroups").innerHTML=""; loadDupGroups();

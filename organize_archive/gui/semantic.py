@@ -1,7 +1,10 @@
-"""Gemini Embedding 2 client and local embedding-index helpers.
+"""Voyage Multimodal client and local semantic-index helpers.
 
-The Gemini key is read only from ``GEMINI_API_KEY`` in the project-root .env.
-Media bytes leave the machine when the automatic semantic-index job runs.
+The archive index uses Voyage's multimodal endpoint for image and MP4 video
+retrieval.  Vectors remain in SQLite; only source media sent for indexing and
+the user's search query leave the machine.  Voyage's Batch API does not yet
+support its multimodal model, so this module uses the endpoint's regular
+multi-input requests instead.
 """
 
 from __future__ import annotations
@@ -10,8 +13,6 @@ import base64
 import hashlib
 import json
 import os
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -19,160 +20,104 @@ from urllib.request import Request, urlopen
 from ..db import database as db
 from . import thumbs
 
-_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
-_IMAGE_MIMES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}
-_OTHER_MIMES = {
-    "mp4": "video/mp4", "mov": "video/quicktime",
-    "mp3": "audio/mpeg", "wav": "audio/wav", "pdf": "application/pdf",
+_ENDPOINT = "https://api.voyageai.com/v1/multimodalembeddings"
+_IMAGE_MIMES = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+    "webp": "image/webp", "gif": "image/gif",
 }
-_RPM_LIMIT = 100
-_TPM_LIMIT = 30_000
-_RPD_LIMIT = 1_000
-_MAX_INPUT_TOKENS = 8_192
-INDEXER_VERSION = "2"
+_VIDEO_MIMES = {"mp4": "video/mp4"}
+_MAX_INPUTS = 1_000
+INDEXER_VERSION = "voyage-mm-3.5-2"
 
 
-class GeminiEmbeddingError(RuntimeError):
+class VoyageEmbeddingError(RuntimeError):
     pass
 
 
 def api_key_available() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY", "").strip())
+    return bool(os.environ.get("VOYAGE_API_KEY", "").strip())
 
 
 def _api_key() -> str:
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    key = os.environ.get("VOYAGE_API_KEY", "").strip()
     if not key:
-        raise GeminiEmbeddingError("GEMINI_API_KEY is not set for this app process")
+        raise VoyageEmbeddingError("VOYAGE_API_KEY is not set for this app process")
     return key
 
 
-def _reserve_quota(db_path: str, cancel=None) -> int:
-    """Atomically reserve one request at worst-case token cost.
-
-    The embedding endpoint cannot tell us an input's multimodal token count in
-    advance. Reserving 8,192 prevents a request from crossing the TPM ceiling;
-    successful responses later shrink that reservation to actual usage.
-    """
-    while True:
-        if cancel is not None and cancel.is_set():
-            raise KeyboardInterrupt
-        now = time.time()
-        today = datetime.now(timezone.utc).date().isoformat()
-        conn = db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            used_today = conn.execute(
-                "SELECT COUNT(*) FROM semantic_api_usage WHERE usage_day=?", (today,)
-            ).fetchone()[0]
-            if used_today >= _RPD_LIMIT:
-                conn.rollback()
-                raise GeminiEmbeddingError(f"Gemini daily request limit reached ({_RPD_LIMIT} RPD)")
-            recent = conn.execute(
-                """SELECT requested_at, token_count FROM semantic_api_usage
-                   WHERE requested_at>=? ORDER BY requested_at""", (now - 60,)
-            ).fetchall()
-            tokens = sum(r["token_count"] for r in recent)
-            wait = 0.0
-            if len(recent) >= _RPM_LIMIT:
-                wait = max(wait, recent[0]["requested_at"] + 60 - now)
-            if tokens + _MAX_INPUT_TOKENS > _TPM_LIMIT:
-                released = 0
-                for item in recent:
-                    released += item["token_count"]
-                    if tokens - released + _MAX_INPUT_TOKENS <= _TPM_LIMIT:
-                        wait = max(wait, item["requested_at"] + 60 - now)
-                        break
-                else:
-                    wait = max(wait, 60.0)
-            if wait <= 0:
-                cur = conn.execute(
-                    "INSERT INTO semantic_api_usage(requested_at, usage_day, token_count) VALUES(?,?,?)",
-                    (now, today, _MAX_INPUT_TOKENS),
-                )
-                conn.commit()
-                return cur.lastrowid
-            conn.rollback()
-        finally:
-            conn.close()
-        # Keep cancellation responsive while waiting for a rolling quota window.
-        deadline = time.monotonic() + max(0.1, wait)
-        while time.monotonic() < deadline:
-            if cancel is not None and cancel.is_set():
-                raise KeyboardInterrupt
-            time.sleep(min(0.25, deadline - time.monotonic()))
-
-
-def _finalize_quota(db_path: str, usage_id: int, body: dict) -> None:
-    usage = body.get("usageMetadata") or body.get("usage_metadata") or {}
-    tokens = usage.get("totalTokenCount") or usage.get("promptTokenCount")
-    if not isinstance(tokens, int) or tokens < 1:
-        return  # Keep the conservative reservation when usage is unavailable.
-    conn = db.connect(db_path)
-    try:
-        conn.execute("UPDATE semantic_api_usage SET token_count=? WHERE id=?", (tokens, usage_id))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _embed(cfg, part: dict, db_path: str, cancel=None) -> list[float]:
-    usage_id = _reserve_quota(db_path, cancel)
+def _embed(cfg, inputs: list[dict], *, input_type: str) -> list[list[float]]:
+    if not inputs:
+        return []
+    if len(inputs) > _MAX_INPUTS:
+        raise ValueError(f"Voyage accepts at most {_MAX_INPUTS} inputs per request")
     payload = {
-        "content": {"parts": [part]},
-        "output_dimensionality": cfg.semantic_embedding_dimensions,
+        "inputs": inputs,
+        "model": cfg.semantic_embedding_model,
+        "input_type": input_type,
+        "truncation": True,
     }
     request = Request(
-        _ENDPOINT.format(model=cfg.semantic_embedding_model),
+        _ENDPOINT,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "x-goog-api-key": _api_key()},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {_api_key()}"},
         method="POST",
     )
     try:
-        with urlopen(request, timeout=60) as response:
+        with urlopen(request, timeout=180) as response:
             body = json.loads(response.read())
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:500]
-        raise GeminiEmbeddingError(f"Gemini returned HTTP {exc.code}: {detail}") from exc
+        raise VoyageEmbeddingError(f"Voyage returned HTTP {exc.code}: {detail}") from exc
     except URLError as exc:
-        raise GeminiEmbeddingError(f"Could not reach Gemini: {exc.reason}") from exc
+        raise VoyageEmbeddingError(f"Could not reach Voyage: {exc.reason}") from exc
     except TimeoutError as exc:
-        raise GeminiEmbeddingError("Gemini embedding request timed out") from exc
-    _finalize_quota(db_path, usage_id, body)
+        raise VoyageEmbeddingError("Voyage embedding request timed out") from exc
     try:
-        # REST embedContent returns one ``embedding`` object. The official SDK
-        # exposes that same response as an ``embeddings`` list, so accept both
-        # shapes to keep this stdlib REST client aligned with the API.
-        embedding = body.get("embedding")
-        if embedding is None:
-            embedding = body["embeddings"][0]
-        values = embedding["values"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise GeminiEmbeddingError("Gemini returned no embedding values") from exc
-    if len(values) != cfg.semantic_embedding_dimensions:
-        raise GeminiEmbeddingError(
-            f"Gemini returned {len(values)} dimensions, expected {cfg.semantic_embedding_dimensions}"
-        )
-    return [float(v) for v in values]
+        data = body["data"]
+        values = [item["embedding"] for item in sorted(data, key=lambda item: item["index"])]
+    except (KeyError, TypeError) as exc:
+        raise VoyageEmbeddingError("Voyage returned no embedding values") from exc
+    if len(values) != len(inputs):
+        raise VoyageEmbeddingError(f"Voyage returned {len(values)} embeddings for {len(inputs)} inputs")
+    for vector in values:
+        if len(vector) != cfg.semantic_embedding_dimensions:
+            raise VoyageEmbeddingError(
+                f"Voyage returned {len(vector)} dimensions, expected {cfg.semantic_embedding_dimensions}")
+    return [[float(v) for v in vector] for vector in values]
 
 
-def embed_query(cfg, query: str, db_path: str) -> list[float]:
-    return _embed(cfg, {"text": query}, db_path)
+def embed_query(cfg, query: str, _db_path: str) -> list[float]:
+    return _embed(cfg, [{"content": [{"type": "text", "text": query}]}],
+                  input_type="query")[0]
+
+
+def embed_parts(cfg, parts: list[dict]) -> list[list[float]]:
+    """Embed prepared archive inputs together using Voyage's multi-input API."""
+    return _embed(cfg, parts, input_type="document")
 
 
 def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None, str | None, str | None]:
-    """Return an inline Gemini part, input kind, and a non-fatal skip reason."""
+    """Create one Voyage multimodal input, or a non-fatal skip reason."""
     ext = (ext or path.suffix.lstrip(".")).lower()
     source, mime, kind = path, _IMAGE_MIMES.get(ext), "image"
-    if media_type == "image" and mime is None:
-        # Gemini accepts JPEG/PNG. Existing thumbnail generation converts the
-        # archive's HEIC/RAW/WebP/etc. into a representative local JPEG.
+    content_type = "image_base64"
+    if media_type == "image":
+        # A 1024px JPEG keeps every request small enough to batch efficiently,
+        # avoids sending private full-resolution originals, and remains ample
+        # for archive-level visual retrieval. It also converts HEIC/RAW/etc.
+        # to a format Voyage accepts.
         cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-        source = thumbs.thumb_for(cfg.cache_dir, cache_id, path, size=1024)
-        mime, kind = "image/jpeg", "thumbnail"
-    elif media_type != "image":
-        mime = _OTHER_MIMES.get(ext)
-        kind = media_type
+        thumb = thumbs.thumb_for(cfg.cache_dir, cache_id, path, size=1024)
+        if thumb is not None:
+            source, mime, kind = thumb, "image/jpeg", "thumbnail"
+        elif mime is None:
+            return None, None, f"unsupported image format: .{ext or 'unknown'}"
+    elif media_type == "video":
+        mime, kind, content_type = _VIDEO_MIMES.get(ext), "video", "video_base64"
+    elif media_type == "audio":
+        return None, None, "unsupported audio format (Voyage multimodal has no audio input)"
+    else:
+        return None, None, "unsupported document format (Voyage indexes visual document images, not PDFs directly)"
     if source is None or mime is None:
         return None, None, f"unsupported {media_type} format: .{ext or 'unknown'}"
     try:
@@ -180,12 +125,12 @@ def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None,
     except OSError as exc:
         return None, None, f"cannot read media: {exc}"
     if size > cfg.semantic_inline_max_bytes:
-        # A full-resolution JPEG/PNG can still use its locally generated JPEG.
+        # A large photo can use a local JPEG thumbnail; video must be skipped.
         if media_type == "image" and source == path:
             cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
             source = thumbs.thumb_for(cfg.cache_dir, cache_id, path, size=1024)
             if source is not None and source.stat().st_size <= cfg.semantic_inline_max_bytes:
-                mime, kind = "image/jpeg", "thumbnail"
+                mime, kind, content_type = "image/jpeg", "thumbnail", "image_base64"
             else:
                 return None, None, f"media exceeds inline limit ({size / 1024 / 1024:.1f} MB)"
         else:
@@ -194,15 +139,17 @@ def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None,
         data = base64.b64encode(source.read_bytes()).decode("ascii")
     except OSError as exc:
         return None, None, f"cannot read media: {exc}"
-    return {"inline_data": {"mime_type": mime, "data": data}}, kind, None
+    return {"content": [{content_type: f"data:{mime};base64,{data}", "type": content_type}]}, kind, None
 
 
-def embed_media(cfg, path: Path, ext: str, media_type: str, db_path: str,
+def embed_media(cfg, path: Path, ext: str, media_type: str, _db_path: str,
                 cancel=None) -> tuple[list[float] | None, str | None, str | None]:
+    if cancel is not None and cancel.is_set():
+        raise KeyboardInterrupt
     part, kind, skip_reason = media_part(cfg, path, ext, media_type)
     if skip_reason:
         return None, kind, skip_reason
-    return _embed(cfg, part, db_path, cancel), kind, None
+    return _embed(cfg, [part], input_type="document")[0], kind, None
 
 
 def pending_rows(conn, root_id: int | None, force: bool = False):
@@ -212,9 +159,6 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
         where.append("f.root_id=?")
         params.append(root_id)
     if not force:
-        # A code/indexer revision retries previous errors once. Successful and
-        # deliberately skipped files stay put, preventing an invalid input from
-        # waking the automatic scheduler forever.
         where.append("(e.file_id IS NULL OR e.source_sha256 IS NOT f.sha256 "
                      "OR COALESCE(e.indexer_version, '') != ?)")
         params.append(INDEXER_VERSION)
@@ -222,31 +166,22 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
         f"""SELECT f.id, f.rel_path, f.ext, f.media_type, f.sha256, r.path AS root_path
              FROM files f JOIN roots r ON r.id=f.root_id
              LEFT JOIN semantic_embeddings e ON e.file_id=f.id
-             WHERE {' AND '.join(where)} ORDER BY f.id""",
-        params,
-    ).fetchall()
+             WHERE {' AND '.join(where)} ORDER BY f.id""", params).fetchall()
 
 
 def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, int]:
-    """Return total semantic work and already-current outcomes for progress."""
     where = ["f.present=1", "f.hidden=0", "f.media_type IN ('image','video','audio','document')"]
     params: list = []
     if root_id is not None:
         where.append("f.root_id=?")
         params.append(root_id)
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM files f WHERE {' AND '.join(where)}", params
-    ).fetchone()[0]
+    total = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {' AND '.join(where)}", params).fetchone()[0]
     if force:
         return total, 0
     completed = conn.execute(
-        f"""SELECT COUNT(*) FROM files f
-            JOIN semantic_embeddings e ON e.file_id=f.id
-            WHERE {' AND '.join(where)}
-              AND e.source_sha256 IS f.sha256
-              AND COALESCE(e.indexer_version, '') = ?""",
-        (*params, INDEXER_VERSION),
-    ).fetchone()[0]
+        f"""SELECT COUNT(*) FROM files f JOIN semantic_embeddings e ON e.file_id=f.id
+            WHERE {' AND '.join(where)} AND e.source_sha256 IS f.sha256
+              AND COALESCE(e.indexer_version, '') = ?""", (*params, INDEXER_VERSION)).fetchone()[0]
     return total, completed
 
 
@@ -258,13 +193,10 @@ def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) ->
         """INSERT INTO semantic_embeddings
                (file_id, source_sha256, model, dimensions, embedding, status, input_kind, error, indexer_version, indexed_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(file_id) DO UPDATE SET
-               source_sha256=excluded.source_sha256, model=excluded.model,
-               dimensions=excluded.dimensions, embedding=excluded.embedding,
-               status=excluded.status, input_kind=excluded.input_kind,
-               error=excluded.error, indexer_version=excluded.indexer_version,
-               indexed_at=excluded.indexed_at""",
+           ON CONFLICT(file_id) DO UPDATE SET source_sha256=excluded.source_sha256,
+               model=excluded.model, dimensions=excluded.dimensions, embedding=excluded.embedding,
+               status=excluded.status, input_kind=excluded.input_kind, error=excluded.error,
+               indexer_version=excluded.indexer_version, indexed_at=excluded.indexed_at""",
         (row["id"], row["sha256"] or "", cfg.semantic_embedding_model,
          cfg.semantic_embedding_dimensions, blob, status, kind, error,
-         INDEXER_VERSION, db.now_iso()),
-    )
+         INDEXER_VERSION, db.now_iso()))

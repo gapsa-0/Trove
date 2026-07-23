@@ -92,15 +92,16 @@ class JobManager:
         self._write_lock = threading.Lock()    # serializes DB writers
 
         # Both dedup and map place-clustering are "derived" passes rerun whenever
-        # new/enriched data lands; dirty flags queue them. True at startup so the
-        # catalog is fully current the moment the app opens.
+        # new/enriched data lands; dirty flags queue them once an archive is open.
         self._dedup_dirty = True
         self._dedup_root: int | None = None
         self._places_dirty = True
         self._places_root: int | None = None
+        # Work is deliberately opt-in per visible archive.  Starting the GUI
+        # alone must not start touching an archive in the background.
+        self._open_root_id: int | None = None
         self._auto_interval = self._AUTO_MIN
-        self._wake = threading.Event()   # nudged to check immediately (new archive)
-        self._wake.set()                 # first scheduling decision runs at once
+        self._wake = threading.Event()
         threading.Thread(target=self._auto_loop, daemon=True).start()
 
     # -- introspection ----------------------------------------------------
@@ -118,9 +119,42 @@ class JobManager:
         return any(j.status == "running" and j.kind == kind
                    for j in self._jobs.values())
 
+    def stop_archive(self, root_id: int, timeout: float = 10.0) -> bool:
+        """Cancel this archive's work and wait briefly for safe DB quiescence.
+
+        Deleting rows while a scanner or metadata worker is still committing
+        would let it recreate part of an archive after removal. Jobs observe
+        cancellation at their normal batch checkpoints, so this usually returns
+        immediately; callers can retry if a long external operation is winding
+        down.
+        """
+        with self._lock:
+            # This can include a job that was already being cancelled after the
+            # user switched archives. It still needs an explicit signal here:
+            # removal must never proceed until every worker for this root exits.
+            for jid, job in self._jobs.items():
+                if job.status == "running" and job.root_id == root_id:
+                    self._cancels[jid].set()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                active = any(j.status == "running" and j.root_id == root_id
+                             for j in self._jobs.values())
+            if not active:
+                return True
+            time.sleep(0.05)
+        with self._lock:
+            return not any(j.status == "running" and j.root_id == root_id
+                           for j in self._jobs.values())
+
     # -- control ----------------------------------------------------------
     def start(self, kind: str, root_id: int | None = None,
               root_path: str | None = None, force: bool = False) -> dict:
+        # All GUI jobs belong to the archive currently on screen.  This also
+        # closes the small race where the user switches archives between a
+        # scheduler decision and this call.
+        if root_id is not None and root_id != self._open_root_id:
+            return {"error": "archive is no longer open"}
         if self.active_kind(kind):
             return {"error": f"a {kind} job is already running"}
         with self._lock:
@@ -135,15 +169,37 @@ class JobManager:
         return job.public()
 
     # -- automatic scheduling ----------------------------------------------
-    # The catalog keeps itself in sync with zero user intervention: this daemon
-    # thread notices new/un-enriched files and runs the whole pipeline (scan →
-    # enrich → faces → dedup) on its own. There is deliberately no pause, stop
-    # or manual-start control — the only way to halt it is to close the app,
-    # which kills this daemon thread with the process. Long jobs commit in
-    # batches and are resumable, so an abrupt exit loses at most one batch.
+    # While an archive is open, this daemon notices pending work and runs the
+    # pipeline (scan → enrich → faces → dedup) for it. Closing or switching the
+    # archive requests cancellation; long jobs commit in batches and resume the
+    # next time that archive is opened.
+    def open_archive(self, root_id: int):
+        """Allow automatic work for this archive while it is being viewed."""
+        with self._lock:
+            previous = self._open_root_id
+            self._open_root_id = root_id
+            # Changing archives means the old archive is no longer open.  Its
+            # resumable job should yield at its next progress checkpoint.
+            if previous is not None and previous != root_id:
+                for jid, job in self._jobs.items():
+                    if job.status == "running" and job.root_id == previous:
+                        self._cancels[jid].set()
+        self.nudge()
+
+    def close_archive(self, root_id: int | None = None):
+        """Stop work when the currently viewed archive is closed."""
+        with self._lock:
+            if self._open_root_id is None or (
+                    root_id is not None and root_id != self._open_root_id):
+                return
+            closing = self._open_root_id
+            self._open_root_id = None
+            for jid, job in self._jobs.items():
+                if job.status == "running" and job.root_id == closing:
+                    self._cancels[jid].set()
+
     def nudge(self):
-        """Wake the scheduler now (e.g. right after a new archive is added)
-        instead of waiting out the current back-off interval."""
+        """Wake the scheduler now after an archive has been opened."""
         self._auto_interval = self._AUTO_MIN
         self._wake.set()
 
@@ -163,24 +219,30 @@ class JobManager:
         """One scheduling decision. Returns True if it started (or is waiting
         on) work, so the caller can poll again soon rather than backing off."""
         from . import queries, semantic
-        archives = queries.archives(self.cfg.db_path)
+        open_root_id = self._open_root_id
+        if open_root_id is None:
+            return False
+        archives = [a for a in queries.archives(self.cfg.db_path)
+                    if a["id"] == open_root_id and a["exists"]]
+        if not archives:
+            return False
         # Do not embed until dedup has selected canonicals. Once that is done,
-        # Gemini calls may overlap local metadata/faces extraction safely.
+        # Remote semantic calls may overlap local metadata/faces extraction safely.
         dedup_ready = not self._dedup_dirty and not self.active_kind("dedup")
         if dedup_ready and semantic.api_key_available() and not self.active_kind("semantic"):
             for archive in archives:
-                if archive["exists"] and queries.semantic_pending(self.cfg.db_path, archive["id"]):
+                if queries.semantic_pending(self.cfg.db_path, archive["id"]):
                     self.start("semantic", archive["id"], archive["path"])
                     return True
-        # Semantic indexing spends almost all of its time waiting on Gemini and
+        # A scan owns a small companion metadata worker, which reads each committed
+        # scan batch while hashing proceeds. All other local stages stay exclusive.
+        # Semantic indexing spends almost all of its time waiting on Voyage and
         # only locks SQLite for one completed-result write at a time. It must not
         # stall the local scan/enrich/faces pipeline while those requests run.
         if any(j.status == "running" and j.kind != "semantic"
                for j in self._jobs.values()):
             return True
         for a in archives:
-            if not a["exists"]:
-                continue
             fresh = queries.freshness(self.cfg.db_path, a["id"])
             if fresh.get("new_files", 0) > 0:
                 self.start("scan", a["id"], a["path"])
@@ -197,13 +259,7 @@ class JobManager:
         # unique/canonical images (no wasted detection on duplicate photos).
         if self._dedup_dirty:
             self._dedup_dirty = False
-            # Dedup itself spans every archive, but the job is tagged with one
-            # root_id so its progress bar shows up somewhere (the GUI's job
-            # list is filtered per-archive) — prefer the archive that just got
-            # new/enriched data, else fall back to whichever archive exists.
-            root_id = self._dedup_root
-            if root_id is None:
-                root_id = next((a["id"] for a in archives if a["exists"]), None)
+            root_id = open_root_id
             self.start("dedup", root_id, None)
             return True
         # Faces: the long extraction pass, so it runs after the cheap ones.
@@ -212,8 +268,6 @@ class JobManager:
         from ..faces import backend as face_backend
         if face_backend.available():
             for a in archives:
-                if not a["exists"]:
-                    continue
                 if queries.faces_pending(self.cfg.db_path, a["id"]) > 0:
                     self.start("faces", a["id"], a["path"])
                     return True
@@ -221,12 +275,8 @@ class JobManager:
         # stays in sync on its own (it used to refresh only via a manual button).
         if self._places_dirty:
             self._places_dirty = False
-            root_id = self._places_root
-            if root_id is None:
-                root_id = next((a["id"] for a in archives if a["exists"]), None)
-            if root_id is not None:
-                self.start("places", root_id, None)
-                return True
+            self.start("places", open_root_id, None)
+            return True
         return False
 
     # -- worker -----------------------------------------------------------
@@ -234,6 +284,16 @@ class JobManager:
         try:
             if job.kind == "semantic":
                 self._run_semantic(job, cancel)
+            elif job.kind == "scan":
+                # A scan is the one exception to the long-held writer lock:
+                # _run_scan starts a metadata worker which uses a separate
+                # connection. SQLite/WAL still serializes their brief commits.
+                conn = db.connect(self.cfg.db_path)
+                db.init_db(conn)
+                try:
+                    self._run_scan(conn, job, cancel)
+                finally:
+                    conn.close()
             else:
                 with self._write_lock:
                     conn = db.connect(self.cfg.db_path)
@@ -265,6 +325,9 @@ class JobManager:
             job.finished_at = time.time()
 
     def _run_scan(self, conn, job: Job, cancel):
+        from pathlib import Path
+        from ..metadata import enrich as enrich_mod
+
         prog = _JobProgress(job, cancel)
         run_started = db.now_iso()
         roots = [job.root_path] if job.root_path else list(self.cfg.roots)
@@ -272,12 +335,61 @@ class JobManager:
             walker.count_files(__import__("pathlib").Path(r))
             for r in roots if __import__("pathlib").Path(r).is_dir()
         )
+        # Establish roots before starting the companion worker. It only sees
+        # batches after scan_root commits them, and it is deliberately confined
+        # to this scan's roots so other archives keep their normal scheduling.
+        root_ids = tuple(
+            db.get_or_create_root(conn, str(Path(r)))
+            for r in roots if Path(r).is_dir()
+        )
+        scan_finished = threading.Event()
+        metadata_error: list[BaseException] = []
+        metadata_stats = enrich_mod.EnrichStats()
+
+        def enrich_while_scanning():
+            nonlocal metadata_stats
+            meta_conn = db.connect(self.cfg.db_path)
+            try:
+                while True:
+                    if cancel.is_set():
+                        raise KeyboardInterrupt
+                    # Enrichment itself commits every 80 files, keeping write
+                    # transactions short and yielding often to the hash scan.
+                    # Once scanning finishes, keep draining its final batches.
+                    stats = enrich_mod.enrich(
+                        meta_conn, self.cfg, batch_size=80, root_ids=root_ids,
+                    )
+                    metadata_stats.processed += stats.processed
+                    metadata_stats.with_takeout += stats.with_takeout
+                    metadata_stats.with_gps += stats.with_gps
+                    if scan_finished.is_set() and stats.processed == 0:
+                        return
+                    scan_finished.wait(0.15)
+            except BaseException as exc:
+                metadata_error.append(exc)
+            finally:
+                meta_conn.close()
+
+        metadata_thread = None
+        if root_ids:
+            metadata_thread = threading.Thread(target=enrich_while_scanning, daemon=True)
+            metadata_thread.start()
         base = 0
-        for r in roots:
-            stats = walker.scan_root(conn, self.cfg, r, run_started,
-                                     progress=prog, base_done=base)
-            base += stats.seen
-        job.message = f"{base} files scanned"
+        try:
+            for r in roots:
+                stats = walker.scan_root(conn, self.cfg, r, run_started,
+                                         progress=prog, base_done=base,
+                                         # Publish small batches so metadata can
+                                         # begin while the scanner hashes later files.
+                                         commit_every=80)
+                base += stats.seen
+        finally:
+            scan_finished.set()
+            if metadata_thread is not None:
+                metadata_thread.join()
+        if metadata_error:
+            raise metadata_error[0]
+        job.message = f"{base} files scanned · {metadata_stats.processed} metadata extracted"
 
     def _run_enrich(self, conn, job: Job, cancel):
         from ..metadata import enrich as enrich_mod
@@ -290,7 +402,7 @@ class JobManager:
     def _run_dedup(self, conn, job: Job, cancel):
         from ..dedup import exact
         prog = _JobProgress(job, cancel)
-        stats = exact.run(conn, progress=prog)
+        stats = exact.run(conn, self.cfg, progress=prog, root_id=job.root_id)
         # Hidden files are duplicate copies. They must never consume semantic
         # storage or appear as a stale vector if a prior run overlapped dedup.
         conn.execute(
@@ -369,23 +481,59 @@ class JobManager:
             job.message = "semantic index is already current"
             return
         indexed = skipped = failed = 0
-        for n, row in enumerate(rows, 1):
+        # Voyage accepts up to 1,000 inputs per call. Keep requests deliberately
+        # smaller: a few original high-resolution images can otherwise exceed
+        # its 320K-token request ceiling. A failed multi-item request falls
+        # back to individual requests, so one malformed source never holds up
+        # the rest of an archive.
+        batch_size = 20
+        for start in range(0, len(rows), batch_size):
             if cancel.is_set():
                 raise KeyboardInterrupt
-            job.current = row["rel_path"]
-            try:
-                values, kind, reason = semantic.embed_media(
+            group = rows[start:start + batch_size]
+            job.current = f"Preparing {len(group)} media files…"
+            prepared = []
+            for offset, row in enumerate(group):
+                job.current = row["rel_path"]
+                part, kind, reason = semantic.media_part(
                     self.cfg, Path(row["root_path"]) / row["rel_path"],
-                    row["ext"], row["media_type"], self.cfg.db_path, cancel)
-                self._save_semantic_outcome(row, values, kind, reason)
-                if values is not None:
-                    indexed += 1
-                else:
+                    row["ext"], row["media_type"])
+                if reason:
+                    self._save_semantic_outcome(row, None, kind, reason)
                     skipped += 1
-            except Exception as exc:
-                self._save_semantic_outcome(row, None, None, str(exc))
-                failed += 1
-            job.done = already + n
+                    job.done = already + start + offset + 1
+                else:
+                    prepared.append((row, part, kind, offset))
+            # Video token counts depend on sampled frames, so never combine
+            # them with other files. Thumbnails have a bounded pixel count and
+            # are safe to submit together.
+            api_groups = [[item] for item in prepared if item[2] == "video"]
+            images = [item for item in prepared if item[2] != "video"]
+            api_groups += [images[n:n + batch_size] for n in range(0, len(images), batch_size)]
+            for api_group in api_groups:
+                if len(api_group) == 1 and api_group[0][2] == "video":
+                    job.current = f"Sending video: {api_group[0][0]['rel_path']}"
+                else:
+                    job.current = f"Sending {len(api_group)} prepared photos to Voyage…"
+                try:
+                    vectors = semantic.embed_parts(self.cfg, [p[1] for p in api_group])
+                    outcomes = zip(api_group, vectors)
+                except Exception:
+                    # Fall back to isolated calls; this identifies and records
+                    # a bad source without discarding good neighbours.
+                    outcomes = []
+                    for item in api_group:
+                        try:
+                            job.current = f"Retrying: {item[0]['rel_path']}"
+                            outcomes.append((item, semantic.embed_parts(self.cfg, [item[1]])[0]))
+                        except Exception as exc:
+                            self._save_semantic_outcome(item[0], None, item[2], str(exc))
+                            failed += 1
+                            job.done = already + start + item[3] + 1
+                for (row, _part, kind, offset), values in outcomes:
+                    self._save_semantic_outcome(row, values, kind, None)
+                    indexed += 1
+                    job.done = already + start + offset + 1
         job.message = f"{indexed} indexed, {skipped} skipped, {failed} errors"
 
     def _save_semantic_outcome(self, row, values, kind, reason):
@@ -398,7 +546,7 @@ class JobManager:
         from . import semantic
         conn = db.connect(self.cfg.db_path)
         try:
-            # Dedup may have completed while Gemini was processing this item.
+            # Dedup may have completed while Voyage was processing this item.
             # Only keep an outcome if this exact source remains canonical.
             current = conn.execute(
                 "SELECT hidden, sha256 FROM files WHERE id=?", (row["id"],)
