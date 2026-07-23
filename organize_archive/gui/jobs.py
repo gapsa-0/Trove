@@ -82,6 +82,7 @@ class JobManager:
     # small enough that people appear early in a multi-hour run, large enough
     # that repeated clustering stays a small fraction of total time.
     _FACE_CHUNK = 1200
+    _PET_CHUNK = 600
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -191,7 +192,7 @@ class JobManager:
 
     # -- automatic scheduling ----------------------------------------------
     # While an archive is open, this daemon notices pending work and runs the
-    # pipeline (scan → enrich → faces → dedup) for it. Closing or switching the
+    # pipeline (scan → enrich → dedup → pets → faces) for it. Closing or switching the
     # archive requests cancellation; long jobs commit in batches and resume the
     # next time that archive is opened.
     def open_archive(self, root_id: int):
@@ -285,6 +286,16 @@ class JobManager:
             root_id = open_root_id
             self.start("dedup", root_id, None)
             return True
+        # Animals run before human faces. Their boxes suppress YuNet detections
+        # that are substantially contained by a pet/toy region.
+        from ..pets import backend as pet_backend
+        from ..pets.extract import scan_source as pet_scan_source
+        if pet_backend.available():
+            for a in archives:
+                if queries.pets_pending(
+                        self.cfg.db_path, a["id"], pet_scan_source(self.cfg)) > 0:
+                    self.start("pets", a["id"], a["path"])
+                    return True
         # Faces: the long extraction pass, so it runs after the cheap ones.
         # Skipped entirely when the local face backend isn't available, so we
         # never spin on work that can't run.
@@ -332,6 +343,10 @@ class JobManager:
                             self._run_places(conn, job, cancel)
                         elif job.kind == "faces":
                             self._run_faces(conn, job, cancel)
+                        elif job.kind == "pets":
+                            self._run_pets(conn, job, cancel)
+                        elif job.kind == "face_cluster":
+                            self._run_face_cluster(conn, job, cancel)
                         else:
                             raise ValueError(f"unknown job kind: {job.kind}")
                     finally:
@@ -486,6 +501,41 @@ class JobManager:
             fc.cluster_faces(conn, self.cfg)
         people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
         job.message = f"{faces_found} faces in {processed} photos · {people} people"
+
+    def _run_pets(self, conn, job: Job, cancel):
+        from ..pets import extract as px, cluster as pc
+        total = px.image_count(conn, job.root_id)
+        already = max(0, total - px.pending_count(
+            conn, job.root_id, px.scan_source(self.cfg)))
+        job.total, job.done = total, already
+        be = px.make_backend(self.cfg, log=lambda message: setattr(job, "current", message))
+        processed = animals = suppressed = 0
+        while True:
+            if cancel.is_set():
+                raise KeyboardInterrupt
+            progress = _JobProgress(
+                job, cancel, base=already + processed, fixed_total=True)
+            stats = px.extract(
+                conn, self.cfg, progress=progress, limit=self._PET_CHUNK,
+                root_id=job.root_id, be=be)
+            if stats.processed == 0:
+                break
+            processed += stats.processed
+            animals += stats.animals
+            suppressed += stats.faces_suppressed
+            job.current = "grouping pets…"
+            pc.cluster_pets(conn, self.cfg, root_id=job.root_id)
+        groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
+        job.message = (
+            f"{animals} animals in {processed} photos · {groups} pet groups"
+            + (f" · {suppressed} face false positives suppressed" if suppressed else ""))
+
+    def _run_face_cluster(self, conn, job: Job, cancel):
+        from ..faces.cluster import cluster_faces
+        job.current = "reclustering people after review…"
+        stats = cluster_faces(conn, self.cfg)
+        job.done = job.total = 1
+        job.message = f"{stats.people} people · {stats.clustered} faces clustered"
 
     def _run_semantic(self, job: Job, cancel):
         from pathlib import Path

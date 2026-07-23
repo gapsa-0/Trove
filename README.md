@@ -26,12 +26,15 @@ application-data folder.
   map pin, and manually assigned without altering the media's GPS metadata.
 - Detects and clusters faces locally into people. You can name people, correct a face,
   merge or separate suggested people, and dismiss non-person detections.
+- Detects cats, dogs, birds, and horses locally, groups conservative likely-pet
+  identities, and uses animal/toy regions plus conservative learning from manual
+  doll/cartoon corrections to keep non-human faces out of People.
 - Generates cached thumbnails and serves the interface only on `127.0.0.1`.
 
 When an archive is open in the app, its pipeline runs automatically:
 
 ```text
-scan → metadata and date extraction → duplicate grouping → face processing → places
+scan → metadata and date extraction → duplicate grouping → pets → faces → places
 ```
 
 Long stages commit progress in batches. Closing or switching archives asks current
@@ -112,7 +115,7 @@ package with the extras appropriate to the features you want:
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-pip install -e '.[cli,media,faces]'
+pip install -e '.[cli,media,faces,pets]'
 ```
 
 `exiftool` and `ffmpeg`/`ffprobe` are recommended system tools. The core scanner works
@@ -127,6 +130,7 @@ oa init
 oa scan
 oa enrich
 oa dedup
+oa pets
 oa faces
 oa gui
 ```
@@ -134,6 +138,16 @@ oa gui
 Useful companion commands are `oa status`, `oa dates`, `oa config --show`, and
 `oa migrate-data` for copying an older project-local `data/` directory into the
 per-user data location. All long commands are designed to be re-run.
+
+Face extraction rejects low-confidence, tiny, blurry, severely over/underexposed,
+and substantially clipped candidates before they enter People. Inspect persisted
+decision counts and post-clustering unassigned noise with
+`oa faces --quality-report`, or test the configured thresholds against up to 100
+pending images without changing the catalog:
+
+```bash
+oa faces --calibrate 100
+```
 
 `oa gui` starts the local interface at `http://127.0.0.1:8756/`; it opens a standalone
 browser window when a supported Chromium-family browser is available. Use `--tab` to

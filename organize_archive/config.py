@@ -95,6 +95,30 @@ class Config:
                                     # this trims false positives on sky/texture)
     faces_min_px: int = 36          # drop faces smaller than this (box side, px)
     faces_max_side: int = 960       # downscale long side before detection (speed)
+    # Extraction-time quality gate. Metrics are measured on the aligned 112px
+    # crop, making them comparable across original image sizes. Rejections are
+    # counted in face_scan so thresholds can be calibrated without retaining
+    # false detections as people.
+    faces_min_focus: float = 35.0    # variance of the grayscale Laplacian
+    faces_max_extreme_fraction: float = 0.80  # pixels near black or white
+    faces_max_clipped_fraction: float = 0.18  # bbox area outside decoded image
+    faces_quality_version: str = "opencv-laplacian-v1"
+    # Pets / non-human face filtering. YOLOX runs locally over canonical images
+    # and supplies animal regions before the human-face pass. Identity grouping
+    # uses a deterministic crop descriptor; thresholds are intentionally
+    # conservative because users can merge/name pets but originals never change.
+    pets_min_score: float = 0.60
+    pets_min_px: int = 48
+    pets_max_side: int = 1280
+    pets_species: list[str] = field(
+        default_factory=lambda: ["cat", "dog", "bird", "horse"])
+    pets_cluster_similarity: float = 0.94
+    pets_min_detections: int = 2
+    pets_face_overlap: float = 0.60
+    pets_model_version: str = "opencv-yolox-s-2022nov"
+    faces_nonhuman_min_examples: int = 3
+    faces_nonhuman_min_similarity: float = 0.78
+    faces_nonhuman_similarity_margin: float = 0.08
     # Clustering into people is two-stage (faces/cluster.py). Stage 1 over-clusters
     # into small, PURE fragments via a *mutual k-NN* graph: link two faces only
     # when each is among the other's `faces_knn_k` most-similar faces AND their

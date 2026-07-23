@@ -28,7 +28,7 @@ from __future__ import annotations
 import os
 import tempfile
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 try:
@@ -124,6 +124,56 @@ class Face:
     h: int
     score: float
     embedding: "np.ndarray"   # float32, L2-normalized (512-d AdaFace / 128-d SFace)
+    focus_score: float
+    brightness: float
+    extreme_fraction: float
+    clipped_fraction: float
+    quality_score: float
+    quality_source: str
+
+
+_REJECTION_REASONS = (
+    "score", "size", "focus", "exposure", "clipped", "nonhuman")
+
+
+@dataclass
+class DetectionReport:
+    """Accepted faces plus auditable counts for each quality-gate decision."""
+
+    faces: list[Face] = field(default_factory=list)
+    candidates: int = 0
+    rejected: dict[str, int] = field(
+        default_factory=lambda: {reason: 0 for reason in _REJECTION_REASONS})
+
+
+@dataclass(frozen=True)
+class FaceQuality:
+    focus_score: float
+    brightness: float
+    extreme_fraction: float
+    quality_score: float
+
+
+def measure_face_quality(aligned_bgr, min_focus: float) -> FaceQuality:
+    """Measure an aligned 112px crop using deterministic local image metrics.
+
+    Laplacian variance catches defocus/motion blur. ``extreme_fraction`` catches
+    crops dominated by crushed blacks or blown highlights. The composite is a
+    display/reporting score; the individual configured thresholds make the
+    accept/reject decision.
+    """
+    gray = cv2.cvtColor(aligned_bgr, cv2.COLOR_BGR2GRAY)
+    focus = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    brightness = float(gray.mean())
+    extreme = float(np.mean((gray <= 8) | (gray >= 247)))
+    focus_norm = focus / (focus + max(float(min_focus), 1.0))
+    exposure_norm = max(0.0, 1.0 - extreme)
+    return FaceQuality(
+        focus_score=focus,
+        brightness=brightness,
+        extreme_fraction=extreme,
+        quality_score=max(0.0, min(1.0, focus_norm * exposure_norm)),
+    )
 
 
 class FaceBackend:
@@ -135,6 +185,9 @@ class FaceBackend:
 
     def __init__(self, cache_dir: str, *, min_score: float = 0.62,
                  min_px: int = 36, max_side: int = 1280,
+                 min_focus: float = 35.0, max_extreme_fraction: float = 0.80,
+                 max_clipped_fraction: float = 0.18,
+                 quality_version: str = "opencv-laplacian-v1",
                  embed_backend: str = "adaface", log=None):
         if not available():
             raise RuntimeError(
@@ -144,6 +197,10 @@ class FaceBackend:
         self.min_score = min_score
         self.min_px = min_px
         self.max_side = max_side
+        self.min_focus = min_focus
+        self.max_extreme_fraction = max_extreme_fraction
+        self.max_clipped_fraction = max_clipped_fraction
+        self.quality_version = quality_version
         self.embed_backend = embed_backend
         # score_threshold here is a coarse pre-filter; we re-check min_score too.
         self._det = cv2.FaceDetectorYN.create(
@@ -233,32 +290,74 @@ class FaceBackend:
         return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR), scale
 
     # -- detection + embedding -------------------------------------------
-    def detect(self, img_bgr, scale: float = 1.0) -> list[Face]:
+    @staticmethod
+    def _clipped_fraction(x: float, y: float, w: float, h: float,
+                          image_w: int, image_h: int) -> float:
+        area = max(0.0, w) * max(0.0, h)
+        if area == 0.0:
+            return 1.0
+        inside_w = max(0.0, min(x + w, image_w) - max(x, 0.0))
+        inside_h = max(0.0, min(y + h, image_h) - max(y, 0.0))
+        return max(0.0, min(1.0, 1.0 - (inside_w * inside_h / area)))
+
+    def detect_report(self, img_bgr, scale: float = 1.0,
+                      *, apply_quality_gate: bool = True) -> DetectionReport:
         h, w = img_bgr.shape[:2]
         self._det.setInputSize((w, h))
         _, rows = self._det.detect(img_bgr)
+        report = DetectionReport()
         if rows is None:
-            return []
-        out: list[Face] = []
+            return report
         inv = 1.0 / scale if scale else 1.0
         for row in rows:
+            report.candidates += 1
             score = float(row[-1])
             if score < self.min_score:
+                report.rejected["score"] += 1
                 continue
             bx, by, bw, bh = (float(v) for v in row[:4])
             # min_px is judged in ORIGINAL pixels (what the user actually sees).
             if min(bw, bh) * inv < self.min_px:
+                report.rejected["size"] += 1
+                continue
+            clipped = self._clipped_fraction(bx, by, bw, bh, w, h)
+            if apply_quality_gate and clipped > self.max_clipped_fraction:
+                report.rejected["clipped"] += 1
                 continue
             aligned = self._rec.alignCrop(img_bgr, row)
+            quality = measure_face_quality(aligned, self.min_focus)
+            if apply_quality_gate and quality.focus_score < self.min_focus:
+                report.rejected["focus"] += 1
+                continue
+            if (apply_quality_gate
+                    and quality.extreme_fraction > self.max_extreme_fraction):
+                report.rejected["exposure"] += 1
+                continue
             feat = self._embed(aligned)
             if feat is None:
                 continue
-            out.append(Face(
+            report.faces.append(Face(
                 x=max(0, round(bx * inv)), y=max(0, round(by * inv)),
                 w=round(bw * inv), h=round(bh * inv),
-                score=score, embedding=feat))
-        return out
+                score=score, embedding=feat,
+                focus_score=quality.focus_score,
+                brightness=quality.brightness,
+                extreme_fraction=quality.extreme_fraction,
+                clipped_fraction=clipped,
+                quality_score=quality.quality_score,
+                quality_source=self.quality_version))
+        return report
+
+    def detect(self, img_bgr, scale: float = 1.0) -> list[Face]:
+        """Compatibility wrapper returning only accepted faces."""
+        return self.detect_report(img_bgr, scale).faces
 
     def process_path(self, path: str) -> list[Face]:
+        """Compatibility wrapper returning only accepted faces."""
+        return self.process_path_report(path).faces
+
+    def process_path_report(self, path: str,
+                            *, apply_quality_gate: bool = True) -> DetectionReport:
         img, scale = self.load_bgr(path)
-        return self.detect(img, scale)
+        return self.detect_report(
+            img, scale, apply_quality_gate=apply_quality_gate)

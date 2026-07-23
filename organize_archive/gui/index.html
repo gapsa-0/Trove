@@ -233,6 +233,12 @@
   .pcard .pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pcard .pname.un{color:var(--muted);font-weight:400;font-style:italic;}
   .pcard .pcount{font-size:11px;color:var(--muted);margin-top:2px;}
+  .pet-species{display:inline-block;margin-top:4px;padding:2px 6px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent);font-size:10px;text-transform:capitalize;}
+  .nonhuman-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-top:12px}
+  .nonhuman-card{padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  .nonhuman-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;background:var(--panel2)}
+  .nonhuman-actions{display:flex;gap:6px;margin-top:7px}.nonhuman-actions button{flex:1;font-size:11px}
   .place-gallery-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
     margin:24px 2px 12px;}
   .place-gallery-head h3{margin:0;font-size:18px;}
@@ -501,7 +507,10 @@
   #app.on:has(nav.collapsed){grid-template-columns:68px minmax(0,1fr)}
 
   /* Main content and overview */
-  main{height:100vh;min-height:0;overflow:auto;padding:42px clamp(28px,4vw,62px) 80px;background:var(--bg)}
+  main{--main-gutter:clamp(28px,4vw,62px);height:100vh;min-height:0;overflow:auto;
+    padding:42px var(--main-gutter) 80px;background:var(--bg)}
+  main::-webkit-scrollbar-track{background:linear-gradient(to bottom,
+    transparent 0 81px,var(--line) 81px 82px,transparent 82px)}
   main>h2.sec,main>.eyebrow+ h2.sec{font-size:34px;font-weight:740;line-height:1.08;
     letter-spacing:-.042em;margin:0 0 25px}
   main>.eyebrow{margin:2px 0 7px;color:var(--muted);font-size:12px}
@@ -608,6 +617,8 @@
   .tile .cap{padding:22px 8px 6px;font-size:10px;background:linear-gradient(transparent,rgba(0,0,0,.72))}
   .date-heading{padding:31px 0 9px;border:0;font-size:21px;font-weight:700;letter-spacing:-.025em;color:var(--text)}
   .more{margin:24px 0}.more .btn{min-width:130px}
+  .infinite-status{min-height:42px;margin:18px 0;text-align:center;color:var(--muted);font-size:11px}
+  .infinite-status.top{min-height:1px;margin:0}
 
   /* People, duplicates, map, settings */
   .people{gap:14px;grid-template-columns:repeat(auto-fill,minmax(145px,1fr))}
@@ -661,16 +672,33 @@
   :root[data-theme="dark"] .leaflet-control-attribution a{color:var(--accent)}
   canvas{border-color:var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-sm)}
   .taskcard{border-bottom-color:var(--line)}
-  .facetopbar{top:-42px;margin:0 0 17px;padding:14px 0;background:color-mix(in srgb,var(--bg) 88%,transparent);
-    border-bottom-color:var(--line);backdrop-filter:blur(20px)}
-  .facetopbar .back-control{min-height:32px;padding:6px 9px 6px 7px;border-radius:9px;font-size:13px}
-  .facetopbar .back-control:hover{background:var(--accent-soft);text-decoration:none}
+  .facetopbar{top:0;min-height:82px;margin:-42px calc(0px - var(--main-gutter)) 18px;
+    padding:12px var(--main-gutter);gap:12px;border:0;border-bottom:1px solid var(--line);
+    background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:saturate(160%) blur(20px);-webkit-backdrop-filter:saturate(160%) blur(20px)}
+  .facetopbar .back-control{align-self:stretch;justify-content:center;width:38px;min-height:38px;padding:0;
+    border-radius:11px;color:var(--muted)}
+  .facetopbar .back-control span{display:none}
+  .facetopbar .back-control svg{width:18px;height:18px}
+  .facetopbar .back-control:hover{background:var(--panel2);color:var(--text);text-decoration:none}
+  .person-header-avatar{width:54px;height:54px;flex:none;border-radius:50%;object-fit:cover;
+    background:var(--panel2);box-shadow:0 0 0 1px var(--line),0 2px 8px rgba(0,0,0,.16)}
+  .facetopbar .ftb-identity{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}
+  .facetopbar .ftb-name{flex:none;gap:6px}
+  .facetopbar .person-name-button{max-width:min(480px,48vw);margin-left:-6px;padding:2px 6px;
+    border-radius:8px;font-size:20px;font-weight:700;letter-spacing:-.025em;cursor:pointer}
+  .facetopbar .person-name-button svg{width:14px;height:14px;margin-left:5px;fill:none;stroke:currentColor;
+    stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .15s}
+  .facetopbar .person-name-button:hover svg,.facetopbar .person-name-button:focus-visible svg{opacity:.65}
+  .facetopbar .ftb-count{flex:none;margin-top:1px;font-size:12px}
+  .facetopbar .detail-name-input{max-width:min(420px,48vw);font-size:18px;font-weight:650}
   .not-person-button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:5px 9px;
-    border:0;border-radius:8px;background:transparent;color:var(--bad);font:550 12px/1.2 inherit;
+    border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);font:550 12px/1.2 inherit;
     cursor:pointer;white-space:nowrap}
   .not-person-button svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;
     stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-  .not-person-button:hover{background:color-mix(in srgb,var(--bad) 10%,transparent)}
+  .not-person-button:hover{border-color:color-mix(in srgb,var(--bad) 24%,transparent);
+    background:color-mix(in srgb,var(--bad) 9%,transparent);color:var(--bad)}
   code{padding:2px 5px;border-radius:5px;background:var(--panel2);font-size:.9em}
 
   /* Viewer */
@@ -706,7 +734,8 @@
     .navitem,.theme-toggle,nav.collapsed .theme-toggle{width:39px;min-width:39px;height:39px;justify-content:center;padding:8px;margin:0}
     .navitem span:nth-of-type(2){display:none}
     .theme-toggle{margin-left:auto}
-    main{height:auto;min-height:calc(100vh - 61px);padding:29px 16px 60px}
+    main{--main-gutter:16px;height:auto;min-height:calc(100vh - 61px);overflow:visible;
+      padding:29px var(--main-gutter) 60px}
     main>h2.sec,main>.eyebrow+ h2.sec{font-size:30px}
     .pagehead{align-items:flex-start;flex-direction:column;gap:18px}.pagehead h2.sec{font-size:32px}
     .library-search{width:100%}.library-toolbar{align-items:flex-start;flex-direction:column;gap:8px}
@@ -726,6 +755,13 @@
     .multi-menu{position:fixed;left:16px;right:16px;top:auto;width:auto}
     .health-grid{grid-template-columns:1fr}
     .map-stats{grid-template-columns:1fr}
+    .facetopbar{top:61px;min-height:70px;margin-top:-29px;padding:9px var(--main-gutter);gap:9px}
+    .facetopbar .back-control{width:32px}
+    .person-header-avatar{width:44px;height:44px}
+    .facetopbar .person-name-button{max-width:calc(100vw - 200px);font-size:17px}
+    .facetopbar .detail-name-input{max-width:calc(100vw - 200px);font-size:16px}
+    .not-person-button{width:32px;padding:0;justify-content:center}
+    .not-person-button span{display:none}
   }
 </style>
 </head>
@@ -779,6 +815,7 @@ const ICONS={
   library:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 2-2L20 19"/></svg>',
   timeline:'<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg>',
   people:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.3 2.3-5 5.5-5s5 1.7 5.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M15.5 15c2.8-.5 4.6.8 5 3.5"/></svg>',
+  pets:'<svg viewBox="0 0 24 24"><path d="M8.5 10.5C6 7 3 7.5 3 11c0 2 1.5 3.5 3.5 3.5C5 18 7.5 21 12 21s7-3 5.5-6.5C19.5 14.5 21 13 21 11c0-3.5-3-4-5.5-.5"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M10 17h4"/></svg>',
   places:'<svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   dups:'<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h1"/></svg>',
   settings:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
@@ -790,11 +827,12 @@ const SECTIONS=[
   {id:"library",label:"Library"},
   {id:"timeline",label:"Timeline"},
   {id:"people",label:"People"},
+  {id:"pets",label:"Pets"},
   {id:"places",label:"Places"},
   {id:"dups",label:"Duplicates"},
   {id:"settings",label:"Settings"},
 ];
-const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null},
+const S={arch:null, section:"overview", grid:null,
   timeline:{bucket:"month",year:"",month:"",people:[],place:""}, poll:null};
 let LOCAL_TRANSLATOR_PROMISE=null,SEARCH_SUBMISSION=0;
 // Bumped on every user navigation (section switch / archive open). Async renders
@@ -964,11 +1002,13 @@ function openArchive(a,section){
    The pipeline runs itself; this ambient chip is the only status the user
    needs and it carries no controls. */
 const JOB_LABEL={scan:"Scanning files…",enrich:"Reading metadata…",faces:"Detecting faces…",
-  places:"Updating map places…",dedup:"Finding duplicates…",semantic:"Indexing search…"};
+  face_cluster:"Updating people…",pets:"Finding pets…",places:"Updating map places…",dedup:"Finding duplicates…",semantic:"Indexing search…"};
 const JOB_DESCRIPTION={
   scan:"Checking the archive folder and cataloging new or changed files.",
   enrich:"Reading file details to find dates, locations, and other metadata.",
   faces:"Finding faces in unique photos and grouping them into people.",
+  face_cluster:"Reclustering People after a non-human review correction.",
+  pets:"Detecting animals locally, filtering non-human faces, and grouping likely pets.",
   places:"Grouping geotagged files into map places while keeping your edits.",
   dedup:"Comparing file content to identify duplicate copies.",
   semantic:"Creating search entries so media can be found by a description."
@@ -1006,8 +1046,7 @@ async function gstatTick(){
       g.refreshing=true;
       setTimeout(()=>{
         if(S.section==="library" && S.grid===g && g.loaded===0){
-          g.offset=0; g.gen++; g.lastHeading=null;
-          const grid=document.getElementById("grid"); if(grid)grid.innerHTML="";
+          resetGridResults(g);
           loadGrid().finally(()=>{ if(S.grid===g)g.refreshing=false; });
         }else if(S.grid===g){
           g.refreshing=false;
@@ -1062,21 +1101,60 @@ function toggleNav(){
 }
 applyNavCollapsed();
 const RENDERERS={overview:renderOverview,library:renderPhotos,timeline:renderTimeline,places:renderMap,
-  people:renderFaces,dups:renderDedup,settings:renderSettings};
+  people:renderFaces,pets:renderPets,dups:renderDedup,settings:renderSettings};
 const SECTION_VIEWS=new Map();
 const SECTION_READY=new Set();
 let ACTIVE_SECTION=null;
 function resetSectionViews(){
   const main=document.getElementById("main");
   if(MAP){MAP.remove();MAP=null;MAP_LAYER=null;MAP_TILES=null;}
+  if(S.grid&&S.grid.observer)S.grid.observer.disconnect();
+  S.grid=null;S.gallery=[];
   SECTION_VIEWS.clear();SECTION_READY.clear();ACTIVE_SECTION=null;
   if(main)main.replaceChildren();
+}
+function libraryVisibleAnchor(){
+  const main=document.getElementById("main"),grid=document.getElementById("grid");
+  if(!main||!grid)return null;
+  const top=main.getBoundingClientRect().top;
+  const tiles=[...grid.querySelectorAll(".tile[data-result-index]")];
+  const visible=tiles.find(node=>node.getBoundingClientRect().bottom>top);
+  return visible?{
+    id:Number(visible.dataset.fileId),
+    index:Number(visible.dataset.resultIndex),
+    top:visible.getBoundingClientRect().top-top,
+  }:null;
+}
+function restoreLibraryAnchor(anchor){
+  if(!anchor)return false;
+  const main=document.getElementById("main");
+  const tile=document.querySelector(`#grid .tile[data-file-id="${anchor.id}"]`);
+  if(!main||!tile)return false;
+  const top=main.getBoundingClientRect().top;
+  main.scrollTop+=tile.getBoundingClientRect().top-top-anchor.top;
+  return true;
 }
 function stashActiveSection(){
   if(!ACTIVE_SECTION)return;
   const main=document.getElementById("main"),section=ACTIVE_SECTION;
   if(!SECTION_READY.has(section)){
     main.replaceChildren();ACTIVE_SECTION=null;return;
+  }
+  // The Library can contain hundreds of decoded thumbnails. Preserve its
+  // lightweight query/page state and visible anchor, but release every DOM and
+  // image node instead of retaining the section as a detached fragment.
+  if(section==="library"){
+    const g=S.grid;
+    if(g){
+      g.anchor=libraryVisibleAnchor();
+      g.savedScrollTop=main.scrollTop;
+      if(g.observer)g.observer.disconnect();
+      g.observer=null;
+    }
+    main.replaceChildren();
+    SECTION_READY.delete(section);
+    ACTIVE_SECTION=null;
+    return;
   }
   const fragment=document.createDocumentFragment();
   const scrollTop=main.scrollTop;
@@ -1087,6 +1165,7 @@ function stashActiveSection(){
 function resumeSection(id){
   if(id==="overview")startPoll();
   else if(id==="people"&&document.getElementById("facejob"))startFacePoll();
+  else if(id==="pets"&&document.getElementById("petjob"))startPetPoll();
   else if(id==="places"&&MAP)setTimeout(()=>{MAP.invalidateSize();drawClusters();},0);
 }
 function showSection(id,reload=false){
@@ -1241,7 +1320,8 @@ async function refreshJobs(){
   const {jobs}=await jget("/api/jobs?root="+S.arch.id);
   const active=jobs.filter(j=>j.status==="running");
   S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich"),
-    faces:active.some(j=>j.kind==="faces"),places:active.some(j=>j.kind==="places"),
+    faces:active.some(j=>j.kind==="faces"),pets:active.some(j=>j.kind==="pets"),
+    places:active.some(j=>j.kind==="places"),
     dedup:active.some(j=>j.kind==="dedup"),semantic:active.some(j=>j.kind==="semantic")};
   renderSyncPanel();
   area.innerHTML="";
@@ -1704,11 +1784,18 @@ function drawClusters(){
 /* ---------- browse ---------- */
 const MONTH_NAMES=["January","February","March","April","May","June","July",
   "August","September","October","November","December"];
+const GRID_PAGE_SIZE=120,GRID_MAX_PAGES=4;
 async function renderPhotos(m){
   const gen=NAV;
-  S.gallery=[];
-  S.grid={offset:0,loaded:0,gen:0,year:"",month:"",type:"",people:[],inferredPeople:[],
-    place:"",rawQuery:"",query:"",expandedQuery:"",expandedEmbeddingQuery:""};
+  const restored=!!(S.grid&&Array.isArray(S.grid.pages));
+  const g=restored?S.grid:{
+    offset:0,loaded:0,gen:0,year:"",month:"",type:"",people:[],inferredPeople:[],
+    place:"",rawQuery:"",query:"",expandedQuery:"",expandedEmbeddingQuery:"",
+    total:null,doneDown:false,doneUp:true,loadingGen:null,observer:null,pages:[],
+    anchor:null,savedScrollTop:0,
+  };
+  S.grid=g;
+  S.gallery=g.pages.flatMap(page=>page.items.map(item=>item.id));
   m.innerHTML=`<div class="pagehead">
       <div><h2 class="sec">Library</h2>
       <p>Browse and search every item, with filters that work together.</p></div>
@@ -1729,14 +1816,52 @@ async function renderPhotos(m){
         </div>
       </div>
     </div>
-    <div class="grid" id="grid"></div><div class="more" id="gmore" style="display:none">
-    <button class="btn sec" onclick="loadGrid()">Load more</button></div>`;
+    <div class="infinite-status top" id="grid-top-sentinel" aria-hidden="true"></div>
+    <div class="grid" id="grid"></div>
+    <div class="infinite-status" id="grid-sentinel" aria-live="polite"></div>`;
   const composer=document.getElementById("semantic-q");
   composer.addEventListener("compositionstart",()=>S.composerComposing=true);
   composer.addEventListener("compositionend",()=>{S.composerComposing=false;renderSemanticComposer(false);});
   await buildFilterBar();
   if(gen!==NAV)return;
-  loadGrid();
+  if(restored){
+    restoreLibraryControls(g);
+    renderGridPages(g);
+    const count=document.getElementById("gridcount");
+    if(count&&g.total!=null)count.textContent=`${g.total.toLocaleString()} files`;
+  }
+  setupGridInfiniteScroll(g);
+  if(restored&&g.pages.length){
+    requestAnimationFrame(()=>{
+      if(ACTIVE_SECTION!=="library"||S.grid!==g)return;
+      if(!restoreLibraryAnchor(g.anchor))
+        document.getElementById("main").scrollTop=g.savedScrollTop||0;
+    });
+  }else loadGrid();
+}
+function setupGridInfiniteScroll(g){
+  const top=document.getElementById("grid-top-sentinel");
+  const bottom=document.getElementById("grid-sentinel");
+  if(!top||!bottom)return;
+  if(g.observer)g.observer.disconnect();
+  g.observer=new IntersectionObserver(entries=>{
+    if(S.grid!==g||ACTIVE_SECTION!=="library")return;
+    entries.forEach(entry=>{
+      if(!entry.isIntersecting)return;
+      if(entry.target===top&&!g.doneUp)loadGrid("prepend");
+      else if(entry.target===bottom&&!g.doneDown)loadGrid("append");
+    });
+  },{root:document.getElementById("main"),rootMargin:"600px 0px"});
+  g.observer.observe(top);
+  g.observer.observe(bottom);
+}
+function gridSentinelIsNear(direction){
+  const sentinel=document.getElementById(
+    direction==="prepend"?"grid-top-sentinel":"grid-sentinel");
+  const main=document.getElementById("main");
+  if(!sentinel||!main)return false;
+  const sr=sentinel.getBoundingClientRect(),mr=main.getBoundingClientRect();
+  return direction==="prepend"?sr.bottom>=mr.top-600:sr.top<=mr.bottom+600;
 }
 async function updateSemanticStatus(){
   const el=document.getElementById("semantic-status"); if(!el||!S.arch)return;
@@ -1942,9 +2067,7 @@ async function semanticSubmit(ev){
   g.expandedEmbeddingQuery=visualSearchExpansion(expandedQuery);
   renderSearchExpansion();
   if(submit){submit.disabled=false;submit.textContent=oldLabel;}
-  g.offset=0; g.loaded=0; g.gen++; g.lastHeading=null;
-  S.gallery=[];
-  const grid=document.getElementById("grid"); if(grid)grid.innerHTML="";
+  resetGridResults(g);
   updateClearBtn();
   loadGrid();
   return false;
@@ -1975,8 +2098,7 @@ async function buildFilterBar(){
   bar.innerHTML=parts.join("");
   renderSemanticComposer(false);
 }
-function onYearChange(){
-  const y=document.getElementById("f-year").value;
+function setLibraryMonthOptions(y,selected=""){
   const msel=document.getElementById("f-month");
   if(msel){
     if(!y){ msel.innerHTML='<option value="">All months</option>'; msel.disabled=true; }
@@ -1988,8 +2110,25 @@ function onYearChange(){
       msel.innerHTML='<option value="">All months</option>'+
         months.map(mm=>`<option value="${mm}">${MONTH_NAMES[+mm-1]}</option>`).join("");
       msel.disabled=false;
+      msel.value=selected;
     }
   }
+}
+function restoreLibraryControls(g){
+  const year=document.getElementById("f-year");if(year)year.value=g.year||"";
+  setLibraryMonthOptions(g.year,(g.month||"").slice(5,7));
+  const type=document.getElementById("f-type");if(type)type.value=g.type||"";
+  const place=document.getElementById("f-place");if(place)place.value=g.place||"";
+  setPeopleChecks("f",g.people||[]);
+  updatePeopleFilterLabel("f",S.filterOpts.people||[]);
+  const composer=document.getElementById("semantic-q");
+  if(composer){composer.textContent=g.rawQuery||"";renderSemanticComposer(true);}
+  renderSearchExpansion();
+  updateClearBtn();
+}
+function onYearChange(){
+  const y=document.getElementById("f-year").value;
+  setLibraryMonthOptions(y);
   applyFilters();
 }
 function selVal(id){const e=document.getElementById(id);return e?e.value:"";}
@@ -2030,12 +2169,17 @@ function applyFilters(){
   g.people=checkedPeople("f");
   g.place=selVal("f-place");
   updatePeopleFilterLabel("f",S.filterOpts.people||[]);
-  g.offset=0; g.loaded=0; g.gen++;
-  g.lastHeading=null;
-  S.gallery=[];
-  document.getElementById("grid").innerHTML="";
+  resetGridResults(g);
   updateClearBtn();
   loadGrid();
+}
+function resetGridResults(g){
+  g.offset=0;g.loaded=0;g.total=null;g.doneDown=false;g.doneUp=true;g.gen++;
+  g.pages=[];g.anchor=null;g.savedScrollTop=0;
+  S.gallery=[];
+  const grid=document.getElementById("grid");if(grid)grid.replaceChildren();
+  const count=document.getElementById("gridcount");if(count)count.textContent="";
+  const main=document.getElementById("main");if(main)main.scrollTop=0;
 }
 function clearFilters(){
   ["f-year","f-type","f-place"].forEach(id=>{const e=document.getElementById(id);if(e)e.value="";});
@@ -2049,50 +2193,103 @@ function updateClearBtn(){
   const g=S.grid, b=document.getElementById("f-clear");
   if(b)b.style.display=(g.year||g.month||g.type||g.people.length||g.place)?"inline":"none";
 }
-async function loadGrid(){
-  const g=S.grid, gen=g.gen,grid=document.getElementById("grid"),
-    more=document.getElementById("gmore"),gc=document.getElementById("gridcount");
-  if(!grid)return;
-  const p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
-  if(g.type)p.set("type",g.type); if(g.year)p.set("year",g.year);
-  if(g.month)p.set("month",g.month);
-  g.people.forEach(id=>p.append("person",id)); if(g.place)p.set("place",g.place);
-  if(g.query){
-    // When local translation succeeds it replaces, rather than supplements,
-    // the Spanish semantic query. This avoids admitting weak matches unique to
-    // the original-language vector. English and fallback searches use g.query.
-    p.append("q",g.expandedEmbeddingQuery||g.query);
-  }
-  const endpoint=g.query?"/api/browse/semantic/search?":"/api/media?";
-  const res=await jget(endpoint+p);
-  // Bail if a newer filter change (or a section switch) superseded this fetch
-  // while it was in flight, so a slow response can't paint stale tiles.
-  if(S.grid!==g||g.gen!==gen)return;
-  // A failed/empty response has no items array; treat it as "no more" so a
-  // clear+fetch that errors can't leave a bare "Load more" button behind.
-  const items=(res&&res.items)||[];
-  S.gallery=(S.gallery||[]).concat(items.map(it=>it.id));
-  items.forEach(it=>{
-    // Semantic results are relevance-ranked, not chronological; date headings
-    // would incorrectly imply that each group is ordered by date.
+function renderGridPages(g,anchor=null){
+  const grid=document.getElementById("grid");if(!grid)return;
+  grid.replaceChildren();
+  let lastHeading=null;
+  g.pages.forEach(page=>page.items.forEach((item,itemOffset)=>{
     if(!g.query){
-      const heading=it.date?(it.date.slice(0,7)||"Unknown date"):"Unknown date";
-      if(g.lastHeading!==heading){
-        const h=document.createElement("div");h.className="date-heading";h.textContent=it.date?fmtDate(it.date.slice(0,7)):"Unknown date";
-        grid.appendChild(h);g.lastHeading=heading;
+      const heading=item.date?(item.date.slice(0,7)||"Unknown date"):"Unknown date";
+      if(lastHeading!==heading){
+        const h=document.createElement("div");h.className="date-heading";
+        h.textContent=item.date?fmtDate(item.date.slice(0,7)):"Unknown date";
+        grid.appendChild(h);lastHeading=heading;
       }
     }
-    grid.appendChild(tile(it));
-  });
-  const count=(res&&res.count)||0;
-  g.offset+=count; g.loaded+=count;
-  if(more)more.style.display=(res&&res.total!=null?g.offset<res.total:count>=120)?"block":"none";
-  if(!g.loaded)
-    grid.innerHTML=`<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${res&&res.error?esc(res.error):"No media matches these filters."}</div>`;
-  if(gc)gc.textContent=g.loaded?`${g.loaded.toLocaleString()} ${g.query?"semantic results":"shown"}${res&&res.total>g.loaded?"+":""}`:"";
+    grid.appendChild(tile(item,page.offset+itemOffset));
+  }));
+  S.gallery=g.pages.flatMap(page=>page.items.map(item=>item.id));
+  g.loaded=S.gallery.length;
+  if(anchor)restoreLibraryAnchor(anchor);
 }
-function tile(it){
-  const d=document.createElement("button"); d.type="button";d.className="tile";d.dataset.name=(it.name||"").toLowerCase();d.setAttribute("aria-label",it.name||"Open media item"); d.onclick=()=>openItem(it.id);
+async function loadGrid(direction="append"){
+  const g=S.grid,gen=g.gen,grid=document.getElementById("grid");
+  const sentinel=document.getElementById(
+    direction==="prepend"?"grid-top-sentinel":"grid-sentinel");
+  if(!grid||g.loadingGen===gen||
+      (direction==="append"&&g.doneDown)||(direction==="prepend"&&g.doneUp))return;
+  const first=g.pages[0],last=g.pages[g.pages.length-1];
+  const requestedOffset=direction==="prepend"
+    ?Math.max(0,(first?first.offset:0)-GRID_PAGE_SIZE)
+    :(last?last.offset+last.items.length:0);
+  g.loadingGen=gen;
+  let failed=false;
+  if(sentinel&&direction==="append")
+    sentinel.innerHTML='<span class="spin"></span>Loading files…';
+  try{
+    const p=new URLSearchParams({
+      root:S.arch.id,offset:requestedOffset,limit:GRID_PAGE_SIZE,
+    });
+    if(g.type)p.set("type",g.type); if(g.year)p.set("year",g.year);
+    if(g.month)p.set("month",g.month);
+    g.people.forEach(id=>p.append("person",id)); if(g.place)p.set("place",g.place);
+    if(g.query){
+      // When local translation succeeds it replaces, rather than supplements,
+      // the Spanish semantic query. This avoids admitting weak matches unique to
+      // the original-language vector. English and fallback searches use g.query.
+      p.append("q",g.expandedEmbeddingQuery||g.query);
+    }
+    const endpoint=g.query?"/api/browse/semantic/search?":"/api/media?";
+    const res=await jget(endpoint+p);
+    // Bail if a newer filter change (or a section switch) superseded this fetch
+    // while it was in flight, so a slow response can't paint stale tiles.
+    if(S.grid!==g||g.gen!==gen)return;
+    const items=(res&&res.items)||[];
+    const count=(res&&res.count)||0;
+    g.total=res&&res.total!=null?res.total:(g.total==null?count:g.total);
+    const anchor=libraryVisibleAnchor();
+    if(direction==="prepend")g.pages.unshift({offset:requestedOffset,items});
+    else g.pages.push({offset:requestedOffset,items});
+    if(g.pages.length>GRID_MAX_PAGES){
+      if(direction==="prepend")g.pages.pop();
+      else g.pages.shift();
+    }
+    g.pages.sort((a,b)=>a.offset-b.offset);
+    const windowLast=g.pages[g.pages.length-1];
+    g.offset=windowLast?windowLast.offset+windowLast.items.length:0;
+    g.doneUp=!g.pages.length||g.pages[0].offset===0;
+    g.doneDown=!!(res&&res.error)||!windowLast||
+      windowLast.offset+windowLast.items.length>=g.total;
+    renderGridPages(g,anchor);
+    if(!g.loaded)
+      grid.innerHTML=`<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${res&&res.error?esc(res.error):"No media matches these filters."}</div>`;
+    const gc=document.getElementById("gridcount");
+    if(gc)gc.textContent=`${g.total.toLocaleString()} files`;
+    const bottom=document.getElementById("grid-sentinel");
+    if(bottom)bottom.textContent=g.doneDown?"":"Scroll to load more";
+  }catch(error){
+    failed=true;
+    if(S.grid===g&&g.gen===gen&&sentinel)
+      sentinel.textContent="Couldn’t load more files. Scroll away and back to retry.";
+  }finally{
+    if(g.loadingGen===gen){
+      g.loadingGen=null;
+      // An initial page may not be tall enough to move the sentinel outside
+      // the observer margin. Keep filling until the user has something to
+      // scroll, without requiring an intersection state change.
+      requestAnimationFrame(()=>{
+        const done=direction==="prepend"?g.doneUp:g.doneDown;
+        if(!failed&&S.grid===g&&g.gen===gen&&!done&&
+            ACTIVE_SECTION==="library"&&gridSentinelIsNear(direction))loadGrid(direction);
+      });
+    }
+  }
+}
+function tile(it,resultIndex=null){
+  const d=document.createElement("button"); d.type="button";d.className="tile";
+  d.dataset.name=(it.name||"").toLowerCase();d.dataset.fileId=it.id;
+  if(resultIndex!=null)d.dataset.resultIndex=resultIndex;
+  d.setAttribute("aria-label",it.name||"Open media item"); d.onclick=()=>openItem(it.id);
   if(it.type==="image"||it.type==="video"){const img=document.createElement("img");img.loading="lazy";
     img.src="/thumb/"+it.id;img.onerror=()=>img.replaceWith(ph(TYPE_ICON[it.type]||"🖼️"));d.appendChild(img);}
   else d.appendChild(ph(TYPE_ICON[it.type]||"📦"));
@@ -2320,8 +2517,9 @@ async function answerSuggest(kind){
   }else if(kind==='skip'){
     await jpost('/api/faces/skip',{a:s.a.id,b:s.b.id});
   }else if(kind==='notpeople'){
-    await jpost('/api/faces/hide',{person_id:s.a.id});
-    await jpost('/api/faces/hide',{person_id:s.b.id});
+    const reason=chooseNonhumanKind();if(!reason)return;
+    await jpost('/api/faces/hide',{person_id:s.a.id,kind:reason});
+    await jpost('/api/faces/hide',{person_id:s.b.id,kind:reason});
     dropRefs([s.a.id,s.b.id]); renderPeopleGrid();
   }
   if(st.total>0) st.total--;
@@ -2336,8 +2534,18 @@ async function renderPeopleGrid(){
 }
 async function hidePerson(id){
   if(!confirm('Not a person? Its faces get marked as a doll/animal/cartoon and are left out of clustering. It disappears from People.'))return;
-  await jpost('/api/faces/hide',{person_id:id});
+  const kind=chooseNonhumanKind();if(!kind)return;
+  await jpost('/api/faces/hide',{person_id:id,kind});
   backToPeople();
+}
+function chooseNonhumanKind(){
+  const answer=prompt("Classification: animal, toy, cartoon, or false_detection","false_detection");
+  if(answer===null)return null;
+  const value=answer.trim().toLowerCase().replace(/\s+/g,"_");
+  if(!["animal","toy","cartoon","false_detection"].includes(value)){
+    toast("Use animal, toy, cartoon, or false_detection.",true);return null;
+  }
+  return value;
 }
 // Up to 4 faces as a 2x2 collage (a single face fills the square). `ids` is the
 // person's faces_preview, with cover_face_id as fallback for old payloads.
@@ -2403,19 +2611,29 @@ async function showPerson(id){
   const nm=r.name?esc(r.name):"Name this person";
   const nmCls=r.name?"nm":"nm un";
   const safe=(r.name||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  const avatarFace=(r.items.find(it=>it.face_id)||{}).face_id;
+  const avatar=avatarFace
+    ? `<img class="person-header-avatar" src="/faceThumb/${avatarFace}" alt="" onerror="this.style.visibility='hidden'">`
+    : `<div class="person-header-avatar" aria-hidden="true"></div>`;
   m.innerHTML=`<div class="facetopbar">
       <button class="back back-control" type="button" onclick="backToPeople()" aria-label="Back to People">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         <span>People</span>
       </button>
-      <div class="ftb-name" id="personname">
-        <button class="person-name-button ${nmCls}" onclick="editPersonName(${id},'${safe}')">${nm}</button>
-        <button class="not-person-button" type="button" onclick="hidePerson(${id})" title="Mark as a doll / animal / cartoon and remove from People">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4 19c.5-3.3 2.5-5 6-5 1.2 0 2.2.2 3 .6M16 15l5 5m0-5-5 5"/></svg>
-          <span>Not a person</span>
-        </button>
+      ${avatar}
+      <div class="ftb-identity">
+        <div class="ftb-name" id="personname">
+          <button class="person-name-button ${nmCls}" onclick="editPersonName(${id},'${safe}')" title="Rename this person">
+            <span>${nm}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg>
+          </button>
+        </div>
+        <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos===1?"":"s"}</span>
       </div>
-      <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos===1?"":"s"}</span>
+      <button class="not-person-button" type="button" onclick="hidePerson(${id})" title="Mark as a doll, animal, or cartoon and remove from People">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4 19c.5-3.3 2.5-5 6-5 1.2 0 2.2.2 3 .6M16 15l5 5m0-5-5 5"/></svg>
+        <span>Not a person</span>
+      </button>
     </div>
     <div class="grid" id="grid"></div>
     <div class="more" id="gmore" style="display:none"><button class="btn sec" onclick="loadPersonMore()">Load more</button></div>`;
@@ -2464,6 +2682,102 @@ function renderSoon(m,id){
     <p>${S2[2]}</p><p class="muted">Coming in a later phase.</p></div>`;
 }
 
+/* ---------- pets / non-human review ---------- */
+async function renderPets(m){
+  const gen=NAV,root=S.arch.id;
+  const [sum,groups,loose,review]=await Promise.all([
+    jget("/api/pets/summary?root="+root),
+    jget("/api/pets?root="+root+"&limit=300"),
+    jget("/api/pet/detections?root="+root+"&unassigned=1&limit=120"),
+    jget("/api/nonhuman?root="+root+"&limit=60")]);
+  if(gen!==NAV)return;
+  S.petJobRunning=false;
+  m.innerHTML=`<div class="pagehead"><div><h2 class="sec">Pets</h2>
+      <p>Locally detected animals, likely identities, and non-human face review.</p></div></div>
+    <div class="statrow">
+      <div class="stat"><div class="k">Likely pets</div><div class="v">${sum.pets.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Animals</div><div class="v">${sum.detections.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Non-human faces</div><div class="v">${sum.nonhuman_faces.toLocaleString()}</div></div>
+      <div class="stat"><div class="k">Scanned</div><div class="v">${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small></div></div>
+    </div>
+    <div class="panel" id="petjob">${sum.unscanned
+      ? `<div class="d pending"><span class="dot pending"></span>${sum.unscanned.toLocaleString()} unique photos pending; detection runs automatically.</div>`
+      : `<div class="d ok"><span class="dot ok"></span>All unique photos pet-scanned.</div>`}</div>
+    <div class="place-gallery-head"><h3>Likely pet identities</h3><span class="muted">Conservative visual grouping</span></div>
+    <div class="people" id="petgrid"></div>
+    <div class="place-gallery-head"><h3>Unassigned animals</h3><span class="muted">Single or uncertain sightings</span></div>
+    <div class="people" id="loosepetgrid"></div>
+    <div class="place-gallery-head"><h3>Non-human face review</h3><span class="muted">Animal/toy overlaps filtered out of People</span></div>
+    <div class="nonhuman-grid" id="nonhumangrid"></div>`;
+  const petgrid=document.getElementById("petgrid");
+  if(!groups.pets.length)petgrid.innerHTML='<div class="muted">No repeated pets grouped yet.</div>';
+  groups.pets.forEach(p=>{
+    const card=document.createElement("div");card.className="pcard";card.onclick=()=>showPet(p.id);
+    card.innerHTML=`<img class="face" src="/animalThumb/${p.cover_detection_id}" loading="lazy">
+      <div class="pmeta"><div class="pname ${p.name?"":"un"}">${esc(p.name||"Name this pet")}</div>
+      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos===1?"":"s"}</div>
+      <span class="pet-species">${esc(p.species)}</span></div>`;
+    petgrid.appendChild(card);
+  });
+  const loosegrid=document.getElementById("loosepetgrid");
+  if(!loose.items.length)loosegrid.innerHTML='<div class="muted">No unassigned sightings.</div>';
+  loose.items.forEach(a=>{
+    const card=document.createElement("div");card.className="pcard";card.onclick=()=>openItem(a.id);
+    card.innerHTML=`<img class="face" src="/animalThumb/${a.detection_id}" loading="lazy">
+      <div class="pmeta"><div class="pname un">Unnamed animal</div>
+      <div class="pcount">${Math.round(a.score*100)}% detector confidence</div>
+      <span class="pet-species">${esc(a.species)}</span></div>`;
+    loosegrid.appendChild(card);
+  });
+  const reviewgrid=document.getElementById("nonhumangrid");
+  const pending=review.items.filter(item=>item.review_status==="pending");
+  if(!pending.length)reviewgrid.innerHTML='<div class="muted">No pending non-human decisions.</div>';
+  pending.forEach(item=>{
+    const card=document.createElement("div");card.className="nonhuman-card";
+    card.innerHTML=`<img src="/thumb/${item.file_id}" loading="lazy">
+      <div class="pcount">${esc(item.kind)} · ${Math.round(item.confidence*100)}% confidence</div>
+      <div class="nonhuman-actions"><button class="btn sec">Confirm non-human</button><button class="btn sec">Actually human</button></div>`;
+    const buttons=card.querySelectorAll("button");
+    buttons[0].onclick=()=>reviewNonhuman(item.id,"confirmed",card);
+    buttons[1].onclick=()=>reviewNonhuman(item.id,"human",card);
+    reviewgrid.appendChild(card);
+  });
+  startPetPoll();
+}
+function startPetPoll(){stopPoll();S.poll=setInterval(petTick,1800);petTick();}
+async function petTick(){
+  if(ACTIVE_SECTION!=="pets"){stopPoll();return;}
+  const {jobs}=await jget("/api/jobs?root="+S.arch.id);
+  const running=jobs.some(j=>j.kind==="pets"&&j.status==="running");
+  const was=S.petJobRunning;S.petJobRunning=running;
+  if(was&&!running)showSection("pets",true);
+}
+async function reviewNonhuman(id,verdict,card){
+  const result=await jpost("/api/nonhuman/review",{detection_id:id,verdict});
+  if(result.error){toast(result.error,true);return;}
+  card.remove();
+  toast(verdict==="human"?"Restored to People for the next clustering pass.":"Confirmed as non-human.");
+}
+async function showPet(id){
+  stopPoll();const m=document.getElementById("main");
+  m.innerHTML='<div class="muted" style="padding:30px">Loading…</div>';
+  const pet=await jget("/api/pet/"+id+"?root="+S.arch.id+"&limit=300");
+  if(!pet||pet.error){m.innerHTML='<div class="soonbox">Pet not found.</div>';return;}
+  S.currentPet=pet;
+  const name=pet.name||"Name this pet";
+  m.innerHTML=`<div class="facetopbar"><button class="back back-control" onclick="showSection('pets',true)">← <span>Pets</span></button>
+    <img class="person-header-avatar" src="/animalThumb/${pet.items[0]&&pet.items[0].detection_id||0}" alt="">
+    <div class="ftb-identity"><div class="ftb-name"><button class="person-name-button" onclick="renamePet(${pet.id})"><span>${esc(name)}</span></button></div>
+    <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div></div>
+    <div class="grid" id="grid"></div>`;
+  const grid=document.getElementById("grid");pet.items.forEach(item=>grid.appendChild(tile(item)));
+}
+async function renamePet(id){
+  const name=prompt("Pet name",(S.currentPet&&S.currentPet.name)||"");if(name===null)return;
+  const result=await jpost("/api/pet/rename",{pet_id:id,name:name.trim()});
+  if(result.error){toast(result.error,true);return;}showPet(id);
+}
+
 /* ---------- detail modal (editable: faces / place / date) ---------- */
 let MITEM=null;                 // the currently-open item, mutated in place on edit
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -2497,11 +2811,18 @@ function renderInfo(){
   if(it.type!=="image") faces=`<div class="muted" style="font-size:12px">Face detection runs on photos.</div>`;
   else if(!(it.people||[]).length) faces=`<div class="muted" style="font-size:12px">No faces detected.</div>`;
   else faces=`<div class="facelist">`+it.people.map(faceRow).join("")+`</div>`;
+  const animals=(it.animals||[]).length
+    ? `<div class="facelist">${it.animals.map(a=>`<div class="facerow">
+        <img class="facecrop" src="/animalThumb/${a.detection_id}" loading="lazy">
+        <span>${a.name?`<strong>${esc(a.name)}</strong> `:""}<span class="pet-species">${esc(a.species)}</span>
+        <span class="muted">${Math.round(a.score*100)}%</span></span></div>`).join("")}</div>`
+    : `<div class="muted" style="font-size:12px">No pets detected.</div>`;
   // place
   const placeTxt=it.place?(it.place.name?esc(it.place.name):'<span class="muted">Name this place</span>')
                         :'<span class="muted">No place set</span>';
   document.getElementById("minfo").innerHTML=`<h3>${esc(it.name)}</h3>`+
     `<div class="isec"><div class="h">People</div>${faces}</div>`+
+    `<div class="isec"><div class="h">Pets</div>${animals}</div>`+
     `<div class="isec"><div class="h">Place <button class="linkbtn" onclick="editPlace()">Change</button></div>
        <div id="placeval" class="val">${placeTxt}</div></div>`+
     `<div class="isec"><div class="h">Date <button class="linkbtn" onclick="editDate()">Edit</button></div>

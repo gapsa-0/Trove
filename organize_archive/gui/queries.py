@@ -474,6 +474,10 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
                 "WHERE pcm.cluster_id=?)")
             params.append(cluster_id)
         clause = " AND ".join(where)
+        total = conn.execute(
+            f"""SELECT COUNT(*)
+                FROM files f LEFT JOIN dates d ON d.file_id=f.id
+                WHERE {clause}""", params).fetchone()[0]
         rows = conn.execute(
             f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
                        d.date_source AS dsrc,
@@ -488,7 +492,10 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
             "date": r["dt"], "date_source": r["dsrc"],
             "has_gps": bool(r["has_gps"]),
         } for r in rows]
-        return {"items": items, "offset": offset, "limit": limit, "count": len(items)}
+        return {
+            "items": items, "offset": offset, "limit": limit,
+            "count": len(items), "total": total,
+        }
     finally:
         conn.close()
 
@@ -758,6 +765,243 @@ def faces_pending(db_path: str, root_id=None) -> int:
         conn.close()
 
 
+# -- pets / non-human detections -------------------------------------------
+
+def pets_pending(db_path: str, root_id=None, model_source=None) -> int:
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        model_clause = ""
+        params = []
+        if model_source is not None:
+            model_clause = " OR s.model_source IS NOT ?"
+            params.append(model_source)
+        params.extend(rp)
+        return conn.execute(
+            f"""SELECT COUNT(*) FROM files f
+                LEFT JOIN pet_scan s ON s.file_id=f.id
+                WHERE (s.file_id IS NULL OR s.source_sha256 IS NOT f.sha256
+                       {model_clause})
+                  AND {_NOT_HIDDEN} AND f.media_type='image'{rc}""",
+            params).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def pet_summary(db_path: str, root_id=None, model_source=None) -> dict:
+    from ..pets import backend as pet_backend
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        total = conn.execute(
+            f"""SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}
+                AND f.media_type='image'{rc}""", rp).fetchone()[0]
+        scan_filter = " AND s.source_sha256 IS f.sha256"
+        scan_params = list(rp)
+        if model_source is not None:
+            scan_filter += " AND s.model_source IS ?"
+            scan_params.append(model_source)
+        scanned = conn.execute(
+            f"""SELECT COUNT(*) FROM pet_scan s JOIN files f ON f.id=s.file_id
+                WHERE {_NOT_HIDDEN}{rc}{scan_filter}""", scan_params).fetchone()[0]
+        detections = conn.execute(
+            f"""SELECT COUNT(*) FROM animal_detections a
+                JOIN files f ON f.id=a.file_id
+                WHERE {_NOT_HIDDEN} AND a.species!='teddy bear'{rc}""", rp
+        ).fetchone()[0]
+        groups = conn.execute(
+            f"""SELECT COUNT(DISTINCT a.pet_id) FROM animal_detections a
+                JOIN files f ON f.id=a.file_id
+                WHERE {_NOT_HIDDEN} AND a.pet_id IS NOT NULL{rc}""", rp
+        ).fetchone()[0]
+        nonhuman = conn.execute(
+            f"""SELECT COUNT(*) FROM nonhuman_detections n
+                JOIN files f ON f.id=n.file_id WHERE {_NOT_HIDDEN}{rc}""", rp
+        ).fetchone()[0]
+        return {
+            "total_images": total, "scanned": scanned,
+            "unscanned": max(0, total - scanned),
+            "detections": detections, "pets": groups,
+            "nonhuman_faces": nonhuman,
+            "backend_available": pet_backend.available(),
+        }
+    finally:
+        conn.close()
+
+
+def pet_groups(db_path: str, root_id=None, limit=120, offset=0) -> dict:
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        rows = conn.execute(
+            f"""SELECT a.pet_id,p.name,p.species,p.cover_detection_id,
+                       COUNT(*) detections,COUNT(DISTINCT a.file_id) photos
+                FROM animal_detections a JOIN pets p ON p.id=a.pet_id
+                JOIN files f ON f.id=a.file_id
+                WHERE {_NOT_HIDDEN}{rc}
+                GROUP BY a.pet_id
+                ORDER BY CASE WHEN NULLIF(TRIM(p.name),'') IS NULL THEN 1 ELSE 0 END,
+                         detections DESC,a.pet_id
+                LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
+        return {"pets": [{
+            "id": row["pet_id"], "name": row["name"], "species": row["species"],
+            "cover_detection_id": row["cover_detection_id"],
+            "detections": row["detections"], "photos": row["photos"],
+        } for row in rows], "offset": offset, "count": len(rows)}
+    finally:
+        conn.close()
+
+
+def animal_gallery(db_path: str, root_id=None, limit=120, offset=0,
+                   unassigned=False) -> dict:
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        un = " AND a.pet_id IS NULL" if unassigned else ""
+        rows = conn.execute(
+            f"""SELECT a.id detection_id,a.file_id,a.species,a.det_score,
+                       f.rel_path,d.best_datetime dt
+                FROM animal_detections a JOIN files f ON f.id=a.file_id
+                LEFT JOIN dates d ON d.file_id=f.id
+                WHERE {_NOT_HIDDEN} AND a.species!='teddy bear'{un}{rc}
+                ORDER BY a.det_score DESC,a.id
+                LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
+        return {"items": [{
+            "detection_id": row["detection_id"], "id": row["file_id"],
+            "species": row["species"], "score": row["det_score"],
+            "name": os.path.basename(row["rel_path"]), "date": row["dt"],
+        } for row in rows], "offset": offset, "count": len(rows)}
+    finally:
+        conn.close()
+
+
+def pet_group(db_path: str, pet_id: int, root_id=None, limit=120, offset=0):
+    conn = db.open_readonly(db_path)
+    try:
+        pet = conn.execute(
+            "SELECT id,name,species FROM pets WHERE id=?", (pet_id,)).fetchone()
+        if not pet:
+            return None
+        rc, rp = _root_clause(root_id)
+        rows = conn.execute(
+            f"""SELECT f.id,f.rel_path,d.best_datetime dt,a.id detection_id
+                FROM animal_detections a JOIN files f ON f.id=a.file_id
+                LEFT JOIN dates d ON d.file_id=f.id
+                WHERE a.pet_id=? AND {_NOT_HIDDEN}{rc}
+                ORDER BY (d.best_datetime IS NULL),d.best_datetime DESC,f.id
+                LIMIT ? OFFSET ?""",
+            (pet_id, *rp, limit, offset)).fetchall()
+        total = conn.execute(
+            f"""SELECT COUNT(DISTINCT a.file_id) FROM animal_detections a
+                JOIN files f ON f.id=a.file_id
+                WHERE a.pet_id=? AND {_NOT_HIDDEN}{rc}""",
+            (pet_id, *rp)).fetchone()[0]
+        return {
+            "id": pet["id"], "name": pet["name"], "species": pet["species"],
+            "photos": total,
+            "items": [{"id": row["id"], "name": os.path.basename(row["rel_path"]),
+                       "date": row["dt"], "detection_id": row["detection_id"],
+                       "type": "image", "has_gps": False}
+                      for row in rows],
+            "offset": offset, "count": len(rows),
+        }
+    finally:
+        conn.close()
+
+
+def rename_pet(db_path: str, pet_id, name: str) -> dict:
+    conn = db.connect(db_path)
+    try:
+        if not conn.execute("SELECT 1 FROM pets WHERE id=?", (pet_id,)).fetchone():
+            return {"error": "unknown pet"}
+        conn.execute("UPDATE pets SET name=? WHERE id=?", (name or None, pet_id))
+        conn.commit()
+        return {"ok": True, "name": name or None}
+    finally:
+        conn.close()
+
+
+def nonhuman_review(db_path: str, root_id=None, limit=120, offset=0) -> dict:
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        rows = conn.execute(
+            f"""SELECT n.id,n.file_id,n.kind,n.confidence,n.source,n.review_status,
+                       n.box_x,n.box_y,n.box_w,n.box_h,f.rel_path
+                FROM nonhuman_detections n JOIN files f ON f.id=n.file_id
+                WHERE {_NOT_HIDDEN}{rc}
+                ORDER BY n.confidence DESC,n.id LIMIT ? OFFSET ?""",
+            (*rp, limit, offset)).fetchall()
+        total = conn.execute(
+            f"""SELECT COUNT(*) FROM nonhuman_detections n
+                JOIN files f ON f.id=n.file_id WHERE {_NOT_HIDDEN}{rc}""",
+            rp).fetchone()[0]
+        return {"items": [dict(row) for row in rows], "total": total,
+                "offset": offset, "count": len(rows)}
+    finally:
+        conn.close()
+
+
+def review_nonhuman(db_path: str, detection_id, verdict: str) -> dict:
+    """Confirm a non-human candidate or restore it to People as unassigned."""
+    if verdict not in {"confirmed", "human"}:
+        return {"error": "verdict must be confirmed or human"}
+    conn = db.connect(db_path)
+    try:
+        row = conn.execute(
+            """SELECT n.*,f.root_id FROM nonhuman_detections n
+               JOIN files f ON f.id=n.file_id WHERE n.id=?""", (detection_id,)
+        ).fetchone()
+        if not row:
+            return {"error": "unknown non-human detection"}
+        if verdict == "confirmed":
+            conn.execute(
+                "UPDATE nonhuman_detections SET review_status='confirmed' WHERE id=?",
+                (detection_id,))
+            conn.commit()
+            return {"ok": True, "status": "confirmed", "root_id": row["root_id"]}
+        if row["restored_face_id"]:
+            conn.execute(
+                """UPDATE faces SET not_person=0,nonhuman_kind=NULL,
+                                    nonhuman_source=NULL
+                   WHERE id=?""", (row["restored_face_id"],))
+            conn.execute(
+                "UPDATE nonhuman_detections SET review_status='human' WHERE id=?",
+                (detection_id,))
+            conn.execute(
+                """UPDATE face_scan SET n_faces=n_faces+1,
+                   rejected_nonhuman=MAX(0,rejected_nonhuman-1)
+                   WHERE file_id=?""", (row["file_id"],))
+            conn.commit()
+            return {"ok": True, "status": "human", "root_id": row["root_id"],
+                    "face_id": row["restored_face_id"]}
+        if not row["embedding"]:
+            return {"error": "candidate has no retained embedding; rescan is required"}
+        cursor = conn.execute(
+            """INSERT INTO faces
+               (file_id,box_x,box_y,box_w,box_h,det_score,focus_score,brightness,
+                extreme_fraction,clipped_fraction,quality_score,quality_source,
+                embedding,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (row["file_id"], row["box_x"], row["box_y"], row["box_w"], row["box_h"],
+             row["det_score"], row["focus_score"], row["brightness"],
+             row["extreme_fraction"], row["clipped_fraction"], row["quality_score"],
+             row["quality_source"], row["embedding"], db.now_iso()))
+        conn.execute(
+            """UPDATE nonhuman_detections
+               SET review_status='human',restored_face_id=? WHERE id=?""",
+            (cursor.lastrowid, detection_id))
+        conn.execute(
+            """UPDATE face_scan SET n_faces=n_faces+1,
+                   rejected_nonhuman=MAX(0,rejected_nonhuman-1)
+               WHERE file_id=?""", (row["file_id"],))
+        conn.commit()
+        return {"ok": True, "status": "human", "root_id": row["root_id"],
+                "face_id": cursor.lastrowid}
+    finally:
+        conn.close()
+
+
 def face_summary(db_path: str, root_id=None) -> dict:
     from ..faces import backend as fb
     conn = db.open_readonly(db_path)
@@ -774,14 +1018,15 @@ def face_summary(db_path: str, root_id=None) -> dict:
                 WHERE {_NOT_HIDDEN} AND f.media_type='image'{rc}""", rp).fetchone()[0]
         faces = conn.execute(
             f"""SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id
-                WHERE {_NOT_HIDDEN}{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND fa.not_person=0{rc}""", rp).fetchone()[0]
         people = conn.execute(
             f"""SELECT COUNT(DISTINCT fa.person_id) FROM faces fa
                 JOIN files f ON f.id=fa.file_id
                 WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL{rc}""", rp).fetchone()[0]
         photos_with_faces = conn.execute(
             f"""SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
-                JOIN files f ON f.id=fa.file_id WHERE {_NOT_HIDDEN}{rc}""", rp).fetchone()[0]
+                JOIN files f ON f.id=fa.file_id
+                WHERE {_NOT_HIDDEN} AND fa.not_person=0{rc}""", rp).fetchone()[0]
         return {
             "total_images": total_images, "scanned": scanned,
             "unscanned": max(0, total_images - scanned),
@@ -1089,7 +1334,7 @@ def set_persons_skip(db_path: str, id_a, id_b) -> dict:
     return _persons_link(db_path, id_a, id_b, "skip")
 
 
-def hide_person(db_path: str, person_id) -> dict:
+def hide_person(db_path: str, person_id, kind="false_detection") -> dict:
     """User marked a cluster as NOT a person (a doll / animal / cartoon face that
     YuNet detected). Flag its faces so they're excluded from every future cluster,
     then drop the person. Durable and reversible only by clearing not_person."""
@@ -1099,8 +1344,12 @@ def hide_person(db_path: str, person_id) -> dict:
     try:
         if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
             return {"error": "unknown person"}
-        conn.execute("UPDATE faces SET not_person=1, person_id=NULL WHERE person_id=?",
-                     (person_id,))
+        allowed = {"animal", "toy", "cartoon", "false_detection"}
+        kind = kind if kind in allowed else "false_detection"
+        conn.execute(
+            """UPDATE faces SET not_person=1,person_id=NULL,
+                                nonhuman_kind=?,nonhuman_source='manual'
+               WHERE person_id=?""", (kind, person_id))
         conn.execute("DELETE FROM persons WHERE id=?", (person_id,))
         conn.commit()
         return {"ok": True}
@@ -1270,6 +1519,27 @@ def face_crop_source(db_path: str, face_id: int):
         conn.close()
 
 
+def animal_crop_source(db_path: str, detection_id: int):
+    """(abs path, sha256, box) for an animal detection id."""
+    conn = db.open_readonly(db_path)
+    try:
+        row = conn.execute(
+            """SELECT r.path root,f.rel_path,f.sha256,
+                      a.box_x,a.box_y,a.box_w,a.box_h
+               FROM animal_detections a JOIN files f ON f.id=a.file_id
+               JOIN roots r ON r.id=f.root_id WHERE a.id=?""",
+            (detection_id,)).fetchone()
+        if not row:
+            return None
+        path = Path(row["root"]) / row["rel_path"]
+        if not path.is_file():
+            return None
+        return path, row["sha256"], (
+            row["box_x"], row["box_y"], row["box_w"], row["box_h"])
+    finally:
+        conn.close()
+
+
 def item(db_path: str, fid: int) -> dict | None:
     conn = db.open_readonly(db_path)
     try:
@@ -1287,7 +1557,17 @@ def item(db_path: str, fid: int) -> dict | None:
         } for r in conn.execute(
             """SELECT fa.id AS face_id, fa.person_id, p.name
                FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id
-               WHERE fa.file_id=? ORDER BY fa.det_score DESC""", (fid,))]
+               WHERE fa.file_id=? AND fa.not_person=0
+               ORDER BY fa.det_score DESC""", (fid,))]
+        animals = [{
+            "detection_id": row["detection_id"], "species": row["species"],
+            "pet_id": row["pet_id"], "name": row["name"],
+            "score": row["det_score"],
+        } for row in conn.execute(
+            """SELECT a.id detection_id,a.species,a.pet_id,p.name,a.det_score
+               FROM animal_detections a LEFT JOIN pets p ON p.id=a.pet_id
+               WHERE a.file_id=? AND a.species!='teddy bear'
+               ORDER BY a.det_score DESC""", (fid,))]
         # Current place membership (a file belongs to at most one place).
         place = conn.execute(
             """SELECT pc.id, pc.name FROM place_cluster_members pcm
@@ -1314,6 +1594,7 @@ def item(db_path: str, fid: int) -> dict | None:
             "meta": (dict(m) if m else None),
             "description": (t["description"] if t else None),
             "people": people,
+            "animals": animals,
             "place": ({"id": place["id"], "name": place["name"]} if place else None),
             "place_options": place_options,
             "person_options": person_options,

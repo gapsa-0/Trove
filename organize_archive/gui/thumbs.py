@@ -69,7 +69,7 @@ def _thumb_video(tp: Path, src: Path, size: int) -> Path | None:
 
 
 # Bump when the face-crop framing changes so old crops are regenerated.
-FACE_THUMB_VER = 1
+FACE_THUMB_VER = 2
 
 
 def _face_key(fid: int, sha256: str | None, box) -> str:
@@ -97,13 +97,18 @@ def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
             W, H = im.size
             x, y, w, h = box
             cx, cy = x + w / 2, y + h / 2
-            side = max(w, h) * 1.6         # a little context around the face
-            l = max(0, int(cx - side / 2)); t = max(0, int(cy - side / 2))
-            r = min(W, int(cx + side / 2)); b = min(H, int(cy + side / 2))
+            # Keep the crop square even when the face is close to an image
+            # edge.  Clamping each edge independently made those crops
+            # rectangular, leaving visible side gutters in square UI slots.
+            side = max(1, min(round(max(w, h) * 1.6), W, H))
+            l = max(0, min(round(cx - side / 2), W - side))
+            t = max(0, min(round(cy - side / 2), H - side))
+            r, b = l + side, t + side
             if r <= l or b <= t:
                 return None
             crop = im.crop((l, t, r, b))
-            crop.thumbnail((size, size))
+            resampling = getattr(Image, "Resampling", Image).LANCZOS
+            crop = crop.resize((size, size), resampling)
             crop.save(tp, "JPEG", quality=82)
         return tp
     except Exception:

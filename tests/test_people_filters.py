@@ -42,9 +42,24 @@ def _catalogue_with_people(tmp_path):
 def test_media_multiple_people_requires_every_selected_person(tmp_path):
     db_path = _catalogue_with_people(tmp_path)
 
-    assert [item["id"] for item in queries.media(
-        db_path, root_id=1, person_ids=[1, 2]
-    )["items"]] == [3]
+    result = queries.media(db_path, root_id=1, person_ids=[1, 2])
+
+    assert [item["id"] for item in result["items"]] == [3]
+    assert result["total"] == 1
+
+
+def test_media_total_is_full_filtered_count_not_page_size(tmp_path):
+    db_path = _catalogue_with_people(tmp_path)
+
+    unfiltered = queries.media(db_path, root_id=1, limit=1, offset=0)
+    result = queries.media(
+        db_path, root_id=1, person_ids=[1], limit=1, offset=0
+    )
+
+    assert unfiltered["total"] == 3
+    assert len(result["items"]) == 1
+    assert result["count"] == 1
+    assert result["total"] == 2
 
 
 def test_timeline_multiple_people_uses_same_joined_filter(tmp_path):

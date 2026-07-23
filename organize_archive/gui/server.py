@@ -170,6 +170,32 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/summary":
                 self._json(queries.face_summary(self.cfg.db_path, one("root", int)))
+            elif path == "/api/pets/summary":
+                from ..pets.extract import scan_source as pet_scan_source
+                self._json(queries.pet_summary(
+                    self.cfg.db_path, one("root", int), pet_scan_source(self.cfg)))
+            elif path == "/api/pets":
+                self._json(queries.pet_groups(
+                    self.cfg.db_path, one("root", int),
+                    limit=min(one("limit", int, 120), 500),
+                    offset=one("offset", int, 0)))
+            elif path == "/api/pet/detections":
+                self._json(queries.animal_gallery(
+                    self.cfg.db_path, one("root", int),
+                    limit=min(one("limit", int, 120), 500),
+                    offset=one("offset", int, 0),
+                    unassigned=bool(one("unassigned", int, 0))))
+            elif path == "/api/nonhuman":
+                self._json(queries.nonhuman_review(
+                    self.cfg.db_path, one("root", int),
+                    limit=min(one("limit", int, 120), 500),
+                    offset=one("offset", int, 0)))
+            elif path.startswith("/api/pet/"):
+                result = queries.pet_group(
+                    self.cfg.db_path, int(path.rsplit("/", 1)[1]),
+                    one("root", int), limit=min(one("limit", int, 120), 500),
+                    offset=one("offset", int, 0))
+                self._json(result) if result else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/persons":
                 self._json(queries.face_persons(
                     self.cfg.db_path, one("root", int),
@@ -239,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._serve_thumb(int(path.rsplit("/", 1)[1]))
             elif path.startswith("/faceThumb/"):
                 self._serve_face_thumb(int(path.rsplit("/", 1)[1]))
+            elif path.startswith("/animalThumb/"):
+                self._serve_animal_thumb(int(path.rsplit("/", 1)[1]))
             elif path.startswith("/file/"):
                 self._serve_original(int(path.rsplit("/", 1)[1]))
             else:
@@ -319,7 +347,21 @@ class Handler(BaseHTTPRequestHandler):
                 res = queries.set_persons_skip(self.cfg.db_path, body.get("a"), body.get("b"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/hide":
-                res = queries.hide_person(self.cfg.db_path, body.get("person_id"))
+                res = queries.hide_person(
+                    self.cfg.db_path, body.get("person_id"),
+                    body.get("kind", "false_detection"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/pet/rename":
+                res = queries.rename_pet(
+                    self.cfg.db_path, body.get("pet_id"),
+                    (body.get("name") or "").strip())
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/nonhuman/review":
+                res = queries.review_nonhuman(
+                    self.cfg.db_path, body.get("detection_id"),
+                    body.get("verdict", "confirmed"))
+                if res.get("status") == "human" and res.get("root_id"):
+                    self.jobs.start("face_cluster", res["root_id"])
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/date":
                 res = queries.set_date(
@@ -357,6 +399,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not found"}, 404)
         src, sha256, box = info
         tp = thumbs.face_thumb_for(self.cfg.cache_dir, face_id, src, box, sha256=sha256)
+        self._send_file(tp if tp else src)
+
+    def _serve_animal_thumb(self, detection_id: int):
+        info = queries.animal_crop_source(self.cfg.db_path, detection_id)
+        if info is None:
+            return self._json({"error": "not found"}, 404)
+        src, sha256, box = info
+        tp = thumbs.face_thumb_for(
+            self.cfg.cache_dir, detection_id, src, box, sha256=sha256)
         self._send_file(tp if tp else src)
 
     def _serve_original(self, fid: int):

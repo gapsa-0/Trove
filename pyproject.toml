@@ -23,6 +23,9 @@ media = ["pyexiftool>=0.5", "Pillow>=10", "pillow-heif>=0.16", "ImageHash>=4.3"]
 # SFace embedder (weights fetched once into the cache dir) and scikit-learn's
 # DBSCAN. No new model server, no cloud.
 faces = ["opencv-python>=4.8", "scikit-learn>=1.3", "numpy>=1.24"]
+# Local YOLOX animal detection and crop descriptors. Kept separate so a
+# catalogue that does not need Pets avoids another model download.
+pets = ["opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
 # Later phases (local models only). insightface = a higher-accuracy ArcFace
 # face backend, swappable behind faces/backend.py (see TODO).
 ai = ["insightface", "onnxruntime", "sentence-transformers", "sqlite-vec"]

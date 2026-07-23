@@ -163,10 +163,18 @@ CREATE TABLE IF NOT EXISTS faces (
     box_w      INTEGER NOT NULL,
     box_h      INTEGER NOT NULL,
     det_score  REAL,
+    focus_score REAL,               -- Laplacian variance on aligned 112px crop
+    brightness REAL,                -- mean grayscale value (0..255)
+    extreme_fraction REAL,          -- fraction near-black or near-white
+    clipped_fraction REAL,          -- bbox area outside decoded image
+    quality_score REAL,             -- normalized composite, 0..1
+    quality_source TEXT,            -- metric algorithm/version provenance
     embedding  BLOB NOT NULL,
     person_id  INTEGER REFERENCES persons(id) ON DELETE SET NULL,
     manual_person TEXT,               -- pinned person NAME (survives recluster); NULL = auto
     not_person INTEGER NOT NULL DEFAULT 0,  -- 1 = user marked "not a person" (doll/animal/cartoon); excluded from clustering
+    nonhuman_kind TEXT,              -- animal | toy | cartoon | false_detection
+    nonhuman_source TEXT,            -- manual | animal-overlap:<model>
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_faces_file   ON faces(file_id);
@@ -178,8 +186,82 @@ CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
 CREATE TABLE IF NOT EXISTS face_scan (
     file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
     n_faces    INTEGER NOT NULL DEFAULT 0,
+    n_candidates INTEGER NOT NULL DEFAULT 0,
+    rejected_score INTEGER NOT NULL DEFAULT 0,
+    rejected_size INTEGER NOT NULL DEFAULT 0,
+    rejected_focus INTEGER NOT NULL DEFAULT 0,
+    rejected_exposure INTEGER NOT NULL DEFAULT 0,
+    rejected_clipped INTEGER NOT NULL DEFAULT 0,
+    rejected_nonhuman INTEGER NOT NULL DEFAULT 0,
     scanned_at TEXT NOT NULL
 );
+
+-- ---- Phase 9: pets and non-human review ---------------------------------
+
+CREATE TABLE IF NOT EXISTS pets (
+    id             INTEGER PRIMARY KEY,
+    name           TEXT,
+    species        TEXT NOT NULL,
+    cover_detection_id INTEGER,
+    detection_count INTEGER NOT NULL DEFAULT 0,
+    centroid       BLOB,
+    created_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS animal_detections (
+    id             INTEGER PRIMARY KEY,
+    file_id        INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    species        TEXT NOT NULL,
+    box_x          INTEGER NOT NULL,
+    box_y          INTEGER NOT NULL,
+    box_w          INTEGER NOT NULL,
+    box_h          INTEGER NOT NULL,
+    det_score      REAL NOT NULL,
+    embedding      BLOB,
+    pet_id         INTEGER REFERENCES pets(id) ON DELETE SET NULL,
+    manual_pet     TEXT,
+    model_source   TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_animals_file ON animal_detections(file_id);
+CREATE INDEX IF NOT EXISTS idx_animals_pet ON animal_detections(pet_id);
+CREATE INDEX IF NOT EXISTS idx_animals_species ON animal_detections(species);
+
+CREATE TABLE IF NOT EXISTS pet_scan (
+    file_id        INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    n_animals      INTEGER NOT NULL DEFAULT 0,
+    source_sha256  TEXT,
+    model_source   TEXT NOT NULL,
+    scanned_at     TEXT NOT NULL
+);
+
+-- Face-like regions suppressed because they overlap an animal/toy detection.
+-- These are reviewable evidence, not People and not pet identities.
+CREATE TABLE IF NOT EXISTS nonhuman_detections (
+    id             INTEGER PRIMARY KEY,
+    file_id        INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    animal_detection_id INTEGER REFERENCES animal_detections(id) ON DELETE SET NULL,
+    box_x          INTEGER NOT NULL,
+    box_y          INTEGER NOT NULL,
+    box_w          INTEGER NOT NULL,
+    box_h          INTEGER NOT NULL,
+    kind           TEXT NOT NULL,       -- animal | toy
+    confidence     REAL NOT NULL,
+    source         TEXT NOT NULL,
+    source_sha256  TEXT,
+    embedding      BLOB,
+    det_score      REAL,
+    focus_score    REAL,
+    brightness     REAL,
+    extreme_fraction REAL,
+    clipped_fraction REAL,
+    quality_score  REAL,
+    quality_source TEXT,
+    review_status  TEXT NOT NULL DEFAULT 'pending', -- pending | confirmed | human
+    restored_face_id INTEGER REFERENCES faces(id) ON DELETE SET NULL,
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_nonhuman_file ON nonhuman_detections(file_id);
 
 -- User answers to "are these two the same person?" — durable constraints that
 -- steer clustering. Anchored to specific FACE ids (stable across the persons

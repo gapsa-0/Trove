@@ -10,7 +10,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
@@ -77,6 +77,38 @@ def init_db(conn: sqlite3.Connection) -> None:
     # faces.not_person: user marked this cluster as not a person (doll/animal/
     # cartoon face that YuNet detected); excluded from clustering thereafter.
     _add_column_if_missing(conn, "faces", "not_person", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "faces", "nonhuman_kind", "TEXT")
+    _add_column_if_missing(conn, "faces", "nonhuman_source", "TEXT")
+    # Face-quality metrics are stored with algorithm provenance. Scan-level
+    # rejection counters make quality-gate behavior inspectable without saving
+    # rejected doll/cartoon/blurry candidates as faces.
+    _add_column_if_missing(conn, "faces", "focus_score", "REAL")
+    _add_column_if_missing(conn, "faces", "brightness", "REAL")
+    _add_column_if_missing(conn, "faces", "extreme_fraction", "REAL")
+    _add_column_if_missing(conn, "faces", "clipped_fraction", "REAL")
+    _add_column_if_missing(conn, "faces", "quality_score", "REAL")
+    _add_column_if_missing(conn, "faces", "quality_source", "TEXT")
+    _add_column_if_missing(conn, "face_scan", "n_candidates", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "face_scan", "rejected_score", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "face_scan", "rejected_size", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "face_scan", "rejected_focus", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "face_scan", "rejected_exposure", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "face_scan", "rejected_clipped", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "face_scan", "rejected_nonhuman", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "nonhuman_detections", "embedding", "BLOB")
+    _add_column_if_missing(conn, "nonhuman_detections", "source_sha256", "TEXT")
+    _add_column_if_missing(conn, "nonhuman_detections", "det_score", "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "focus_score", "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "brightness", "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "extreme_fraction", "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "clipped_fraction", "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "quality_score", "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "quality_source", "TEXT")
+    _add_column_if_missing(
+        conn, "nonhuman_detections", "review_status",
+        "TEXT NOT NULL DEFAULT 'pending'")
+    _add_column_if_missing(conn, "nonhuman_detections", "restored_face_id", "INTEGER")
+    _add_column_if_missing(conn, "pet_scan", "source_sha256", "TEXT")
     _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()

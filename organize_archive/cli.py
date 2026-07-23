@@ -225,13 +225,49 @@ def cmd_faces(args, cfg: Config) -> int:
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
         return 1
-    if not backend.available():
-        print("Face detection needs OpenCV's DNN face APIs. Install a modern "
-              "opencv-python (the 'media' extra) and retry.")
-        return 1
-
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
+
+    if args.quality_report:
+        report = fx.quality_summary(conn)
+        conn.close()
+        print("Face extraction quality:")
+        print(f"  images scanned     : {report['images']:,}")
+        print(f"  detector candidates: {report['candidates']:,}")
+        print(f"  faces accepted     : {report['accepted']:,}")
+        print(f"  cluster noise      : {report['cluster_noise'] or 0:,} unassigned")
+        for reason in ("score", "size", "focus", "exposure", "clipped", "nonhuman"):
+            print(f"  rejected {reason:<8}: {report['rejected_' + reason]:,}")
+        if report["avg_quality"] is not None:
+            print(f"  mean quality score : {report['avg_quality']:.3f}")
+            print(f"  mean focus score   : {report['avg_focus']:.1f}")
+            print(f"  mean brightness    : {report['avg_brightness']:.1f}")
+        return 0
+
+    if not backend.available():
+        conn.close()
+        print("Face detection needs OpenCV's DNN face APIs. Install a modern "
+              "opencv-python (the 'faces' extra) and retry.")
+        return 1
+
+    if args.calibrate is not None:
+        limit = max(1, args.calibrate)
+        print(f"Dry-running face quality gates on up to {limit} pending image(s) …")
+        progress = None if args.no_progress else ScanProgress(
+            None, show_bytes=False, label="calibrating")
+        result = fx.calibrate_quality(conn, cfg, limit=limit, progress=progress)
+        if progress is not None:
+            progress.close()
+        conn.close()
+        print("\nCalibration dry run (database unchanged):")
+        print(f"  images sampled     : {result.processed:,}")
+        print(f"  detector candidates: {result.candidates:,}")
+        print(f"  would accept       : {result.faces_found:,}")
+        for reason in ("score", "size", "focus", "exposure", "clipped"):
+            print(f"  reject {reason:<11}: {getattr(result, 'rejected_' + reason):,}")
+        if result.errors:
+            print(f"  errors             : {result.errors:,}")
+        return 0
 
     if not args.recluster:
         if not backend.models_ready(cfg.cache_dir):
@@ -251,6 +287,11 @@ def cmd_faces(args, cfg: Config) -> int:
             print(f"\n  images scanned    : {es.processed}")
             print(f"  faces detected    : {es.faces_found}")
             print(f"  photos with faces : {es.images_with_faces}")
+            rejected = sum(getattr(es, f"rejected_{reason}")
+                           for reason in ("score", "size", "focus", "exposure",
+                                          "clipped", "nonhuman"))
+            if rejected:
+                print(f"  quality rejections: {rejected}")
             if es.errors:
                 print(f"  errors            : {es.errors}")
                 for s in es.error_samples:
@@ -268,6 +309,44 @@ def cmd_faces(args, cfg: Config) -> int:
     print(f"  unassigned faces  : {cs.noise}")
     if cs.named:
         print(f"  names preserved   : {cs.named}")
+    return 0
+
+
+def cmd_pets(args, cfg: Config) -> int:
+    from .pets import backend, extract as px, cluster as pc
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init  then  oa scan  then  oa dedup")
+        return 1
+    if not backend.available():
+        print("Pet detection needs OpenCV DNN and NumPy. Install the 'faces' "
+              "extra and retry.")
+        return 1
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+    if not args.recluster:
+        pending = px.pending_count(conn, model_source=px.scan_source(cfg))
+        if pending:
+            if not backend.models_ready(cfg.cache_dir):
+                print("Fetching the local pet detector once into the model cache …")
+            progress = None if args.no_progress else ScanProgress(
+                None, show_bytes=False, label="pets")
+            stats = px.extract(conn, cfg, progress=progress, limit=args.limit)
+            if progress is not None:
+                progress.close()
+            print(f"\n  images scanned    : {stats.processed:,}")
+            print(f"  animals detected  : {stats.animals:,}")
+            print(f"  photos with pets  : {stats.photos_with_animals:,}")
+            print(f"  faces suppressed  : {stats.faces_suppressed:,}")
+            if stats.errors:
+                print(f"  errors            : {stats.errors:,}")
+        else:
+            print("All canonical images already pet-scanned.")
+    print("\nGrouping likely pet identities …")
+    grouped = pc.cluster_pets(conn, cfg)
+    conn.close()
+    print(f"  pet groups        : {grouped.pets:,}")
+    print(f"  detections grouped: {grouped.clustered:,}")
+    print(f"  unassigned        : {grouped.unassigned:,}")
     return 0
 
 
@@ -473,8 +552,21 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Only scan this many pending images this run (resumable)")
     sp.add_argument("--recluster", action="store_true",
                     help="Skip detection; just re-cluster existing faces into people")
+    sp.add_argument("--quality-report", action="store_true",
+                    help="Show persisted face quality/rejection diagnostics and exit")
+    sp.add_argument("--calibrate", type=int, nargs="?", const=100, metavar="N",
+                    help="Dry-run current quality gates on N pending images (default 100)")
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_faces)
+
+    sp = sub.add_parser(
+        "pets", help="Detect animals locally and group likely pet identities")
+    sp.add_argument("--limit", type=int, default=None,
+                    help="Only scan this many pending images this run")
+    sp.add_argument("--recluster", action="store_true",
+                    help="Skip detection and rebuild pet identity groups")
+    sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
+    sp.set_defaults(func=cmd_pets)
 
     sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
     sp.set_defaults(func=cmd_dates)

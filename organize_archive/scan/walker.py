@@ -138,6 +138,26 @@ def scan_root(conn, cfg: Config, root_path: str, run_started: str,
             mt = media_type(_ext_of(name))
             ext = _ext_of(name)
             if existing:
+                if existing["sha256"] != sh:
+                    # Content at this path changed: every content-derived row
+                    # must become pending again. User-created place membership
+                    # remains path-level metadata and is intentionally retained.
+                    conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?",
+                                 (existing["id"],))
+                    conn.execute("DELETE FROM animal_detections WHERE file_id=?",
+                                 (existing["id"],))
+                    conn.execute("DELETE FROM pet_scan WHERE file_id=?",
+                                 (existing["id"],))
+                    conn.execute("DELETE FROM faces WHERE file_id=?",
+                                 (existing["id"],))
+                    conn.execute("DELETE FROM face_scan WHERE file_id=?",
+                                 (existing["id"],))
+                    for table in (
+                            "media_meta", "dates", "geo", "takeout_sidecar",
+                            "perceptual_hashes", "semantic_embeddings"):
+                        conn.execute(
+                            f"DELETE FROM {table} WHERE file_id=?",
+                            (existing["id"],))
                 conn.execute(
                     """UPDATE files SET ext=?, size=?, mtime=?, media_type=?,
                        fast_hash=?, sha256=?, last_seen=?, present=1 WHERE id=?""",
