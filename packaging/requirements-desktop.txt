@@ -3,7 +3,8 @@ Pillow==11.3.0
 pillow-heif==1.1.0
 ImageHash==4.3.2
 pyexiftool==0.5.6
-numpy==2.3.2
+# OpenCV 4.12 requires NumPy >=2,<2.3 on Python 3.9+.
+numpy==2.2.6
 opencv-python==4.12.0.88
 onnxruntime==1.22.1
 scikit-learn==1.7.1

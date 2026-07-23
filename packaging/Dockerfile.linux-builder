@@ -1,0 +1,9 @@
+# Reproducible Linux x64 backend-build environment. PyInstaller requires objdump
+# (provided by binutils) to analyse bundled native libraries.
+FROM python:3.13-slim
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
