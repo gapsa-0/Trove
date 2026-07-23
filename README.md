@@ -1,131 +1,183 @@
-# organize_archive
+# Archive
 
-A local, read-only cataloging tool for a large and messy family multimedia archive —
-photos, videos, audio, documents — scattered across nested folders, phone dumps, and
-multiple Google Takeout exports.
+Archive is a desktop catalogue for a large, messy media collection: family photos,
+videos, audio, documents, phone dumps, and Google Takeout exports spread across one
+or more folders. It indexes the collection in place so it can be browsed by date,
+person, place, type, folder, and duplicate group.
 
-It builds a **database about your files** so you can find and navigate them, **without
-ever moving or changing a single original**. It includes a desktop interface for
-visual browsing, backed by a local Python service.
+It never moves, renames, edits, or deletes an original file. The catalogue, thumbnails,
+face crops, models, and other derived data live separately in the current user's
+application-data folder.
 
-## Why
+## What it does
 
-Decades of family media end up as an unnavigable pile: the same photo copied into five
-folders, dates hidden inconsistently (sometimes in EXIF, sometimes in the filename,
-sometimes only in a Google sidecar), a dozen file formats, and no way to ask simple
-questions like *"show me everything from the 2022 Bariloche trip"* or *"every photo of
-Grandma"*.
+- Adds one or more archive folders and keeps a separate catalogue for each one.
+- Scans incrementally and resumably. Unchanged files are skipped on later runs;
+  interrupted work can continue safely.
+- Reads Google Takeout sidecars, embedded metadata, filenames, and file timestamps.
+  Each resolved date and GPS value retains its source.
+- Chooses a best capture date using this default order: Google Takeout capture time,
+  EXIF, filename, then filesystem modification time.
+- Groups byte-identical copies and visually similar image exports. A canonical copy
+  is selected; other copies are hidden from normal browsing, never deleted, and can
+  be shown again.
+- Builds a timeline, media library, source-folder view, and item inspector.
+- Clusters GPS-tagged media into places. Places can be named, manually created from a
+  map pin, and manually assigned without altering the media's GPS metadata.
+- Detects and clusters faces locally into people. You can name people, correct a face,
+  merge or separate suggested people, and dismiss non-person detections.
+- Generates cached thumbnails and serves the interface only on `127.0.0.1`.
 
-This project catalogs the mess in place and makes it queryable.
+When an archive is open in the app, its pipeline runs automatically:
 
-## Principles
+```text
+scan → metadata and date extraction → duplicate grouping → face processing → places
+```
 
-- **Originals are never touched.** No moves, no renames, no edits, no files written next
-  to your media. Everything derived lives in a single SQLite database and a cache folder.
-- **Everything runs on your machine.** No cloud, no uploads — now or when face
-  recognition and AI features arrive. Your family's photos stay private.
-- **Built for a real, large archive.** ~500 GB and ~150k files here: scanning is
-  resumable, incremental, and safe to interrupt.
-- **Honest metadata.** Every fact the tool infers (a date, a location, a file type)
-  records where it came from and how confident it is.
+Long stages commit progress in batches. Closing or switching archives asks current
+work to stop at a safe checkpoint; reopening resumes it. The interface shows the
+active stage and progress.
 
-## Features
+## Privacy and optional embeddings
 
-### Available (core roadmap)
-- **Scan & index** — walk the archive, hash files, read metadata, store it all in SQLite.
-  Resumable and incremental.
-- **Deduplication** — find identical files (exact) *and* the same photo re-compressed or
-  saved in a different format across different takeouts (perceptual). Copies are grouped,
-  a best "canonical" version is chosen, and the rest are hidden from browsing —
-  **nothing is ever deleted.**
-- **Date navigation** — one reliable date per file, resolved from the best available
-  source (Google Takeout JSON → EXIF → filename → file timestamp), then browse by
-  year / month / range.
-- **Type & folder navigation** — filter by media type (image / video / audio / document)
-  and by original source folder.
+The normal catalogue is local-first. Scanning, hashing, metadata extraction,
+duplicates, thumbnails, place clustering, face detection, face embeddings, face
+clustering, and the SQLite catalogue all stay on the machine. Archive has no telemetry
+and does not modify source media. Enabling the map's street-map layer fetches public
+map tiles online, which discloses the viewed coordinates but never uploads photos.
 
-### Planned (later)
-- **Face recognition** (local) — pick a person (or several) and retrieve their photos,
-  later videos.
-- **Map view** — plot photos/videos by their GPS coordinates.
-- **AI descriptions & semantic search** — local embeddings to search media by content
-  ("beach sunset", "birthday cake").
-- **Timeline** view and **pet detection**.
+Optional multimodal embedding is the one exception. If `VOYAGE_API_KEY` is available,
+Archive automatically indexes compatible canonical media with Voyage Multimodal and
+stores the returned vectors locally in SQLite. It sends a downscaled cached JPEG for
+images where possible, or the original compatible MP4 video; it never sends an
+original image merely because a thumbnail was available. Audio, PDFs, other document
+formats, and non-MP4 video are recorded as skipped. Text queries sent to the semantic
+endpoint also leave the machine. Do not set this key unless that data transfer is
+appropriate for the archive.
 
-## Install the desktop app
+Put the key in a project-root `.env` file or in the environment of the app process:
 
-The app is local-only: it does not upload your archive and it never modifies the
-original media files.
+```text
+VOYAGE_API_KEY=...
+```
+
+The key is deliberately not stored in Archive's `config.json`. Embedding is resumable,
+does not process hidden duplicates, and can run alongside the local pipeline.
+
+## Install and run the desktop app
+
+Desktop builds produce Linux x64 AppImage and Debian/Ubuntu packages, plus an NSIS
+Windows installer. Build and test packages on their target operating system; see the
+release guide for the current publication and signing requirements.
 
 ### Linux
 
-Two Linux x64 package formats are produced by the release build:
+For an AppImage:
 
-- **AppImage** — download `Archive-<version>.AppImage`, make it executable, then
-  open it:
+```bash
+chmod +x Archive-<version>.AppImage
+./Archive-<version>.AppImage
+```
 
-  ```bash
-  chmod +x Archive-0.1.0.AppImage
-  ./Archive-0.1.0.AppImage
-  ```
+For Debian or Ubuntu:
 
-- **Debian/Ubuntu installer** — download
-  `organize-archive-desktop_<version>_amd64.deb`, then open it in your software
-  installer or run:
+```bash
+sudo apt install ./organize-archive-desktop_<version>_amd64.deb
+```
 
-  ```bash
-  sudo apt install ./organize-archive-desktop_0.1.0_amd64.deb
-  ```
+Linux packages bundle FFmpeg and FFprobe. ExifTool is optional: without it, Archive
+still uses Takeout sidecars, filenames, and file timestamps, but cannot read the full
+range of embedded metadata.
 
-Both packages bundle FFmpeg and FFprobe for video metadata and thumbnails. ExifTool
-is optional on Linux; when it is unavailable, the app still uses Google Takeout data,
-file names, and file timestamps.
+See [Linux installation notes](docs/install-linux.md) for AppImage/FUSE and data-path
+details. See [Windows installation notes](docs/install-windows.md) for installer,
+signature, and uninstall behavior.
 
-### Windows
+### First use
 
-A Windows NSIS installer is configured, but it must be built and smoke-tested on a
-Windows machine before it is published. Until then, Windows installation is not yet a
-supported release path.
+Open Archive and choose the folder containing your media. Opening that archive starts
+the automatic pipeline. You can add additional folders from the archive picker. An
+archive whose drive is disconnected remains registered and is shown as unavailable;
+mount it again to continue.
 
-## Development requirements
+Removing an archive from Archive removes its catalogue records and derived cache for
+that archive after background work has stopped. It does not remove the selected source
+folder or any file under it.
 
-- Python 3.13
-- For a source/CLI setup, system tools `exiftool` and `ffmpeg`/`ffprobe` enable the
-  richest metadata and video support. The tool clearly reports anything missing.
-- Python dependencies are declared in `pyproject.toml` (install into a virtualenv).
+## Command line and source setup
+
+Archive requires Python 3.13 or newer. Create a virtual environment and install the
+package with the extras appropriate to the features you want:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -e '.[cli,media,faces]'
+```
+
+`exiftool` and `ffmpeg`/`ffprobe` are recommended system tools. The core scanner works
+without them, with reduced embedded-metadata and video support.
+
+The CLI exposes the same durable catalogue operations:
+
+```bash
+oa config --add-root /path/to/archive
+oa config --set-timezone America/Argentina/Buenos_Aires
+oa init
+oa scan
+oa enrich
+oa dedup
+oa faces
+oa gui
+```
+
+Useful companion commands are `oa status`, `oa dates`, `oa config --show`, and
+`oa migrate-data` for copying an older project-local `data/` directory into the
+per-user data location. All long commands are designed to be re-run.
+
+`oa gui` starts the local interface at `http://127.0.0.1:8756/`; it opens a standalone
+browser window when a supported Chromium-family browser is available. Use `--tab` to
+open a normal tab or `--no-open` when launching it remotely.
+
+## Data locations and backups
+
+Archive keeps mutable data outside both the source archive and the installed app:
+
+| Platform | Default location |
+| --- | --- |
+| Linux | `$XDG_DATA_HOME/organize_archive`, normally `~/.local/share/organize_archive` |
+| Windows | `%LOCALAPPDATA%\organize_archive` |
+| macOS | `~/Library/Application Support/organize_archive` |
+
+This directory contains `archive.db`, `config.json`, cached thumbnails, face/model
+assets, and logs. It is valuable derived data: back it up by copying the directory
+while Archive is closed. Restoring it does not change the original media.
 
 ## Build the desktop app
 
-Electron owns the window and native folder picker; the bundled Python backend remains
+The Electron shell owns the native window and folder picker; the Python backend stays
 loopback-only. From `desktop/`:
 
-```text
+```bash
 npm install
 npm run dev
 npm run build:backend
-npm run package:linux   # Linux: AppImage + .deb
-npm run package:win     # Windows: NSIS installer
+npm run package:linux
+npm run package:win
 ```
 
-Build on the target OS. A public Windows release also needs code signing; unsigned
-installers may trigger SmartScreen. The packaging profile and native-tool handoff are
-in `packaging/`.
+Native-tool staging and packaging files are in `packaging/`. Release versioning and
+clean-machine checks are described in [the release guide](docs/release.md).
 
-## Status
+## Current limitations
 
-Early development. The database core, indexer, and deduplication are the current focus.
-See **[TODO.md](TODO.md)** for the roadmap and **[CLAUDE.md](CLAUDE.md)** for the
-technical design and contributor guidance. Public-beta installation and recovery
-guides: [Windows](docs/install-windows.md), [Linux](docs/install-linux.md),
-[privacy/data](docs/privacy-and-data.md), and [troubleshooting](docs/troubleshooting.md).
+- Visual duplicate matching applies to images; video near-duplicate matching is not
+  implemented.
+- Face detection applies to images, not video frames. Its local model is downloaded
+  once into the cache when needed.
+- Embedded metadata quality depends on installed tools and the source formats.
+- Optional Voyage indexing accepts images and MP4 video only; it intentionally skips
+  audio, PDFs, documents, and unsupported video formats.
+- The bundled Linux release tools do not include ExifTool.
 
-## Configuration
-
-New installations start without archive roots. Add one with
-`oa config --add-root PATH` (multiple roots are supported), then run `oa init`.
-On Linux, configuration, the database, and caches live in
-`$XDG_DATA_HOME/organize_archive` (or `~/.local/share/organize_archive`); Windows
-uses `%LOCALAPPDATA%\\organize_archive`. Nothing is written next to your originals or
-the installed application. To copy data from a prior project-local `data/` directory,
-run `oa migrate-data` (or provide its location with `--from PATH`); the original is
-kept unchanged.
+For recovery and common failures, see [troubleshooting](docs/troubleshooting.md).
