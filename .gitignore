@@ -23,3 +23,7 @@ desktop/node_modules/
 desktop/release/
 desktop/backend/
 desktop/dist/
+
+# Plan folder
+
+plan/
