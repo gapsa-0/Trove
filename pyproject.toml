@@ -30,6 +30,7 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 oa = "organize_archive.cli:main"
+organize-archive-backend = "organize_archive.desktop:main"
 
 [tool.setuptools.packages.find]
 include = ["organize_archive*"]

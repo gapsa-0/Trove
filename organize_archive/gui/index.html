@@ -347,7 +347,7 @@
 <div id="picker">
   <div class="welcome"><div class="eyebrow">A local memory room</div><h1>ARCHIVE</h1>
   <div class="sub">A quiet place to explore the photographs, films, and records already on this computer.</div>
-  <form class="setup-form" onsubmit="return addArchiveFromForm(event)"><input id="archive-path" aria-label="Media folder path" placeholder="/path/to/media folder"><button class="btn" type="submit">Choose media folder</button></form>
+  <form class="setup-form" onsubmit="return addArchiveFromForm(event)"><input id="archive-path" aria-label="Media folder path" placeholder="/path/to/media folder"><button class="btn" id="choose-folder" type="submit">Choose media folder</button></form>
   <div class="privacy-note">Files are catalogued in place. They are never moved, edited, uploaded, or deleted. You can add more folders whenever you need.</div>
   <div class="archive-list-title" id="archive-list-title">Your archives</div><div class="cards" id="archcards"></div></div>
 </div>
@@ -430,7 +430,12 @@ async function loadPicker(){
     add.type="button";add.textContent="+ Add another folder";add.onclick=()=>document.getElementById("archive-path").focus();el.appendChild(add);}
 }
 async function addArchiveFromForm(event){
-  event.preventDefault(); const field=document.getElementById("archive-path");const p=field.value.trim();
+  event.preventDefault(); const field=document.getElementById("archive-path");let p=field.value.trim();
+  if(window.archiveDesktop?.chooseFolder){
+    const picked=await window.archiveDesktop.chooseFolder();
+    if(picked.cancelled)return false;
+    p=picked.path||"";field.value=p;
+  }
   if(!p)return;
   const r=await jpost("/api/archives",{path:p});
   if(r.error){toast(r.error,true);return false;}
@@ -1174,8 +1179,15 @@ async function renderSettings(m){
   m.innerHTML=`<div class="eyebrow">Archive care</div><h2 class="sec">Archive settings</h2>
     <div class="panel"><h3>Source</h3><div class="path muted">${esc(S.arch.path)}</div><p class="privacy-note">This archive is catalogued and processed on this computer. The source files are never moved, edited, uploaded, or deleted.</p></div>
     <div class="panel"><h3>Archive activity</h3>${running?`<p><span class="spin"></span>${JOB_LABEL[running.kind]||running.kind}</p><div class="progress"><div class="progfill" style="width:${running.percent||0}%"></div></div><div class="muted">${running.current||jobDescription(running.kind)}</div>`:`<p><span class="dot ok"></span> No work needs attention.</p>`}<p class="muted">${summary.total.toLocaleString()} catalogued files · ${fmtBytes(summary.size)}</p></div>
+    <div class="panel" id="desktop-about" style="display:none"></div>
     <div class="panel"><h3>Remove archive</h3><p class="muted">Removes catalogue records and any exclusive cached thumbnails. Original media remains untouched.</p><button class="btn sec" onclick="removeCurrentArchive()">Remove this archive</button></div>`;
+  if(window.archiveDesktop?.about){
+    const about=await window.archiveDesktop.about(); const panel=document.getElementById("desktop-about");
+    panel.style.display="block"; panel.innerHTML=`<h3>About Archive</h3><p class="muted">Version ${esc(about.version)} · commit ${esc(about.commit)}<br>Backend ${esc(about.backendVersion)}</p><p class="muted">The data folder contains the catalogue and cache, not your original media. Back it up while Archive is closed.</p><button class="btn sec" onclick="copyDesktopDiagnostics()">Copy diagnostics</button> <button class="btn sec" onclick="openDesktopDataFolder()">Open data folder</button>`;
+  }
 }
+async function copyDesktopDiagnostics(){await window.archiveDesktop.copyDiagnostics();toast("Diagnostics copied. It excludes catalogue content and media paths.");}
+async function openDesktopDataFolder(){const r=await window.archiveDesktop.openDataFolder();if(r)toast("Could not open the data folder.",true);}
 async function removeCurrentArchive(){
   const a=S.arch; await removeArchive(a);
   const still=ARCHIVES.some(x=>x.id===a.id);

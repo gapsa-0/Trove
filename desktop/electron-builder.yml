@@ -1,0 +1,31 @@
+appId: io.capsa.organize-archive
+productName: Archive
+directories:
+  output: release
+files:
+  - src/**
+  - package.json
+extraResources:
+  - from: backend
+    to: backend
+    filter:
+      - "**/*"
+  - from: ../packaging/THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+win:
+  target: nsis
+  icon: build/icon.ico
+nsis:
+  perMachine: false
+  oneClick: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  icon: build/icon.png
+  synopsis: Local, read-only media archive catalogue
+  desktop:
+    Terminal: false

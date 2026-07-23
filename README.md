@@ -60,11 +60,30 @@ This project catalogs the mess in place and makes it queryable.
   frames). The tool will tell you clearly if they're missing.
 - Python dependencies are declared in `pyproject.toml` (install into a virtualenv).
 
+## Desktop development
+
+Electron owns the window and native folder picker; the bundled Python backend remains
+loopback-only. From `desktop/`:
+
+```text
+npm install
+npm run dev
+npm run build:backend
+npm run package:linux   # Linux: AppImage + .deb
+npm run package:win     # Windows: NSIS installer
+```
+
+Build on the target OS. A public Windows release also needs code signing; unsigned
+installers may trigger SmartScreen. The packaging profile and native-tool handoff are
+in `packaging/`.
+
 ## Status
 
 Early development. The database core, indexer, and deduplication are the current focus.
 See **[TODO.md](TODO.md)** for the roadmap and **[CLAUDE.md](CLAUDE.md)** for the
-technical design and contributor guidance.
+technical design and contributor guidance. Public-beta installation and recovery
+guides: [Windows](docs/install-windows.md), [Linux](docs/install-linux.md),
+[privacy/data](docs/privacy-and-data.md), and [troubleshooting](docs/troubleshooting.md).
 
 ## Configuration
 

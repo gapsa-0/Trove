@@ -1,0 +1,11 @@
+# Reproducible desktop runtime profile. Build on the target OS.
+Pillow==11.3.0
+pillow-heif==1.1.0
+ImageHash==4.3.2
+pyexiftool==0.5.6
+numpy==2.3.2
+opencv-python==4.12.0.88
+onnxruntime==1.22.1
+scikit-learn==1.7.1
+PyInstaller==6.15.0
+# ffmpeg/ffprobe and ExifTool are bundled separately as platform resources.

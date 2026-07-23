@@ -102,7 +102,26 @@ class JobManager:
         self._open_root_id: int | None = None
         self._auto_interval = self._AUTO_MIN
         self._wake = threading.Event()
-        threading.Thread(target=self._auto_loop, daemon=True).start()
+        self._stopping = threading.Event()
+        self._scheduler = threading.Thread(target=self._auto_loop, daemon=True)
+        self._scheduler.start()
+
+    def shutdown(self, timeout: float = 8.0) -> bool:
+        """Cancel all work and stop the scheduler before the HTTP server exits."""
+        self._stopping.set()
+        self._wake.set()
+        with self._lock:
+            for cancel in self._cancels.values():
+                cancel.set()
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                active = any(job.status == "running" for job in self._jobs.values())
+            if not active:
+                self._scheduler.join(timeout=max(0, deadline - time.monotonic()))
+                return True
+            time.sleep(0.05)
+        return False
 
     # -- introspection ----------------------------------------------------
     def list(self, root_id: int | None = None) -> list[dict]:
@@ -150,6 +169,8 @@ class JobManager:
     # -- control ----------------------------------------------------------
     def start(self, kind: str, root_id: int | None = None,
               root_path: str | None = None, force: bool = False) -> dict:
+        if self._stopping.is_set():
+            return {"error": "application is shutting down"}
         # All GUI jobs belong to the archive currently on screen.  This also
         # closes the small race where the user switches archives between a
         # scheduler decision and this call.
@@ -204,9 +225,11 @@ class JobManager:
         self._wake.set()
 
     def _auto_loop(self):
-        while True:
+        while not self._stopping.is_set():
             self._wake.wait(self._auto_interval)
             self._wake.clear()
+            if self._stopping.is_set():
+                break
             try:
                 acted = self._auto_tick()
             except Exception:

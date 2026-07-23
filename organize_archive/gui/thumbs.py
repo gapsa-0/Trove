@@ -11,6 +11,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from ..runtime import tool
+
 _HEIF_REGISTERED = False
 
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".wmv", ".3gp", ".mkv", ".m4v", ".mpg", ".mpeg", ".webm"}
@@ -47,7 +49,7 @@ def _try_pillow():
 def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-ss", offset, "-i", str(src), "-frames:v", "1",
+            [tool("ffmpeg"), "-y", "-ss", offset, "-i", str(src), "-frames:v", "1",
              "-vf", f"scale={size}:-1:force_original_aspect_ratio=decrease",
              "-q:v", "4", str(tp)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20,

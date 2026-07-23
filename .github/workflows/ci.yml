@@ -1,0 +1,29 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    env:
+      XDG_DATA_HOME: ${{ runner.temp }}/archive-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13', cache: pip }
+      - run: python -m pip install -e '.[dev]'
+      - run: pytest -q
+      - run: python packaging/scripts/stage-tools.py --validate
+  electron:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run check:version && npm run test:ready && node --check src/main.cjs && node --check src/preload.cjs
+        working-directory: desktop

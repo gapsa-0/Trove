@@ -9,10 +9,11 @@ exiftool considerably faster.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+from ..runtime import tool
 
 # Only these tags are requested (order-insensitive). -n forces numeric output
 # (decimal GPS, numeric orientation, duration in seconds).
@@ -28,7 +29,7 @@ _TAGS = [
 
 
 def available() -> bool:
-    return shutil.which("exiftool") is not None
+    return tool("exiftool") is not None
 
 
 class ExifReader:
@@ -53,7 +54,7 @@ class ExifReader:
 
         try:
             cmd = [
-                "exiftool", "-json", "-n", "-q",
+                tool("exiftool"), "-json", "-n", "-q",
                 "-charset", "filename=utf8",
                 *_TAGS,
                 "-@", argfile,

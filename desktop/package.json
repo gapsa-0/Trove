@@ -1,0 +1,20 @@
+{
+  "name": "organize-archive-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "check:version": "node scripts/check-version.cjs",
+    "sync:version": "node scripts/check-version.cjs --write",
+    "test:ready": "node scripts/test-ready-parser.cjs",
+    "dev": "electron .",
+    "build:backend": "npm run check:version && node scripts/build-backend.cjs",
+    "package:win": "npm run build:backend && electron-builder --win nsis",
+    "package:linux": "npm run build:backend && electron-builder --linux AppImage deb",
+    "smoke:package": "node scripts/smoke-test.cjs"
+  },
+  "devDependencies": {
+    "electron": "37.2.6",
+    "electron-builder": "26.0.12"
+  }
+}

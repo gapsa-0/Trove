@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -116,7 +117,11 @@ class Handler(BaseHTTPRequestHandler):
             return cast(v) if v not in (None, "") else default
 
         try:
-            if path in ("/", "/index.html"):
+            if path == "/api/health":
+                from .. import __version__
+                self._json({"ok": True, "version": __version__,
+                            "commit": os.environ.get("ARCHIVE_BUILD_COMMIT", "dev")})
+            elif path in ("/", "/index.html"):
                 # Never cache the app shell, so a server update takes effect on a
                 # plain reload (no hard-refresh needed to shake off stale JS).
                 self._send_file(_INDEX, "text/html; charset=utf-8",

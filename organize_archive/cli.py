@@ -15,6 +15,7 @@ from pathlib import Path
 from . import __version__
 from .config import Config, PROJECT_ROOT
 from .paths import app_data_dir, config_file
+from .runtime import tool as runtime_tool
 from .db import database as db
 from .scan import walker
 from .scan.progress import ScanProgress
@@ -23,9 +24,9 @@ from .scan.progress import ScanProgress
 def _preflight() -> list[str]:
     """Return a list of missing-but-recommended system tools."""
     missing = []
-    for tool in ("exiftool", "ffprobe"):
-        if shutil.which(tool) is None:
-            missing.append(tool)
+    for name in ("exiftool", "ffprobe"):
+        if runtime_tool(name) is None:
+            missing.append(name)
     return missing
 
 
