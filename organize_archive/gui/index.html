@@ -528,7 +528,7 @@ async function renderOverview(m){
 // background with no user intervention; this panel only reports what's
 // happening. There is no pause/stop — it runs until the app is closed.
 const JOB_LABEL={scan:"Scanning for new files…",enrich:"Extracting dates, places & metadata…",
-  faces:"Detecting faces…",places:"Mapping places…",dedup:"Finding duplicates…"};
+  faces:"Detecting faces…",places:"Mapping places…",dedup:"Checking images for visual duplicates…"};
 function renderSyncPanel(){
   const el=document.getElementById("syncstatus"); if(!el)return;
   const active=S.activeJobs||{};
@@ -568,8 +568,9 @@ async function refreshJobs(){
   active.forEach(j=>{
     const pct=j.percent!=null?j.percent:0;
     const div=document.createElement("div"); div.className="job";
+    const progressKind=j.kind==="dedup"?"images":j.kind;
     div.innerHTML=`<div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-      <div class="cur">${j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
+      <div class="cur">${progressKind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
     area.appendChild(div);
   });
   // Re-render the overview once, only when a job has just finished (active→idle) so
