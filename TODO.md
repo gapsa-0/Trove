@@ -12,6 +12,8 @@ carries **provenance**.
 - [ ] Initialize git repository.
 - [ ] `pyproject.toml` + virtualenv; pin dependencies.
 - [ ] `config.py`: source roots, cache dir, DB path, ignore list, date-priority config.
+- [x] Install-safe application data: runtime paths use per-user OS data directories;
+      first-run starts with no roots and `oa migrate-data` safely copies legacy data.
 - [ ] Preflight check for `exiftool` and `ffmpeg`/`ffprobe` with clear error messages.
 - [ ] Basic CLI skeleton (`typer` + `rich`), logging.
 

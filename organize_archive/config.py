@@ -1,8 +1,7 @@
 """Configuration: source roots, data/cache locations, ignore rules, thresholds.
 
-Defaults keep everything self-contained inside the project folder (data/), so
-nothing is ever written among the originals. An optional JSON file at
-``data/config.json`` overrides the defaults.
+Mutable state lives in the current user's application-data directory. An optional
+``config.json`` there overrides the defaults.
 """
 
 from __future__ import annotations
@@ -14,10 +13,8 @@ from pathlib import Path
 
 # Project layout ------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-DEFAULT_DB_PATH = DATA_DIR / "archive.db"
-DEFAULT_CACHE_DIR = DATA_DIR / "cache"
-CONFIG_FILE = DATA_DIR / "config.json"
+from .paths import (app_data_dir, config_file, default_cache_dir,
+                    default_db_path, ensure_app_data_dirs)
 
 
 def _load_dotenv() -> None:
@@ -42,7 +39,7 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 # The archive to catalog (read-only). Multiple roots are supported.
-DEFAULT_ROOTS = ["/media/capsa/Residuos/Multimedia"]
+DEFAULT_ROOTS: list[str] = []
 
 # Files that are not media content. Google Takeout ``.json`` sidecars are
 # excluded here as *content* — they are consumed as metadata in Phase 3.
@@ -63,9 +60,9 @@ IGNORE_NAME_SUBSTRINGS = (
 
 @dataclass
 class Config:
-    roots: list[str] = field(default_factory=lambda: list(DEFAULT_ROOTS))
-    db_path: str = str(DEFAULT_DB_PATH)
-    cache_dir: str = str(DEFAULT_CACHE_DIR)
+    roots: list[str] = field(default_factory=list)
+    db_path: str = field(default_factory=lambda: str(default_db_path()))
+    cache_dir: str = field(default_factory=lambda: str(default_cache_dir()))
 
     # Semantic Browse search (Voyage Multimodal 3.5). The API key is deliberately
     # not a config field: put VOYAGE_API_KEY in the ignored project-root .env
@@ -148,17 +145,22 @@ class Config:
     @classmethod
     def load(cls) -> "Config":
         cfg = cls()
-        if CONFIG_FILE.exists():
-            data = json.loads(CONFIG_FILE.read_text())
+        path = config_file()
+        if path.exists():
+            data = json.loads(path.read_text())
             for k, v in data.items():
                 if hasattr(cfg, k):
                     setattr(cfg, k, v)
         return cfg
 
     def save(self) -> None:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2))
+        app_data_dir().mkdir(parents=True, exist_ok=True)
+        config_file().write_text(json.dumps(asdict(self), indent=2))
 
     def ensure_dirs(self) -> None:
+        ensure_app_data_dirs()
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
+        cache_dir = Path(self.cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "thumbs").mkdir(parents=True, exist_ok=True)
+        (cache_dir / "models").mkdir(parents=True, exist_ok=True)

@@ -68,6 +68,11 @@ technical design and contributor guidance.
 
 ## Configuration
 
-The archive root defaults to `/media/capsa/Residuos/Multimedia` and is configurable;
-multiple roots are supported. The database and thumbnail/cache directory live outside
-the archive, so nothing is ever written among your originals.
+New installations start without archive roots. Add one with
+`oa config --add-root PATH` (multiple roots are supported), then run `oa init`.
+On Linux, configuration, the database, and caches live in
+`$XDG_DATA_HOME/organize_archive` (or `~/.local/share/organize_archive`); Windows
+uses `%LOCALAPPDATA%\\organize_archive`. Nothing is written next to your originals or
+the installed application. To copy data from a prior project-local `data/` directory,
+run `oa migrate-data` (or provide its location with `--from PATH`); the original is
+kept unchanged.
