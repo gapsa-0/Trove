@@ -5,8 +5,8 @@ photos, videos, audio, documents — scattered across nested folders, phone dump
 multiple Google Takeout exports.
 
 It builds a **database about your files** so you can find and navigate them, **without
-ever moving or changing a single original**. A visual GUI is planned; today it's a
-Python library and command-line tool.
+ever moving or changing a single original**. It includes a desktop interface for
+visual browsing, backed by a local Python service.
 
 ## Why
 
@@ -51,16 +51,50 @@ This project catalogs the mess in place and makes it queryable.
 - **AI descriptions & semantic search** — local embeddings to search media by content
   ("beach sunset", "birthday cake").
 - **Timeline** view and **pet detection**.
-- **GUI** for visual browsing.
 
-## Requirements
+## Install the desktop app
+
+The app is local-only: it does not upload your archive and it never modifies the
+original media files.
+
+### Linux
+
+Two Linux x64 package formats are produced by the release build:
+
+- **AppImage** — download `Archive-<version>.AppImage`, make it executable, then
+  open it:
+
+  ```bash
+  chmod +x Archive-0.1.0.AppImage
+  ./Archive-0.1.0.AppImage
+  ```
+
+- **Debian/Ubuntu installer** — download
+  `organize-archive-desktop_<version>_amd64.deb`, then open it in your software
+  installer or run:
+
+  ```bash
+  sudo apt install ./organize-archive-desktop_0.1.0_amd64.deb
+  ```
+
+Both packages bundle FFmpeg and FFprobe for video metadata and thumbnails. ExifTool
+is optional on Linux; when it is unavailable, the app still uses Google Takeout data,
+file names, and file timestamps.
+
+### Windows
+
+A Windows NSIS installer is configured, but it must be built and smoke-tested on a
+Windows machine before it is published. Until then, Windows installation is not yet a
+supported release path.
+
+## Development requirements
 
 - Python 3.13
-- System tools: `exiftool` and `ffmpeg`/`ffprobe` (used for reading metadata and video
-  frames). The tool will tell you clearly if they're missing.
+- For a source/CLI setup, system tools `exiftool` and `ffmpeg`/`ffprobe` enable the
+  richest metadata and video support. The tool clearly reports anything missing.
 - Python dependencies are declared in `pyproject.toml` (install into a virtualenv).
 
-## Desktop development
+## Build the desktop app
 
 Electron owns the window and native folder picker; the bundled Python backend remains
 loopback-only. From `desktop/`:

@@ -1,5 +1,11 @@
 # Bundled native tools
 
-Release CI places target-OS `ffmpeg`, `ffprobe`, and ExifTool binaries (and their
-required libraries) here before invoking PyInstaller. They are not committed to the
-repository. Record their source and license in each release's notes.
+`stage-tools.py` downloads the exact target-OS payloads recorded in
+`manifest.json`, verifies SHA-256 before extraction, performs a version probe,
+and writes the ignored `staged/<target>/` directory for PyInstaller.
+
+The Linux x64 private-beta manifest bundles FFmpeg and FFprobe. ExifTool is
+explicitly unavailable there: its upstream Linux distribution is Perl source,
+not a self-contained executable, and Archive must not silently depend on the
+tester's host Perl/runtime. The application continues with safe date fallbacks.
+This is not sufficient for a feature-complete public release.

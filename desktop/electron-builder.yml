@@ -27,5 +27,7 @@ linux:
   category: Utility
   icon: build/icon.png
   synopsis: Local, read-only media archive catalogue
+  maintainer: capsa-0 <capsa-0@users.noreply.github.com>
   desktop:
-    Terminal: false
+    entry:
+      Terminal: false

@@ -1,6 +1,9 @@
 {
   "name": "organize-archive-desktop",
   "version": "0.1.0",
+  "description": "Local, read-only media archive catalogue",
+  "homepage": "https://github.com/capsa-0/gallery_curator",
+  "author": "capsa-0 <capsa-0@users.noreply.github.com>",
   "private": true,
   "main": "src/main.cjs",
   "scripts": {

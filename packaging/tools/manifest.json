@@ -1,4 +1,31 @@
 {
   "schema_version": 1,
-  "targets": {}
+  "targets": {
+    "linux-x64": {
+      "tools": [
+        {
+          "name": "ffmpeg",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-linux64-gpl-7.1.tar.xz",
+          "sha256": "1aa3246a617f1a1d17d2e9027685d19c633c10cd6e3d1e0589dfe1ed1db5f3fb",
+          "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
+          "executable": "ffmpeg"
+        },
+        {
+          "name": "ffprobe",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-linux64-gpl-7.1.tar.xz",
+          "sha256": "1aa3246a617f1a1d17d2e9027685d19c633c10cd6e3d1e0589dfe1ed1db5f3fb",
+          "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
+          "executable": "ffprobe"
+        }
+      ],
+      "unavailable": [
+        {
+          "name": "exiftool",
+          "reason": "Private Linux beta fallback: upstream distributes a Perl source package, not a self-contained Linux executable. Do not depend on a host Perl/runtime; metadata extraction falls back to Takeout sidecars, filenames and filesystem timestamps."
+        }
+      ]
+    }
+  }
 }
