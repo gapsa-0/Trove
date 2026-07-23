@@ -122,6 +122,7 @@
   .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);
     border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-right:6px;vertical-align:middle;}
   .job{margin-top:12px;font-size:13px;}
+  .job .what{font-size:12px;color:var(--text);margin-bottom:3px;}
   .progress{background:var(--panel2);border-radius:6px;height:14px;overflow:hidden;margin:6px 0;}
   .progfill{height:100%;background:var(--good);width:0;transition:width .3s;}
   .job .cur{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -404,7 +405,10 @@ async function removeArchive(a){
 /* ---------- archive shell ---------- */
 function openArchive(a,section){
   if(S.arch && S.arch.id!==a.id) jpost("/api/archive/close",{root_id:S.arch.id});
-  S.arch=a; S.section=section||"overview";
+  // Don't carry a previous archive's idle status into this one. Until its disk
+  // check finishes, we genuinely do not know whether work is waiting.
+  S.arch=a; S.section=section||"overview"; S.fresh=null; S.activeJobs={};
+  S.syncChecked=false; S.syncCheckFailed=false; S.wasActive=false;
   document.getElementById("picker").style.display="none";
   document.getElementById("app").classList.add("on");
   document.getElementById("archname").textContent=a.name;
@@ -416,19 +420,34 @@ function openArchive(a,section){
 /* ---------- persistent pipeline status (sidebar, shown on every section) ----
    The pipeline runs itself; this ambient chip is the only status the user
    needs and it carries no controls. */
-const GSTAT_LABEL={scan:"Scanning…",enrich:"Reading metadata…",faces:"Detecting faces…",
-  places:"Mapping places…",dedup:"Finding duplicates…",semantic:"Indexing search…"};
+const JOB_LABEL={scan:"Scanning files…",enrich:"Reading metadata…",faces:"Detecting faces…",
+  places:"Updating map places…",dedup:"Finding duplicates…",semantic:"Indexing search…"};
+const JOB_DESCRIPTION={
+  scan:"Checking the archive folder and cataloging new or changed files.",
+  enrich:"Reading file details to find dates, locations, and other metadata.",
+  faces:"Finding faces in unique photos and grouping them into people.",
+  places:"Grouping geotagged files into map places while keeping your edits.",
+  dedup:"Comparing file content to identify duplicate copies.",
+  semantic:"Creating search entries so media can be found by a description."
+};
+function jobDescription(kind){return JOB_DESCRIPTION[kind]||"Updating archive data.";}
 function renderGstat(jobs){
   const el=document.getElementById("gstat"); if(!el)return;
   const run=(jobs||[]).find(j=>j.status==="running");
   if(run){
     const pct=run.percent!=null?run.percent:null;
-    el.title=GSTAT_LABEL[run.kind]||run.kind;
-    el.innerHTML=`<span class="spin"></span><span class="gtxt">${GSTAT_LABEL[run.kind]||run.kind}</span>`
+    const label=JOB_LABEL[run.kind]||run.kind;
+    el.title=`${label} ${jobDescription(run.kind)}`;
+    el.innerHTML=`<span class="spin"></span><span class="gtxt">${label}</span>`
       +(pct!=null?`<span class="gpct">${pct}%</span>`:"");
   }else{
-    el.title="Up to date";
-    el.innerHTML=`<span class="dot ok"></span><span class="gtxt">Up to date</span>`;
+    const checking=!S.syncChecked;
+    el.title=checking?"Checking for new files and pending work…":S.syncCheckFailed?"Couldn't check for pending work":"Up to date";
+    el.innerHTML=checking
+      ?`<span class="spin"></span><span class="gtxt">Checking for new work…</span>`
+      :S.syncCheckFailed
+        ?`<span class="dot pending"></span><span class="gtxt">Check pending work</span>`
+      :`<span class="dot ok"></span><span class="gtxt">Up to date</span>`;
   }
 }
 async function gstatTick(){
@@ -508,7 +527,7 @@ async function renderOverview(m){
       <div class="stat" style="cursor:pointer" onclick="showSection('timeline')"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()}</div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('map')"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
     </div>
-    <div class="panel"><h3>Keeping in sync</h3>
+    <div class="panel"><h3>Archive status</h3>
       <div id="syncstatus"></div>
       <div id="jobarea"></div>
     </div>
@@ -538,18 +557,20 @@ async function renderOverview(m){
 // Everything (scan → extract → faces → dedup) runs automatically in the
 // background with no user intervention; this panel only reports what's
 // happening. There is no pause/stop — it runs until the app is closed.
-const JOB_LABEL={scan:"Scanning for new files…",enrich:"Extracting dates, places & metadata…",
-  faces:"Detecting faces…",places:"Mapping places…",dedup:"Checking images for visual duplicates…"};
 function renderSyncPanel(){
   const el=document.getElementById("syncstatus"); if(!el)return;
   const active=S.activeJobs||{};
-  const runningKind=active.scan?"scan":active.enrich?"enrich":active.faces?"faces":active.places?"places":active.dedup?"dedup":null;
+  const runningKind=active.scan?"scan":active.enrich?"enrich":active.faces?"faces":active.places?"places":active.dedup?"dedup":active.semantic?"semantic":null;
   if(runningKind){
-    el.innerHTML=`<div class="d"><span class="spin"></span>${JOB_LABEL[runningKind]}</div>`;
+    el.innerHTML=`<div class="d"><span class="spin"></span>${JOB_LABEL[runningKind]} ${jobDescription(runningKind)}</div>`;
     return;
   }
   const f=S.fresh, s=S.summary;
-  if(f&&f.checked&&f.new_files>0){
+  if(!S.syncChecked){
+    el.innerHTML=`<div class="d"><span class="spin"></span>Looking for new files and pending work…</div>`;
+  } else if(S.syncCheckFailed){
+    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Couldn't check for new files yet — trying again shortly…</div>`;
+  } else if(f&&f.checked&&f.new_files>0){
     el.innerHTML=`<div class="d pending"><span class="dot pending"></span>${f.new_files.toLocaleString()} new file${f.new_files===1?"":"s"} found — scanning shortly…</div>`;
   } else if(s&&s.total>s.enriched){
     el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Extracting dates &amp; metadata shortly…</div>`;
@@ -561,11 +582,16 @@ function renderSyncPanel(){
 }
 async function loadFreshness(){
   S.fresh=null;
+  S.syncChecked=false;
+  S.syncCheckFailed=false;
+  renderSyncPanel();
   try{
     const r=await jget("/api/freshness?root="+S.arch.id);
     S.fresh={checked:true,new_files:r.new_files||0,not_faced:r.not_faced||0};
-  }catch(e){ S.fresh={checked:true,new_files:0,not_faced:0}; }
+  }catch(e){ S.syncCheckFailed=true; }
+  S.syncChecked=true;
   renderSyncPanel();
+  gstatTick();
 }
 async function refreshJobs(){
   const area=document.getElementById("jobarea"); if(!area)return;
@@ -573,15 +599,15 @@ async function refreshJobs(){
   const active=jobs.filter(j=>j.status==="running");
   S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich"),
     faces:active.some(j=>j.kind==="faces"),places:active.some(j=>j.kind==="places"),
-    dedup:active.some(j=>j.kind==="dedup")};
+    dedup:active.some(j=>j.kind==="dedup"),semantic:active.some(j=>j.kind==="semantic")};
   renderSyncPanel();
   area.innerHTML="";
   active.forEach(j=>{
     const pct=j.percent!=null?j.percent:0;
     const div=document.createElement("div"); div.className="job";
-    const progressKind=j.kind==="dedup"?"images":j.kind;
     div.innerHTML=`<div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-      <div class="cur">${progressKind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
+      <div class="what">${jobDescription(j.kind)}</div>
+      <div class="cur">${JOB_LABEL[j.kind]||j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
     area.appendChild(div);
   });
   // Re-render the overview once, only when a job has just finished (active→idle) so
@@ -950,7 +976,7 @@ async function updateSemanticStatus(){
     const s=await jget("/api/browse/semantic/status?root="+S.arch.id);
     if(!document.getElementById("semantic-status"))return;
     const j=(await jget("/api/jobs?root="+S.arch.id)).jobs.find(x=>x.kind==="semantic"&&x.status==="running");
-    const progress=j?` Indexing ${j.done.toLocaleString()} / ${j.total.toLocaleString()}${j.current?` · ${j.current}`:""}…`:
+    const progress=j?` ${jobDescription("semantic")} Indexing ${j.done.toLocaleString()} / ${j.total.toLocaleString()}${j.current?` · ${j.current}`:""}…`:
       (s.pending?` ${s.pending.toLocaleString()} media still need indexing.`:"");
     const keyNote=s.configured?"":" Add VOYAGE_API_KEY to the root .env file and restart the app.";
     el.innerHTML=`<span class="dot ${s.indexed?"ok":"check"}"></span>${s.indexed.toLocaleString()} indexed`
@@ -1193,7 +1219,7 @@ async function faceTick(){
   renderFaceControls();
   if(fj){
     const pct=fj.percent!=null?fj.percent:0;
-    area.innerHTML=`<div class="job"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
+    area.innerHTML=`<div class="job"><div class="what">${jobDescription("faces")}</div><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
       <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total?"/"+fj.total.toLocaleString():""} · ${fj.elapsed}s${fj.current?" · "+fj.current:""}</div></div>`;
     if(sum.people!==prev.people||sum.faces!==prev.faces) renderPeople();
   } else {
