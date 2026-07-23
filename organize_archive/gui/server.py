@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from ..config import Config
+from ..db import database as db
 from . import queries, thumbs, icons
 from .jobs import JobManager
 
@@ -56,7 +57,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _send_file(self, path: Path, content_type=None):
+    def _send_file(self, path: Path, content_type=None, cache_control=None):
         ctype = content_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
         size = path.stat().st_size
         rng = self.headers.get("Range")
@@ -72,6 +73,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(length))
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
         if status == 206:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.end_headers()
@@ -108,7 +111,10 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if path in ("/", "/index.html"):
-                self._send_file(_INDEX, "text/html; charset=utf-8")
+                # Never cache the app shell, so a server update takes effect on a
+                # plain reload (no hard-refresh needed to shake off stale JS).
+                self._send_file(_INDEX, "text/html; charset=utf-8",
+                                cache_control="no-store")
             elif path == "/manifest.webmanifest":
                 self._bytes(json.dumps(_MANIFEST).encode(), "application/manifest+json")
             elif path == "/sw.js":
@@ -134,8 +140,6 @@ class Handler(BaseHTTPRequestHandler):
                                             one("bucket", str, "month")))
             elif path == "/api/dates/sources":
                 self._json(queries.date_sources(self.cfg.db_path, one("root", int)))
-            elif path == "/api/auto":
-                self._json(self.jobs.auto_status())
             elif path == "/api/map/clusters":
                 self._json(queries.place_clusters(self.cfg.db_path, one("root", int)))
             elif path.startswith("/api/map/cluster/"):
@@ -147,6 +151,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(queries.face_persons(
                     self.cfg.db_path, one("root", int),
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
+            elif path == "/api/faces/suggestions":
+                self._json(queries.person_suggestions(
+                    self.cfg.db_path, one("root", int), limit=min(one("limit", int, 40), 200)))
             elif path.startswith("/api/faces/person/"):
                 p2 = queries.face_person(
                     self.cfg.db_path, int(path.rsplit("/", 1)[1]), one("root", int),
@@ -162,8 +169,29 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(queries.media(
                     self.cfg.db_path, root_id=one("root", int),
                     year=one("year"), month=one("month"), mtype=one("type"),
+                    person_id=one("person", int), cluster_id=one("place", int),
                     include_dups=one("dups", str) == "1",
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
+            elif path == "/api/browse/filters":
+                self._json(queries.browse_filters(self.cfg.db_path, one("root", int)))
+            elif path == "/api/browse/semantic/status":
+                from . import semantic
+                status = queries.semantic_summary(self.cfg.db_path, one("root", int))
+                status["configured"] = semantic.api_key_available()
+                self._json(status)
+            elif path == "/api/browse/semantic/search":
+                query = (one("q") or "").strip()
+                if not query:
+                    self._json({"error": "A search query is required"}, 400)
+                else:
+                    from . import semantic
+                    vector = semantic.embed_query(self.cfg, query, self.cfg.db_path)
+                    self._json(queries.semantic_search(
+                        self.cfg.db_path, vector, root_id=one("root", int),
+                        year=one("year"), month=one("month"), mtype=one("type"),
+                        person_id=one("person", int), cluster_id=one("place", int),
+                        include_dups=one("dups", str) == "1",
+                        limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path.startswith("/api/item/"):
                 it = queries.item(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
                 self._json(it) if it else self._json({"error": "not found"}, 404)
@@ -202,27 +230,8 @@ class Handler(BaseHTTPRequestHandler):
                     if res["path"] not in self.cfg.roots:
                         self.cfg.roots.append(res["path"])
                         self.cfg.save()
+                    self.jobs.nudge()   # start indexing the new path right away
                     self._json(res)
-            elif path == "/api/task":
-                kind = body.get("kind")
-                if kind not in ("scan", "enrich", "dedup", "faces"):
-                    return self._json({"error": "unknown task"}, 400)
-                root_id = body.get("root_id")
-                root_path = None
-                if root_id is not None:
-                    for a in queries.archives(self.cfg.db_path):
-                        if a["id"] == root_id:
-                            root_path = a["path"]
-                self._json(self.jobs.start(kind, root_id, root_path))
-            elif path.startswith("/api/job/") and path.endswith("/cancel"):
-                jid = int(path.split("/")[3])
-                self._json({"cancelled": self.jobs.cancel(jid)})
-            elif path == "/api/auto":
-                self.jobs.set_auto_paused(bool(body.get("paused", False)))
-                self._json(self.jobs.auto_status())
-            elif path == "/api/map/clusters/recompute":
-                self._json(queries.recompute_place_clusters(
-                    self.cfg.db_path, body.get("root_id")))
             elif path == "/api/map/cluster/rename":
                 res = queries.rename_place_cluster(
                     self.cfg.db_path, body.get("cluster_id"), (body.get("name") or "").strip())
@@ -231,8 +240,38 @@ class Handler(BaseHTTPRequestHandler):
                 res = queries.rename_person(
                     self.cfg.db_path, body.get("person_id"), (body.get("name") or "").strip())
                 self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/faces/recluster":
-                self._json(queries.recompute_people(self.cfg.db_path, self.cfg))
+            elif path == "/api/faces/reassign":
+                res = queries.reassign_face(
+                    self.cfg.db_path, body.get("face_id"), body.get("person_id"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/merge":
+                res = queries.merge_persons(self.cfg.db_path, body.get("a"), body.get("b"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/different":
+                res = queries.set_persons_different(self.cfg.db_path, body.get("a"), body.get("b"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/skip":
+                res = queries.set_persons_skip(self.cfg.db_path, body.get("a"), body.get("b"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/hide":
+                res = queries.hide_person(self.cfg.db_path, body.get("person_id"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/item/date":
+                res = queries.set_date(
+                    self.cfg.db_path, body.get("file_id"), body.get("datetime"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/item/place":
+                if body.get("clear"):
+                    res = queries.clear_place(self.cfg.db_path, body.get("file_id"))
+                else:
+                    res = queries.set_place(
+                        self.cfg.db_path, body.get("file_id"), body.get("place_id"))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/places/create":
+                res = queries.create_place(
+                    self.cfg.db_path, body.get("root"), body.get("name"),
+                    body.get("lat"), body.get("lon"), body.get("file_id"))
+                self._json(res, 400 if "error" in res else 200)
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:
@@ -263,6 +302,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(cfg: Config, host="127.0.0.1", port=8756):
+    # Apply schema migrations before JobManager starts its automatic scheduler.
+    # The scheduler's first tick can query newly added tables/columns.
+    conn = db.connect(cfg.db_path)
+    try:
+        db.init_db(conn)
+    finally:
+        conn.close()
     jm = JobManager(cfg)
     handler = type("BoundHandler", (Handler,), {"cfg": cfg, "jobs": jm})
     return ThreadingHTTPServer((host, port), handler)

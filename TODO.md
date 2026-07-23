@@ -101,9 +101,22 @@ carries **provenance**.
       and "find this face" scale past ~100k faces without O(N²).
 - [ ] Multi-face query "photos of X **and** Y"; merge/split people; hide a person.
 - [ ] Extend detection to video (sampled frames).
+- [x] **In-detail face relabelling** — the media detail panel shows a square crop of
+      every detected face with a person dropdown; reassigning pins the face to that
+      named person (`faces.manual_person`, by name) and re-applies it after every
+      automatic recluster (`faces/cluster.py` `_apply_manual_pins`/`_finalize`), so the
+      correction is never wiped. Renames keep pins in sync.
 
-## Phase 7 — Map
-- [ ] Aggregate GPS points; export/visualize photo & video locations on a map.
+## Phase 7 — Map / Places
+- [x] Aggregate GPS points; visualize photo & video locations on an interactive map.
+- [x] **Durable place entities** — places are no longer rebuilt from scratch each run.
+      `geo/clusters.py` bootstraps once, then `assign_unplaced` adds new geotagged files
+      incrementally (attach to nearest place ≤300 m, else spawn one) and never deletes a
+      place or member. Users can attach any file (even GPS-less) to a place as a manual
+      member (membership only — no coordinates written), create a new place by dropping a
+      map pin, and edit a file's date (variable precision: year / year-month / full day)
+      — all from the detail panel.
+- [ ] Reverse-geocode centroids into place names; browse the dedicated Places section.
 
 ## Phase 8 — AI descriptions & semantic search (local)
 - [ ] Local image embeddings (CLIP/sentence-transformers) + `sqlite-vec` vector search.

@@ -101,14 +101,18 @@ CREATE INDEX IF NOT EXISTS idx_dupmembers_file ON dup_members(file_id);
 -- ---- Phase: geo place clustering ------------------------------------------
 
 -- Photos within radius_m of each other, grouped into one nameable place.
--- Rebuilt from scratch per root by geo/clusters.py (idempotent).
+-- Durable place entities. Bootstrapped once per root by geo/clusters.py, then
+-- kept incrementally (assign_unplaced): new GPS files attach to the nearest place
+-- or spawn a new one, and the pipeline never deletes a place or its members. A
+-- `pinned` place is user-created and its coordinate is a fixed pin.
 CREATE TABLE IF NOT EXISTS place_clusters (
     id            INTEGER PRIMARY KEY,
     root_id       INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
     name          TEXT,
-    lat           REAL NOT NULL,       -- centroid
+    lat           REAL NOT NULL,       -- centroid (or user-dropped pin if pinned=1)
     lon           REAL NOT NULL,
     member_count  INTEGER NOT NULL,
+    pinned        INTEGER NOT NULL DEFAULT 0,  -- 1 = user-created, fixed coordinate
     created_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_placeclusters_root ON place_clusters(root_id);
@@ -116,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_placeclusters_root ON place_clusters(root_id);
 CREATE TABLE IF NOT EXISTS place_cluster_members (
     cluster_id  INTEGER NOT NULL REFERENCES place_clusters(id) ON DELETE CASCADE,
     file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    source      TEXT DEFAULT 'auto',   -- 'auto' (GPS-derived) | 'manual' (user-attached)
     PRIMARY KEY (cluster_id, file_id)
 );
 CREATE INDEX IF NOT EXISTS idx_placeclustermembers_file ON place_cluster_members(file_id);
@@ -130,6 +135,7 @@ CREATE TABLE IF NOT EXISTS persons (
     name          TEXT,               -- user-assigned; NULL = unnamed cluster
     cover_face_id INTEGER,            -- representative face for the card
     face_count    INTEGER NOT NULL DEFAULT 0,
+    centroid      BLOB,               -- L2-normalized mean embedding (float32); for merge suggestions
     created_at    TEXT NOT NULL
 );
 
@@ -146,6 +152,8 @@ CREATE TABLE IF NOT EXISTS faces (
     det_score  REAL,
     embedding  BLOB NOT NULL,
     person_id  INTEGER REFERENCES persons(id) ON DELETE SET NULL,
+    manual_person TEXT,               -- pinned person NAME (survives recluster); NULL = auto
+    not_person INTEGER NOT NULL DEFAULT 0,  -- 1 = user marked "not a person" (doll/animal/cartoon); excluded from clustering
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_faces_file   ON faces(file_id);
@@ -160,6 +168,19 @@ CREATE TABLE IF NOT EXISTS face_scan (
     scanned_at TEXT NOT NULL
 );
 
+-- User answers to "are these two the same person?" — durable constraints that
+-- steer clustering. Anchored to specific FACE ids (stable across the persons
+-- DELETE/rebuild in faces/cluster.py, unlike ephemeral person ids). 'same' =
+-- must-link (union the two faces' clusters); 'different' = cannot-link (block a
+-- union that would put them together). Also feeds the review UI's suggestion queue.
+CREATE TABLE IF NOT EXISTS face_links (
+    face_a     INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,
+    face_b     INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,  -- face_a < face_b
+    kind       TEXT NOT NULL,          -- 'same' | 'different'
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (face_a, face_b)
+);
+
 -- Matched Google Takeout sidecar, with the fields we consume.
 CREATE TABLE IF NOT EXISTS takeout_sidecar (
     file_id           INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
@@ -170,3 +191,37 @@ CREATE TABLE IF NOT EXISTS takeout_sidecar (
     match_method      TEXT,        -- which candidate rule matched
     match_confidence  REAL
 );
+
+-- ---- Phase 7: multimodal semantic search ---------------------------------
+
+-- Gemini Embedding 2 vectors are normalized float32 arrays stored locally.
+-- One row also records skipped/failed inputs, making an indexing run resumable
+-- without silently uploading the same unsupported file over and over.
+CREATE TABLE IF NOT EXISTS semantic_embeddings (
+    file_id       INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    source_sha256 TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    dimensions    INTEGER NOT NULL,
+    embedding     BLOB,
+    status        TEXT NOT NULL,     -- indexed | skipped | error
+    input_kind    TEXT,
+    error         TEXT,
+    indexer_version TEXT,
+    indexed_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_status
+    ON semantic_embeddings(status);
+
+-- Local Gemini quota accounting. Reservations use the model's maximum input
+-- size until the response supplies its actual token count, so quota checks are
+-- safe even for multimodal inputs whose token count cannot be known locally.
+CREATE TABLE IF NOT EXISTS semantic_api_usage (
+    id           INTEGER PRIMARY KEY,
+    requested_at REAL NOT NULL,
+    usage_day    TEXT NOT NULL,
+    token_count  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_semantic_api_usage_time
+    ON semantic_api_usage(requested_at);
+CREATE INDEX IF NOT EXISTS idx_semantic_api_usage_day
+    ON semantic_api_usage(usage_day);

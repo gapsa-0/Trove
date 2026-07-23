@@ -1,7 +1,11 @@
 """Geographic place clustering: group geolocated files within ``radius_m`` of
-each other into one nameable place. Fully idempotent: a run rebuilds a
-root's clusters from scratch, carrying a previously-set name over onto
-whichever new cluster shares the most members with it.
+each other into one nameable place.
+
+Places are **durable entities** (see the GUI detail-panel editing feature): the
+pipeline never wipes them. ``cluster_places`` is a one-time *bootstrap* used only
+when a root has no places yet; from then on ``assign_unplaced`` adds newly
+geotagged files incrementally and leaves existing places, names, pins and manual
+attachments untouched. (``gui/jobs.py`` ``_run_places`` picks between the two.)
 """
 
 from __future__ import annotations
@@ -82,10 +86,11 @@ def _bucket_and_union(points: list[tuple[float, float]], radius_m: float) -> _DS
 
 
 def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
-    """Rebuild place clusters for one root. Deletes and recomputes every
-    time (like dedup/exact.py's exact-group rebuild) so it stays correct as
-    new geo data lands; names are preserved by matching new clusters back to
-    old ones by member overlap."""
+    """One-time BOOTSTRAP of place clusters for a root (batch grid-union over all
+    GPS points). Deletes and recomputes, so it must only run when the root has no
+    places yet — the pipeline calls it just for bootstrap and uses ``assign_unplaced``
+    thereafter (durable places are never wiped). Names are preserved by matching new
+    clusters back to old ones by member overlap."""
     db.init_db(conn)
     stats = ClusterStats()
     now = db.now_iso()
@@ -142,6 +147,78 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
             stats.named += 1
 
     conn.executemany(
-        "INSERT INTO place_cluster_members(cluster_id, file_id) VALUES(?,?)", member_rows)
+        "INSERT INTO place_cluster_members(cluster_id, file_id, source) VALUES(?,?, 'auto')",
+        member_rows)
+    conn.commit()
+    return stats
+
+
+def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
+    """Incrementally attach geotagged files that aren't in any place yet, without
+    ever deleting a place or an existing member.
+
+    This is what keeps places *durable* (unlike cluster_places' rebuild): each new
+    GPS point joins the nearest existing place within ``radius_m`` (creating a new
+    unnamed place if none is close). Manual attachments and named/pinned places are
+    untouched, so user edits survive every background run. Runs after the one-time
+    cluster_places bootstrap; only processes the (usually small) unplaced backlog.
+    """
+    db.init_db(conn)
+    stats = ClusterStats()
+    now = db.now_iso()
+
+    rows = conn.execute(
+        """SELECT f.id, g.lat, g.lon
+           FROM files f JOIN geo g ON g.file_id = f.id
+           WHERE f.present = 1 AND f.root_id = ? AND g.lat IS NOT NULL
+             AND f.id NOT IN (SELECT file_id FROM place_cluster_members)""",
+        (root_id,)).fetchall()
+    stats.points = len(rows)
+    if not rows:
+        return stats
+
+    # Mutable working copies of existing places; a plain list is fine because the
+    # unplaced backlog is small (this runs every pipeline tick).
+    places = [dict(lat=p["lat"], lon=p["lon"], count=p["member_count"],
+                   pinned=p["pinned"], id=p["id"])
+              for p in conn.execute(
+                  "SELECT id, lat, lon, member_count, pinned FROM place_clusters "
+                  "WHERE root_id=?", (root_id,))]
+
+    def attach(cid, fid):
+        conn.execute(
+            "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
+            "VALUES(?,?, 'auto')", (cid, fid))
+
+    for r in rows:
+        lat, lon = r["lat"], r["lon"]
+        best, best_d = None, radius_m
+        for p in places:
+            d = _haversine_m(lat, lon, p["lat"], p["lon"])
+            if d <= best_d:
+                best_d, best = d, p
+        if best is not None:
+            attach(best["id"], r["id"])
+            n = best["count"] + 1
+            if not best["pinned"]:
+                # Roll the centroid by incremental mean so it tracks new members.
+                best["lat"] = (best["lat"] * best["count"] + lat) / n
+                best["lon"] = (best["lon"] * best["count"] + lon) / n
+            best["count"] = n
+        else:
+            cur = conn.execute(
+                """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
+                                              pinned, created_at)
+                   VALUES(?, NULL, ?, ?, 1, 0, ?)""", (root_id, lat, lon, now))
+            cid = cur.lastrowid
+            attach(cid, r["id"])
+            places.append(dict(lat=lat, lon=lon, count=1, pinned=0, id=cid))
+            stats.clusters += 1
+
+    # Persist updated counts + drifted centroids for the auto places we touched.
+    for p in places:
+        conn.execute(
+            "UPDATE place_clusters SET member_count=?, lat=?, lon=? WHERE id=?",
+            (p["count"], p["lat"], p["lon"], p["id"]))
     conn.commit()
     return stats

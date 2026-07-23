@@ -31,14 +31,28 @@ class ExtractStats:
             self.error_samples = []
 
 
+# hidden=0 skips non-canonical duplicate copies: dedup (which runs before the
+# face pass) flags them, and re-detecting faces in a duplicate photo is pure
+# waste — the canonical copy is scanned instead.
+def image_count(conn, root_id: int | None = None) -> int:
+    """Total present, canonical (non-duplicate) images."""
+    rc = " AND f.root_id=?" if root_id is not None else ""
+    params = (root_id,) if root_id is not None else ()
+    return conn.execute(
+        f"""SELECT COUNT(*) FROM files f
+            WHERE f.present=1 AND f.media_type='image' AND f.hidden=0{rc}""",
+        params).fetchone()[0]
+
+
 def pending_count(conn, root_id: int | None = None) -> int:
-    """Present images not yet face-scanned (optionally within one root)."""
+    """Present canonical images not yet face-scanned (optionally within a root)."""
     rc = " AND f.root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
     return conn.execute(
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan s ON s.file_id=f.id
-            WHERE s.file_id IS NULL AND f.present=1 AND f.media_type='image'{rc}""",
+            WHERE s.file_id IS NULL AND f.present=1 AND f.media_type='image'
+                  AND f.hidden=0{rc}""",
         params).fetchone()[0]
 
 
@@ -48,6 +62,7 @@ def _pending(conn, batch_size: int):
            FROM files f JOIN roots r ON r.id=f.root_id
            LEFT JOIN face_scan s ON s.file_id=f.id
            WHERE s.file_id IS NULL AND f.present=1 AND f.media_type='image'
+                 AND f.hidden=0
            ORDER BY f.id
            LIMIT ?""",
         (batch_size,)).fetchall()

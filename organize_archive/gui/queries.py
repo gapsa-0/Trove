@@ -8,6 +8,8 @@ Everything is scoped to an archive (a row in `roots`). A root_id of None means
 from __future__ import annotations
 
 import os
+import math
+import struct
 from pathlib import Path
 
 from ..db import database as db
@@ -79,13 +81,14 @@ def freshness(db_path: str, root_id: int) -> dict:
         from ..faces import backend as fb
         not_faced = 0
         if fb.available():
+            # _NOT_HIDDEN: faces only run on canonical images (see faces_pending).
             images = conn.execute(
                 f"""SELECT COUNT(*) FROM files f
-                    WHERE {_VISIBLE} AND f.media_type='image' AND f.root_id=?""",
+                    WHERE {_NOT_HIDDEN} AND f.media_type='image' AND f.root_id=?""",
                 (root_id,)).fetchone()[0]
             faced = conn.execute(
                 f"""SELECT COUNT(*) FROM files f JOIN face_scan s ON s.file_id=f.id
-                    WHERE {_VISIBLE} AND f.media_type='image' AND f.root_id=?""",
+                    WHERE {_NOT_HIDDEN} AND f.media_type='image' AND f.root_id=?""",
                 (root_id,)).fetchone()[0]
             not_faced = max(0, images - faced)
     finally:
@@ -298,6 +301,7 @@ def rename_place_cluster(db_path: str, cluster_id, name: str) -> dict:
 # -- media grid + detail ----------------------------------------------------
 
 def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
+          person_id=None, cluster_id=None,
           include_dups=False, limit=120, offset=0) -> dict:
     conn = db.open_readonly(db_path)
     try:
@@ -313,6 +317,25 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
             where.append("substr(d.best_datetime,1,4) = ?"); params.append(str(year))
         if month:
             where.append("substr(d.best_datetime,1,7) = ?"); params.append(month)
+        # Person / place filter on set membership (IN, not a JOIN) so a photo
+        # where the same person or place appears twice still yields one grid
+        # tile, and the LEFT JOIN dates ordering below is untouched.
+        #
+        # Use `f.id IN (SELECT file_id ...)` rather than a correlated EXISTS:
+        # the subquery materialises the (small) set of the person's/place's
+        # file_ids once up front. A correlated EXISTS instead makes SQLite scan
+        # every present file (~150k) and re-run the subquery per row — and for
+        # the person case it picked idx_faces_person, pulling *all* of that
+        # person's faces on each of the 150k iterations, which pushed the
+        # request past 120s and left the grid stuck on a bare "Load more".
+        if person_id:
+            where.append("f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=?)")
+            params.append(person_id)
+        if cluster_id:
+            where.append(
+                "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm "
+                "WHERE pcm.cluster_id=?)")
+            params.append(cluster_id)
         clause = " AND ".join(where)
         rows = conn.execute(
             f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
@@ -329,6 +352,147 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
             "has_gps": bool(r["has_gps"]),
         } for r in rows]
         return {"items": items, "offset": offset, "limit": limit, "count": len(items)}
+    finally:
+        conn.close()
+
+
+def browse_filters(db_path: str, root_id=None) -> dict:
+    """Options for the Browse filter bar: which year/months, media types, named
+    people and named places actually occur in this archive. Scoped to the
+    default browse view (_NOT_HIDDEN), so the choices match what the grid shows.
+
+    Only *named* people/places are offered — an unnamed auto-cluster is not a
+    label a user would filter by, and naming is how they become meaningful."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        periods = [r[0] for r in conn.execute(
+            f"""SELECT DISTINCT substr(d.best_datetime,1,7) p
+                FROM files f JOIN dates d ON d.file_id=f.id
+                WHERE {_NOT_HIDDEN}{rc} AND d.best_datetime IS NOT NULL
+                ORDER BY p DESC""", rp)]
+        types = [r[0] for r in conn.execute(
+            f"""SELECT DISTINCT media_type FROM files f
+                WHERE {_NOT_HIDDEN}{rc} ORDER BY media_type""", rp)]
+        people = [{"id": r["id"], "name": r["name"]} for r in conn.execute(
+            f"""SELECT p.id, p.name, COUNT(DISTINCT fa.file_id) c
+                FROM persons p
+                JOIN faces fa ON fa.person_id=p.id
+                JOIN files f ON f.id=fa.file_id
+                WHERE p.name IS NOT NULL AND {_NOT_HIDDEN}{rc}
+                GROUP BY p.id ORDER BY p.name COLLATE NOCASE""", rp)]
+        if root_id is None:
+            place_rows = conn.execute(
+                """SELECT id, name FROM place_clusters
+                   WHERE name IS NOT NULL ORDER BY name COLLATE NOCASE""")
+        else:
+            place_rows = conn.execute(
+                """SELECT id, name FROM place_clusters
+                   WHERE name IS NOT NULL AND root_id=?
+                   ORDER BY name COLLATE NOCASE""", (root_id,))
+        places = [{"id": r["id"], "name": r["name"]} for r in place_rows]
+        return {"periods": periods, "types": types,
+                "people": people, "places": places}
+    finally:
+        conn.close()
+
+
+# -- semantic Browse search --------------------------------------------------
+
+def semantic_summary(db_path: str, root_id=None) -> dict:
+    """Index state for the Browse semantic-search controls."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        total = conn.execute(
+            f"""SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}{rc}
+                AND f.media_type IN ('image','video','audio','document')""", rp).fetchone()[0]
+        rows = conn.execute(
+            f"""SELECT e.status, COUNT(*) c FROM semantic_embeddings e
+                JOIN files f ON f.id=e.file_id
+                WHERE {_NOT_HIDDEN}{rc} AND e.source_sha256=f.sha256
+                GROUP BY e.status""", rp).fetchall()
+        counts = {r["status"]: r["c"] for r in rows}
+        completed = sum(counts.values())
+        return {
+            "total": total, "indexed": counts.get("indexed", 0),
+            "skipped": counts.get("skipped", 0), "errors": counts.get("error", 0),
+            "pending": max(0, total - completed),
+        }
+    finally:
+        conn.close()
+
+
+def semantic_pending(db_path: str, root_id=None) -> int:
+    """Compatible media that needs a first (or revised) semantic embedding."""
+    from . import semantic
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        return conn.execute(
+            f"""SELECT COUNT(*) FROM files f
+                LEFT JOIN semantic_embeddings e ON e.file_id=f.id
+                WHERE {_NOT_HIDDEN}{rc}
+                  AND (f.media_type='image' OR f.ext IN ('mp4','mov','mp3','wav','pdf'))
+                  AND (e.file_id IS NULL OR e.source_sha256 IS NOT f.sha256
+                       OR COALESCE(e.indexer_version, '') != ?)""",
+            (*rp, semantic.INDEXER_VERSION),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
+                    year=None, month=None, mtype=None, person_id=None,
+                    cluster_id=None, include_dups=False, limit=120, offset=0) -> dict:
+    """Rank locally stored normalized vectors. Gemini is called only for query."""
+    conn = db.open_readonly(db_path)
+    try:
+        where = [_VISIBLE if include_dups else _NOT_HIDDEN,
+                 "e.status='indexed'", "e.embedding IS NOT NULL"]
+        params: list = []
+        rc, rp = _root_clause(root_id)
+        if rc:
+            where.append(rc.lstrip(" AND ")); params += rp
+        if mtype:
+            where.append("f.media_type=?"); params.append(mtype)
+        if year:
+            where.append("substr(d.best_datetime,1,4)=?"); params.append(str(year))
+        if month:
+            where.append("substr(d.best_datetime,1,7)=?"); params.append(month)
+        if person_id:
+            where.append("f.id IN (SELECT file_id FROM faces WHERE person_id=?)"); params.append(person_id)
+        if cluster_id:
+            where.append("f.id IN (SELECT file_id FROM place_cluster_members WHERE cluster_id=?)")
+            params.append(cluster_id)
+        rows = conn.execute(
+            f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
+                       d.date_source AS dsrc,
+                       EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
+                       e.embedding
+                FROM semantic_embeddings e JOIN files f ON f.id=e.file_id
+                LEFT JOIN dates d ON d.file_id=f.id
+                WHERE {' AND '.join(where)}""", params).fetchall()
+        q = tuple(query_vector)
+        ranked = []
+        for row in rows:
+            try:
+                vector = struct.unpack(f"<{len(q)}f", row["embedding"])
+            except struct.error:
+                continue
+            # Embedding 2 returns normalized vectors at our configured dimension,
+            # so cosine similarity is their dot product.
+            ranked.append((math.sumprod(q, vector), row))
+        ranked.sort(key=lambda x: x[0], reverse=True)
+        page = ranked[offset:offset + limit]
+        items = [{
+            "id": row["id"], "type": row["media_type"],
+            "name": os.path.basename(row["rel_path"]), "date": row["dt"],
+            "date_source": row["dsrc"], "has_gps": bool(row["has_gps"]),
+            "score": round(score, 4),
+        } for score, row in page]
+        return {"items": items, "offset": offset, "limit": limit,
+                "count": len(items), "total": len(ranked)}
     finally:
         conn.close()
 
@@ -394,10 +558,13 @@ def faces_pending(db_path: str, root_id=None) -> int:
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
+        # _NOT_HIDDEN, matching faces.extract.pending_count: the face pass only
+        # touches canonical images, so counting unscanned duplicates here would
+        # make the scheduler queue faces jobs that find nothing to do, forever.
         return conn.execute(
             f"""SELECT COUNT(*) FROM files f
                 LEFT JOIN face_scan s ON s.file_id=f.id
-                WHERE s.file_id IS NULL AND {_VISIBLE} AND f.media_type='image'{rc}""",
+                WHERE s.file_id IS NULL AND {_NOT_HIDDEN} AND f.media_type='image'{rc}""",
             rp).fetchone()[0]
     finally:
         conn.close()
@@ -408,22 +575,25 @@ def face_summary(db_path: str, root_id=None) -> dict:
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
+        # Face detection only runs on canonical (non-duplicate) images, so every
+        # count here is over _NOT_HIDDEN — the "total" is unique media, matching
+        # the people grid and what actually gets scanned.
         total_images = conn.execute(
-            f"SELECT COUNT(*) FROM files f WHERE {_VISIBLE} AND f.media_type='image'{rc}",
+            f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN} AND f.media_type='image'{rc}",
             rp).fetchone()[0]
         scanned = conn.execute(
             f"""SELECT COUNT(*) FROM files f JOIN face_scan s ON s.file_id=f.id
-                WHERE {_VISIBLE} AND f.media_type='image'{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND f.media_type='image'{rc}""", rp).fetchone()[0]
         faces = conn.execute(
             f"""SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id
-                WHERE {_VISIBLE}{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN}{rc}""", rp).fetchone()[0]
         people = conn.execute(
             f"""SELECT COUNT(DISTINCT fa.person_id) FROM faces fa
                 JOIN files f ON f.id=fa.file_id
-                WHERE {_VISIBLE} AND fa.person_id IS NOT NULL{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL{rc}""", rp).fetchone()[0]
         photos_with_faces = conn.execute(
             f"""SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
-                JOIN files f ON f.id=fa.file_id WHERE {_VISIBLE}{rc}""", rp).fetchone()[0]
+                JOIN files f ON f.id=fa.file_id WHERE {_NOT_HIDDEN}{rc}""", rp).fetchone()[0]
         return {
             "total_images": total_images, "scanned": scanned,
             "unscanned": max(0, total_images - scanned),
@@ -435,9 +605,30 @@ def face_summary(db_path: str, root_id=None) -> dict:
         conn.close()
 
 
+def _preview_faces(conn, pids, k=4) -> dict:
+    """Up to k sharpest (highest det_score), non-hidden face ids per person — for
+    the 4-up collage on each person card. One window-function query for the page."""
+    pids = [p for p in pids if p is not None]
+    if not pids:
+        return {}
+    marks = ",".join("?" * len(pids))
+    rows = conn.execute(
+        f"""SELECT person_id, id FROM (
+                SELECT fa.id, fa.person_id,
+                       ROW_NUMBER() OVER (PARTITION BY fa.person_id
+                                          ORDER BY fa.det_score DESC, fa.id) rn
+                FROM faces fa JOIN files f ON f.id=fa.file_id
+                WHERE fa.person_id IN ({marks}) AND f.hidden=0
+            ) WHERE rn <= ?""", (*pids, k)).fetchall()
+    out: dict = {}
+    for r in rows:
+        out.setdefault(r["person_id"], []).append(r["id"])
+    return out
+
+
 def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
     """People (clusters) that appear in this archive, most faces first. Each
-    carries a cover face for the card and its photo/face counts here."""
+    carries up to 4 preview faces for a collage card + its photo/face counts."""
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
@@ -450,8 +641,10 @@ def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
                 GROUP BY fa.person_id
                 ORDER BY faces DESC, pid
                 LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
+        prev = _preview_faces(conn, [r["pid"] for r in rows])
         people = [{
             "id": r["pid"], "name": r["name"], "cover_face_id": r["cover_face_id"],
+            "faces_preview": prev.get(r["pid"], []),
             "photos": r["photos"], "faces": r["faces"],
         } for r in rows]
         return {"people": people, "offset": offset, "count": len(people)}
@@ -504,26 +697,369 @@ def rename_person(db_path: str, person_id, name: str) -> dict:
         return {"error": "missing person_id"}
     conn = db.connect(db_path)
     try:
-        cur = conn.execute(
-            "UPDATE persons SET name=? WHERE id=?", (name or None, person_id))
-        conn.commit()
-        if cur.rowcount == 0:
+        old = conn.execute(
+            "SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
+        if not old:
             return {"error": "not found"}
+        conn.execute("UPDATE persons SET name=? WHERE id=?", (name or None, person_id))
+        # Keep manual face-pins (stored by NAME) tracking the rename so re-clustering
+        # still lands pinned faces on this person.
+        if old["name"] and name and old["name"] != name:
+            conn.execute("UPDATE faces SET manual_person=? WHERE manual_person=?",
+                         (name, old["name"]))
+        conn.commit()
         return {"ok": True, "name": name or None}
     finally:
         conn.close()
 
 
-def recompute_people(db_path: str, cfg) -> dict:
-    """Re-run clustering over all current face embeddings (idempotent)."""
-    from ..faces.cluster import cluster_faces
+# -- in-panel edits (date / face / place) -----------------------------------
+
+def set_date(db_path: str, file_id, value: str) -> dict:
+    """Set a manual, variable-precision date. `value` is a YYYY, YYYY-MM or
+    YYYY-MM-DD prefix (stored as-is; the whole app groups/sorts by prefix)."""
+    if not file_id:
+        return {"error": "missing file_id"}
+    v = (value or "").strip()
+    parts = v.split("-")
+    ok = False
+    try:
+        if len(parts) == 1 and len(parts[0]) == 4:
+            y = int(parts[0]); ok = 1 <= y <= 9999
+        elif len(parts) == 2:
+            y, mo = int(parts[0]), int(parts[1])
+            ok = 1 <= y <= 9999 and 1 <= mo <= 12 and len(parts[1]) == 2
+        elif len(parts) == 3:
+            y, mo, da = int(parts[0]), int(parts[1]), int(parts[2])
+            ok = (1 <= y <= 9999 and 1 <= mo <= 12 and 1 <= da <= 31
+                  and len(parts[1]) == 2 and len(parts[2]) == 2)
+    except ValueError:
+        ok = False
+    if not ok:
+        return {"error": "date must be YYYY, YYYY-MM or YYYY-MM-DD"}
     conn = db.connect(db_path)
     try:
-        stats = cluster_faces(conn, cfg)
-        return {"people": stats.people, "clustered": stats.clustered,
-                "noise": stats.noise, "named": stats.named}
+        if not conn.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
+            return {"error": "unknown file"}
+        conn.execute(
+            """INSERT OR REPLACE INTO dates(file_id, best_datetime, date_source,
+                                            date_confidence)
+               VALUES(?,?, 'manual', 1.0)""", (file_id, v))
+        conn.commit()
+        return {"ok": True, "date": v, "date_source": "manual"}
     finally:
         conn.close()
+
+
+def _sync_person_stats(conn, pid):
+    """Recompute one person's face_count + cover after a face moves in/out; drop
+    it if it's now empty. Mirrors faces/cluster.py's _refresh_person_stats."""
+    if pid is None:
+        return
+    left = conn.execute(
+        "SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id "
+        "WHERE fa.person_id=? AND f.hidden=0", (pid,)).fetchone()[0]
+    if left == 0 and not conn.execute(
+            "SELECT 1 FROM faces WHERE person_id=?", (pid,)).fetchone():
+        conn.execute("DELETE FROM persons WHERE id=?", (pid,))
+        return
+    cover = conn.execute(
+        "SELECT fa.id FROM faces fa JOIN files f ON f.id=fa.file_id "
+        "WHERE fa.person_id=? AND f.hidden=0 ORDER BY fa.det_score DESC LIMIT 1",
+        (pid,)).fetchone()
+    conn.execute("UPDATE persons SET face_count=?, cover_face_id=? WHERE id=?",
+                 (left, cover["id"] if cover else None, pid))
+
+
+def reassign_face(db_path: str, face_id, person_id) -> dict:
+    """Move a face to a named person and PIN it (by name) so re-clustering keeps
+    it there. Only named persons are valid targets."""
+    if not face_id or not person_id:
+        return {"error": "missing face_id or person_id"}
+    conn = db.connect(db_path)
+    try:
+        fa = conn.execute(
+            "SELECT person_id FROM faces WHERE id=?", (face_id,)).fetchone()
+        if not fa:
+            return {"error": "unknown face"}
+        p = conn.execute(
+            "SELECT id, name FROM persons WHERE id=?", (person_id,)).fetchone()
+        if not p or not p["name"]:
+            return {"error": "target must be a named person"}
+        old_pid = fa["person_id"]
+        conn.execute("UPDATE faces SET person_id=?, manual_person=? WHERE id=?",
+                     (person_id, p["name"], face_id))
+        _sync_person_stats(conn, person_id)
+        if old_pid and old_pid != person_id:
+            _sync_person_stats(conn, old_pid)
+        conn.commit()
+        return {"ok": True, "person": {"id": p["id"], "name": p["name"]}}
+    finally:
+        conn.close()
+
+
+# -- "same person?" review: merges + constraints ---------------------------
+
+def _rep_face(conn, pid, cover) -> int | None:
+    """A stable representative face id for a person (its cover, or its sharpest
+    face). Used to anchor a durable face_links constraint."""
+    if cover:
+        return cover
+    r = conn.execute("SELECT id FROM faces WHERE person_id=? ORDER BY det_score DESC LIMIT 1",
+                     (pid,)).fetchone()
+    return r["id"] if r else None
+
+
+def _record_link(conn, fa, fb, kind: str, now: str) -> None:
+    if not fa or not fb or fa == fb:
+        return
+    a, b = sorted((fa, fb))
+    conn.execute("INSERT OR REPLACE INTO face_links(face_a, face_b, kind, created_at) "
+                 "VALUES(?,?,?,?)", (a, b, kind, now))
+
+
+def _update_person_centroid(conn, pid) -> None:
+    import numpy as np
+    rows = conn.execute(
+        "SELECT fa.embedding e FROM faces fa JOIN files f ON f.id=fa.file_id "
+        "WHERE fa.person_id=? AND f.hidden=0", (pid,)).fetchall()
+    if not rows:
+        return
+    X = np.array([np.frombuffer(r["e"], "float32") for r in rows], dtype="float32")
+    X /= np.linalg.norm(X, axis=1, keepdims=True) + 1e-9
+    c = X.mean(0)
+    c = (c / (np.linalg.norm(c) + 1e-9)).astype("float32")
+    conn.execute("UPDATE persons SET centroid=? WHERE id=?", (c.tobytes(), pid))
+
+
+def merge_persons(db_path: str, id_a, id_b) -> dict:
+    """User confirmed two clusters are the same person. Merge immediately (move
+    faces, keep the named/larger one) AND store a durable 'same' constraint so
+    the merge survives future re-clusters."""
+    if not id_a or not id_b or id_a == id_b:
+        return {"error": "need two distinct persons"}
+    conn = db.connect(db_path)
+    try:
+        pa = conn.execute("SELECT id,name,cover_face_id,face_count FROM persons WHERE id=?",
+                          (id_a,)).fetchone()
+        pb = conn.execute("SELECT id,name,cover_face_id,face_count FROM persons WHERE id=?",
+                          (id_b,)).fetchone()
+        if not pa or not pb:
+            return {"error": "unknown person"}
+        if pa["name"] and pb["name"] and pa["name"] != pb["name"]:
+            return {"error": f"both named ({pa['name']} / {pb['name']}); rename first"}
+        # keep the named one, else the larger cluster
+        if pa["name"] and not pb["name"]:
+            keep, drop = pa, pb
+        elif pb["name"] and not pa["name"]:
+            keep, drop = pb, pa
+        elif (pa["face_count"] or 0) >= (pb["face_count"] or 0):
+            keep, drop = pa, pb
+        else:
+            keep, drop = pb, pa
+        now = db.now_iso()
+        _record_link(conn, _rep_face(conn, keep["id"], keep["cover_face_id"]),
+                     _rep_face(conn, drop["id"], drop["cover_face_id"]), "same", now)
+        conn.execute("UPDATE faces SET person_id=? WHERE person_id=?", (keep["id"], drop["id"]))
+        conn.execute("DELETE FROM persons WHERE id=?", (drop["id"],))
+        _sync_person_stats(conn, keep["id"])
+        _update_person_centroid(conn, keep["id"])
+        conn.commit()
+        r = conn.execute("SELECT id,name,face_count FROM persons WHERE id=?", (keep["id"],)).fetchone()
+        return {"ok": True, "person": {"id": r["id"], "name": r["name"], "face_count": r["face_count"]}}
+    finally:
+        conn.close()
+
+
+def _persons_link(db_path: str, id_a, id_b, kind: str) -> dict:
+    """Record a durable pairwise constraint between two clusters (by their
+    representative faces). 'different' = cannot-link (blocks future auto-merge);
+    'skip' = "reviewed, undecided" (just drops the pair from the queue so it stops
+    coming back). Neither changes the current clustering."""
+    if not id_a or not id_b or id_a == id_b:
+        return {"error": "need two distinct persons"}
+    conn = db.connect(db_path)
+    try:
+        pa = conn.execute("SELECT id,cover_face_id FROM persons WHERE id=?", (id_a,)).fetchone()
+        pb = conn.execute("SELECT id,cover_face_id FROM persons WHERE id=?", (id_b,)).fetchone()
+        if not pa or not pb:
+            return {"error": "unknown person"}
+        _record_link(conn, _rep_face(conn, pa["id"], pa["cover_face_id"]),
+                     _rep_face(conn, pb["id"], pb["cover_face_id"]), kind, db.now_iso())
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def set_persons_different(db_path: str, id_a, id_b) -> dict:
+    return _persons_link(db_path, id_a, id_b, "different")
+
+
+def set_persons_skip(db_path: str, id_a, id_b) -> dict:
+    return _persons_link(db_path, id_a, id_b, "skip")
+
+
+def hide_person(db_path: str, person_id) -> dict:
+    """User marked a cluster as NOT a person (a doll / animal / cartoon face that
+    YuNet detected). Flag its faces so they're excluded from every future cluster,
+    then drop the person. Durable and reversible only by clearing not_person."""
+    if not person_id:
+        return {"error": "missing person_id"}
+    conn = db.connect(db_path)
+    try:
+        if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+            return {"error": "unknown person"}
+        conn.execute("UPDATE faces SET not_person=1, person_id=NULL WHERE person_id=?",
+                     (person_id,))
+        conn.execute("DELETE FROM persons WHERE id=?", (person_id,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def person_suggestions(db_path: str, root_id=None, limit=40, min_sim=0.45) -> dict:
+    """Top candidate "same person?" pairs: distinct clusters whose centroids are
+    >= min_sim cosine, highest first, excluding pairs the user already answered
+    'different'. This is the review queue — the pairs the automatic pass left
+    apart but that look like they could be one person."""
+    import numpy as np
+    conn = db.open_readonly(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT id,name,cover_face_id,face_count,centroid FROM persons "
+            "WHERE centroid IS NOT NULL AND face_count > 0").fetchall()
+        if len(rows) < 2:
+            return {"suggestions": []}
+        ids = [r["id"] for r in rows]
+        C = np.array([np.frombuffer(r["centroid"], "float32") for r in rows], dtype="float32")
+        C /= np.linalg.norm(C, axis=1, keepdims=True) + 1e-9
+        S = C @ C.T
+        iu = np.triu_indices(len(ids), 1)
+        sims = S[iu]
+        keep = sims >= min_sim
+        ii, jj, ss = iu[0][keep], iu[1][keep], sims[keep]
+        order = np.argsort(-ss)
+        # person-pairs the user already answered 'different' (cannot-link) or
+        # 'skip' (reviewed, undecided) — both are removed from the queue so it
+        # stops resurfacing the same pairs.
+        excl = set()
+        for lk in conn.execute(
+                "SELECT face_a,face_b FROM face_links WHERE kind IN ('different','skip')"):
+            fa = conn.execute("SELECT person_id FROM faces WHERE id=?", (lk["face_a"],)).fetchone()
+            fb = conn.execute("SELECT person_id FROM faces WHERE id=?", (lk["face_b"],)).fetchone()
+            if fa and fb and fa[0] and fb[0]:
+                excl.add(frozenset((fa[0], fb[0])))
+        info = {r["id"]: r for r in rows}
+        out, total = [], 0
+        for o in order:
+            ia, ib = ids[int(ii[o])], ids[int(jj[o])]
+            if frozenset((ia, ib)) in excl:
+                continue
+            total += 1                      # count every un-answered candidate
+            if len(out) >= limit:
+                continue
+            ra, rb = info[ia], info[ib]
+            out.append({
+                "sim": round(float(ss[o]), 3),
+                "a": {"id": ia, "name": ra["name"], "cover_face_id": ra["cover_face_id"],
+                      "faces": ra["face_count"]},
+                "b": {"id": ib, "name": rb["name"], "cover_face_id": rb["cover_face_id"],
+                      "faces": rb["face_count"]},
+            })
+        prev = _preview_faces(conn, [x["a"]["id"] for x in out] + [x["b"]["id"] for x in out])
+        for x in out:
+            x["a"]["faces_preview"] = prev.get(x["a"]["id"], [])
+            x["b"]["faces_preview"] = prev.get(x["b"]["id"], [])
+        return {"suggestions": out, "total": total}
+    finally:
+        conn.close()
+
+
+def set_place(db_path: str, file_id, place_id) -> dict:
+    """Attach a file to a place as a MANUAL member (membership only — no geo is
+    written, so provenance stays honest). Replaces any existing membership."""
+    if not file_id or not place_id:
+        return {"error": "missing file_id or place_id"}
+    conn = db.connect(db_path)
+    try:
+        pc = conn.execute(
+            "SELECT id, name FROM place_clusters WHERE id=?", (place_id,)).fetchone()
+        if not pc:
+            return {"error": "unknown place"}
+        _detach_file_from_places(conn, file_id)
+        conn.execute(
+            "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
+            "VALUES(?,?, 'manual')", (place_id, file_id))
+        _recount_place(conn, place_id)
+        conn.commit()
+        return {"ok": True, "place": {"id": pc["id"], "name": pc["name"]}}
+    finally:
+        conn.close()
+
+
+def clear_place(db_path: str, file_id) -> dict:
+    if not file_id:
+        return {"error": "missing file_id"}
+    conn = db.connect(db_path)
+    try:
+        _detach_file_from_places(conn, file_id)
+        conn.commit()
+        return {"ok": True, "place": None}
+    finally:
+        conn.close()
+
+
+def create_place(db_path: str, root_id, name: str, lat, lon, file_id=None) -> dict:
+    """Create a user-pinned place (fixed coordinate) and optionally attach a file
+    to it in one call. The dropped map pin becomes the place's coordinate."""
+    if root_id is None or lat is None or lon is None:
+        return {"error": "missing root_id / lat / lon"}
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return {"error": "bad coordinates"}
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return {"error": "coordinates out of range"}
+    conn = db.connect(db_path)
+    try:
+        if not conn.execute("SELECT 1 FROM roots WHERE id=?", (root_id,)).fetchone():
+            return {"error": "unknown archive"}
+        cur = conn.execute(
+            """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
+                                          pinned, created_at)
+               VALUES(?,?,?,?,0,1,?)""",
+            (root_id, (name or "").strip() or None, lat, lon, db.now_iso()))
+        cid = cur.lastrowid
+        if file_id:
+            _detach_file_from_places(conn, file_id)
+            conn.execute(
+                "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, "
+                "source) VALUES(?,?, 'manual')", (cid, file_id))
+            _recount_place(conn, cid)
+        conn.commit()
+        pc = conn.execute(
+            "SELECT id, name FROM place_clusters WHERE id=?", (cid,)).fetchone()
+        return {"ok": True, "id": cid, "place": {"id": pc["id"], "name": pc["name"]}}
+    finally:
+        conn.close()
+
+
+def _detach_file_from_places(conn, file_id):
+    affected = [r["cluster_id"] for r in conn.execute(
+        "SELECT cluster_id FROM place_cluster_members WHERE file_id=?", (file_id,))]
+    conn.execute("DELETE FROM place_cluster_members WHERE file_id=?", (file_id,))
+    for cid in affected:
+        _recount_place(conn, cid)
+
+
+def _recount_place(conn, cluster_id):
+    n = conn.execute(
+        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?",
+        (cluster_id,)).fetchone()[0]
+    conn.execute("UPDATE place_clusters SET member_count=? WHERE id=?",
+                 (n, cluster_id))
 
 
 def face_crop_source(db_path: str, face_id: int):
@@ -563,9 +1099,24 @@ def item(db_path: str, fid: int) -> dict | None:
             """SELECT fa.id AS face_id, fa.person_id, p.name
                FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id
                WHERE fa.file_id=? ORDER BY fa.det_score DESC""", (fid,))]
+        # Current place membership (a file belongs to at most one place).
+        place = conn.execute(
+            """SELECT pc.id, pc.name FROM place_cluster_members pcm
+               JOIN place_clusters pc ON pc.id=pcm.cluster_id
+               WHERE pcm.file_id=? LIMIT 1""", (fid,)).fetchone()
+        # Pick-lists for in-panel editing: only *named* places (in this file's root)
+        # and *named* persons are offered as targets.
+        place_options = [{"id": r["id"], "name": r["name"]} for r in conn.execute(
+            """SELECT id, name FROM place_clusters
+               WHERE root_id=? AND name IS NOT NULL
+               ORDER BY name COLLATE NOCASE""", (f["root_id"],))]
+        person_options = [{"id": r["id"], "name": r["name"]} for r in conn.execute(
+            """SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''
+               ORDER BY name COLLATE NOCASE""")]
         return {
             "id": fid, "name": os.path.basename(f["rel_path"]),
             "rel_path": f["rel_path"], "type": f["media_type"], "size": f["size"],
+            "root_id": f["root_id"],
             "date": d["best_datetime"] if d else None,
             "date_source": d["date_source"] if d else None,
             "date_confidence": d["date_confidence"] if d else None,
@@ -574,6 +1125,9 @@ def item(db_path: str, fid: int) -> dict | None:
             "meta": (dict(m) if m else None),
             "description": (t["description"] if t else None),
             "people": people,
+            "place": ({"id": place["id"], "name": place["name"]} if place else None),
+            "place_options": place_options,
+            "person_options": person_options,
         }
     finally:
         conn.close()

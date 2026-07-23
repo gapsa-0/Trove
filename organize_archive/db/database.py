@@ -10,7 +10,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 8
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
@@ -19,8 +19,17 @@ def now_iso() -> str:
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
+    # busy_timeout MUST be set before any statement that can take a lock. The GUI
+    # runs a near-continuous background pipeline that holds the single writer in
+    # bursts, while HTTP handler threads issue small writes (rename a person, set a
+    # date, attach a place). If busy_timeout is set *after* `PRAGMA journal_mode=WAL`,
+    # that pragma — which itself can need a lock — runs under only Python's short
+    # default timeout and fails outright with "database is locked" the moment it
+    # overlaps a pipeline write. Setting it first makes every later statement wait
+    # (retry) for the writer instead of erroring.
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -51,6 +60,24 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Migrations for columns added to existing tables.
     _add_column_if_missing(conn, "files", "dup_group_id", "INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_files_dupgroup ON files(dup_group_id)")
+    # Durable-place / editable-detail support:
+    #  - place_cluster_members.source distinguishes GPS-derived ('auto') members from
+    #    ones the user attached by hand ('manual'); manual members are never wiped.
+    #  - place_clusters.pinned marks a user-created place whose coordinate is a fixed
+    #    pin (never recomputed from members).
+    #  - faces.manual_person pins a face to a person *by name* (the only identity stable
+    #    across the DELETE/rebuild in faces/cluster.py), re-applied after every recluster.
+    _add_column_if_missing(conn, "place_cluster_members", "source", "TEXT DEFAULT 'auto'")
+    conn.execute("UPDATE place_cluster_members SET source='auto' WHERE source IS NULL")
+    _add_column_if_missing(conn, "place_clusters", "pinned", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "faces", "manual_person", "TEXT")
+    # persons.centroid: cached L2-normalized mean embedding, used to suggest
+    # "same person?" merges without reloading every embedding.
+    _add_column_if_missing(conn, "persons", "centroid", "BLOB")
+    # faces.not_person: user marked this cluster as not a person (doll/animal/
+    # cartoon face that YuNet detected); excluded from clustering thereafter.
+    _add_column_if_missing(conn, "faces", "not_person", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
 

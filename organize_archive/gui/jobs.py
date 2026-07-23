@@ -23,6 +23,7 @@ class Job:
     kind: str                 # "scan" | "enrich"
     root_id: int | None
     root_path: str | None
+    force: bool = False
     status: str = "running"   # running | done | error | cancelled
     total: int = 0
     done: int = 0
@@ -90,10 +91,16 @@ class JobManager:
         self._lock = threading.Lock()          # guards registry
         self._write_lock = threading.Lock()    # serializes DB writers
 
-        self._auto_paused = False
-        self._dedup_dirty = True   # run one dedup pass on startup
+        # Both dedup and map place-clustering are "derived" passes rerun whenever
+        # new/enriched data lands; dirty flags queue them. True at startup so the
+        # catalog is fully current the moment the app opens.
+        self._dedup_dirty = True
         self._dedup_root: int | None = None
+        self._places_dirty = True
+        self._places_root: int | None = None
         self._auto_interval = self._AUTO_MIN
+        self._wake = threading.Event()   # nudged to check immediately (new archive)
+        self._wake.set()                 # first scheduling decision runs at once
         threading.Thread(target=self._auto_loop, daemon=True).start()
 
     # -- introspection ----------------------------------------------------
@@ -113,12 +120,13 @@ class JobManager:
 
     # -- control ----------------------------------------------------------
     def start(self, kind: str, root_id: int | None = None,
-              root_path: str | None = None) -> dict:
+              root_path: str | None = None, force: bool = False) -> dict:
         if self.active_kind(kind):
             return {"error": f"a {kind} job is already running"}
         with self._lock:
             self._seq += 1
-            job = Job(id=self._seq, kind=kind, root_id=root_id, root_path=root_path)
+            job = Job(id=self._seq, kind=kind, root_id=root_id, root_path=root_path,
+                      force=force)
             self._jobs[job.id] = job
             cancel = threading.Event()
             self._cancels[job.id] = cancel
@@ -126,31 +134,23 @@ class JobManager:
         t.start()
         return job.public()
 
-    def cancel(self, job_id: int) -> bool:
-        ev = self._cancels.get(job_id)
-        if ev:
-            ev.set()
-            return True
-        return False
-
     # -- automatic scheduling ----------------------------------------------
-    # The catalog is meant to keep itself in sync without the user pressing
-    # buttons: a background thread notices new/un-enriched files and starts
-    # the right job on its own. "Pause" just stops it from starting new work;
-    # it doesn't interrupt a job already running.
-    def auto_status(self) -> dict:
-        return {"paused": self._auto_paused}
-
-    def set_auto_paused(self, paused: bool):
-        self._auto_paused = bool(paused)
-        if not self._auto_paused:
-            self._auto_interval = self._AUTO_MIN  # check promptly after resuming
+    # The catalog keeps itself in sync with zero user intervention: this daemon
+    # thread notices new/un-enriched files and runs the whole pipeline (scan →
+    # enrich → faces → dedup) on its own. There is deliberately no pause, stop
+    # or manual-start control — the only way to halt it is to close the app,
+    # which kills this daemon thread with the process. Long jobs commit in
+    # batches and are resumable, so an abrupt exit loses at most one batch.
+    def nudge(self):
+        """Wake the scheduler now (e.g. right after a new archive is added)
+        instead of waiting out the current back-off interval."""
+        self._auto_interval = self._AUTO_MIN
+        self._wake.set()
 
     def _auto_loop(self):
         while True:
-            time.sleep(self._auto_interval)
-            if self._auto_paused:
-                continue
+            self._wake.wait(self._auto_interval)
+            self._wake.clear()
             try:
                 acted = self._auto_tick()
             except Exception:
@@ -162,10 +162,22 @@ class JobManager:
     def _auto_tick(self) -> bool:
         """One scheduling decision. Returns True if it started (or is waiting
         on) work, so the caller can poll again soon rather than backing off."""
-        from . import queries
-        if any(j.status == "running" for j in self._jobs.values()):
-            return True
+        from . import queries, semantic
         archives = queries.archives(self.cfg.db_path)
+        # Do not embed until dedup has selected canonicals. Once that is done,
+        # Gemini calls may overlap local metadata/faces extraction safely.
+        dedup_ready = not self._dedup_dirty and not self.active_kind("dedup")
+        if dedup_ready and semantic.api_key_available() and not self.active_kind("semantic"):
+            for archive in archives:
+                if archive["exists"] and queries.semantic_pending(self.cfg.db_path, archive["id"]):
+                    self.start("semantic", archive["id"], archive["path"])
+                    return True
+        # Semantic indexing spends almost all of its time waiting on Gemini and
+        # only locks SQLite for one completed-result write at a time. It must not
+        # stall the local scan/enrich/faces pipeline while those requests run.
+        if any(j.status == "running" and j.kind != "semantic"
+               for j in self._jobs.values()):
+            return True
         for a in archives:
             if not a["exists"]:
                 continue
@@ -173,22 +185,16 @@ class JobManager:
             if fresh.get("new_files", 0) > 0:
                 self.start("scan", a["id"], a["path"])
                 self._dedup_dirty, self._dedup_root = True, a["id"]
+                self._places_dirty, self._places_root = True, a["id"]
                 return True
             if fresh.get("not_enriched", 0) > 0:
                 self.start("enrich", a["id"], a["path"])
                 self._dedup_dirty, self._dedup_root = True, a["id"]
+                self._places_dirty, self._places_root = True, a["id"]
                 return True
-        # Faces come after every archive is scanned + enriched (lowest-priority
-        # extraction pass, before dedup). Skipped entirely when the local face
-        # backend isn't available, so we never spin on work that can't run.
-        from ..faces import backend as face_backend
-        if face_backend.available():
-            for a in archives:
-                if not a["exists"]:
-                    continue
-                if queries.faces_pending(self.cfg.db_path, a["id"]) > 0:
-                    self.start("faces", a["id"], a["path"])
-                    return True
+        # Dedup runs BEFORE faces on purpose: it sets files.hidden on duplicate
+        # copies, and the face pass skips hidden files — so faces only ever run on
+        # unique/canonical images (no wasted detection on duplicate photos).
         if self._dedup_dirty:
             self._dedup_dirty = False
             # Dedup itself spans every archive, but the job is tagged with one
@@ -200,27 +206,53 @@ class JobManager:
                 root_id = next((a["id"] for a in archives if a["exists"]), None)
             self.start("dedup", root_id, None)
             return True
+        # Faces: the long extraction pass, so it runs after the cheap ones.
+        # Skipped entirely when the local face backend isn't available, so we
+        # never spin on work that can't run.
+        from ..faces import backend as face_backend
+        if face_backend.available():
+            for a in archives:
+                if not a["exists"]:
+                    continue
+                if queries.faces_pending(self.cfg.db_path, a["id"]) > 0:
+                    self.start("faces", a["id"], a["path"])
+                    return True
+        # Map place-clustering: rebuild whenever new geo data landed, so the Map
+        # stays in sync on its own (it used to refresh only via a manual button).
+        if self._places_dirty:
+            self._places_dirty = False
+            root_id = self._places_root
+            if root_id is None:
+                root_id = next((a["id"] for a in archives if a["exists"]), None)
+            if root_id is not None:
+                self.start("places", root_id, None)
+                return True
         return False
 
     # -- worker -----------------------------------------------------------
     def _run(self, job: Job, cancel: threading.Event):
         try:
-            with self._write_lock:
-                conn = db.connect(self.cfg.db_path)
-                db.init_db(conn)
-                try:
-                    if job.kind == "scan":
-                        self._run_scan(conn, job, cancel)
-                    elif job.kind == "enrich":
-                        self._run_enrich(conn, job, cancel)
-                    elif job.kind == "dedup":
-                        self._run_dedup(conn, job, cancel)
-                    elif job.kind == "faces":
-                        self._run_faces(conn, job, cancel)
-                    else:
-                        raise ValueError(f"unknown job kind: {job.kind}")
-                finally:
-                    conn.close()
+            if job.kind == "semantic":
+                self._run_semantic(job, cancel)
+            else:
+                with self._write_lock:
+                    conn = db.connect(self.cfg.db_path)
+                    db.init_db(conn)
+                    try:
+                        if job.kind == "scan":
+                            self._run_scan(conn, job, cancel)
+                        elif job.kind == "enrich":
+                            self._run_enrich(conn, job, cancel)
+                        elif job.kind == "dedup":
+                            self._run_dedup(conn, job, cancel)
+                        elif job.kind == "places":
+                            self._run_places(conn, job, cancel)
+                        elif job.kind == "faces":
+                            self._run_faces(conn, job, cancel)
+                        else:
+                            raise ValueError(f"unknown job kind: {job.kind}")
+                    finally:
+                        conn.close()
             job.status = "done"
         except KeyboardInterrupt:
             job.status = "cancelled"
@@ -259,22 +291,57 @@ class JobManager:
         from ..dedup import exact
         prog = _JobProgress(job, cancel)
         stats = exact.run(conn, progress=prog)
+        # Hidden files are duplicate copies. They must never consume semantic
+        # storage or appear as a stale vector if a prior run overlapped dedup.
+        conn.execute(
+            "DELETE FROM semantic_embeddings WHERE file_id IN "
+            "(SELECT id FROM files WHERE hidden=1)"
+        )
+        conn.commit()
         job.message = (f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
                        f"{stats.reclaimable_bytes/1e9:.1f} GB reclaimable")
+
+    def _run_places(self, conn, job: Job, cancel):
+        # Keep map places in sync WITHOUT ever destroying user edits. Places are
+        # durable entities: a root is clustered from scratch only the first time
+        # (bootstrap); afterwards new geotagged files are attached incrementally
+        # (assign_unplaced), so named/pinned places and manual attachments persist.
+        from ..geo.clusters import cluster_places, assign_unplaced
+        from . import queries
+        roots = [a for a in queries.archives(self.cfg.db_path) if a["exists"]]
+        job.total = len(roots)
+        touched = 0
+        for i, a in enumerate(roots):
+            job.current = a["name"]
+            has_places = conn.execute(
+                "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (a["id"],)
+            ).fetchone()
+            if has_places:
+                touched += assign_unplaced(conn, a["id"]).points
+            else:
+                cluster_places(conn, a["id"])
+            job.done = i + 1
+        job.message = f"{touched} new geotagged files placed"
 
     def _run_faces(self, conn, job: Job, cancel):
         # Part of the automatic pipeline (runs after scan + enrich). Detect faces
         # in chunks and re-cluster after each chunk, so the Faces section fills
         # in progressively during a long run instead of only at the very end.
         from ..faces import extract as fx, cluster as fc
-        job.total = fx.pending_count(conn)
+        # Progress is cumulative over ALL unique images, not just this run's
+        # backlog: total = every canonical image, done starts at how many are
+        # already scanned. So the bar/% match the "Scanned N / total" stat tile
+        # and survive resuming across app restarts (no misleading per-run total).
+        total = fx.image_count(conn)
+        already = max(0, total - fx.pending_count(conn))
+        job.total, job.done = total, already
         # Load the face models once and reuse them across every chunk.
         be = fx.make_backend(self.cfg, log=lambda m: setattr(job, "current", m))
         processed = faces_found = 0
         while True:
             if cancel.is_set():
                 raise KeyboardInterrupt
-            prog = _JobProgress(job, cancel, base=processed, fixed_total=True)
+            prog = _JobProgress(job, cancel, base=already + processed, fixed_total=True)
             es = fx.extract(conn, self.cfg, progress=prog, limit=self._FACE_CHUNK, be=be)
             if es.processed == 0:
                 break
@@ -284,3 +351,61 @@ class JobManager:
             fc.cluster_faces(conn, self.cfg)
         people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
         job.message = f"{faces_found} faces in {processed} photos · {people} people"
+
+    def _run_semantic(self, job: Job, cancel):
+        from pathlib import Path
+        from . import semantic
+
+        # Snapshot candidates under a read-only connection. The API calls below
+        # happen without the writer lock so local metadata/faces work continues.
+        read_conn = db.open_readonly(self.cfg.db_path)
+        try:
+            rows = semantic.pending_rows(read_conn, job.root_id, force=job.force)
+        finally:
+            read_conn.close()
+        job.total, job.done = len(rows), 0
+        if not rows:
+            job.message = "semantic index is already current"
+            return
+        indexed = skipped = failed = 0
+        for n, row in enumerate(rows, 1):
+            if cancel.is_set():
+                raise KeyboardInterrupt
+            job.current = row["rel_path"]
+            try:
+                values, kind, reason = semantic.embed_media(
+                    self.cfg, Path(row["root_path"]) / row["rel_path"],
+                    row["ext"], row["media_type"], self.cfg.db_path, cancel)
+                self._save_semantic_outcome(row, values, kind, reason)
+                if values is not None:
+                    indexed += 1
+                else:
+                    skipped += 1
+            except Exception as exc:
+                self._save_semantic_outcome(row, None, None, str(exc))
+                failed += 1
+            job.done = n
+        job.message = f"{indexed} indexed, {skipped} skipped, {failed} errors"
+
+    def _save_semantic_outcome(self, row, values, kind, reason):
+        """Persist one result without taking the manager-wide pipeline lock.
+
+        SQLite WAL plus its busy timeout serializes this tiny transaction against
+        a metadata/faces batch, while the semantic worker remains independent of
+        that job's long-lived manager lock.
+        """
+        from . import semantic
+        conn = db.connect(self.cfg.db_path)
+        try:
+            # Dedup may have completed while Gemini was processing this item.
+            # Only keep an outcome if this exact source remains canonical.
+            current = conn.execute(
+                "SELECT hidden, sha256 FROM files WHERE id=?", (row["id"],)
+            ).fetchone()
+            if (current is None or current["hidden"] or
+                    current["sha256"] != row["sha256"]):
+                return
+            semantic.save_outcome(conn, self.cfg, row, values, kind, reason)
+            conn.commit()
+        finally:
+            conn.close()

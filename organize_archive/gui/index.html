@@ -49,7 +49,8 @@
   #app{display:none;}
   #app.on{display:flex;min-height:100vh;}
   nav{width:210px;flex:none;background:var(--panel);border-right:1px solid var(--line);
-    padding:14px 10px;position:sticky;top:0;height:100vh;overflow:auto;transition:width .15s;}
+    padding:14px 10px;position:sticky;top:0;height:100vh;overflow:auto;transition:width .15s;
+    display:flex;flex-direction:column;}
   nav .brand{display:flex;align-items:center;gap:8px;font-weight:600;padding:4px 8px 12px;}
   nav .navtoggle{margin-left:auto;cursor:pointer;color:var(--muted);font-size:13px;
     padding:3px 6px;border-radius:5px;flex:none;}
@@ -64,6 +65,15 @@
   .navitem.soon{color:var(--muted);cursor:default;}
   .navitem .tag{margin-left:auto;font-size:9px;text-transform:uppercase;letter-spacing:.5px;
     color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 5px;}
+
+  /* Persistent pipeline status, pinned to the bottom of the sidebar so it is
+     visible on every section (the app runs itself; this is the ambient bar). */
+  .gstat{margin-top:auto;padding:9px 8px 2px;border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);line-height:1.3;}
+  .gstat .gtxt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .gstat .gpct{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text);flex:none;}
+  nav.collapsed .gstat{justify-content:center;padding:9px 0 2px;}
+  nav.collapsed .gstat .gtxt,nav.collapsed .gstat .gpct{display:none;}
 
   nav.collapsed{width:56px;}
   nav.collapsed .brand{justify-content:center;}
@@ -167,6 +177,14 @@
   .chip{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:12px;cursor:pointer;}
   .chip button{all:unset;margin-left:6px;color:var(--muted);cursor:pointer;}
 
+  /* Browse filter bar */
+  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+  .fsel{background:var(--panel);color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font:inherit;cursor:pointer;max-width:190px;}
+  .fsel:hover{border-color:var(--accent);}
+  .fsel:focus{outline:none;border-color:var(--accent);}
+  .fsel:disabled{color:var(--muted);cursor:not-allowed;opacity:.6;}
+
   /* duplicates */
   .dupgroup{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;}
   .dghead{font-size:13px;margin-bottom:10px;}
@@ -185,10 +203,40 @@
     cursor:pointer;transition:border-color .15s;}
   .pcard:hover{border-color:var(--accent);}
   .pcard .face{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:var(--panel2);}
+  /* 2x2 face collage (person cards + review card) */
+  .facecollage{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;
+    aspect-ratio:1;gap:2px;background:var(--line);width:100%;}
+  .facecollage>img,.facecollage>.cempty{width:100%;height:100%;object-fit:cover;display:block;
+    background:var(--panel2);min-width:0;min-height:0;}
   .pcard .pmeta{padding:8px 10px;}
   .pcard .pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pcard .pname.un{color:var(--muted);font-weight:400;font-style:italic;}
   .pcard .pcount{font-size:11px;color:var(--muted);margin-top:2px;}
+
+  /* "Same person?" review card, shown above the people grid */
+  .suggest{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px;margin-bottom:18px;max-width:520px;}
+  .suggest .sug-head{font-size:14px;font-weight:600;margin-bottom:12px;}
+  .suggest .sug-head .muted{font-weight:400;}
+  .suggest .sug-pair{display:flex;align-items:center;justify-content:center;gap:14px;}
+  .suggest .sug-face{flex:1;max-width:180px;text-align:center;}
+  .suggest .sug-face>img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;
+    background:var(--panel2);display:block;}
+  .suggest .sug-face .facecollage{border-radius:10px;overflow:hidden;}
+  .suggest .sug-lbl{font-size:13px;font-weight:600;margin-top:6px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+  .suggest .sug-cnt{font-size:11px;color:var(--muted);}
+  .suggest .sug-q{flex:none;font-size:26px;color:var(--muted);}
+  .suggest .sug-btns{display:flex;gap:10px;margin-top:14px;}
+  .suggest .sug-btns button{flex:1;padding:9px 0;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--fg);font-size:13px;cursor:pointer;transition:all .12s;}
+  .suggest .sug-yes{border-color:var(--accent)!important;}
+  .suggest .sug-yes:hover{background:var(--accent);color:#fff;}
+  .suggest .sug-no:hover,.suggest .sug-skip:hover{border-color:var(--muted);}
+  .suggest .sug-extra{margin-top:10px;text-align:center;}
+  .suggest .sug-extra button{background:none;border:none;color:var(--muted);font-size:12px;
+    cursor:pointer;padding:4px;}
+  .suggest .sug-extra button:hover{color:var(--fg);text-decoration:underline;}
 
   /* person detail: a sticky topbar keeps back-nav + name reachable while the
      photo grid below (often thousands of tiles) scrolls out of view. */
@@ -212,12 +260,37 @@
     border:1px solid var(--line);border-radius:10px;overflow:hidden;}
   .viewer .media{background:#000;display:flex;align-items:center;justify-content:center;max-width:74vw;}
   .viewer .media img,.viewer .media video{max-width:74vw;max-height:94vh;object-fit:contain;}
-  .viewer .info{width:290px;flex:none;padding:16px;overflow:auto;max-height:94vh;}
+  .viewer .info{width:320px;flex:none;padding:16px;overflow:auto;max-height:94vh;}
   .viewer .info h3{margin:0 0 10px;font-size:14px;word-break:break-all;}
   .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
   .kv .k{color:var(--muted);}
   .kv .v{text-align:right;word-break:break-word;}
+  /* editable detail sections */
+  .isec{margin-top:16px;}
+  .isec>.h{display:flex;align-items:center;gap:8px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.5px;color:var(--muted);margin-bottom:8px;}
+  .isec>.h .linkbtn{margin-left:auto;}
+  .facelist{display:flex;flex-direction:column;gap:9px;}
+  .facerow{display:flex;align-items:center;gap:10px;}
+  .facecrop{width:46px;height:46px;border-radius:8px;object-fit:cover;background:var(--panel2);
+    flex:none;border:1px solid var(--line);}
+  .facerow .fsel{flex:1;min-width:0;max-width:none;padding:6px 8px;font-size:12.5px;}
+  .info .fsel{max-width:none;width:100%;}
+  .dtrow{display:flex;gap:6px;margin-bottom:8px;}
+  .dtrow input{flex:1;min-width:0;padding:7px 8px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--text);font:inherit;font-size:12.5px;}
+  .dtrow .yr{flex:1.8;}
+  .placepick{height:190px;border-radius:8px;overflow:hidden;margin:8px 0;border:1px solid var(--line);}
+  .btnrow{display:flex;gap:8px;margin-top:8px;}
+  .val{font-size:13px;word-break:break-word;}
   .close{position:absolute;top:14px;right:18px;font-size:26px;color:#fff;cursor:pointer;z-index:21;}
+  /* transient, non-blocking notice (used when an optimistic save is rolled back) */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);
+    z-index:40;background:var(--panel2);color:var(--text);border:1px solid var(--line);
+    padding:10px 16px;border-radius:9px;font-size:13px;max-width:80vw;box-shadow:0 8px 24px #0009;
+    opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.err{border-color:#c0504d;}
 </style>
 </head>
 <body>
@@ -238,6 +311,7 @@
     <span class="back" onclick="toPicker()">← all archives</span>
     <div class="arch" id="archname"></div>
     <div id="navitems"></div>
+    <div id="gstat" class="gstat"></div>
   </nav>
   <main id="main"></main>
 </div>
@@ -258,7 +332,6 @@ const SECTIONS=[
   {id:"dups",label:"Duplicates",icon:"🧹"},
   {id:"faces",label:"Faces",icon:"🙂"},
   {id:"places",label:"Places",icon:"📍",soon:true},
-  {id:"situations",label:"Situations",icon:"🔎",soon:true},
 ];
 const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null}, poll:null};
 // Bumped on every user navigation (section switch / archive open). Async renders
@@ -270,6 +343,19 @@ function fmtBytes(n){if(n==null)return "—";const u=["B","KB","MB","GB","TB"];l
   while(f>=1024&&i<4){f/=1024;i++;}return f.toFixed(1)+" "+u[i];}
 async function jget(u){return (await fetch(u)).json();}
 async function jpost(u,b){return (await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})})).json();}
+// Serialize all persistence through ONE in-flight write. A GUI write can block for
+// a few seconds waiting for the background pipeline's single SQLite writer; firing
+// several at once ties up the browser's ~6 connections with stalled POSTs and the
+// whole app hangs (reads/polling/images can't get a connection). Chaining keeps at
+// most one write occupying a connection, so reads always stay responsive. The
+// optimistic UI has already updated, so queueing the actual write is invisible.
+let _wq=Promise.resolve();
+function qpost(u,b){
+  const run=()=>jpost(u,b);
+  const p=_wq.then(run,run);      // run regardless of the previous write's outcome
+  _wq=p.catch(()=>{});            // a rejection must not break the chain
+  return p;
+}
 
 /* ---------- picker ---------- */
 let ARCHIVES=[];
@@ -303,15 +389,40 @@ function openArchive(a,section){
   document.getElementById("app").classList.add("on");
   document.getElementById("archname").textContent=a.name;
   location.hash=`/archive/${a.id}/${S.section}`;
-  renderNav(); showSection(S.section);
+  renderNav(); showSection(S.section); startGlobalStatus();
 }
+
+/* ---------- persistent pipeline status (sidebar, shown on every section) ----
+   The pipeline runs itself; this ambient chip is the only status the user
+   needs and it carries no controls. */
+const GSTAT_LABEL={scan:"Scanning…",enrich:"Reading metadata…",faces:"Detecting faces…",
+  places:"Mapping places…",dedup:"Finding duplicates…",semantic:"Indexing search…"};
+function renderGstat(jobs){
+  const el=document.getElementById("gstat"); if(!el)return;
+  const run=(jobs||[]).find(j=>j.status==="running");
+  if(run){
+    const pct=run.percent!=null?run.percent:null;
+    el.title=GSTAT_LABEL[run.kind]||run.kind;
+    el.innerHTML=`<span class="spin"></span><span class="gtxt">${GSTAT_LABEL[run.kind]||run.kind}</span>`
+      +(pct!=null?`<span class="gpct">${pct}%</span>`:"");
+  }else{
+    el.title="Up to date";
+    el.innerHTML=`<span class="dot ok"></span><span class="gtxt">Up to date</span>`;
+  }
+}
+async function gstatTick(){
+  if(!S.arch){stopGlobalStatus();return;}
+  try{ const {jobs}=await jget("/api/jobs?root="+S.arch.id); renderGstat(jobs); }catch(e){}
+}
+function startGlobalStatus(){ stopGlobalStatus(); S.gpoll=setInterval(gstatTick,2000); gstatTick(); }
+function stopGlobalStatus(){ if(S.gpoll){clearInterval(S.gpoll);S.gpoll=null;} }
 function applyHash(){
   const m=(location.hash||"").match(/#\/archive\/(\d+)\/(\w+)/);
   if(m){const a=ARCHIVES.find(x=>x.id==+m[1]); if(a){openArchive(a,m[2]);return true;}}
   return false;
 }
 function toPicker(){
-  stopPoll(); S.arch=null;
+  stopPoll(); stopGlobalStatus(); S.arch=null;
   document.getElementById("app").classList.remove("on");
   document.getElementById("picker").style.display="block";
   loadPicker();
@@ -361,10 +472,10 @@ function showSection(id){
 /* ---------- overview + tasks ---------- */
 async function renderOverview(m){
   const gen=NAV, root=S.arch.id;
-  const [s,ds,auto]=await Promise.all([
-    jget("/api/summary?root="+root), jget("/api/dups/summary?root="+root), jget("/api/auto")]);
+  const [s,ds]=await Promise.all([
+    jget("/api/summary?root="+root), jget("/api/dups/summary?root="+root)]);
   if(gen!==NAV)return;   // user switched sections while these were loading
-  S.dupsum=ds; S.auto=auto;
+  S.dupsum=ds;
   m.innerHTML=`<h2 class="sec">Overview — ${S.arch.name}</h2>
     <div class="statrow">
       <div class="stat" style="cursor:pointer" onclick="showSection('photos')"><div class="k">Total files</div><div class="v">${s.total.toLocaleString()} <small>· ${fmtBytes(s.size)}</small></div></div>
@@ -372,8 +483,7 @@ async function renderOverview(m){
       <div class="stat" style="cursor:pointer" onclick="showSection('timeline')"><div class="k">Dated</div><div class="v">${s.enriched.toLocaleString()}</div></div>
       <div class="stat" style="cursor:pointer" onclick="showSection('map')"><div class="k">With location</div><div class="v">${s.with_gps.toLocaleString()}</div></div>
     </div>
-    <div class="panel"><h3 style="display:flex;align-items:center;gap:10px">Keeping in sync
-        <button class="btn sec" id="autobtn" style="margin-left:auto" onclick="toggleAuto()"></button></h3>
+    <div class="panel"><h3>Keeping in sync</h3>
       <div id="syncstatus"></div>
       <div id="jobarea"></div>
     </div>
@@ -394,22 +504,17 @@ async function renderOverview(m){
   startPoll();       // catches jobs the scheduler starts on its own, not just user-triggered ones
 }
 
-// Everything (scan → extract → dedup) runs automatically in the background;
-// this panel just reports what's happening and lets the user pause it.
+// Everything (scan → extract → faces → dedup) runs automatically in the
+// background with no user intervention; this panel only reports what's
+// happening. There is no pause/stop — it runs until the app is closed.
 const JOB_LABEL={scan:"Scanning for new files…",enrich:"Extracting dates, places & metadata…",
-  dedup:"Finding duplicates…",faces:"Detecting faces…"};
+  faces:"Detecting faces…",places:"Mapping places…",dedup:"Finding duplicates…"};
 function renderSyncPanel(){
-  const btn=document.getElementById("autobtn");
-  if(btn)btn.textContent=(S.auto&&S.auto.paused)?"Resume":"Pause";
   const el=document.getElementById("syncstatus"); if(!el)return;
   const active=S.activeJobs||{};
-  const runningKind=active.scan?"scan":active.enrich?"enrich":active.dedup?"dedup":active.faces?"faces":null;
+  const runningKind=active.scan?"scan":active.enrich?"enrich":active.faces?"faces":active.places?"places":active.dedup?"dedup":null;
   if(runningKind){
     el.innerHTML=`<div class="d"><span class="spin"></span>${JOB_LABEL[runningKind]}</div>`;
-    return;
-  }
-  if(S.auto&&S.auto.paused){
-    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>Paused — new files won't be processed until you resume.</div>`;
     return;
   }
   const f=S.fresh, s=S.summary;
@@ -423,11 +528,6 @@ function renderSyncPanel(){
     el.innerHTML=`<div class="d ok"><span class="dot ok"></span>Up to date — scanned, dated, faces &amp; duplicates.</div>`;
   }
 }
-async function toggleAuto(){
-  const next=!(S.auto&&S.auto.paused);
-  S.auto=await jpost("/api/auto",{paused:next});
-  renderSyncPanel();
-}
 async function loadFreshness(){
   S.fresh=null;
   try{
@@ -436,21 +536,20 @@ async function loadFreshness(){
   }catch(e){ S.fresh={checked:true,new_files:0,not_faced:0}; }
   renderSyncPanel();
 }
-async function cancelJob(id){ await jpost(`/api/job/${id}/cancel`,{}); refreshJobs(); }
 async function refreshJobs(){
   const area=document.getElementById("jobarea"); if(!area)return;
   const {jobs}=await jget("/api/jobs?root="+S.arch.id);
   const active=jobs.filter(j=>j.status==="running");
   S.activeJobs={scan:active.some(j=>j.kind==="scan"),enrich:active.some(j=>j.kind==="enrich"),
-    dedup:active.some(j=>j.kind==="dedup"),faces:active.some(j=>j.kind==="faces")};
+    faces:active.some(j=>j.kind==="faces"),places:active.some(j=>j.kind==="places"),
+    dedup:active.some(j=>j.kind==="dedup")};
   renderSyncPanel();
   area.innerHTML="";
   active.forEach(j=>{
     const pct=j.percent!=null?j.percent:0;
     const div=document.createElement("div"); div.className="job";
     div.innerHTML=`<div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-      <div class="cur">${j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}
-      <button class="linkbtn" style="float:right" onclick="cancelJob(${j.id})">Cancel</button></div>`;
+      <div class="cur">${j.kind}: ${pct}% · ${j.done.toLocaleString()}${j.total?"/"+j.total.toLocaleString():""} · ${j.elapsed}s${j.current?" · "+j.current:""}</div>`;
     area.appendChild(div);
   });
   // Re-render the overview once, only when a job has just finished (active→idle) so
@@ -604,8 +703,7 @@ async function renderMap(m){
   m.innerHTML=`<h2 class="sec">Map</h2>
     <div class="chips">
       <span class="muted" id="mapnote">Loading…</span>
-      <button class="btn sec" style="margin-left:auto" onclick="recomputeClusters(this)">Recompute places</button>
-      <label style="font-size:12px;cursor:pointer">
+      <label style="font-size:12px;cursor:pointer;margin-left:auto">
         <input type="checkbox" id="basemap" ${basemapOn()?"checked":""} onchange="toggleBasemap()"> Street map
       </label>
     </div>
@@ -622,7 +720,7 @@ async function renderMap(m){
   const total=clusters.reduce((a,c)=>a+c.count,0);
   document.getElementById("mapnote").textContent=clusters.length
     ? `${total.toLocaleString()} geolocated items in ${clusters.length.toLocaleString()} places`
-    : "No geolocated media yet — run Extract (needs GPS in Takeout or EXIF).";
+    : "No geolocated media yet — places appear automatically as GPS is found in Takeout or EXIF.";
   MAP=L.map("lmap",{worldCopyJump:true,attributionControl:false});
   applyBasemap();
   if(!clusters.length){ MAP.setView([0,0],2); return; }
@@ -630,11 +728,6 @@ async function renderMap(m){
   MAP.fitBounds(b,{padding:[40,40],maxZoom:14});
   MAP.on("moveend zoomend",drawClusters);
   drawClusters();
-}
-async function recomputeClusters(btn){
-  btn.disabled=true; btn.textContent="Recomputing…";
-  await jpost("/api/map/clusters/recompute",{root_id:S.arch.id});
-  renderMap(document.getElementById("main"));
 }
 function collageHTML(ids){
   if(!ids.length)return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:20px">📍</div>`;
@@ -729,29 +822,152 @@ function drawClusters(){
 }
 
 /* ---------- browse ---------- */
+const MONTH_NAMES=["January","February","March","April","May","June","July",
+  "August","September","October","November","December"];
 async function renderPhotos(m){
-  S.grid={offset:0,year:null,month:null,type:null,dups:false};
+  const gen=NAV;
+  S.grid={offset:0,loaded:0,gen:0,year:"",month:"",type:"",person:"",place:"",dups:false,query:""};
   m.innerHTML=`<h2 class="sec">Browse</h2>
+    <div class="panel" style="padding:12px 14px">
+      <form onsubmit="return semanticSubmit(event)" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="semantic-q" aria-label="Search archive by content" placeholder="Search by content: beach sunset, birthday, a dog in snow…"
+          style="flex:1;min-width:220px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit">
+        <button class="btn" type="submit">Search</button>
+      </form>
+      <div id="semantic-status" class="muted" style="font-size:12px;margin-top:8px"></div>
+    </div>
+    <div class="filterbar" id="filterbar"></div>
     <div class="chips">
       <label style="font-size:12px;cursor:pointer"><input type="checkbox" id="showdups" onchange="toggleDups()"> Show hidden duplicates</label>
+      <span class="muted" id="gridcount" style="margin-left:auto"></span>
     </div>
     <div class="grid" id="grid"></div><div class="more" id="gmore" style="display:none">
     <button class="btn sec" onclick="loadGrid()">Load more</button></div>`;
+  await buildFilterBar();
+  if(gen!==NAV)return;
+  updateSemanticStatus();
   loadGrid();
+}
+async function updateSemanticStatus(){
+  const el=document.getElementById("semantic-status"); if(!el||!S.arch)return;
+  try{
+    const s=await jget("/api/browse/semantic/status?root="+S.arch.id);
+    if(!document.getElementById("semantic-status"))return;
+    const j=(await jget("/api/jobs?root="+S.arch.id)).jobs.find(x=>x.kind==="semantic"&&x.status==="running");
+    const progress=j?` Indexing ${j.done.toLocaleString()} / ${j.total.toLocaleString()}…`:
+      (s.pending?` ${s.pending.toLocaleString()} media still need indexing.`:"");
+    const keyNote=s.configured?"":" Add GEMINI_API_KEY to the root .env file and restart the app.";
+    el.innerHTML=`<span class="dot ${s.indexed?"ok":"check"}"></span>${s.indexed.toLocaleString()} indexed`
+      +`${s.skipped?`, ${s.skipped.toLocaleString()} skipped`:""}${s.errors?`, ${s.errors.toLocaleString()} errors`:""}.`
+      +progress+` <span style="opacity:.8">Indexing sends selected archive media to Gemini; vectors stay local. Quota guard: 100 RPM, 30K TPM, 1K RPD.</span>`
+      +` <span style="opacity:.8">${j?"Automatic indexing is running.":"Automatic indexing starts when compatible media is pending."}${keyNote}</span>`;
+    if(j)setTimeout(updateSemanticStatus, 2000);
+  }catch(e){el.textContent="Semantic search needs GEMINI_API_KEY in the app environment.";}
+}
+function semanticSubmit(ev){
+  ev.preventDefault();
+  const q=(document.getElementById("semantic-q").value||"").trim();
+  const g=S.grid; g.query=q; g.offset=0; g.loaded=0; g.gen++;
+  document.getElementById("grid").innerHTML="";
+  loadGrid();
+  return false;
+}
+async function buildFilterBar(){
+  const gen=NAV;
+  const f=await jget("/api/browse/filters?root="+S.arch.id);
+  if(gen!==NAV)return;
+  S.filterOpts=f;
+  const bar=document.getElementById("filterbar"); if(!bar)return;
+  const years=[...new Set((f.periods||[]).map(p=>p.slice(0,4)))];
+  const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
+  const opt=(v,l)=>`<option value="${v}">${l}</option>`;
+  const parts=[];
+  if(years.length)
+    parts.push(`<select class="fsel" id="f-year" onchange="onYearChange()">`+
+      opt("","All years")+years.map(y=>opt(y,y)).join("")+`</select>`+
+      `<select class="fsel" id="f-month" onchange="applyFilters()" disabled>`+
+      opt("","All months")+`</select>`);
+  if(f.types&&f.types.length>1)
+    parts.push(`<select class="fsel" id="f-type" onchange="applyFilters()">`+
+      opt("","All types")+f.types.map(t=>opt(t,cap(t))).join("")+`</select>`);
+  if(f.people&&f.people.length)
+    parts.push(`<select class="fsel" id="f-person" onchange="applyFilters()">`+
+      opt("","Anyone")+f.people.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
+  if(f.places&&f.places.length)
+    parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()">`+
+      opt("","Anywhere")+f.places.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
+  parts.push(`<button class="linkbtn" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
+  bar.innerHTML=parts.join("");
+}
+function onYearChange(){
+  const y=document.getElementById("f-year").value;
+  const msel=document.getElementById("f-month");
+  if(msel){
+    if(!y){ msel.innerHTML='<option value="">All months</option>'; msel.disabled=true; }
+    else{
+      // .filter(Boolean): a year-only period ("2024", from a manual year-precision
+      // date) yields an empty month slice — drop it so no blank month option appears.
+      const months=[...new Set((S.filterOpts.periods||[])
+        .filter(p=>p.slice(0,4)===y).map(p=>p.slice(5,7)).filter(Boolean))].sort();
+      msel.innerHTML='<option value="">All months</option>'+
+        months.map(mm=>`<option value="${mm}">${MONTH_NAMES[+mm-1]}</option>`).join("");
+      msel.disabled=false;
+    }
+  }
+  applyFilters();
+}
+function selVal(id){const e=document.getElementById(id);return e?e.value:"";}
+function applyFilters(){
+  const g=S.grid;
+  g.year=selVal("f-year");
+  const mm=selVal("f-month");
+  g.month=(g.year&&mm)?`${g.year}-${mm}`:"";
+  g.type=selVal("f-type");
+  g.person=selVal("f-person");
+  g.place=selVal("f-place");
+  g.offset=0; g.loaded=0; g.gen++;
+  document.getElementById("grid").innerHTML="";
+  updateClearBtn();
+  loadGrid();
+}
+function clearFilters(){
+  ["f-year","f-type","f-person","f-place"].forEach(id=>{const e=document.getElementById(id);if(e)e.value="";});
+  const msel=document.getElementById("f-month");
+  if(msel){msel.innerHTML='<option value="">All months</option>';msel.disabled=true;}
+  applyFilters();
+}
+function updateClearBtn(){
+  const g=S.grid, b=document.getElementById("f-clear");
+  if(b)b.style.display=(g.year||g.month||g.type||g.person||g.place)?"inline":"none";
 }
 function toggleDups(){
   S.grid.dups=document.getElementById("showdups").checked;
-  S.grid.offset=0; document.getElementById("grid").innerHTML=""; loadGrid();
+  S.grid.offset=0; S.grid.loaded=0; S.grid.gen++;
+  document.getElementById("grid").innerHTML=""; loadGrid();
 }
 async function loadGrid(){
-  const g=S.grid, p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
+  const g=S.grid, gen=g.gen, p=new URLSearchParams({root:S.arch.id,offset:g.offset,limit:120});
   if(g.dups)p.set("dups","1");
   if(g.type)p.set("type",g.type); if(g.year)p.set("year",g.year);
-  const res=await jget("/api/media?"+p);
-  const grid=document.getElementById("grid");
-  res.items.forEach(it=>grid.appendChild(tile(it)));
-  g.offset+=res.count;
-  document.getElementById("gmore").style.display=res.count>=120?"block":"none";
+  if(g.month)p.set("month",g.month);
+  if(g.person)p.set("person",g.person); if(g.place)p.set("place",g.place);
+  if(g.query)p.set("q",g.query);
+  const res=await jget((g.query?"/api/browse/semantic/search?":"/api/media?")+p);
+  // Bail if a newer filter change (or a section switch) superseded this fetch
+  // while it was in flight, so a slow response can't paint stale tiles.
+  if(S.grid!==g||g.gen!==gen)return;
+  const grid=document.getElementById("grid"); if(!grid)return;
+  // A failed/empty response has no items array; treat it as "no more" so a
+  // clear+fetch that errors can't leave a bare "Load more" button behind.
+  const items=(res&&res.items)||[];
+  items.forEach(it=>grid.appendChild(tile(it)));
+  const count=(res&&res.count)||0;
+  g.offset+=count; g.loaded+=count;
+  document.getElementById("gmore").style.display=count>=120?"block":"none";
+  if(!g.loaded)
+    grid.innerHTML=`<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${res&&res.error?esc(res.error):"No media matches these filters."}</div>`;
+  const gc=document.getElementById("gridcount");
+  if(gc)gc.textContent=g.loaded?`${g.loaded.toLocaleString()} ${g.query?"semantic results":"shown"}${count>=120?"+":""}`:"";
 }
 function tile(it){
   const d=document.createElement("div"); d.className="tile"; d.onclick=()=>openItem(it.id);
@@ -816,9 +1032,8 @@ function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;")
 async function renderFaces(m){
   const gen=NAV, root=S.arch.id;
   S.facePerson=null;
-  const [sum,auto]=await Promise.all([jget("/api/faces/summary?root="+root),jget("/api/auto")]);
+  const sum=await jget("/api/faces/summary?root="+root);
   if(gen!==NAV)return;
-  S.auto=auto;
   if(!sum.backend_available){
     m.innerHTML=`<h2 class="sec">Faces</h2><div class="soonbox"><div class="big">🙂</div>
       <p>Face detection needs OpenCV's DNN face module.</p>
@@ -840,40 +1055,21 @@ async function renderFaces(m){
   startFacePoll();   // reflects a face job's progress and refreshes when it ends
 }
 // Faces run automatically as part of the background pipeline (scan → dates →
-// faces → duplicates); this panel reports status and offers a "Scan now" nudge.
-// The master pause lives in Overview → Keeping in sync.
+// faces → duplicates); this panel only reports status. Clustering into people
+// re-runs automatically after every detection chunk, so there is no manual
+// start/stop/recompute — it all happens on its own and halts only on app close.
 function renderFaceControls(){
   const el=document.getElementById("facectl"); if(!el)return;
-  const sum=S.faceSum, paused=!!(S.auto&&S.auto.paused);
-  const recompute=sum.people>0
-    ? '<button class="btn sec" style="margin-left:auto" onclick="reclusterPeople(this)">Recompute people</button>' : "";
+  const sum=S.faceSum;
   if(S.faceJobRunning){
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px">
-      <span class="d"><span class="spin"></span>Detecting faces locally…</span>${recompute}</div>`;
+    el.innerHTML=`<div class="d"><span class="spin"></span>Detecting faces locally…</div>`;
   } else if(sum.unscanned>0){
     const first=sum.scanned===0;
-    const note=paused
-      ? `${sum.unscanned.toLocaleString()} photo${sum.unscanned===1?"":"s"} not yet scanned — paused in <a style="cursor:pointer" onclick="showSection('overview')">Overview</a>.`
-      : `${sum.unscanned.toLocaleString()} photo${sum.unscanned===1?"":"s"} not yet scanned — runs automatically${first?" (first run fetches a ~38 MB face model once)":""}.`;
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <button class="btn" onclick="startFaces()">Scan now</button>
-      <span class="${paused?'d pending':'muted'}" style="font-size:12.5px">${paused?'<span class="dot pending"></span>':''}${note}</span>
-      ${recompute}</div>`;
+    const note=`${sum.unscanned.toLocaleString()} photo${sum.unscanned===1?"":"s"} not yet scanned — runs automatically${first?" (first run fetches a ~38 MB face model once)":""}.`;
+    el.innerHTML=`<div class="d pending"><span class="dot pending"></span>${note}</div>`;
   } else {
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px">
-      <span class="d ok"><span class="dot ok"></span>All ${sum.total_images.toLocaleString()} photos scanned.</span>
-      ${recompute}</div>`;
+    el.innerHTML=`<div class="d ok"><span class="dot ok"></span>All ${sum.total_images.toLocaleString()} photos scanned.</div>`;
   }
-}
-async function startFaces(){
-  const r=await jpost("/api/task",{kind:"faces",root_id:S.arch.id});
-  if(r.error){alert(r.error);return;}
-  S.faceJobRunning=true; renderFaceControls(); startFacePoll();
-}
-async function reclusterPeople(btn){
-  btn.disabled=true; btn.textContent="Recomputing…";
-  await jpost("/api/faces/recluster",{root_id:S.arch.id});
-  renderFaces(document.getElementById("main"));
 }
 function setText(id,v){const e=document.getElementById(id); if(e)e.textContent=v;}
 function startFacePoll(){ stopPoll(); S.poll=setInterval(faceTick,1500); faceTick(); }
@@ -882,13 +1078,12 @@ function startFacePoll(){ stopPoll(); S.poll=setInterval(faceTick,1500); faceTic
 // landed (people/faces counts changed), so thumbnails don't flicker in between.
 async function faceTick(){
   const area=document.getElementById("facejob"); if(!area){stopPoll();return;}
-  const [{jobs},sum,auto]=await Promise.all([
+  const [{jobs},sum]=await Promise.all([
     jget("/api/jobs?root="+S.arch.id),
-    jget("/api/faces/summary?root="+S.arch.id),
-    jget("/api/auto")]);
+    jget("/api/faces/summary?root="+S.arch.id)]);
   const fj=jobs.find(j=>j.kind==="faces"&&j.status==="running");
   const wasRunning=S.faceJobRunning; S.faceJobRunning=!!fj;
-  const prev=S.faceSum||{}; S.faceSum=sum; S.auto=auto;
+  const prev=S.faceSum||{}; S.faceSum=sum;
   setText("fs-people",sum.people.toLocaleString());
   setText("fs-faces",sum.faces.toLocaleString());
   setText("fs-photos",sum.photos_with_faces.toLocaleString());
@@ -898,8 +1093,7 @@ async function faceTick(){
   if(fj){
     const pct=fj.percent!=null?fj.percent:0;
     area.innerHTML=`<div class="job"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-      <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total?"/"+fj.total.toLocaleString():""} · ${fj.elapsed}s${fj.current?" · "+fj.current:""}
-      <button class="linkbtn" style="float:right" onclick="cancelJob(${fj.id})">Cancel</button></div></div>`;
+      <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total?"/"+fj.total.toLocaleString():""} · ${fj.elapsed}s${fj.current?" · "+fj.current:""}</div></div>`;
     if(sum.people!==prev.people||sum.faces!==prev.faces) renderPeople();
   } else {
     area.innerHTML="";
@@ -913,22 +1107,93 @@ async function renderPeople(){
     const s=S.faceSum;
     wrap.innerHTML=`<div class="soonbox"><div class="big">🙂</div>`+(
       s.faces>0
-        ? `<p>No recurring people found yet.</p><p class="muted">${s.faces.toLocaleString()} face${s.faces===1?"":"s"} detected, but none repeat often enough to group into a person. Scan more photos, then Recompute people.</p>`
+        ? `<p>No recurring people found yet.</p><p class="muted">${s.faces.toLocaleString()} face${s.faces===1?"":"s"} detected, but none repeat often enough to group into a person. People appear automatically as more photos are scanned.</p>`
         : (s.scanned>0
             ? `<p>No faces detected in the scanned photos.</p>`
-            : `<p>No faces yet — click <b>Detect faces</b> above to scan your photos locally.</p>`))+`</div>`;
+            : `<p>No faces yet — detection runs automatically in the background.</p>`))+`</div>`;
     return;
   }
-  wrap.innerHTML=`<div class="people" id="peoplegrid"></div>`;
+  wrap.innerHTML=`<div id="suggestwrap"></div><div class="people" id="peoplegrid"></div>`;
   const grid=document.getElementById("peoplegrid");
   people.forEach(p=>grid.appendChild(personCard(p)));
+  loadSuggestions();
+}
+async function loadSuggestions(){
+  const sug=await jget("/api/faces/suggestions?root="+S.arch.id+"&limit=60").catch(()=>null);
+  S.suggest={list:(sug&&sug.suggestions)||[], idx:0, total:(sug&&sug.total)||0};
+  renderSuggest();
+}
+function renderSuggest(){
+  const w=document.getElementById("suggestwrap"); if(!w)return;
+  const st=S.suggest||{list:[],idx:0,total:0}, s=st.list[st.idx];
+  if(!s){ w.innerHTML=""; return; }
+  const left=Math.max(1, (st.total||st.list.length)-st.idx);
+  const face=o=>`<div class="sug-face">
+      ${faceCollage(o.faces_preview&&o.faces_preview.length?o.faces_preview:[o.cover_face_id])}
+      <div class="sug-lbl">${o.name?esc(o.name):('Unnamed #'+o.id)}</div>
+      <div class="sug-cnt">${o.faces.toLocaleString()} face${o.faces===1?'':'s'}</div></div>`;
+  w.innerHTML=`<div class="suggest">
+    <div class="sug-head">Same person? <span class="muted">· ${left.toLocaleString()} to review · ${Math.round(s.sim*100)}% match</span></div>
+    <div class="sug-pair">${face(s.a)}<div class="sug-q">≟</div>${face(s.b)}</div>
+    <div class="sug-btns">
+      <button class="sug-yes" onclick="answerSuggest('same')">Same person</button>
+      <button class="sug-no" onclick="answerSuggest('different')">Not the same</button>
+      <button class="sug-skip" onclick="answerSuggest('skip')">Skip</button>
+    </div>
+    <div class="sug-extra"><button onclick="answerSuggest('notpeople')">🚫 Neither is a person — hide both (dolls / pets / cartoons)</button></div>
+    </div>`;
+}
+async function answerSuggest(kind){
+  const st=S.suggest, s=st.list&&st.list[st.idx]; if(!s)return;
+  // drop any later queued pair that references a now-removed cluster
+  const dropRefs=ids=>{ st.list=st.list.filter((x,ix)=>ix<=st.idx||(!ids.includes(x.a.id)&&!ids.includes(x.b.id))); };
+  if(kind==='same'){
+    const res=await jpost('/api/faces/merge',{a:s.a.id,b:s.b.id});
+    if(res&&res.error){ alert(res.error); return; }
+    if(res&&res.person){ const kept=res.person.id, dropped=(s.a.id===kept?s.b.id:s.a.id); dropRefs([dropped]); renderPeopleGrid(); }
+  }else if(kind==='different'){
+    await jpost('/api/faces/different',{a:s.a.id,b:s.b.id});
+  }else if(kind==='skip'){
+    await jpost('/api/faces/skip',{a:s.a.id,b:s.b.id});
+  }else if(kind==='notpeople'){
+    await jpost('/api/faces/hide',{person_id:s.a.id});
+    await jpost('/api/faces/hide',{person_id:s.b.id});
+    dropRefs([s.a.id,s.b.id]); renderPeopleGrid();
+  }
+  if(st.total>0) st.total--;
+  st.idx++;
+  if(st.idx>=st.list.length){ renderPeople(); return; }  // reload grid + fresh queue
+  renderSuggest();
+}
+async function renderPeopleGrid(){
+  const grid=document.getElementById("peoplegrid"); if(!grid)return;
+  const {people}=await jget("/api/faces/persons?root="+S.arch.id+"&limit=300");
+  grid.innerHTML=""; people.forEach(p=>grid.appendChild(personCard(p)));
+}
+async function hidePerson(id){
+  if(!confirm('Not a person? Its faces get marked as a doll/animal/cartoon and are left out of clustering. It disappears from People.'))return;
+  await jpost('/api/faces/hide',{person_id:id});
+  backToPeople();
+}
+// Up to 4 faces as a 2x2 collage (a single face fills the square). `ids` is the
+// person's faces_preview, with cover_face_id as fallback for old payloads.
+function faceCollage(ids){
+  ids=(ids||[]).filter(Boolean).slice(0,4);
+  if(ids.length<=1){
+    const id=ids[0];
+    return id?`<img class="face" src="/faceThumb/${id}" loading="lazy" onerror="this.style.visibility='hidden'">`
+             :`<div class="face"></div>`;
+  }
+  let cells="";
+  for(let i=0;i<4;i++) cells+= ids[i]
+    ? `<img src="/faceThumb/${ids[i]}" loading="lazy" onerror="this.style.visibility='hidden'">`
+    : `<div class="cempty"></div>`;
+  return `<div class="facecollage">${cells}</div>`;
 }
 function personCard(p){
   const d=document.createElement("div"); d.className="pcard"; d.onclick=()=>showPerson(p.id);
-  const cover=p.cover_face_id
-    ? `<img class="face" src="/faceThumb/${p.cover_face_id}" loading="lazy" onerror="this.style.visibility='hidden'">`
-    : `<div class="face"></div>`;
-  const nm=p.name?`<div class="pname">${esc(p.name)}</div>`:`<div class="pname un">Unnamed</div>`;
+  const cover=faceCollage(p.faces_preview&&p.faces_preview.length?p.faces_preview:[p.cover_face_id]);
+  const nm=p.name?`<div class="pname">${esc(p.name)}</div>`:`<div class="pname un">Unnamed #${p.id}</div>`;
   d.innerHTML=cover+`<div class="pmeta">${nm}<div class="pcount">${p.photos.toLocaleString()} photo${p.photos===1?"":"s"}</div></div>`;
   return d;
 }
@@ -941,7 +1206,7 @@ async function showPerson(id){
   const r=await jget("/api/faces/person/"+id+"?root="+S.arch.id+"&limit=120");
   if(!r||r.error){m.innerHTML='<div class="soonbox">Person not found.</div>';return;}
   S.faceGrid.offset=r.count;
-  const nm=r.name?esc(r.name):"Unnamed person";
+  const nm=r.name?esc(r.name):"Unnamed person #"+id;
   const nmCls=r.name?"nm":"nm un";
   const safe=(r.name||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   m.innerHTML=`<div class="facetopbar">
@@ -949,6 +1214,7 @@ async function showPerson(id){
       <div class="ftb-name" id="personname">
         <span class="${nmCls}">${nm}</span>
         <button class="linkbtn" onclick="editPersonName(${id},'${safe}')">${r.name?"Rename":"Name this person"}</button>
+        <button class="linkbtn" onclick="hidePerson(${id})" title="Mark as a doll / animal / cartoon and remove from People">Not a person</button>
       </div>
       <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos===1?"":"s"}</span>
     </div>
@@ -976,8 +1242,24 @@ function editPersonName(id,current){
   inp.addEventListener("keydown",e=>{if(e.key==="Enter")savePersonName(id);});
 }
 async function savePersonName(id){
-  const name=document.getElementById("personnameinput").value.trim();
-  await jpost("/api/faces/person/rename",{person_id:id,name});
+  const inp=document.getElementById("personnameinput");
+  const btn=inp&&inp.parentElement?inp.parentElement.querySelector("button.btn"):null;
+  const name=inp.value.trim();
+  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  let r;
+  try{ r=await jpost("/api/faces/person/rename",{person_id:id,name}); }
+  catch(e){ r={error:String(e)}; }
+  if(!r||r.error){
+    // Keep the edit box open so the typed name isn't lost, and say what happened.
+    if(btn){btn.disabled=false;btn.textContent="Save";}
+    let err=document.getElementById("personnameerr");
+    if(!err){err=document.createElement("span");err.id="personnameerr";
+      err.style.cssText="color:var(--bad,#e06c6c);font-size:12px;margin-left:6px";
+      (inp.parentElement||document.body).appendChild(err);}
+    err.textContent=(r&&r.error)?("Couldn’t save — "+r.error):"Couldn’t save — try again";
+    inp.focus();
+    return;
+  }
   showPerson(id);
 }
 function openPersonFromModal(id){
@@ -991,32 +1273,205 @@ function renderSoon(m,id){
     <p>${S2[2]}</p><p class="muted">Coming in a later phase.</p></div>`;
 }
 
-/* ---------- detail modal ---------- */
+/* ---------- detail modal (editable: faces / place / date) ---------- */
+let MITEM=null;                 // the currently-open item, mutated in place on edit
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(v){
+  if(!v)return "—";
+  const p=v.split("T")[0].split("-");
+  if(p.length===1)return p[0];                                  // year
+  if(p.length===2)return (MONTHS[(+p[1])-1]||p[1])+" "+p[0];     // year-month
+  return v.replace("T"," ");                                     // full day/datetime
+}
 async function openItem(id){
-  const it=await jget("/api/item/"+id);
+  MITEM=await jget("/api/item/"+id);
   const m=document.getElementById("mmedia");
-  if(it.type==="image")m.innerHTML=`<img src="/file/${id}">`;
-  else if(it.type==="video")m.innerHTML=`<video src="/file/${id}" controls autoplay></video>`;
-  else if(it.type==="audio")m.innerHTML=`<div style="padding:40px"><div class="ph" style="font-size:60px;text-align:center">🎵</div><audio src="/file/${id}" controls autoplay></audio></div>`;
-  else m.innerHTML=`<div class="ph" style="font-size:70px;padding:60px">${TYPE_ICON[it.type]||"📦"}</div>`;
+  if(MITEM.type==="image")m.innerHTML=`<img src="/file/${id}">`;
+  else if(MITEM.type==="video")m.innerHTML=`<video src="/file/${id}" controls autoplay></video>`;
+  else if(MITEM.type==="audio")m.innerHTML=`<div style="padding:40px"><div class="ph" style="font-size:60px;text-align:center">🎵</div><audio src="/file/${id}" controls autoplay></audio></div>`;
+  else m.innerHTML=`<div class="ph" style="font-size:70px;padding:60px">${TYPE_ICON[MITEM.type]||"📦"}</div>`;
+  renderInfo();
+  document.getElementById("modal").classList.add("open");
+}
+function renderInfo(){
+  closePick();
+  const it=MITEM;
   const kv=(k,v)=>v!=null&&v!==""?`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`:"";
   const dims=it.meta&&it.meta.width?`${it.meta.width}×${it.meta.height}`:"";
   const cam=it.meta&&it.meta.model?((it.meta.make||"")+" "+it.meta.model).trim():"";
   const gps=it.gps?`<a href="https://www.openstreetmap.org/?mlat=${it.gps.lat}&mlon=${it.gps.lon}&zoom=14" target="_blank">${it.gps.lat.toFixed(5)}, ${it.gps.lon.toFixed(5)}</a>`:"";
-  const ppl=(it.people||[]).filter(p=>p.person_id);
-  const pplHtml=ppl.length?`<div class="kv"><span class="k">People</span></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">`+
-    ppl.map(p=>`<span class="chip" onclick="openPersonFromModal(${p.person_id})">${p.name?esc(p.name):"Unnamed"}</span>`).join("")+`</div>`:"";
-  document.getElementById("minfo").innerHTML=`<h3>${it.name}</h3>`+
-    kv("Date",it.date?it.date.replace("T"," "):"—")+kv("Date source",it.date_source)+
-    kv("Type",it.type)+kv("Size",fmtBytes(it.size))+kv("Dimensions",dims)+kv("Camera",cam)+
-    kv("Location",gps)+kv("Description",it.description)+pplHtml+
-    `<div class="kv"><span class="k">Path</span></div><div style="font-size:11px;color:var(--muted);word-break:break-all">${it.rel_path}</div>
-     <div style="margin-top:12px"><a href="/file/${id}" target="_blank">Open original ↗</a></div>`;
-  document.getElementById("modal").classList.add("open");
+  const dsrc=it.date&&it.date_source?`<span class="muted" style="font-size:11px"> · ${it.date_source}</span>`:"";
+  // faces
+  let faces;
+  if(it.type!=="image") faces=`<div class="muted" style="font-size:12px">Face detection runs on photos.</div>`;
+  else if(!(it.people||[]).length) faces=`<div class="muted" style="font-size:12px">No faces detected.</div>`;
+  else faces=`<div class="facelist">`+it.people.map(faceRow).join("")+`</div>`;
+  // place
+  const placeTxt=it.place?(it.place.name?esc(it.place.name):'<span class="muted">Unnamed place</span>')
+                        :'<span class="muted">No place set</span>';
+  document.getElementById("minfo").innerHTML=`<h3>${esc(it.name)}</h3>`+
+    `<div class="isec"><div class="h">People</div>${faces}</div>`+
+    `<div class="isec"><div class="h">Place <button class="linkbtn" onclick="editPlace()">Change</button></div>
+       <div id="placeval" class="val">${placeTxt}</div></div>`+
+    `<div class="isec"><div class="h">Date <button class="linkbtn" onclick="editDate()">Edit</button></div>
+       <div id="dateval" class="val">${fmtDate(it.date)}${dsrc}</div></div>`+
+    `<div class="isec"><div class="h">Details</div>`+
+      kv("Type",it.type)+kv("Size",fmtBytes(it.size))+kv("Dimensions",dims)+kv("Camera",cam)+
+      kv("Coordinates",gps)+kv("Description",it.description?esc(it.description):"")+`</div>`+
+    `<div class="isec"><div class="h">File</div>
+       <div style="font-size:11px;color:var(--muted);word-break:break-all">${esc(it.rel_path)}</div>
+       <div style="margin-top:10px"><a href="/file/${it.id}" target="_blank">Open original ↗</a></div></div>`;
 }
-function closeModal(){document.getElementById("modal").classList.remove("open");
-  document.getElementById("mmedia").innerHTML="";}
+
+/* ----- faces: reassign to a named person (pinned server-side) ----- */
+function faceRow(f){
+  const named=MITEM.person_options||[];
+  const isNamed=f.person_id&&f.name;
+  let opts=isNamed?"":`<option value="" selected>${f.name?esc(f.name):"— unknown —"}</option>`;
+  named.forEach(p=>{opts+=`<option value="${p.id}"${p.id===f.person_id?" selected":""}>${esc(p.name)}</option>`;});
+  if(!named.length&&!isNamed)
+    return `<div class="facerow"><img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
+      <span class="muted" style="font-size:12px">Name people in the Faces section to label them here.</span></div>`;
+  return `<div class="facerow">
+    <img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
+    <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select></div>`;
+}
+// Optimistic saves: update the panel now, persist in the background, and roll back
+// only if the DB write actually fails — so editing feels instant even while the
+// pipeline holds the single writer. Every background callback bails out (or re-checks
+// stillOpen) if the modal has since closed or moved to another item.
+let _toastT=null;
+function toast(msg,isErr){
+  let t=document.getElementById("toast");
+  if(!t){t=document.createElement("div");t.id="toast";document.body.appendChild(t);}
+  t.textContent=msg; t.className="show"+(isErr?" err":"");
+  clearTimeout(_toastT); _toastT=setTimeout(()=>{t.className=isErr?"err":"";},2800);
+}
+function stillOpen(id){return MITEM&&MITEM.id===id;}
+
+function reassignFace(faceId,pid,sel){
+  if(!pid)return;
+  const f=(MITEM.people||[]).find(x=>x.face_id===faceId);
+  const prev=f?{person_id:f.person_id,name:f.name}:null;
+  const opt=(MITEM.person_options||[]).find(p=>p.id===+pid);
+  if(f&&opt){f.person_id=opt.id;f.name=opt.name;}   // optimistic (the select already shows it)
+  flashSaved(sel);
+  const revert=(msg)=>{
+    if(f&&prev){f.person_id=prev.person_id;f.name=prev.name;}
+    if(sel.isConnected)sel.value=(prev&&prev.name)?String(prev.person_id):"";
+    toast(msg,true);
+  };
+  qpost("/api/faces/reassign",{face_id:faceId,person_id:+pid})
+    .then(r=>{if(!(r&&r.ok))revert("Couldn’t reassign that face — "+((r&&r.error)||"try again"));})
+    .catch(()=>revert("Couldn’t reassign that face — connection error"));
+}
+function flashSaved(el){const o=el.style.borderColor;el.style.transition="border-color .2s";
+  el.style.borderColor="var(--good)";setTimeout(()=>{el.style.borderColor=o;el.style.transition="";},900);}
+
+/* ----- date: variable precision (year / year-month / year-month-day) ----- */
+function editDate(){
+  const p=(MITEM.date||"").split("T")[0].split("-");
+  document.getElementById("dateval").innerHTML=`
+    <div class="dtrow">
+      <input class="yr" id="d-y" type="text" inputmode="numeric" maxlength="4" placeholder="Year" value="${p[0]||""}">
+      <input id="d-m" type="text" inputmode="numeric" maxlength="2" placeholder="Mon" value="${p[1]?(+p[1]):""}">
+      <input id="d-d" type="text" inputmode="numeric" maxlength="2" placeholder="Day" value="${p[2]?(+p[2]):""}">
+    </div>
+    <div class="muted" style="font-size:11px">Enter only what you know — year alone is fine.</div>
+    <div class="btnrow"><button class="btn" onclick="saveDate()">Save</button>
+      <button class="btn sec" onclick="renderInfo()">Cancel</button></div>`;
+  document.getElementById("d-y").focus();
+}
+function saveDate(){
+  const y=document.getElementById("d-y").value.trim(),
+        mo=document.getElementById("d-m").value.trim(),
+        da=document.getElementById("d-d").value.trim();
+  if(!y){toast("Year is required.",true);return;}
+  const pad=v=>String(v).padStart(2,"0");
+  let v=String(+y);
+  if(mo){v+="-"+pad(+mo);if(da)v+="-"+pad(+da);}   // day needs a month
+  const id=MITEM.id, prev={date:MITEM.date,src:MITEM.date_source};
+  MITEM.date=v; MITEM.date_source="manual"; renderInfo();   // instant
+  const revert=(msg)=>{
+    if(stillOpen(id)){MITEM.date=prev.date;MITEM.date_source=prev.src;renderInfo();}
+    toast(msg,true);
+  };
+  qpost("/api/item/date",{file_id:id,datetime:v})
+    .then(r=>{if(!(r&&r.ok))revert("Couldn’t save the date — "+((r&&r.error)||"try again"));})
+    .catch(()=>revert("Couldn’t save the date — connection error"));
+}
+
+/* ----- place: attach to a named place, or create one by pin ----- */
+function editPlace(){
+  const cur=MITEM.place?MITEM.place.id:"";
+  let sel=`<select class="fsel" onchange="onPlaceSelect(this.value)"><option value="">— No place —</option>`;
+  (MITEM.place_options||[]).forEach(p=>sel+=`<option value="${p.id}"${p.id===cur?" selected":""}>${esc(p.name)}</option>`);
+  sel+=`</select>`;
+  document.getElementById("placeval").innerHTML=sel+
+    `<div class="btnrow"><button class="btn sec" onclick="newPlace()">＋ New place</button>
+       <button class="linkbtn" onclick="renderInfo()">Done</button></div>
+     <div id="p-pick"></div>`;
+}
+function onPlaceSelect(pid){
+  const id=MITEM.id, prev=MITEM.place;
+  MITEM.place=pid?((MITEM.place_options||[]).find(p=>p.id===+pid)||{id:+pid,name:null}):null;
+  renderInfo();   // instant — collapses the editor back to display
+  const body=pid?{file_id:id,place_id:+pid}:{file_id:id,clear:true};
+  const revert=(msg)=>{if(stillOpen(id)){MITEM.place=prev;renderInfo();}toast(msg,true);};
+  qpost("/api/item/place",body)
+    .then(r=>{if(!(r&&r.ok))revert("Couldn’t update the place — "+((r&&r.error)||"try again"));})
+    .catch(()=>revert("Couldn’t update the place — connection error"));
+}
+let MPICK=null,MPICK_MARK=null,MPICK_LL=null;
+function closePick(){if(MPICK){MPICK.remove();MPICK=null;}MPICK_MARK=null;MPICK_LL=null;}
+function newPlace(){
+  const host=document.getElementById("p-pick");
+  host.innerHTML=`
+    <input id="np-name" placeholder="Place name (e.g. Casa abuela)"
+      style="width:100%;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;margin:8px 0 0;box-sizing:border-box">
+    <div class="placepick" id="np-map"></div>
+    <div class="muted" style="font-size:11px;margin:-2px 0 2px">Click the map to drop a pin — that becomes the place’s location.</div>
+    <div class="btnrow"><button class="btn" id="np-save" onclick="saveNewPlace()" disabled>Create & attach</button>
+      <button class="btn sec" onclick="closePick();editPlace()">Cancel</button></div>`;
+  const start=MITEM.gps?[MITEM.gps.lat,MITEM.gps.lon]:null;
+  MPICK=L.map("np-map",{attributionControl:false});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(MPICK);
+  if(start){MPICK.setView(start,15);dropPin(start[0],start[1]);}else MPICK.setView([20,0],1);
+  MPICK.on("click",e=>dropPin(e.latlng.lat,e.latlng.lng));
+  setTimeout(()=>MPICK&&MPICK.invalidateSize(),60);
+}
+function dropPin(lat,lon){
+  MPICK_LL={lat,lon};
+  if(MPICK_MARK)MPICK_MARK.setLatLng([lat,lon]);
+  else MPICK_MARK=L.circleMarker([lat,lon],{radius:8,weight:2,color:"#fff",fillColor:"#3a7bd5",fillOpacity:1}).addTo(MPICK);
+  const b=document.getElementById("np-save");if(b)b.disabled=false;
+}
+function saveNewPlace(){
+  if(!MPICK_LL){toast("Click the map to set the location first.",true);return;}
+  const id=MITEM.id, root=MITEM.root_id, prev=MITEM.place;
+  const name=(document.getElementById("np-name").value||"").trim();
+  const ll={lat:MPICK_LL.lat,lon:MPICK_LL.lon};
+  closePick();
+  MITEM.place={id:null,name:name||null}; renderInfo();   // instant (id filled in when it lands)
+  qpost("/api/places/create",{root,name,lat:ll.lat,lon:ll.lon,file_id:id}).then(r=>{
+    if(r&&r.ok){
+      if(stillOpen(id)){
+        MITEM.place=r.place;
+        if(r.place&&r.place.name)(MITEM.place_options=MITEM.place_options||[]).push(r.place);
+        renderInfo();
+      }
+    }else{
+      if(stillOpen(id)){MITEM.place=prev;renderInfo();}
+      toast("Couldn’t create the place — "+((r&&r.error)||"try again"),true);
+    }
+  }).catch(()=>{
+    if(stillOpen(id)){MITEM.place=prev;renderInfo();}
+    toast("Couldn’t create the place — connection error",true);
+  });
+}
+
+function closeModal(){closePick();document.getElementById("modal").classList.remove("open");
+  document.getElementById("mmedia").innerHTML="";MITEM=null;}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 
 loadPicker().then(applyHash);
