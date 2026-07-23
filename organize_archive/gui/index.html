@@ -333,7 +333,8 @@ const SECTIONS=[
   {id:"faces",label:"Faces",icon:"🙂"},
   {id:"places",label:"Places",icon:"📍",soon:true},
 ];
-const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null}, poll:null};
+const S={arch:null, section:"overview", grid:{offset:0,year:null,month:null,type:null},
+  timeline:{bucket:"month",year:"",month:"",person:"",place:""}, poll:null};
 // Bumped on every user navigation (section switch / archive open). Async renders
 // capture it and bail if it changed while they were awaiting, so a slow fetch can
 // never paint a stale section over the one the user just picked.
@@ -592,16 +593,76 @@ async function renderDateSourceBar(){
 /* ---------- timeline ---------- */
 const TL_COL={image:"#5b9dff",video:"#c77dff",audio:"#57c98b",document:"#e6b45e",archive:"#9aa3b2",other:"#8b93a3"};
 async function renderTimeline(m){
+  const gen=NAV;
+  S.timeline={bucket:"month",year:"",month:"",person:"",place:""};
   m.innerHTML=`<h2 class="sec">Timeline</h2>
-    <div class="chips"><span class="chip" id="tl-month" onclick="drawTimeline('month')">By month</span>
-      <span class="chip" id="tl-year" onclick="drawTimeline('year')">By year</span></div>
+    <div class="filterbar" id="tl-filterbar"></div>
     <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
     <canvas id="tlc2" width="1180" height="380"></canvas>
     <div class="muted" style="margin-top:8px;font-size:12px">Running total of files over time, each type scaled to its own final count.</div>
     <h2 class="sec" style="margin-top:28px">How dates were found</h2>
     <div class="panel" id="dsbar">Loading…</div>`;
+  await buildTimelineFilterBar();
+  if(gen!==NAV)return;
   drawTimeline("month");
   renderDateSourceBar();
+}
+async function buildTimelineFilterBar(){
+  const gen=NAV;
+  const f=await jget("/api/browse/filters?root="+S.arch.id);
+  if(gen!==NAV)return;
+  const bar=document.getElementById("tl-filterbar"); if(!bar)return;
+  const years=[...new Set((f.periods||[]).map(p=>p.slice(0,4)))];
+  const opt=(v,l)=>`<option value="${v}">${l}</option>`;
+  const parts=[];
+  if(years.length)
+    parts.push(`<select class="fsel" id="tl-year-filter" onchange="onTimelineYearChange()">`+
+      opt("","All years")+years.map(y=>opt(y,y)).join("")+`</select>`+
+      `<select class="fsel" id="tl-month-filter" onchange="applyTimelineFilters()" disabled>`+
+      opt("","All months")+`</select>`);
+  if(f.people&&f.people.length)
+    parts.push(`<select class="fsel" id="tl-person-filter" onchange="applyTimelineFilters()">`+
+      opt("","Anyone")+f.people.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
+  if(f.places&&f.places.length)
+    parts.push(`<select class="fsel" id="tl-place-filter" onchange="applyTimelineFilters()">`+
+      opt("","Anywhere")+f.places.map(p=>opt(p.id,esc(p.name))).join("")+`</select>`);
+  parts.push(`<button class="linkbtn" id="tl-clear" onclick="clearTimelineFilters()" style="display:none">Clear filters</button>`);
+  bar.innerHTML=parts.join("");
+  S.timelineOpts=f;
+}
+function onTimelineYearChange(){
+  const year=selVal("tl-year-filter");
+  const msel=document.getElementById("tl-month-filter");
+  if(msel){
+    if(!year){msel.innerHTML='<option value="">All months</option>';msel.disabled=true;}
+    else{
+      const months=[...new Set((S.timelineOpts.periods||[])
+        .filter(p=>p.slice(0,4)===year).map(p=>p.slice(5,7)).filter(Boolean))].sort();
+      msel.innerHTML='<option value="">All months</option>'+
+        months.map(mm=>`<option value="${mm}">${MONTH_NAMES[+mm-1]}</option>`).join("");
+      msel.disabled=false;
+    }
+  }
+  applyTimelineFilters();
+}
+function applyTimelineFilters(){
+  const t=S.timeline;
+  t.year=selVal("tl-year-filter");
+  const mm=selVal("tl-month-filter");
+  t.month=(t.year&&mm)?`${t.year}-${mm}`:"";
+  t.person=selVal("tl-person-filter");
+  t.place=selVal("tl-place-filter");
+  const clear=document.getElementById("tl-clear");
+  if(clear)clear.style.display=(t.year||t.person||t.place)?"":"none";
+  drawTimeline(t.bucket);
+}
+function clearTimelineFilters(){
+  ["tl-year-filter","tl-person-filter","tl-place-filter"].forEach(id=>{
+    const e=document.getElementById(id);if(e)e.value="";
+  });
+  const msel=document.getElementById("tl-month-filter");
+  if(msel){msel.innerHTML='<option value="">All months</option>';msel.disabled=true;}
+  applyTimelineFilters();
 }
 function monotonePath(ctx,xs,ys){
   // Fritsch-Carlson monotone cubic: smooth but never overshoots the data,
@@ -664,15 +725,19 @@ function drawTypeLegend(legendId, ordered, totalsByType){
   });
 }
 async function drawTimeline(bucket){
-  document.getElementById("tl-month").style.background=bucket==="month"?"var(--accent2)":"";
-  document.getElementById("tl-year").style.background=bucket==="year"?"var(--accent2)":"";
-  const {series}=await jget(`/api/timeline?root=${S.arch.id}&bucket=${bucket}`);
+  const t=S.timeline;
+  t.bucket=bucket;
+  const p=new URLSearchParams({root:S.arch.id,bucket});
+  if(t.year)p.set("year",t.year); if(t.month)p.set("month",t.month);
+  if(t.person)p.set("person",t.person); if(t.place)p.set("place",t.place);
+  const {series}=await jget("/api/timeline?"+p);
   const cv2=document.getElementById("tlc2");
   const leg=document.getElementById("tllegend");
   if(!cv2)return;
   if(!series.length){
     cv2.getContext("2d").clearRect(0,0,cv2.width,cv2.height);
-    leg.innerHTML='<span class="muted">No dated media yet, run Extract on the Overview tab.</span>';
+    const filtered=t.year||t.person||t.place;
+    leg.innerHTML=`<span class="muted">${filtered?"No dated media matches these filters.":"No dated media yet, run Extract on the Overview tab."}</span>`;
     return;
   }
   const types=["image","video","audio"].filter(t=>series.some(s=>s[t]));

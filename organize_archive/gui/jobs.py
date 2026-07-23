@@ -361,9 +361,10 @@ class JobManager:
         read_conn = db.open_readonly(self.cfg.db_path)
         try:
             rows = semantic.pending_rows(read_conn, job.root_id, force=job.force)
+            total, already = semantic.work_counts(read_conn, job.root_id, force=job.force)
         finally:
             read_conn.close()
-        job.total, job.done = len(rows), 0
+        job.total, job.done = total, already
         if not rows:
             job.message = "semantic index is already current"
             return
@@ -384,7 +385,7 @@ class JobManager:
             except Exception as exc:
                 self._save_semantic_outcome(row, None, None, str(exc))
                 failed += 1
-            job.done = n
+            job.done = already + n
         job.message = f"{indexed} indexed, {skipped} skipped, {failed} errors"
 
     def _save_semantic_outcome(self, row, values, kind, reason):

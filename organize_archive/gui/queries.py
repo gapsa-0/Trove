@@ -178,18 +178,45 @@ def date_sources(db_path: str, root_id=None) -> dict:
         conn.close()
 
 
-def timeline(db_path: str, root_id=None, bucket="month") -> dict:
-    """Frequency of media over time. bucket: 'month' or 'year'."""
+def timeline(db_path: str, root_id=None, bucket="month", year=None, month=None,
+             person_id=None, cluster_id=None) -> dict:
+    """Frequency of matching, non-hidden media over time.
+
+    bucket is 'month' or 'year'. The remaining arguments mirror Browse filters
+    so the chart and grid can answer the same question.
+    """
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
         span = 7 if bucket == "month" else 4      # 'YYYY-MM' vs 'YYYY'
+        where = [_NOT_HIDDEN, "d.best_datetime IS NOT NULL"]
+        params: list = []
+        if rc:
+            where.append(rc.lstrip(" AND "))
+            params += rp
+        if year:
+            where.append("substr(d.best_datetime,1,4) = ?")
+            params.append(str(year))
+        if month:
+            where.append("substr(d.best_datetime,1,7) = ?")
+            params.append(month)
+        # Filter through memberships rather than joins: a file with more than
+        # one face or cluster row must still contribute only one chart count.
+        if person_id:
+            where.append("f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=?)")
+            params.append(person_id)
+        if cluster_id:
+            where.append(
+                "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm "
+                "WHERE pcm.cluster_id=?)")
+            params.append(cluster_id)
+        clause = " AND ".join(where)
         rows = conn.execute(
             f"""SELECT substr(d.best_datetime,1,{span}) period,
                        f.media_type mt, COUNT(*) c
                 FROM files f JOIN dates d ON d.file_id=f.id
-                WHERE {_VISIBLE}{rc} AND d.best_datetime IS NOT NULL
-                GROUP BY period, mt ORDER BY period""", rp).fetchall()
+                WHERE {clause}
+                GROUP BY period, mt ORDER BY period""", params).fetchall()
         periods: dict[str, dict] = {}
         for r in rows:
             p = periods.setdefault(r["period"], {"period": r["period"], "total": 0})

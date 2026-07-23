@@ -136,8 +136,11 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/summary":
                 self._json(queries.summary(self.cfg.db_path, one("root", int)))
             elif path == "/api/timeline":
-                self._json(queries.timeline(self.cfg.db_path, one("root", int),
-                                            one("bucket", str, "month")))
+                self._json(queries.timeline(
+                    self.cfg.db_path, root_id=one("root", int),
+                    bucket=one("bucket", str, "month"), year=one("year"),
+                    month=one("month"), person_id=one("person", int),
+                    cluster_id=one("place", int)))
             elif path == "/api/dates/sources":
                 self._json(queries.date_sources(self.cfg.db_path, one("root", int)))
             elif path == "/api/map/clusters":

@@ -81,10 +81,17 @@ carries **provenance**.
       DBSCAN, which chained ~55% of faces into one junk cluster; now the biggest
       cluster is a coherent ~8% (verified by intra-cluster tightness ~0.75).
       Idempotent rebuild, user names preserved by member overlap.
-- [ ] Reduce the ~1800-cluster long tail: face **quality gate** (blur/pose) to
-      drop non-face/false-positive detections, and a **merge/split people** UI.
+- [ ] Reduce the ~1800-cluster long tail: add an extraction-time, configurable
+      face **quality gate** (focus/blur metric on the aligned crop, detector
+      confidence, and minimum original-pixel size) before embedding or writing a
+      `faces` row. Calibrate on a small sample and apply to future scans only;
+      no live-database migration is required. Also add a **merge/split people** UI.
       Lower `faces_link_sim` and/or the ArcFace upgrade would assign more of the
       ~half-of-faces currently left unassigned (mostly genuine one-off faces).
+- [ ] Keep People human-only: reject doll, cartoon, and other non-human face
+      detections at extraction time with a human-vs-nonhuman classifier (rather
+      than relying on YuNet confidence). `not_person` remains only a manual
+      correction path for existing rows.
 - [x] `oa faces` CLI + GUI Faces section: person cards, per-person photos,
       rename, recompute. Query "photos of X".
 - [x] Fixed a face-crop coordinate bug: Pillow's `Image.draft()` (used to speed
@@ -124,7 +131,10 @@ carries **provenance**.
 
 ## Phase 9 — Timeline & pets
 - [ ] Timeline visualization across the archive.
-- [ ] Pet detection.
+- [ ] Dedicated **Pets** pipeline and GUI section: use an animal/pet detector or
+      classifier (not the human-face detector) to find and group cats/dogs and
+      other pets. Keep its detections and identities separate from `faces` /
+      `persons`; doll/cartoon false positives are discarded, not treated as pets.
 
 ## Phase 10 — GUI
 - [ ] Visual browser over the database (dedup review, date/type/folder/person/map).

@@ -227,6 +227,29 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
     ).fetchall()
 
 
+def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, int]:
+    """Return total semantic work and already-current outcomes for progress."""
+    where = ["f.present=1", "f.hidden=0", "f.media_type IN ('image','video','audio','document')"]
+    params: list = []
+    if root_id is not None:
+        where.append("f.root_id=?")
+        params.append(root_id)
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM files f WHERE {' AND '.join(where)}", params
+    ).fetchone()[0]
+    if force:
+        return total, 0
+    completed = conn.execute(
+        f"""SELECT COUNT(*) FROM files f
+            JOIN semantic_embeddings e ON e.file_id=f.id
+            WHERE {' AND '.join(where)}
+              AND e.source_sha256 IS f.sha256
+              AND COALESCE(e.indexer_version, '') = ?""",
+        (*params, INDEXER_VERSION),
+    ).fetchone()[0]
+    return total, completed
+
+
 def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) -> None:
     status = "indexed" if values is not None else ("skipped" if error and error.startswith(("unsupported", "media exceeds")) else "error")
     import struct
