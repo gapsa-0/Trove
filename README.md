@@ -153,6 +153,11 @@ oa faces --calibrate 100
 browser window when a supported Chromium-family browser is available. Use `--tab` to
 open a normal tab or `--no-open` when launching it remotely.
 
+The native "choose folder" dialog is provided by the desktop app; in a plain browser
+(`oa gui`) there is no OS picker, so **type the absolute folder path** into the box on
+the welcome screen (e.g. `/media/capsa/Residuos/Multimedia`) and press *Choose media
+folder*. Use the packaged desktop app if you want to click through a folder dialog.
+
 ## Data locations and backups
 
 Archive keeps mutable data outside both the source archive and the installed app:
@@ -179,6 +184,21 @@ npm run build:backend
 npm run package:linux
 npm run package:win
 ```
+
+**`npm run dev` must reach the project virtualenv.** In development the shell launches
+the backend with plain `python3`. If that interpreter is the system Python rather than
+the project `.venv`, OpenCV and onnxruntime are missing and **Pets and People report
+"unavailable"** (the rest of the app still works). Activate the venv first, or point the
+shell at it explicitly:
+
+```bash
+# either activate the venv before launching
+. ../.venv/bin/activate && npm run dev
+# …or name the interpreter for this run
+PYTHON=../.venv/bin/python npm run dev   # Windows: set PYTHON=..\.venv\Scripts\python.exe
+```
+
+Packaged builds are unaffected — they bundle their own interpreter and models.
 
 Native-tool staging and packaging files are in `packaging/`. Release versioning and
 clean-machine checks are described in [the release guide](docs/release.md).
