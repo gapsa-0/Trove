@@ -57,15 +57,18 @@ STAGES: tuple[StageDef, ...] = (
 
 # Display cards, in the order the Overview renders them.
 CARD_ORDER = ("scan", "dedup", "pets", "faces", "places", "semantic")
+# Coherent operation names (one per card), in a single consistent format.
 CARD_LABEL = {
-    "scan": "Scan & metadata", "dedup": "Duplicates", "pets": "Pets",
-    "faces": "People", "places": "Places", "semantic": "Semantic Search",
+    "scan": "Scan", "dedup": "Deduplication", "pets": "Pet detection",
+    "faces": "Face recognition", "places": "Location mapping",
+    "semantic": "Semantic indexing",
 }
-# What a card says while its stage is actively running.
+# What a card says while its stage is actively running — one consistent
+# "<verb>ing <object>…" format across every stage.
 _RUN_TEXT = {
-    "scan": "Scanning and extracting metadata", "dedup": "Comparing media now",
-    "pets": "Detecting pets now", "faces": "Detecting faces now",
-    "places": "Clustering locations now", "semantic": "Indexing media now",
+    "scan": "Scanning files…", "dedup": "Finding duplicates…",
+    "pets": "Detecting pets…", "faces": "Detecting faces…",
+    "places": "Mapping locations…", "semantic": "Indexing media…",
 }
 _UNAVAILABLE_TEXT = {
     "faces": "Face detection unavailable", "pets": "Pet detection unavailable",
@@ -192,6 +195,7 @@ def cards(states: list[dict]) -> list[dict]:
         by_card.setdefault(s["card"], []).append(s)
 
     result = []
+    blocker_card: dict[str, str | None] = {}
     for card_id in CARD_ORDER:
         members = by_card.get(card_id, [])
         if not members:
@@ -202,12 +206,42 @@ def cards(states: list[dict]) -> list[dict]:
         pending = sum(m["pending"] for m in members if m["counted"]) if counted else None
         progress = next((m["progress"] for m in members if m["progress"]), None)
         blocker = lead["blocker"]
+        blocker_card[card_id] = _CARD_OF.get(blocker) if blocker else None
+        message = _message(card_id, state, pending, blocker, lead.get("error"))
+
+        # The Scan card is the only one that fuses two stages running in parallel
+        # (scan ∥ enrich), which count different things. Never share one bar across
+        # both: reusing it makes the fill shoot past 100% and then rewind when the
+        # source flips. Instead show the scan bar *only while scanning*; once the
+        # on-disk walk is done but metadata extraction is still catching up, drop
+        # the bar and say so plainly.
+        if card_id == "scan":
+            by_kind = {m["kind"]: m for m in members}
+            if by_kind.get(SCAN, {}).get("state") == "running":
+                progress = by_kind[SCAN]["progress"]
+            elif by_kind.get(ENRICH, {}).get("state") == "running":
+                progress = None
+                message = "Finalizing metadata extraction…"
+
         result.append({
             "id": card_id, "label": CARD_LABEL[card_id], "state": state,
             "pending": pending, "counted": counted, "progress": progress,
+            "next": False,
             "waiting_on": CARD_LABEL.get(_CARD_OF.get(blocker)) if blocker else None,
-            "message": _message(card_id, state, pending, blocker, lead.get("error")),
+            "message": message,
         })
+
+    # Second pass — the "up next" marker. A blocked card is *next in line* when the
+    # stage it's waiting on is running right now: it's the one that starts the
+    # moment the current work finishes. Flag it (the GUI colours it and swaps the
+    # flat "Waiting for …" line for a "goes next" line) so the queue reads as an
+    # ordered pipeline, not a wall of identical "waiting" cards.
+    running_cards = {c["id"] for c in result if c["state"] == "running"}
+    for c in result:
+        bc = blocker_card.get(c["id"])
+        if c["state"] == "blocked" and bc in running_cards:
+            c["next"] = True
+            c["message"] = f"Up next · after {CARD_LABEL[bc]}"
     return result
 
 
