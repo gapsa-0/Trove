@@ -151,8 +151,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "not found"}, 404)
             elif path == "/api/archives":
                 self._json({"archives": queries.archives(self.cfg.db_path)})
-            elif path == "/api/freshness":
-                self._json(queries.freshness(self.cfg.db_path, one("root", int)))
             elif path == "/api/summary":
                 self._json(queries.summary(self.cfg.db_path, one("root", int)))
             elif path == "/api/timeline":
@@ -256,11 +254,18 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/api/item/"):
                 it = queries.item(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
                 self._json(it) if it else self._json({"error": "not found"}, 404)
-            elif path == "/api/jobs":
-                self._json({"jobs": self.jobs.list(one("root", int))})
-            elif path.startswith("/api/job/"):
-                j = self.jobs.get(int(path.rsplit("/", 1)[1]))
-                self._json(j) if j else self._json({"error": "not found"}, 404)
+            elif path == "/api/pipeline":
+                # Single source of truth for pipeline status: the same resolved
+                # stage list the scheduler acts on, so cards never disagree with
+                # what's actually running.
+                from . import pipeline
+                rid = one("root", int)
+                arch = next((a for a in queries.archives(self.cfg.db_path)
+                             if a["id"] == rid), None)
+                if arch is None:
+                    self._json({"error": "unknown archive"}, 404)
+                else:
+                    self._json(pipeline.snapshot(self.cfg, self.jobs, rid, arch["path"]))
             elif path.startswith("/thumb/"):
                 self._serve_thumb(int(path.rsplit("/", 1)[1]))
             elif path.startswith("/faceThumb/"):

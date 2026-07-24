@@ -4597,8 +4597,10 @@
       resetSectionViews();
       // Don't carry a previous archive's idle status into this one. Until its disk
       // check finishes, we genuinely do not know whether work is waiting.
-      S.arch = a; S.section = section || "overview"; S.fresh = null; S.activeJobs = {};
-      S.syncChecked = false; S.syncCheckFailed = false; S.wasActive = false;
+      S.arch = a; S.section = section || "overview";
+      // One source of truth for status now: the /api/pipeline snapshot. Don't
+      // carry a previous archive's status into this one.
+      S.pipeline = null; S.pipeActive = false;
       document.getElementById("picker").style.display = "none";
       document.getElementById("app").classList.add("on");
       document.getElementById("archname").textContent = a.name;
@@ -4625,34 +4627,38 @@
       semantic: "Creating search entries so media can be found by a description."
     };
     function jobDescription(kind) { return JOB_DESCRIPTION[kind] || "Updating archive data."; }
-    function renderGstat(jobs) {
+    // The sidebar chip and the Overview health cards read the SAME pipeline
+    // snapshot, so they can never tell the user two different things.
+    const CARD_KIND = { scan: "scan", dedup: "dedup", pets: "pets", faces: "faces", places: "places", semantic: "semantic" };
+    function renderGstat(snap) {
       const el = document.getElementById("gstat"); if (!el) return;
-      const run = (jobs || []).find(j => j.status === "running");
+      const run = snap && snap.stages && snap.stages.find(s => s.state === "running");
       if (run) {
-        const pct = run.percent != null ? run.percent : null;
-        const label = JOB_LABEL[run.kind] || run.kind;
-        el.title = `${label} ${jobDescription(run.kind)}`;
+        const pct = run.progress && run.progress.percent != null ? run.progress.percent : null;
+        const label = JOB_LABEL[CARD_KIND[run.id]] || run.label;
+        el.title = `${run.label}: ${run.message || ""}`;
         el.innerHTML = `<span class="spin"></span><span class="gtxt">${label}</span>`
           + (pct != null ? `<span class="gpct">${pct}%</span>` : "");
+      } else if (!snap) {
+        el.title = "Checking for new work…";
+        el.innerHTML = `<span class="spin"></span><span class="gtxt">Checking for new work…</span>`;
+      } else if (snap.overall === "idle") {
+        el.title = "Up to date"; el.innerHTML = `<span class="dot ok"></span><span class="gtxt">Up to date</span>`;
       } else {
-        const checking = !S.syncChecked;
-        el.title = checking ? "Checking for new files and pending work…" : S.syncCheckFailed ? "Couldn't check for pending work" : "Up to date";
-        el.innerHTML = checking
-          ? `<span class="spin"></span><span class="gtxt">Checking for new work…</span>`
-          : S.syncCheckFailed
-            ? `<span class="dot pending"></span><span class="gtxt">Check pending work</span>`
-            : `<span class="dot ok"></span><span class="gtxt">Up to date</span>`;
+        // Work is waiting to run (queued/blocked) but nothing is on the writer yet.
+        el.title = "Work is queued"; el.innerHTML = `<span class="dot pending"></span><span class="gtxt">Working…</span>`;
       }
     }
     async function gstatTick() {
       if (!S.arch) { stopGlobalStatus(); return; }
       try {
-        const { jobs } = await jget("/api/jobs?root=" + S.arch.id);
-        renderGstat(jobs);
+        const snap = await jget("/api/pipeline?root=" + S.arch.id);
+        S.pipeline = snap;
+        renderGstat(snap);
         // A library opened just before the scanner commits its first batch used to
         // remain an empty wall until the user manually changed a filter or route.
         // Refresh only that empty state, so active browsing is never interrupted.
-        const scanning = jobs.some(j => j.kind === "scan" && j.status === "running"), g = S.grid;
+        const scanning = (snap.stages || []).some(s => s.id === "scan" && s.state === "running"), g = S.grid;
         if (scanning && S.section === "library" && g && g.loaded === 0 && !g.refreshing) {
           g.refreshing = true;
           setTimeout(() => {
@@ -4873,162 +4879,107 @@
         tbl.appendChild(tr);
       });
       S.summary = s;
-      renderSyncPanel();
-      loadFreshness();   // fast disk-vs-index check, shown while waiting for the next auto tick
-      startPoll();       // catches jobs the scheduler starts on its own, not just user-triggered ones
+      renderHealthCards();   // paint immediately from the last snapshot (if any)
+      startPoll();           // single poller: /api/pipeline drives every status surface
     }
 
-    // Everything (scan → extract → faces → dedup) runs automatically in the
-    // background with no user intervention; this panel only reports what's
-    // happening. There is no pause/stop — it runs until the app is closed.
-    function renderSyncPanel() {
-      const el = document.getElementById("syncstatus"); if (!el) return;
-      const active = S.activeJobs || {};
-      const f = S.fresh, s = S.summary;
-      const checking = !S.syncChecked;
-      const card = (title, state, message, job = null) => {
-        let head = `<span class="dot ${state === "ok" ? "ok" : state === "pending" ? "pending" : "check"}"></span>${title}`;
-        if (state === "running") head = `<span class="spin"></span>${title}`;
-        let prog = "";
-        if (job && typeof job === "object") {
-          const pct = job.percent != null ? job.percent : 0;
-          prog = `<div class="job" style="margin-top:8px; border:none; padding:0; background:transparent"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-        <div class="cur" style="margin-top:4px">${pct}% · ${job.done.toLocaleString()}${job.total ? "/" + job.total.toLocaleString() : ""} · ${job.elapsed}s${job.current ? " · " + job.current : ""}</div></div>`;
-        }
-        return `<div class="health-task ${state}">
+    // Everything runs automatically in the background; this panel only reports
+    // what's happening. Every card is rendered the SAME way from one resolved
+    // state the server computes (running/queued/blocked/up_to_date/unavailable/
+    // error) — no per-card logic here — so the six cards can never disagree with
+    // each other or with what the pipeline is actually doing.
+    const HEALTH_CARDCLASS = { running: "running", queued: "pending", blocked: "", up_to_date: "", unavailable: "", error: "error" };
+    const HEALTH_DOT = { queued: "pending", blocked: "check", up_to_date: "ok", unavailable: "check", error: "check" };
+
+    function healthDoneMessage(id) {
+      // The "done" (up_to_date) line reuses the per-domain summary numbers the
+      // Overview already holds, so it reads as a result, not a bare "done".
+      const s = S.summary, ds = S.dupsum, fs = S.facesum, ps = S.petsum, ss = S.semanticsum;
+      switch (id) {
+        case "scan": return `${(s && s.total || 0).toLocaleString()} files catalogued`;
+        case "dedup": return ds && ds.duplicates
+          ? `${ds.duplicates.toLocaleString()} redundant cop${ds.duplicates === 1 ? "y" : "ies"} found`
+          : "No redundant copies found";
+        case "faces": return fs && fs.faces
+          ? `${fs.faces.toLocaleString()} face${fs.faces === 1 ? "" : "s"} in ${fs.photos_with_faces.toLocaleString()} photo${fs.photos_with_faces === 1 ? "" : "s"}`
+          : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analyzed, no faces`;
+        case "pets": return ps && ps.detections
+          ? `${ps.detections.toLocaleString()} pet${ps.detections === 1 ? "" : "s"} found`
+          : `${(ps && ps.scanned || 0).toLocaleString()} photo${ps && ps.scanned === 1 ? "" : "s"} analyzed`;
+        case "places": return s && s.with_gps
+          ? `${s.with_gps.toLocaleString()} location${s.with_gps === 1 ? "" : "s"} mapped`
+          : "No locations found";
+        case "semantic": return ss && ss.indexed
+          ? `${ss.indexed.toLocaleString()} item${ss.indexed === 1 ? "" : "s"} indexed`
+          : (ss && ss.configured ? "Ready to index" : "Not configured");
+        default: return "";
+      }
+    }
+
+    function healthCard(stage) {
+      const st = stage.state;
+      const head = st === "running"
+        ? `<span class="spin"></span>${stage.label}`
+        : `<span class="dot ${HEALTH_DOT[st] || "check"}"></span>${stage.label}`;
+      const message = st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || "");
+      let prog = "";
+      const p = stage.progress;
+      if (st === "running" && p && (p.total || p.done)) {
+        const pct = p.percent != null ? p.percent : 0;
+        prog = `<div class="job" style="margin-top:8px; border:none; padding:0; background:transparent"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
+        <div class="cur" style="margin-top:4px">${pct}% · ${(p.done || 0).toLocaleString()}${p.total ? "/" + p.total.toLocaleString() : ""} · ${p.elapsed || 0}s${p.current ? " · " + p.current : ""}</div></div>`;
+      }
+      return `<div class="health-task ${HEALTH_CARDCLASS[st] || ""}">
       <div class="health-task-head">${head}</div>
       <div class="health-task-state">${message}${prog}</div></div>`;
-      };
+    }
 
-      const TASK_DEPS = { scan: null, dedup: "scan", pets: "dedup", faces: "pets", places: "dedup", semantic: "dedup" };
-      const TASK_NAMES = { scan: "Scan", dedup: "Duplicates", pets: "Pets", faces: "People", places: "Places", semantic: "Semantic Search" };
-      const isTaskActive = (t) => t === "scan" ? (active.scan || active.enrich) : active[t];
-
-      const getWaitMsg = (task) => {
-        return `Waiting for ${TASK_NAMES[TASK_DEPS[task]]}...`;
-      };
-
-      const pendingTasks = (f ? (f.new_files || 0) + (f.not_enriched || 0) : 0);
-      let scanState = "ok";
-      let scanTitle = "Scanning and extracting metadata";
-      let scanPseudoJob = null;
-
-      if (active.scan) {
-        scanState = "running";
-        scanTitle = "Scanning and extracting metadata";
-        scanPseudoJob = active.scan;
-      } else if (active.enrich) {
-        scanState = "running";
-        scanTitle = "Finalizing metadata extraction";
-        scanPseudoJob = null;
-      } else if (S.syncCheckFailed) {
-        scanState = "error";
-      } else if (checking) {
-        scanState = "running";
-        scanTitle = "Checking for new files";
-      } else if (pendingTasks > 0) {
-        scanState = "pending";
+    function renderHealthCards() {
+      const el = document.getElementById("syncstatus"); if (!el) return;
+      const snap = S.pipeline;
+      if (!snap || !snap.stages) {
+        el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-head"><span class="spin"></span>Checking for work…</div></div></div>`;
+        return;
       }
+      el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;
+    }
 
-      const scan = scanState === "error"
-        ? card("Scan", "error", "Check will retry shortly")
-        : scanState === "running"
-          ? card("Scan", "running", scanTitle, scanPseudoJob)
-          : scanState === "pending"
-            ? card("Scan", "pending", `${pendingTasks.toLocaleString()} task${pendingTasks === 1 ? "" : "s"} queued`)
-            : card("Scan", "ok", `${(s && s.total || 0).toLocaleString()} files catalogued`);
-      const duplicates = active.dedup
-        ? card("Duplicates", "running", "Comparing media now", active.dedup)
-        : (active.scan || active.enrich)
-          ? card("Duplicates", "pending", getWaitMsg("dedup"))
-          : card("Duplicates", "ok", S.dupsum && S.dupsum.duplicates
-            ? `${S.dupsum.duplicates.toLocaleString()} redundant cop${S.dupsum.duplicates === 1 ? "y" : "ies"} found`
-            : "No redundant copies found");
-      const faces = active.faces
-        ? card("People", "running", "Detecting faces now", active.faces)
-        : checking
-          ? card("People", "running", "Checking pending photos")
-          : (f && f.not_faced > 0 || active.scan || active.enrich || active.dedup || active.pets)
-            ? card("People", "pending", (active.scan || active.enrich || active.dedup || active.pets) ? getWaitMsg("faces") : `${f.not_faced.toLocaleString()} photo${f.not_faced === 1 ? "" : "s"} waiting`)
-            : card("People", "ok", S.facesum && S.facesum.faces
-              ? `${S.facesum.faces.toLocaleString()} face${S.facesum.faces === 1 ? "" : "s"} found in ${S.facesum.photos_with_faces.toLocaleString()} photo${S.facesum.photos_with_faces === 1 ? "" : "s"}`
-              : `${(S.facesum && S.facesum.scanned || 0).toLocaleString()} photo${S.facesum && S.facesum.scanned === 1 ? "" : "s"} analyzed, no faces found`);
-      const pets = active.pets
-        ? card("Pets", "running", "Detecting pets now", active.pets)
-        : (active.scan || active.enrich || active.dedup)
-          ? card("Pets", "pending", getWaitMsg("pets"))
-          : card("Pets", "ok", S.petsum && S.petsum.detections
-            ? `${S.petsum.detections.toLocaleString()} pet${S.petsum.detections === 1 ? "" : "s"} found`
-            : `${(S.petsum && S.petsum.scanned || 0).toLocaleString()} photo${S.petsum && S.petsum.scanned === 1 ? "" : "s"} analyzed`);
-      const places = active.places
-        ? card("Places", "running", "Clustering locations now", active.places)
-        : (active.scan || active.enrich || active.dedup)
-          ? card("Places", "pending", getWaitMsg("places"))
-          : card("Places", "ok", s && s.with_gps
-            ? `${s.with_gps.toLocaleString()} location${s.with_gps === 1 ? "" : "s"} mapped`
-            : "No locations found");
-      const semantic = active.semantic
-        ? card("Semantic Search", "running", "Indexing media now", active.semantic)
-        : (active.scan || active.enrich || active.dedup)
-          ? card("Semantic Search", "pending", getWaitMsg("semantic"))
-          : card("Semantic Search", "ok", S.semanticsum && S.semanticsum.completed
-            ? `${S.semanticsum.completed.toLocaleString()} item${S.semanticsum.completed === 1 ? "" : "s"} indexed`
-            : (S.semanticsum && S.semanticsum.configured ? "Ready to index" : "Not configured"));
-      el.innerHTML = `<div class="health-grid">${scan}${duplicates}${pets}${faces}${places}${semantic}</div>`;
-    }
-    async function loadFreshness() {
-      S.fresh = null;
-      S.syncChecked = false;
-      S.syncCheckFailed = false;
-      renderSyncPanel();
-      try {
-        const r = await jget("/api/freshness?root=" + S.arch.id);
-        S.fresh = { checked: true, new_files: r.new_files || 0, not_faced: r.not_faced || 0 };
-      } catch (e) { S.syncCheckFailed = true; }
-      S.syncChecked = true;
-      renderSyncPanel();
-      gstatTick();
-    }
-    async function refreshJobs() {
-      const area = document.getElementById("jobarea"); if (!area) return;
-      const { jobs } = await jget("/api/jobs?root=" + S.arch.id);
-      const active = jobs.filter(j => j.status === "running");
-      S.activeJobs = {
-        scan: active.find(j => j.kind === "scan"), enrich: active.find(j => j.kind === "enrich"),
-        faces: active.find(j => j.kind === "faces"), pets: active.find(j => j.kind === "pets"),
-        places: active.find(j => j.kind === "places"),
-        dedup: active.find(j => j.kind === "dedup"), semantic: active.find(j => j.kind === "semantic")
-      };
-      renderSyncPanel();
-      area.innerHTML = "";
-      // While tasks are running, refresh the top stat cards in-place so the
-      // user sees numbers climb without waiting for all jobs to finish.
-      if (active.length && S.section === "overview") {
+    // The one poller behind every status surface: fetch the snapshot, render the
+    // cards + sidebar chip, and keep the top stat numbers climbing while active.
+    async function refreshPipeline() {
+      if (!S.arch) { stopPoll(); return; }
+      let snap;
+      try { snap = await jget("/api/pipeline?root=" + S.arch.id); }
+      catch (e) { return; }   // transient; the next tick retries
+      S.pipeline = snap;
+      renderHealthCards();
+      renderGstat(snap);
+      const area = document.getElementById("jobarea"); if (area) area.innerHTML = "";
+      const busy = snap.overall !== "idle";
+      if (busy && S.section === "overview") {
+        // Numbers should climb live while work runs, without waiting for the
+        // whole pipeline to finish.
         try {
           const [s, ds] = await Promise.all([
             jget("/api/summary?root=" + S.arch.id),
             jget("/api/dups/summary?root=" + S.arch.id)]);
           S.summary = s; S.dupsum = ds;
-          const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-          el("ov-total", s.total.toLocaleString());
-          el("ov-enriched", s.enriched.toLocaleString());
-          el("ov-gps", s.with_gps.toLocaleString());
-          el("ov-dups", ds.duplicates.toLocaleString());
-        } catch (_) { /* non-critical; next tick will retry */ }
+          const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+          set("ov-total", s.total.toLocaleString());
+          set("ov-enriched", s.enriched.toLocaleString());
+          set("ov-gps", s.with_gps.toLocaleString());
+          set("ov-dups", ds.duplicates.toLocaleString());
+        } catch (_) { /* non-critical; next tick retries */ }
       }
-      // Re-render the overview once, only when a job has just finished (active→idle) so
-      // the stats reflect the completed work. Guarding on the transition matters: the
-      // newest job stays "done" forever, so re-rendering whenever `jobs[0]` is done would
-      // loop endlessly (renderOverview→startPoll→refreshJobs→renderOverview…), pegging the
-      // CPU and repainting Overview over whatever section the user navigates to.
-      const justFinished = S.wasActive && !active.length;
-      S.wasActive = active.length > 0;
-      if (justFinished) {
-        loadFreshness();
-        if (S.section === "overview") renderOverview(document.getElementById("main"));
+      // On the busy→idle edge, re-render the Overview once so the "done" messages
+      // pick up the final summary numbers. Guarding on the transition avoids an
+      // endless renderOverview→startPoll→refresh loop.
+      const wasBusy = S.pipeActive; S.pipeActive = busy;
+      if (wasBusy && !busy && S.section === "overview") {
+        renderOverview(document.getElementById("main"));
       }
     }
-    function startPoll() { stopPoll(); S.poll = setInterval(refreshJobs, 1200); refreshJobs(); }
+    function startPoll() { stopPoll(); S.poll = setInterval(refreshPipeline, 1200); refreshPipeline(); }
     function stopPoll() { if (S.poll) { clearInterval(S.poll); S.poll = null; } }
 
     /* ---------- date sources (complementary bar shown under the Timeline) ---------- */
@@ -5559,8 +5510,10 @@
       try {
         const s = await jget("/api/browse/semantic/status?root=" + S.arch.id);
         if (!document.getElementById("semantic-status")) return;
-        const j = (await jget("/api/jobs?root=" + S.arch.id)).jobs.find(x => x.kind === "semantic" && x.status === "running");
-        const progress = j ? ` ${jobDescription("semantic")} Indexing ${j.done.toLocaleString()} / ${j.total.toLocaleString()}${j.current ? ` · ${j.current}` : ""}…` :
+        const snap = await jget("/api/pipeline?root=" + S.arch.id);
+        const st = (snap.stages || []).find(x => x.id === "semantic" && x.state === "running");
+        const j = st && st.progress ? st.progress : null;
+        const progress = j ? ` ${jobDescription("semantic")} Indexing ${(j.done || 0).toLocaleString()} / ${(j.total || 0).toLocaleString()}${j.current ? ` · ${j.current}` : ""}…` :
           (s.pending ? ` ${s.pending.toLocaleString()} media still need indexing.` : "");
         const keyNote = s.configured ? "" : " Add VOYAGE_API_KEY to the root .env file and restart the app.";
         el.innerHTML = `<span class="dot ${s.indexed ? "ok" : "check"}"></span>${s.indexed.toLocaleString()} indexed`
@@ -6006,9 +5959,11 @@
     }
     async function renderSettings(m) {
       const gen = NAV, root = S.arch.id;
-      const [summary, jobs] = await Promise.all([jget("/api/summary?root=" + root), jget("/api/jobs?root=" + root)]);
+      const [summary, snap] = await Promise.all([jget("/api/summary?root=" + root), jget("/api/pipeline?root=" + root)]);
       if (gen !== NAV) return;
-      const running = (jobs.jobs || []).find(j => j.status === "running");
+      const rstage = (snap.stages || []).find(s => s.state === "running");
+      const running = rstage ? { kind: CARD_KIND[rstage.id], current: rstage.message,
+        percent: rstage.progress ? rstage.progress.percent : null } : null;
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Archive settings</h2><p>Review this archive’s source, processing status, and local application details.</p></div></div>
     <div class="panel"><h3>Source</h3><div class="path muted">${esc(S.arch.path)}</div><p class="privacy-note">This archive is catalogued and processed on this computer. The source files are never moved, edited, uploaded, or deleted.</p></div>
     <div class="panel"><h3>Archive activity</h3>${running ? `<p><span class="spin"></span>${JOB_LABEL[running.kind] || running.kind}</p><div class="progress"><div class="progfill" style="width:${running.percent || 0}%"></div></div><div class="muted">${running.current || jobDescription(running.kind)}</div>` : `<p><span class="dot ok"></span> No work needs attention.</p>`}<p class="muted">${summary.total.toLocaleString()} catalogued files · ${fmtBytes(summary.size)}</p></div>
@@ -6130,13 +6085,14 @@
     // landed (people/faces counts changed), so thumbnails don't flicker in between.
     async function faceTick() {
       const area = document.getElementById("facejob"); if (!area) { stopPoll(); return; }
-      const [{ jobs }, sum] = await Promise.all([
-        jget("/api/jobs?root=" + S.arch.id),
+      const [snap, sum] = await Promise.all([
+        jget("/api/pipeline?root=" + S.arch.id),
         jget("/api/faces/summary?root=" + S.arch.id)]);
-      const fj = jobs.find(j => j.kind === "faces" && j.status === "running");
-      // Jobs are returned newest-first. Keep a failed attempt visible during the
-      // scheduler's short retry pause instead of making the progress panel blink.
-      const failedFace = jobs.find(j => j.kind === "faces" && j.status === "error");
+      const facesStage = (snap.stages || []).find(s => s.id === "faces");
+      const fj = facesStage && facesStage.state === "running" ? facesStage.progress : null;
+      // Keep a failed attempt visible during the scheduler's retry cooldown
+      // instead of making the progress panel blink.
+      const failedFace = facesStage && facesStage.state === "error" ? facesStage : null;
       const wasRunning = S.faceJobRunning; S.faceJobRunning = !!fj;
       const prev = S.faceSum || {}; S.faceSum = sum;
       setText("fs-people", sum.people.toLocaleString());
@@ -6448,8 +6404,8 @@
     function startPetPoll() { stopPoll(); S.poll = setInterval(petTick, 1800); petTick(); }
     async function petTick() {
       if (ACTIVE_SECTION !== "pets") { stopPoll(); return; }
-      const { jobs } = await jget("/api/jobs?root=" + S.arch.id);
-      const running = jobs.some(j => j.kind === "pets" && j.status === "running");
+      const snap = await jget("/api/pipeline?root=" + S.arch.id);
+      const running = (snap.stages || []).some(s => s.id === "pets" && s.state === "running");
       const was = S.petJobRunning; S.petJobRunning = running;
       if (was && !running) showSection("pets", true);
     }

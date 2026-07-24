@@ -83,6 +83,13 @@ class JobManager:
     # that repeated clustering stays a small fraction of total time.
     _FACE_CHUNK = 1200
     _PET_CHUNK = 600
+    # Freshness disk walk is reused for this long before re-walking (see
+    # _walk_cache). Comfortably below the idle backoff so an idle tick still
+    # re-walks and notices files added to the source folder.
+    _WALK_TTL = 60.0
+    # After a job of some kind errors, wait this long before auto-restarting the
+    # same kind, so a persistent failure backs off instead of spinning.
+    _ERROR_COOLDOWN = 120.0
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -92,12 +99,21 @@ class JobManager:
         self._lock = threading.Lock()          # guards registry
         self._write_lock = threading.Lock()    # serializes DB writers
 
-        # Both dedup and map place-clustering are "derived" passes rerun whenever
-        # new/enriched data lands; dirty flags queue them once an archive is open.
+        # Dedup rebuilds every group wholesale (no per-file backlog), so its
+        # "needs a run" signal is this flag: set when scan/enrich change data,
+        # cleared only on a *successful* rebuild (so a cancelled/errored dedup
+        # still retries). Places, by contrast, has a real count (unplaced
+        # geotagged files), so it no longer needs a flag. Defaults dirty so the
+        # first open of an archive reconciles duplicates once.
         self._dedup_dirty = True
         self._dedup_root: int | None = None
-        self._places_dirty = True
-        self._places_root: int | None = None
+        # Disk-walk cache per root: counting files on disk is the one expensive
+        # part of freshness, so the status endpoint (polled ~1/s) reads a cached
+        # count instead of walking ~150k files every time. (monotonic_ts, count)
+        self._walk_cache: dict[int, tuple[float, int]] = {}
+        # When a stage's job errors, hold off auto-restarting that kind for a
+        # cooldown so a hard failure can't hot-loop through the nudge path.
+        self._error_at: dict[tuple[int, str], float] = {}
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
@@ -131,13 +147,37 @@ class JobManager:
         return [j.public() for j in js
                 if root_id is None or j.root_id == root_id]
 
-    def get(self, job_id: int) -> dict | None:
-        j = self._jobs.get(job_id)
-        return j.public() if j else None
-
     def active_kind(self, kind: str) -> bool:
         return any(j.status == "running" and j.kind == kind
                    for j in self._jobs.values())
+
+    def disk_count(self, root_id: int, root_path: str,
+                   max_age: float | None = None) -> int | None:
+        """Files on disk under this root, cached so the polled status endpoint
+        never triggers a fresh ~150k-file walk. Returns None if the folder is
+        gone."""
+        from pathlib import Path
+        from ..scan.walker import count_files
+        ttl = self._WALK_TTL if max_age is None else max_age
+        hit = self._walk_cache.get(root_id)
+        now = time.monotonic()
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+        if not Path(root_path).is_dir():
+            self._walk_cache.pop(root_id, None)
+            return None
+        count = count_files(Path(root_path))
+        self._walk_cache[root_id] = (now, count)
+        return count
+
+    def dedup_needed(self, root_id: int) -> bool:
+        """Whether a duplicate rebuild is outstanding for this root."""
+        return self._dedup_dirty and self._dedup_root in (None, root_id)
+
+    def _error_ready(self, root_id: int, kind: str) -> bool:
+        """True once a kind's post-error cooldown has elapsed (or none is set)."""
+        at = self._error_at.get((root_id, kind))
+        return at is None or (time.monotonic() - at) >= self._ERROR_COOLDOWN
 
     def stop_archive(self, root_id: int, timeout: float = 10.0) -> bool:
         """Cancel this archive's work and wait briefly for safe DB quiescence.
@@ -240,82 +280,57 @@ class JobManager:
                                     else min(self._auto_interval * 1.5, self._AUTO_MAX))
 
     def _auto_tick(self) -> bool:
-        """One scheduling decision. Returns True if it started (or is waiting
-        on) work, so the caller can poll again soon rather than backing off."""
-        from . import queries, semantic
+        """One scheduling decision, driven entirely by the same pipeline snapshot
+        the GUI renders. Starts every stage that is ready to run and returns True
+        while any work is outstanding, so the loop keeps the fast interval until
+        the pipeline is fully idle.
+
+        Readiness (deps satisfied, backend available, not already running) is
+        already resolved in the snapshot: a stage is ``queued`` exactly when it
+        should start now. Parallel kinds (scan ∥ enrich ∥ semantic) start
+        together; the DB-writer stages (dedup → places/pets → faces) start one at
+        a time, matching the single write lock.
+        """
+        from . import pipeline, queries
         open_root_id = self._open_root_id
         if open_root_id is None:
             return False
-        archives = [a for a in queries.archives(self.cfg.db_path)
-                    if a["id"] == open_root_id and a["exists"]]
-        if not archives:
+        archive = next((a for a in queries.archives(self.cfg.db_path)
+                        if a["id"] == open_root_id and a["exists"]), None)
+        if not archive:
             return False
-        # Do not embed until dedup has selected canonicals. Once that is done,
-        # Remote semantic calls may overlap local metadata/faces extraction safely.
-        dedup_ready = not self._dedup_dirty and not self.active_kind("dedup")
-        if dedup_ready and semantic.api_key_available() and not self.active_kind("semantic"):
-            for archive in archives:
-                if queries.semantic_pending(self.cfg.db_path, archive["id"]):
-                    self.start("semantic", archive["id"], archive["path"])
-                    return True
-        # Scan and enrich run as independent parallel jobs: scanning hashes
-        # files while enrichment reads metadata from already-committed rows.
-        # Both use their own DB connections and WAL mode serializes writes.
-        # Semantic indexing also overlaps safely (mostly waiting on Voyage).
-        # Later stages (dedup, faces, pets, places) wait for both to finish.
-        for a in archives:
-            fresh = queries.freshness(self.cfg.db_path, a["id"])
-            if fresh.get("new_files", 0) > 0 and not self.active_kind("scan"):
-                self.start("scan", a["id"], a["path"])
-                self._dedup_dirty, self._dedup_root = True, a["id"]
-                self._places_dirty, self._places_root = True, a["id"]
-            if fresh.get("not_enriched", 0) > 0 and not self.active_kind("enrich"):
-                self.start("enrich", a["id"], a["path"])
-                self._dedup_dirty, self._dedup_root = True, a["id"]
-                self._places_dirty, self._places_root = True, a["id"]
-        if self.active_kind("scan") or self.active_kind("enrich"):
-            return True
-        # Dedup runs BEFORE faces on purpose: it sets files.hidden on duplicate
-        # copies, and the face pass skips hidden files — so faces only ever run on
-        # unique/canonical images (no wasted detection on duplicate photos).
-        if self._dedup_dirty:
-            self._dedup_dirty = False
-            root_id = open_root_id
-            self.start("dedup", root_id, None)
-            return True
-        if self.active_kind("dedup"):
-            return True
 
-        # Map place-clustering runs fast and only needs metadata (Scan/Enrich)
-        # and Dedup (to skip duplicates). We run it before ML passes so the Map
-        # populates quickly instead of waiting hours for face detection.
-        if self._places_dirty:
-            self._places_dirty = False
-            self.start("places", open_root_id, None)
-            return True
-        if self.active_kind("places"):
-            return True
-
-        # Animals run before human faces. Their boxes suppress YuNet detections
-        # that are substantially contained by a pet/toy region.
-        from ..pets import backend as pet_backend
-        from ..pets.extract import scan_source as pet_scan_source
-        if pet_backend.available():
-            for a in archives:
-                if queries.pets_pending(
-                        self.cfg.db_path, a["id"], pet_scan_source(self.cfg)) > 0:
-                    self.start("pets", a["id"], a["path"])
-                    return True
-        # Faces: the long extraction pass, so it runs after the cheap ones.
-        # Skipped entirely when the local face backend isn't available, so we
-        # never spin on work that can't run.
-        from ..faces import backend as face_backend
-        if face_backend.available():
-            for a in archives:
-                if queries.faces_pending(self.cfg.db_path, a["id"]) > 0:
-                    self.start("faces", a["id"], a["path"])
-                    return True
-        return False
+        states = pipeline.stage_states(self.cfg, self, open_root_id, archive["path"])
+        lock_running = any(s["kind"] in pipeline.LOCK_KINDS and s["state"] == "running"
+                           for s in states)
+        acted = False
+        started_lock = False
+        for s in states:
+            kind, state = s["kind"], s["state"]
+            if state not in ("queued", "error"):
+                continue
+            if state == "error" and not self._error_ready(open_root_id, kind):
+                continue
+            if kind in pipeline.PARALLEL_KINDS:
+                if self.active_kind(kind):
+                    continue
+            else:  # single-writer stage: at most one at a time
+                if lock_running or started_lock:
+                    continue
+            # Scanning or enriching may change the file set, so a fresh duplicate
+            # rebuild is owed once they finish.
+            if kind in (pipeline.SCAN, pipeline.ENRICH):
+                self._dedup_dirty, self._dedup_root = True, open_root_id
+            # dedup/places operate per-root via root_id and ignore root_path.
+            path = None if kind in (pipeline.DEDUP, pipeline.PLACES) else archive["path"]
+            if "error" not in self.start(kind, open_root_id, path):
+                acted = True
+                if kind in pipeline.LOCK_KINDS:
+                    started_lock = True
+        # Keep polling promptly while anything is running or waiting to run.
+        outstanding = any(s["state"] in ("running", "queued", "blocked", "error")
+                          for s in states)
+        return acted or outstanding
 
     # -- worker -----------------------------------------------------------
     def _run(self, job: Job, cancel: threading.Event):
@@ -355,15 +370,28 @@ class JobManager:
                     finally:
                         conn.close()
             job.status = "done"
+            # A successful rebuild is the only thing that clears the dedup flag,
+            # so a cancelled or errored dedup stays queued and retries.
+            if job.kind == "dedup":
+                self._dedup_dirty = False
+            self._error_at.pop((job.root_id, job.kind), None)
         except KeyboardInterrupt:
             job.status = "cancelled"
             job.message = "cancelled — progress saved"
         except Exception as e:
             job.status = "error"
             job.message = f"{e}"
+            self._error_at[(job.root_id, job.kind)] = time.monotonic()
             traceback.print_exc()
         finally:
             job.finished_at = time.time()
+            # A finished scan changed what's on disk-vs-indexed; drop the cached
+            # walk so freshness reflects it immediately.
+            if job.kind == "scan":
+                self._walk_cache.pop(job.root_id, None)
+            # React to completion at once: the next ready stage starts in
+            # milliseconds instead of waiting out the idle poll interval.
+            self.nudge()
 
     def _run_scan(self, conn, job: Job, cancel):
         from pathlib import Path
@@ -495,6 +523,30 @@ class JobManager:
         job.message = f"{stats.people} people · {stats.clustered} faces clustered"
 
     def _run_semantic(self, job: Job, cancel):
+        # Drain in passes so semantic indexing is ONE continuous job: each pass
+        # handles the current backlog, then loops to pick up anything that became
+        # pending while it ran (files the concurrent scan/enrich just added).
+        # Restarting a fresh job per snapshot is what used to flicker the card
+        # done→running; looping here keeps it steadily "running" until drained.
+        total_indexed = total_skipped = total_failed = 0
+        force = job.force
+        while True:
+            if cancel.is_set():
+                raise KeyboardInterrupt
+            indexed, skipped, failed, remaining = self._semantic_pass(job, cancel, force)
+            total_indexed += indexed
+            total_skipped += skipped
+            total_failed += failed
+            if remaining == 0:
+                break
+            force = False   # only the first pass honours a forced full reindex
+        job.message = (
+            f"{total_indexed} indexed, {total_skipped} skipped, {total_failed} errors"
+            if (total_indexed or total_skipped or total_failed)
+            else "semantic index is already current")
+
+    def _semantic_pass(self, job: Job, cancel, force: bool):
+        """One snapshot pass. Returns (indexed, skipped, failed, rows_in_pass)."""
         from pathlib import Path
         from . import semantic
 
@@ -502,14 +554,13 @@ class JobManager:
         # happen without the writer lock so local metadata/faces work continues.
         read_conn = db.open_readonly(self.cfg.db_path)
         try:
-            rows = semantic.pending_rows(read_conn, job.root_id, force=job.force)
-            total, already = semantic.work_counts(read_conn, job.root_id, force=job.force)
+            rows = semantic.pending_rows(read_conn, job.root_id, force=force)
+            total, already = semantic.work_counts(read_conn, job.root_id, force=force)
         finally:
             read_conn.close()
         job.total, job.done = total, already
         if not rows:
-            job.message = "semantic index is already current"
-            return
+            return (0, 0, 0, 0)
         indexed = skipped = failed = 0
         # Voyage accepts up to 1,000 inputs per call. Keep requests deliberately
         # smaller: a few original high-resolution images can otherwise exceed
@@ -564,7 +615,7 @@ class JobManager:
                     self._save_semantic_outcome(row, values, kind, None)
                     indexed += 1
                     job.done = already + start + offset + 1
-        job.message = f"{indexed} indexed, {skipped} skipped, {failed} errors"
+        return (indexed, skipped, failed, len(rows))
 
     def _save_semantic_outcome(self, row, values, kind, reason):
         """Persist one result without taking the manager-wide pipeline lock.

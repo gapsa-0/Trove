@@ -62,53 +62,6 @@ def archives(db_path: str) -> list[dict]:
         conn.close()
 
 
-def freshness(db_path: str, root_id: int) -> dict:
-    """Compare files on disk to what's indexed/enriched, so the UI can show a
-    real status instead of an always-on Scan button. The disk count is a walk
-    (scandir only, no hashing)."""
-    from ..scan.walker import count_files
-    conn = db.open_readonly(db_path)
-    try:
-        r = conn.execute("SELECT path FROM roots WHERE id=?", (root_id,)).fetchone()
-        if not r:
-            return {"error": "unknown archive"}
-        indexed = conn.execute(
-            f"SELECT COUNT(*) FROM files f WHERE {_VISIBLE} AND f.root_id=?",
-            (root_id,)).fetchone()[0]
-        enriched = conn.execute(
-            f"""SELECT COUNT(*) FROM files f JOIN dates d ON d.file_id=f.id
-                WHERE {_VISIBLE} AND f.root_id=?""", (root_id,)).fetchone()[0]
-        # Un-face-scanned images (only relevant when the face backend can run).
-        from ..faces import backend as fb
-        not_faced = 0
-        if fb.available():
-            # _NOT_HIDDEN: faces only run on canonical images (see faces_pending).
-            images = conn.execute(
-                f"""SELECT COUNT(*) FROM files f
-                    WHERE {_NOT_HIDDEN} AND f.media_type='image' AND f.root_id=?""",
-                (root_id,)).fetchone()[0]
-            faced = conn.execute(
-                f"""SELECT COUNT(*) FROM files f JOIN face_scan s ON s.file_id=f.id
-                    WHERE {_NOT_HIDDEN} AND f.media_type='image' AND f.root_id=?""",
-                (root_id,)).fetchone()[0]
-            not_faced = max(0, images - faced)
-    finally:
-        conn.close()
-    p = Path(r["path"])
-    if not p.is_dir():
-        return {"exists": False, "indexed": indexed, "enriched": enriched}
-    on_disk = count_files(p)
-    return {
-        "exists": True,
-        "on_disk": on_disk,
-        "indexed": indexed,
-        "enriched": enriched,
-        "new_files": max(0, on_disk - indexed),
-        "not_enriched": max(0, indexed - enriched),
-        "not_faced": not_faced,
-    }
-
-
 def add_archive(db_path: str, path: str) -> dict:
     p = Path(path).expanduser()
     if not p.is_dir():
