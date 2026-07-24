@@ -4977,15 +4977,14 @@
        The pipeline runs itself; this ambient chip is the only status the user
        needs and it carries no controls. */
     const JOB_LABEL = {
-      scan: "Scanning files…", enrich: "Reading metadata…", faces: "Detecting faces…",
-      face_cluster: "Updating people…", pets: "Finding pets…", places: "Updating map places…", dedup: "Finding duplicates…", semantic: "Indexing search…"
+      scan: "Scanning files…", enrich: "Reading metadata…", detect: "Detecting people & pets…",
+      face_cluster: "Updating people…", places: "Updating map places…", dedup: "Finding duplicates…", semantic: "Indexing search…"
     };
     const JOB_DESCRIPTION = {
       scan: "Checking the archive folder and cataloging new or changed files.",
       enrich: "Reading file details to find dates, locations, and other metadata.",
-      faces: "Finding faces in unique photos and grouping them into people.",
+      detect: "Finding people and animals in each photo (one pass) and grouping them into people and pets.",
       face_cluster: "Reclustering People after a non-human review correction.",
-      pets: "Detecting animals locally, filtering non-human faces, and grouping likely pets.",
       places: "Grouping geotagged files into map places while keeping your edits.",
       dedup: "Comparing file content to identify duplicate copies.",
       semantic: "Creating search entries so media can be found by a description."
@@ -4993,7 +4992,7 @@
     function jobDescription(kind) { return JOB_DESCRIPTION[kind] || "Updating archive data."; }
     // The sidebar chip and the Overview health cards read the SAME pipeline
     // snapshot, so they can never tell the user two different things.
-    const CARD_KIND = { scan: "scan", dedup: "dedup", pets: "pets", faces: "faces", places: "places", semantic: "semantic" };
+    const CARD_KIND = { scan: "scan", dedup: "dedup", detect: "detect", places: "places", semantic: "semantic" };
     function renderGstat(snap) {
       const el = document.getElementById("gstat"); if (!el) return;
       const run = snap && snap.stages && snap.stages.find(s => s.state === "running");
@@ -5265,12 +5264,13 @@
         case "dedup": return ds && ds.duplicates
           ? `${ds.duplicates.toLocaleString()} redundant cop${ds.duplicates === 1 ? "y" : "ies"} found`
           : "No redundant copies found";
-        case "faces": return fs && fs.faces
-          ? `${fs.faces.toLocaleString()} face${fs.faces === 1 ? "" : "s"} in ${fs.photos_with_faces.toLocaleString()} photo${fs.photos_with_faces === 1 ? "" : "s"}`
-          : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analyzed, no faces`;
-        case "pets": return ps && ps.detections
-          ? `${ps.detections.toLocaleString()} pet${ps.detections === 1 ? "" : "s"} found`
-          : `${(ps && ps.scanned || 0).toLocaleString()} photo${ps && ps.scanned === 1 ? "" : "s"} analyzed`;
+        case "detect": {
+          const parts = [];
+          if (fs && fs.faces) parts.push(`${fs.faces.toLocaleString()} face${fs.faces === 1 ? "" : "s"}`);
+          if (ps && ps.detections) parts.push(`${ps.detections.toLocaleString()} animal${ps.detections === 1 ? "" : "s"}`);
+          return parts.length ? parts.join(" · ")
+            : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analyzed`;
+        }
         case "places": return s && s.with_gps
           ? `${s.with_gps.toLocaleString()} location${s.with_gps === 1 ? "" : "s"} mapped`
           : "No locations found";
@@ -6493,7 +6493,7 @@
       const [snap, sum] = await Promise.all([
         jget("/api/pipeline?root=" + S.arch.id),
         jget("/api/faces/summary?root=" + S.arch.id)]);
-      const facesStage = (snap.stages || []).find(s => s.id === "faces");
+      const facesStage = (snap.stages || []).find(s => s.id === "detect");
       const fj = facesStage && facesStage.state === "running" ? facesStage.progress : null;
       // Keep a failed attempt visible during the scheduler's retry cooldown
       // instead of making the progress panel blink.
@@ -6508,7 +6508,7 @@
       renderFaceControls();
       if (fj) {
         const pct = fj.percent != null ? fj.percent : 0;
-        area.innerHTML = `<div class="job"><div class="what">${jobDescription("faces")}</div><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
+        area.innerHTML = `<div class="job"><div class="what">${jobDescription("detect")}</div><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
       <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total ? "/" + fj.total.toLocaleString() : ""} · ${fj.elapsed}s${fj.current ? " · " + fj.current : ""}</div></div>`;
         if (sum.people !== prev.people || sum.faces !== prev.faces) renderPeople();
       } else if (failedFace && sum.unscanned > 0) {
@@ -6810,7 +6810,7 @@
     async function petTick() {
       if (ACTIVE_SECTION !== "pets") { stopPoll(); return; }
       const snap = await jget("/api/pipeline?root=" + S.arch.id);
-      const running = (snap.stages || []).some(s => s.id === "pets" && s.state === "running");
+      const running = (snap.stages || []).some(s => s.id === "detect" && s.state === "running");
       const was = S.petJobRunning; S.petJobRunning = running;
       if (was && !running) showSection("pets", true);
     }

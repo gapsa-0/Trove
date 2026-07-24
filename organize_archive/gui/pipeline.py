@@ -26,12 +26,12 @@ from ..config import Config
 from ..db import database as db
 
 # Stage kinds (also the job ``kind`` values the worker dispatches on).
-SCAN, ENRICH, DEDUP, PLACES, PETS, FACES, SEMANTIC = (
-    "scan", "enrich", "dedup", "places", "pets", "faces", "semantic")
+SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC = (
+    "scan", "enrich", "dedup", "places", "detect", "semantic")
 
 # Stages that take the single DB-writer lock run one at a time; the rest use
 # their own connection and overlap freely (scan ∥ enrich ∥ semantic).
-LOCK_KINDS = frozenset({DEDUP, PLACES, PETS, FACES})
+LOCK_KINDS = frozenset({DEDUP, PLACES, DETECT})
 PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC})
 
 
@@ -50,39 +50,37 @@ STAGES: tuple[StageDef, ...] = (
     StageDef(ENRICH,   (),               "scan",     True),   # runs parallel to scan
     StageDef(DEDUP,    (SCAN, ENRICH),   "dedup",    False),  # wholesale rebuild, no count
     StageDef(PLACES,   (DEDUP,),         "places",   True),
-    StageDef(PETS,     (DEDUP,),         "pets",     True),
-    StageDef(FACES,    (PETS,),          "faces",    True),   # pet boxes suppress face FPs
+    StageDef(DETECT,   (DEDUP,),         "detect",   True),   # people + pets, one decode
     StageDef(SEMANTIC, (DEDUP,),         "semantic", True),
 )
 
 # Display cards, in the order the Overview renders them.
-CARD_ORDER = ("scan", "dedup", "pets", "faces", "places", "semantic")
+CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic")
 # Coherent operation names (one per card), in a single consistent format.
 CARD_LABEL = {
-    "scan": "Scan", "dedup": "Deduplication", "pets": "Pet detection",
-    "faces": "Face recognition", "places": "Location mapping",
+    "scan": "Scan", "dedup": "Deduplication",
+    "detect": "People & pets", "places": "Location mapping",
     "semantic": "Semantic indexing",
 }
 # What a card says while its stage is actively running, one consistent
 # "<verb>ing <object>…" format across every stage.
 _RUN_TEXT = {
     "scan": "Scanning files…", "dedup": "Finding duplicates…",
-    "pets": "Detecting pets…", "faces": "Detecting faces…",
+    "detect": "Detecting people & pets…",
     "places": "Mapping locations…", "semantic": "Indexing media…",
 }
 _UNAVAILABLE_TEXT = {
-    "faces": "Face detection unavailable", "pets": "Pet detection unavailable",
+    "detect": "Detection unavailable",
     "semantic": "No Voyage API key",
 }
 
 
 def _availability(cfg: Config) -> dict[str, bool]:
-    from ..faces import backend as fb
-    from ..pets import backend as pb
+    from ..detect import extract as dx
     from . import semantic
     return {
         SCAN: True, ENRICH: True, DEDUP: True, PLACES: True,
-        PETS: pb.available(), FACES: fb.available(),
+        DETECT: dx.available(),
         SEMANTIC: semantic.api_key_available(),
     }
 
@@ -123,9 +121,8 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
         # set when scan/enrich change data and cleared on a successful rebuild.
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
-        PETS: (queries.pets_pending(db_path, root_id, pet_scan_source(cfg))
-               if avail[PETS] else 0),
-        FACES: queries.faces_pending(db_path, root_id) if avail[FACES] else 0,
+        DETECT: (queries.detect_pending(db_path, root_id, pet_scan_source(cfg))
+                 if avail[DETECT] else 0),
         SEMANTIC: (queries.semantic_pending(db_path, root_id)
                    if avail[SEMANTIC] else 0),
     }

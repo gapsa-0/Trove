@@ -101,44 +101,50 @@ class Config:
     phash_hamming_threshold: int = 6
 
     # Faces (Phase 6). Detection + embedding run locally; nothing leaves the
-    # machine. Detection is YuNet; the face is aligned to the 112x112 ArcFace
-    # template (OpenCV's alignCrop) and embedded by the selected backend.
-    #   "adaface" -> AdaFace ir101 (WebFace12M), 512-d, ONNX/onnxruntime. Much
-    #               stronger on this archive's varied/low-quality faces; the
-    #               model file lives in cache/models/adaface/ (see faces/backend).
-    #   "sface"   -> the original OpenCV SFace, 128-d. Lighter, weaker.
-    # Switching backend changes the embedding dimension, so it requires a full
-    # re-extract (wipe faces/face_scan) — the vectors are not comparable.
-    faces_embed_backend: str = "adaface"
-    faces_min_score: float = 0.70   # drop YuNet detections below this confidence
-                                    # (real frontal faces score ~0.9; raising
-                                    # this trims false positives on sky/texture)
-    faces_min_px: int = 36          # drop faces smaller than this (box side, px)
-    faces_max_side: int = 960       # downscale long side before detection (speed)
-    # Extraction-time quality gate. Metrics are measured on the aligned 112px
-    # crop, making them comparable across original image sizes. Rejections are
-    # counted in face_scan so thresholds can be calibrated without retaining
-    # false detections as people.
-    faces_min_focus: float = 35.0    # variance of the grayscale Laplacian
-    faces_max_extreme_fraction: float = 0.80  # pixels near black or white
-    faces_max_clipped_fraction: float = 0.18  # bbox area outside decoded image
+    # machine. Detection is InsightFace SCRFD (det_10g); each face is aligned to
+    # the 112x112 ArcFace template (5-point similarity transform) and embedded by
+    # ArcFace (w600k_r50), a 512-d vector run via onnxruntime. Both ONNX files are
+    # the buffalo_l pack, fetched once into cache/models/insightface/ (see
+    # faces/backend). SCRFD replaced YuNet (fewer sky/wall false positives, better
+    # small-face recall + landmarks); ArcFace replaced AdaFace/SFace. Changing the
+    # embedder changes the vectors, so it requires a full re-extract.
+    faces_det_size: int = 640        # SCRFD detector input square (bigger = better
+                                     # small-face recall, slower)
+    faces_min_score: float = 0.50    # accept faces at/above this SCRFD confidence
+                                     # (SCRFD's own floor is ~0.5; real frontal
+                                     # faces score ~0.8+). Animal faces are handled
+                                     # by the pet cross-check, not this threshold.
+    faces_min_px: int = 36           # drop faces smaller than this (box side, px)
+    faces_max_side: int = 960        # standalone backend decode cap (the fused
+                                     # detect stage decodes once at detect_max_side)
+    faces_max_clipped_fraction: float = 0.18  # reject a box mostly outside the frame
+    # Advisory quality metrics (focus/exposure) are still measured on the aligned
+    # crop and stored per face for display/calibration, but no longer gate the live
+    # path — SCRFD's confidence is the primary filter. Used by `oa faces --calibrate`.
+    faces_min_focus: float = 35.0             # grayscale Laplacian variance (advisory)
+    faces_max_extreme_fraction: float = 0.80  # near-black/near-white pixels (advisory)
     faces_quality_version: str = "opencv-laplacian-v1"
-    # Pets / non-human face filtering. YOLOX runs locally over canonical images
-    # and supplies animal regions before the human-face pass. Identity grouping
-    # uses a deterministic crop descriptor; thresholds are intentionally
-    # conservative because users can merge/name pets but originals never change.
+
+    # Fused detection (Phase 6/9). People (SCRFD) and animals (YOLOX) are found in
+    # ONE pass: each image is decoded a single time at this resolution and both
+    # detectors run on that array, so ~150k photos are decoded once, not twice.
+    detect_max_side: int = 1280      # long-side cap for the single shared decode
+
+    # Pets. YOLOX detects animal regions locally; identities are grouped from a
+    # DINOv2 re-ID embedding of each crop (cache/models/dinov2_pet/). The animal
+    # boxes also cross-check the face pass: a face mostly inside an animal box is
+    # dropped from People (the one non-human rule, applied inline in detect/).
     pets_min_score: float = 0.60
     pets_min_px: int = 48
-    pets_max_side: int = 1280
+    pets_max_side: int = 1280        # standalone backend decode cap (see detect_max_side)
     pets_species: list[str] = field(
         default_factory=lambda: ["cat", "dog", "bird", "horse"])
-    pets_cluster_similarity: float = 0.94
+    pets_cluster_similarity: float = 0.75  # DINOv2 cosine (calibrated on-archive:
+                                            # same-animal ~0.8-0.96, different ≤~0.3;
+                                            # complete-link keeps 0.75 conservative)
     pets_min_detections: int = 2
-    pets_face_overlap: float = 0.60
-    pets_model_version: str = "opencv-yolox-s-2022nov"
-    faces_nonhuman_min_examples: int = 3
-    faces_nonhuman_min_similarity: float = 0.78
-    faces_nonhuman_similarity_margin: float = 0.08
+    pets_face_overlap: float = 0.60  # face-in-animal overlap that marks a non-human
+    pets_model_version: str = "yolox-s-2022nov+dinov2s-petreid-v1"
     # Clustering into people is two-stage (faces/cluster.py). Stage 1 over-clusters
     # into small, PURE fragments via a *mutual k-NN* graph: link two faces only
     # when each is among the other's `faces_knn_k` most-similar faces AND their

@@ -92,56 +92,6 @@ def _overlap_fraction(face, animal) -> float:
     return intersection / area
 
 
-def suppress_unassigned_faces(conn, file_id: int, threshold: float,
-                                model_source: str,
-                                source_sha256: str | None) -> int:
-    """Suppress only unassigned automatic faces; never override a user pin/name."""
-    animals = conn.execute(
-        "SELECT * FROM animal_detections WHERE file_id=?", (file_id,)).fetchall()
-    faces = conn.execute(
-        """SELECT * FROM faces WHERE file_id=? AND person_id IS NULL
-           AND manual_person IS NULL AND not_person=0""", (file_id,)).fetchall()
-    overrides = conn.execute(
-        """SELECT * FROM nonhuman_detections
-           WHERE file_id=? AND review_status='human' AND source_sha256 IS ?""",
-        (file_id, source_sha256)).fetchall()
-    suppressed = 0
-    for face in faces:
-        if any(_overlap_fraction(face, override) >= 0.80
-               for override in overrides):
-            continue
-        match = next((animal for animal in animals
-                      if _overlap_fraction(face, animal) >= threshold), None)
-        if match is None:
-            continue
-        kind = "toy" if match["species"] == "teddy bear" else "animal"
-        source = f"animal-overlap:{model_source}"
-        conn.execute(
-            """UPDATE faces SET not_person=1,nonhuman_kind=?,
-                                nonhuman_source=? WHERE id=?""",
-            (kind, source, face["id"]))
-        conn.execute(
-            """UPDATE face_scan SET n_faces=MAX(0,n_faces-1),
-                   rejected_nonhuman=rejected_nonhuman+1 WHERE file_id=?""",
-            (file_id,))
-        conn.execute(
-            """INSERT INTO nonhuman_detections
-               (file_id,animal_detection_id,box_x,box_y,box_w,box_h,kind,
-                confidence,source,source_sha256,embedding,det_score,focus_score,brightness,
-                extreme_fraction,clipped_fraction,quality_score,quality_source,
-                restored_face_id,created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (file_id, match["id"], face["box_x"], face["box_y"], face["box_w"],
-             face["box_h"], kind, min(face["det_score"], match["det_score"]),
-             source, source_sha256, face["embedding"], face["det_score"],
-             face["focus_score"],
-             face["brightness"], face["extreme_fraction"],
-             face["clipped_fraction"], face["quality_score"],
-             face["quality_source"], face["id"], db.now_iso()))
-        suppressed += 1
-    return suppressed
-
-
 def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
             root_id=None, be=None) -> PetExtractStats:
     stats = PetExtractStats()
@@ -169,18 +119,9 @@ def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
             path = Path(row["root_path"]) / row["rel_path"]
             count = 0
             try:
-                previous = conn.execute(
-                    "SELECT source_sha256 FROM pet_scan WHERE file_id=?",
-                    (row["id"],)).fetchone()
-                if previous and previous["source_sha256"] == row["sha256"]:
-                    conn.execute(
-                        """DELETE FROM nonhuman_detections
-                           WHERE file_id=? AND review_status='pending'""",
-                        (row["id"],))
-                else:
-                    conn.execute(
-                        "DELETE FROM nonhuman_detections WHERE file_id=?",
-                        (row["id"],))
+                # Standalone CLI path: plain animal detection. The GUI's fused
+                # detect stage (organize_archive/detect) is what cross-checks the
+                # faces; this only fills animal_detections for pet grouping.
                 conn.execute(
                     "DELETE FROM animal_detections WHERE file_id=?", (row["id"],))
                 detections = be.process_path(str(path))
@@ -194,9 +135,6 @@ def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
                          detection.w, detection.h, detection.score,
                          detection.embedding.tobytes(), source, now))
                 count = len(detections)
-                stats.faces_suppressed += suppress_unassigned_faces(
-                    conn, row["id"], cfg.pets_face_overlap,
-                    source, row["sha256"])
             except Exception as error:
                 stats.errors += 1
                 if len(stats.error_samples) < 5:

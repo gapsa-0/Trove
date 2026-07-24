@@ -78,11 +78,12 @@ class JobManager:
     # to do, so a quiet archive doesn't get walked every few seconds forever.
     _AUTO_MIN = 10
     _AUTO_MAX = 300
-    # Images per detect-then-recluster chunk in a faces job (see _run_faces):
-    # small enough that people appear early in a multi-hour run, large enough
-    # that repeated clustering stays a small fraction of total time.
-    _FACE_CHUNK = 1200
-    _PET_CHUNK = 600
+    # Images per detect-then-recluster chunk in the detect job (see _run_detect):
+    # small enough that people/pets appear early in a multi-hour run, large enough
+    # that repeated clustering stays a small fraction of total time. Detection is
+    # heavier per image than one detector was (SCRFD + YOLOX + embeds), so the
+    # chunk is smaller than the old faces chunk.
+    _DETECT_CHUNK = 600
     # Freshness disk walk is reused for this long before re-walking (see
     # _walk_cache). Comfortably below the idle backoff so an idle tick still
     # re-walks and notices files added to the source folder.
@@ -368,10 +369,8 @@ class JobManager:
                             self._run_dedup(conn, job, cancel)
                         elif job.kind == "places":
                             self._run_places(conn, job, cancel)
-                        elif job.kind == "faces":
-                            self._run_faces(conn, job, cancel)
-                        elif job.kind == "pets":
-                            self._run_pets(conn, job, cancel)
+                        elif job.kind == "detect":
+                            self._run_detect(conn, job, cancel)
                         elif job.kind == "face_cluster":
                             self._run_face_cluster(conn, job, cancel)
                         else:
@@ -465,62 +464,47 @@ class JobManager:
         job.done = 1
         job.message = f"{touched} new geotagged files placed"
 
-    def _run_faces(self, conn, job: Job, cancel):
-        # Part of the automatic pipeline (runs after scan + enrich). Detect faces
-        # in chunks and re-cluster after each chunk, so the Faces section fills
-        # in progressively during a long run instead of only at the very end.
-        from ..faces import extract as fx, cluster as fc
-        # Progress is cumulative over ALL unique images, not just this run's
+    def _run_detect(self, conn, job: Job, cancel):
+        # Part of the automatic pipeline (after dedup). ONE decode per image runs
+        # both detectors — people via SCRFD, animals via YOLOX — and the animal
+        # boxes cross-check the faces inline (a face inside an animal box is
+        # dropped from People). Detect in chunks and re-cluster people + pets after
+        # each so both views fill in progressively during a long run.
+        from ..detect import extract as dx
+        from ..faces import cluster as fc
+        from ..pets import cluster as pc
+        # Progress is cumulative over ALL canonical images, not just this run's
         # backlog: total = every canonical image, done starts at how many are
-        # already scanned. So the bar/% match the "Scanned N / total" stat tile
-        # and survive resuming across app restarts (no misleading per-run total).
-        total = fx.image_count(conn)
-        already = max(0, total - fx.pending_count(conn))
+        # already detected. So the bar/% match the "Detected N / total" tile and
+        # survive resuming across restarts (no misleading per-run total).
+        total = dx.image_count(conn, job.root_id)
+        already = max(0, total - dx.pending_count(conn, self.cfg, job.root_id))
         job.total, job.done = total, already
-        # Load the face models once and reuse them across every chunk.
-        be = fx.make_backend(self.cfg, log=lambda m: setattr(job, "current", m))
-        processed = faces_found = 0
+        # Load both detector model sets once and reuse across every chunk.
+        face_be, pet_be = dx.make_backends(
+            self.cfg, log=lambda m: setattr(job, "current", m))
+        processed = faces_found = animals = suppressed = 0
         while True:
             if cancel.is_set():
                 raise KeyboardInterrupt
             prog = _JobProgress(job, cancel, base=already + processed, fixed_total=True)
-            es = fx.extract(conn, self.cfg, progress=prog, limit=self._FACE_CHUNK, be=be)
-            if es.processed == 0:
+            st = dx.extract(conn, self.cfg, progress=prog, limit=self._DETECT_CHUNK,
+                            face_be=face_be, pet_be=pet_be)
+            if st.processed == 0:
                 break
-            processed += es.processed
-            faces_found += es.faces_found
-            job.current = "clustering people…"
+            processed += st.processed
+            faces_found += st.faces_found
+            animals += st.animals
+            suppressed += st.nonhuman_suppressed
+            job.current = "grouping people & pets…"
             fc.cluster_faces(conn, self.cfg)
-        people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
-        job.message = f"{faces_found} faces in {processed} photos · {people} people"
-
-    def _run_pets(self, conn, job: Job, cancel):
-        from ..pets import extract as px, cluster as pc
-        total = px.image_count(conn, job.root_id)
-        already = max(0, total - px.pending_count(
-            conn, job.root_id, px.scan_source(self.cfg)))
-        job.total, job.done = total, already
-        be = px.make_backend(self.cfg, log=lambda message: setattr(job, "current", message))
-        processed = animals = suppressed = 0
-        while True:
-            if cancel.is_set():
-                raise KeyboardInterrupt
-            progress = _JobProgress(
-                job, cancel, base=already + processed, fixed_total=True)
-            stats = px.extract(
-                conn, self.cfg, progress=progress, limit=self._PET_CHUNK,
-                root_id=job.root_id, be=be)
-            if stats.processed == 0:
-                break
-            processed += stats.processed
-            animals += stats.animals
-            suppressed += stats.faces_suppressed
-            job.current = "grouping pets…"
             pc.cluster_pets(conn, self.cfg, root_id=job.root_id)
+        people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
         groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
         job.message = (
-            f"{animals} animals in {processed} photos · {groups} pet groups"
-            + (f" · {suppressed} face false positives suppressed" if suppressed else ""))
+            f"{faces_found} faces · {people} people · {animals} animals · "
+            f"{groups} pet groups"
+            + (f" · {suppressed} animal-face FPs dropped" if suppressed else ""))
 
     def _run_face_cluster(self, conn, job: Job, cancel):
         from ..faces.cluster import cluster_faces

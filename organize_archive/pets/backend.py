@@ -28,6 +28,27 @@ MODEL_URL = (
 )
 MODEL_MIN_BYTES = 20_000_000
 
+# Individual-animal re-identification embedder: a self-exported ONNX of the
+# AvitoTech DINOv2-small model fine-tuned for cat/dog re-ID (384-d CLS token).
+# Not distributed via a URL like the OpenCV models — regenerate it with
+# tools/dinov2_pet_export.py if missing. Replaces the old hand-crafted HSV
+# colour/texture descriptor: a learned embedding groups the SAME animal across
+# poses/lighting far better than colour statistics.
+DINOV2_SUBDIR = "dinov2_pet"
+DINOV2_MODEL = "dinov2_pet.onnx"
+# DINOv2 preprocessing: RGB, resize 224, /255, ImageNet mean/std normalization.
+_IMAGENET_MEAN = (0.485, 0.456, 0.406)
+_IMAGENET_STD = (0.229, 0.224, 0.225)
+
+
+def dinov2_model_path(cache_dir: str) -> Path:
+    return Path(cache_dir) / "models" / DINOV2_SUBDIR / DINOV2_MODEL
+
+
+def dinov2_ready(cache_dir: str) -> bool:
+    p = dinov2_model_path(cache_dir)
+    return p.is_file() and p.stat().st_size > 1_000_000
+
 COCO_CLASSES = (
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
     "truck", "boat", "traffic light", "fire hydrant", "stop sign",
@@ -91,22 +112,22 @@ class AnimalDetection:
     embedding: "np.ndarray"
 
 
-def crop_descriptor(crop_bgr) -> "np.ndarray":
-    """Compact color/texture descriptor for conservative within-species grouping."""
-    if crop_bgr is None or crop_bgr.size == 0:
-        return np.zeros(320, dtype="float32")
-    square = cv2.resize(crop_bgr, (64, 64), interpolation=cv2.INTER_AREA)
-    hsv = cv2.cvtColor(square, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1], None, [16, 4], [0, 180, 0, 256]).reshape(-1)
-    hist = hist.astype("float32")
-    hist /= float(hist.sum()) + 1e-9
-    gray = cv2.cvtColor(square, cv2.COLOR_BGR2GRAY)
-    texture = cv2.resize(gray, (16, 16), interpolation=cv2.INTER_AREA).reshape(-1)
-    texture = (texture.astype("float32") - float(texture.mean())) / 255.0
-    texture /= float(np.linalg.norm(texture)) + 1e-9
-    vector = np.concatenate([hist * 0.65, texture * 0.35])
-    norm = float(np.linalg.norm(vector))
-    return vector if norm == 0.0 else vector / norm
+def _load_dinov2(cache_dir: str):
+    """Create the onnxruntime session for the DINOv2 pet-reID embedder."""
+    try:
+        import onnxruntime as ort
+    except Exception as e:  # pragma: no cover - optional dep
+        raise RuntimeError(
+            "pet re-ID needs onnxruntime (pip install onnxruntime); "
+            f"import failed: {e}")
+    mp = dinov2_model_path(cache_dir)
+    if not mp.is_file():
+        raise RuntimeError(
+            f"DINOv2 pet model missing at {mp}. Regenerate it with "
+            "tools/dinov2_pet_export.py.")
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = os.cpu_count() or 4
+    return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])
 
 
 class PetBackend:
@@ -124,6 +145,9 @@ class PetBackend:
         self.species = set(species) | {"teddy bear"}
         self.model_source = model_source
         self.net = cv2.dnn.readNet(str(ensure_model(cache_dir, log=log)))
+        self._dino = _load_dinov2(cache_dir)
+        self._mean = np.array(_IMAGENET_MEAN, dtype="float32")
+        self._std = np.array(_IMAGENET_STD, dtype="float32")
         grids, expanded = [], []
         for stride in self.strides:
             hsize = self.input_size[1] // stride
@@ -219,9 +243,25 @@ class PetBackend:
                 species=COCO_CLASSES[int(class_ids[source_index])],
                 x=x, y=y, w=width, h=height,
                 score=float(confidences[source_index]),
-                embedding=crop_descriptor(crop),
+                embedding=self._embed_crop(crop),
             ))
         return out
+
+    def _embed_crop(self, crop_bgr) -> "np.ndarray":
+        """384-d L2-normalized DINOv2 re-ID embedding of an animal crop.
+
+        Cosine similarity between two crops of the same individual is high; the
+        embedding is unit-normalized so clustering can use a dot product.
+        """
+        if crop_bgr is None or crop_bgr.size == 0:
+            return np.zeros(384, dtype="float32")
+        rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+        rgb = cv2.resize(rgb, (224, 224), interpolation=cv2.INTER_AREA)
+        x = (rgb.astype("float32") / 255.0 - self._mean) / self._std
+        x = x.transpose(2, 0, 1)[None]                       # (1,3,224,224) NCHW
+        feat = self._dino.run(None, {"input": x})[0].reshape(-1).astype("float32")
+        n = float(np.linalg.norm(feat))
+        return feat if n == 0.0 else feat / n
 
     def process_path(self, path: str) -> list[AnimalDetection]:
         image, scale_x, scale_y = self.load_bgr(path)

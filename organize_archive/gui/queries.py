@@ -690,6 +690,29 @@ def pets_pending(db_path: str, root_id=None, model_source=None) -> int:
         conn.close()
 
 
+def detect_pending(db_path: str, root_id=None, model_source=None) -> int:
+    """Present canonical images missing a current face OR pet scan — the fused
+    detect stage's backlog (mirrors detect.extract.pending_count). One image is
+    'pending' if either detector still owes it work, so the scheduler keeps the
+    single detect stage running until both are drained."""
+    conn = db.open_readonly(db_path)
+    try:
+        rc, rp = _root_clause(root_id)
+        params = [model_source, *rp]
+        return conn.execute(
+            f"""SELECT COUNT(*) FROM files f
+                LEFT JOIN face_scan fs ON fs.file_id=f.id
+                LEFT JOIN pet_scan ps ON ps.file_id=f.id
+                WHERE (fs.file_id IS NULL
+                       OR ps.file_id IS NULL
+                       OR ps.source_sha256 IS NOT f.sha256
+                       OR ps.model_source IS NOT ?)
+                  AND {_NOT_HIDDEN} AND f.media_type='image'{rc}""",
+            params).fetchone()[0]
+    finally:
+        conn.close()
+
+
 def pet_summary(db_path: str, root_id=None, model_source=None) -> dict:
     from ..pets import backend as pet_backend
     conn = db.open_readonly(db_path)

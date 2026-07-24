@@ -81,11 +81,11 @@ def make_backend(cfg: Config, log=None) -> "backend.FaceBackend":
     the models every chunk."""
     return backend.FaceBackend(
         cfg.cache_dir, min_score=cfg.faces_min_score, min_px=cfg.faces_min_px,
-        max_side=cfg.faces_max_side, min_focus=cfg.faces_min_focus,
+        max_side=cfg.faces_max_side, det_size=cfg.faces_det_size,
+        min_focus=cfg.faces_min_focus,
         max_extreme_fraction=cfg.faces_max_extreme_fraction,
         max_clipped_fraction=cfg.faces_max_clipped_fraction,
-        quality_version=cfg.faces_quality_version,
-        embed_backend=cfg.faces_embed_backend, log=log)
+        quality_version=cfg.faces_quality_version, log=log)
 
 
 def _add_rejections(stats: ExtractStats, report) -> None:
@@ -93,50 +93,6 @@ def _add_rejections(stats: ExtractStats, report) -> None:
     for reason in ("score", "size", "focus", "exposure", "clipped", "nonhuman"):
         setattr(stats, f"rejected_{reason}",
                 getattr(stats, f"rejected_{reason}") + report.rejected.get(reason, 0))
-
-
-def _nonhuman_references(conn):
-    """Manual non-human corrections and confirmed-human counterexamples."""
-    try:
-        import numpy as np
-    except Exception:
-        return [], []
-    nonhuman, human = [], []
-    for row in conn.execute(
-            """SELECT embedding,not_person,nonhuman_kind,person_id
-               FROM faces WHERE embedding IS NOT NULL
-                 AND (nonhuman_source='manual'
-                      OR (not_person=0 AND person_id IS NOT NULL))"""):
-        vector = np.frombuffer(row["embedding"], "float32")
-        norm = float(np.linalg.norm(vector))
-        if not norm:
-            continue
-        item = (vector / norm, row["nonhuman_kind"] or "false_detection")
-        (nonhuman if row["not_person"] else human).append(item)
-    return nonhuman, human
-
-
-def _learned_nonhuman(embedding, references, cfg: Config):
-    """Conservative 1-NN decision learned only from explicit user corrections."""
-    import numpy as np
-    nonhuman, human = references
-    if len(nonhuman) < cfg.faces_nonhuman_min_examples:
-        return None
-    vector = np.asarray(embedding, dtype="float32").reshape(-1)
-    vector /= np.linalg.norm(vector) + 1e-9
-    compatible = [(ref, kind) for ref, kind in nonhuman if len(ref) == len(vector)]
-    if len(compatible) < cfg.faces_nonhuman_min_examples:
-        return None
-    scores = [(float(ref @ vector), kind) for ref, kind in compatible]
-    nonhuman_score, kind = max(scores)
-    human_score = max(
-        (float(ref @ vector) for ref, _ in human if len(ref) == len(vector)),
-        default=-1.0)
-    if (nonhuman_score >= cfg.faces_nonhuman_min_similarity
-            and nonhuman_score - human_score
-            >= cfg.faces_nonhuman_similarity_margin):
-        return kind, nonhuman_score
-    return None
 
 
 def quality_summary(conn, root_id: int | None = None) -> dict:
@@ -227,7 +183,6 @@ def extract(conn, cfg: Config, progress=None, batch_size: int = 64,
         progress.total = total
 
     now = db.now_iso()
-    nonhuman_references = _nonhuman_references(conn)
     while True:
         remaining = None if limit is None else max(0, limit - stats.processed)
         if remaining == 0:
@@ -249,69 +204,10 @@ def extract(conn, cfg: Config, progress=None, batch_size: int = 64,
                     faces = be.process_path(str(path))
                     report.faces = faces
                     report.candidates = len(faces)
-                # Animal detection runs first in the background pipeline.
-                # A face substantially contained by a cat/dog/bird/etc. or
-                # teddy-bear region is evidence of a non-human false positive.
-                animals = conn.execute(
-                    "SELECT * FROM animal_detections WHERE file_id=?", (fid,)
-                ).fetchall()
-                from ..pets.extract import _overlap_fraction
-                human_overrides = conn.execute(
-                    """SELECT * FROM nonhuman_detections
-                       WHERE file_id=? AND review_status='human'
-                         AND source_sha256 IS ?""",
-                    (fid, row["sha256"])).fetchall()
-                human_faces = []
-                for fc in faces:
-                    face_box = {
-                        "box_x": fc.x, "box_y": fc.y,
-                        "box_w": fc.w, "box_h": fc.h,
-                    }
-                    if any(_overlap_fraction(face_box, override) >= 0.80
-                           for override in human_overrides):
-                        human_faces.append(fc)
-                        continue
-                    learned = _learned_nonhuman(
-                        fc.embedding, nonhuman_references, cfg)
-                    match = max(
-                        animals,
-                        key=lambda animal: _overlap_fraction(face_box, animal),
-                        default=None)
-                    overlap = (_overlap_fraction(face_box, match)
-                               if match is not None else 0.0)
-                    if learned is None and (
-                            match is None or overlap < cfg.pets_face_overlap):
-                        human_faces.append(fc)
-                        continue
-                    if learned is not None:
-                        kind, confidence = learned
-                        animal_id = None
-                        source = "manual-knn-v1"
-                    else:
-                        kind = "toy" if match["species"] == "teddy bear" else "animal"
-                        confidence = min(fc.score, match["det_score"])
-                        animal_id = match["id"]
-                        source = f"animal-overlap:{match['model_source']}"
-                    conn.execute(
-                        """INSERT INTO nonhuman_detections
-                           (file_id,animal_detection_id,box_x,box_y,box_w,box_h,
-                            kind,confidence,source,source_sha256,embedding,det_score,
-                            focus_score,brightness,extreme_fraction,
-                            clipped_fraction,quality_score,quality_source,created_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (fid, animal_id, fc.x, fc.y, fc.w, fc.h, kind,
-                         confidence, source,
-                         row["sha256"], fc.embedding.tobytes(), fc.score,
-                         getattr(fc, "focus_score", None),
-                         getattr(fc, "brightness", None),
-                         getattr(fc, "extreme_fraction", None),
-                         getattr(fc, "clipped_fraction", None),
-                         getattr(fc, "quality_score", None),
-                         getattr(fc, "quality_source", None), now))
-                    report.rejected["nonhuman"] = (
-                        report.rejected.get("nonhuman", 0) + 1)
-                faces = human_faces
-                report.faces = faces
+                # Standalone CLI path: plain face detection, no animal cross-check.
+                # The GUI's fused detect stage (organize_archive/detect) is what
+                # drops animal-face false positives, since it has the animal boxes
+                # in hand from the same decode.
                 for fc in faces:
                     conn.execute(
                         """INSERT INTO faces
