@@ -40,19 +40,28 @@ def test_ensure_dirs_creates_standard_layout(monkeypatch, tmp_path):
     cfg.ensure_dirs()
 
     base = tmp_path / "organize_archive"
-    assert (base / "cache" / "thumbs").is_dir()
+    # Only app-wide binaries (ML models, the app icon) live under the shared
+    # cache dir now. Thumbnails are per-archive and created lazily under each
+    # archive's own cache dir (see test_archive_removal.py).
     assert (base / "cache" / "models").is_dir()
+    assert (base / "cache" / "icons").is_dir()
+    assert not (base / "cache" / "thumbs").exists()
     assert (base / "logs").is_dir()
     assert Path(cfg.db_path).parent.is_dir()
 
 
 def test_gui_server_starts_cleanly_on_first_run(monkeypatch, tmp_path):
-    """The welcome screen must be reachable before a catalogue exists."""
+    """The welcome screen must be reachable before any archive exists.
+
+    No archive means no database anywhere yet: each archive only gets its own
+    database once it's added (see test_archive_removal.py), so unlike the old
+    shared-catalog design, server startup has no single db_path to create.
+    """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "fresh-data"))
     cfg = Config.load()
     httpd = serve(cfg, port=0)
     try:
-        assert Path(cfg.db_path).is_file()
+        assert not Path(cfg.db_path).exists()
         host, port = httpd.server_address
         # Handle one request without a background server thread.
         import threading
@@ -107,3 +116,65 @@ def test_migrate_data_rejects_occupied_target_and_unknown_source(monkeypatch, tm
     (target / "archive.db").write_bytes(b"existing")
     assert main(["migrate-data", "--from", str(source)]) == 1
     assert "already contains" in capsys.readouterr().err
+
+
+def test_migrate_legacy_archive_preserves_a_pre_isolation_catalog(monkeypatch, tmp_path):
+    """An install from before per-archive isolation had one shared archive.db
+    with a single root. It must keep showing up in the GUI, not vanish, once
+    this version starts for the first time."""
+    from organize_archive.db import database as db
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    cfg = Config.load()
+    cfg.ensure_dirs()
+
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+    root_id = db.get_or_create_root(conn, str(tmp_path / "source"))
+    conn.execute(
+        """INSERT INTO files(root_id, rel_path, size, mtime, media_type, sha256,
+                             first_seen, last_seen)
+           VALUES(?, 'a.jpg', 1, 0, 'image', 'x', 'now', 'now')""", (root_id,))
+    conn.commit()
+    conn.close()
+    thumb = Path(cfg.cache_dir) / "thumbs" / "x_v1_320.jpg"
+    thumb.parent.mkdir(parents=True)
+    thumb.write_bytes(b"thumb")
+
+    cfg.migrate_legacy_archive()
+
+    assert len(cfg.archives) == 1
+    entry = cfg.archives[0]
+    assert entry["path"] == str(tmp_path / "source")
+    assert Path(cfg.archive_db_path(entry["id"])).is_file()
+    assert (Path(cfg.archive_cache_dir(entry["id"])) / "thumbs" / "x_v1_320.jpg").read_bytes() == b"thumb"
+    assert Path(cfg.db_path).is_file()  # the legacy file is copied, not moved
+
+    # A later server start (fresh Config.load()) must not migrate a second time.
+    cfg2 = Config.load()
+    assert cfg2.legacy_migrated is True
+    cfg2.migrate_legacy_archive()
+    assert len(cfg2.archives) == 1
+
+
+def test_migrate_legacy_archive_skips_multi_root_catalogs(monkeypatch, tmp_path, capsys):
+    """A legacy catalog with several roots mixed their data (shared dedup
+    groups, etc.) in ways that can't be split apart automatically — skip it
+    rather than guess, and latch so it's not retried forever."""
+    from organize_archive.db import database as db
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    cfg = Config.load()
+    cfg.ensure_dirs()
+
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+    db.get_or_create_root(conn, str(tmp_path / "one"))
+    db.get_or_create_root(conn, str(tmp_path / "two"))
+    conn.close()
+
+    cfg.migrate_legacy_archive()
+
+    assert cfg.archives == []
+    assert cfg.legacy_migrated is True
+    assert "Each archive now needs its own database" in capsys.readouterr().out

@@ -1,57 +1,66 @@
+from pathlib import Path
+
+from organize_archive import paths
+from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.gui.queries import remove_archive
+from organize_archive.gui.queries import add_archive, remove_archive
 
 
-def _file(conn, root_id, path, digest):
-    return conn.execute(
-        """INSERT INTO files(root_id, rel_path, size, mtime, media_type, sha256,
-                             first_seen, last_seen)
-           VALUES(?, ?, 1, 0, 'image', ?, 'now', 'now')""",
-        (root_id, path, digest),
-    ).lastrowid
+def _seed_file(cfg, archive_id, rel_path, digest):
+    conn = db.connect(cfg.archive_db_path(archive_id))
+    try:
+        db.init_db(conn)
+        file_id = conn.execute(
+            """INSERT INTO files(root_id, rel_path, size, mtime, media_type, sha256,
+                                 first_seen, last_seen)
+               VALUES(?, ?, 1, 0, 'image', ?, 'now', 'now')""",
+            (archive_id, rel_path, digest),
+        ).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    return file_id
 
 
-def test_remove_archive_keeps_other_root_and_shared_thumbnail(tmp_path):
-    db_path = tmp_path / "archive.db"
-    cache = tmp_path / "cache"
-    conn = db.connect(db_path)
-    db.init_db(conn)
-    first = db.get_or_create_root(conn, "/one")
-    second = db.get_or_create_root(conn, "/two")
-    first_file = _file(conn, first, "one.jpg", "shared")
-    _file(conn, first, "only-one.jpg", "only-one")
-    second_file = _file(conn, second, "two.jpg", "shared")
-    now = db.now_iso()
-    group = conn.execute(
-        """INSERT INTO dup_groups(method, canonical_file_id, member_count, created_at)
-           VALUES('exact', ?, 2, ?)""", (first_file, now),
-    ).lastrowid
-    conn.executemany(
-        "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, ?)",
-        [(group, first_file, "canonical"), (group, second_file, "duplicate")],
-    )
-    conn.execute("UPDATE files SET hidden=1, dup_group_id=? WHERE id=?",
-                 (group, second_file))
-    conn.commit()
-    conn.close()
+def test_remove_archive_only_touches_its_own_isolated_store(monkeypatch, tmp_path):
+    """Each archive is its own database and cache dir now, so removing one
+    must never reach into another — even one holding byte-identical content."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    cfg = Config.load()
 
-    thumbs = cache / "thumbs"
-    thumbs.mkdir(parents=True)
-    shared = thumbs / "shared_v1_320.jpg"
-    exclusive = thumbs / "only-one_v1_320.jpg"
-    unique = thumbs / f"fid{first_file}_v1_320.jpg"
-    shared.write_bytes(b"shared")
-    exclusive.write_bytes(b"exclusive")
-    unique.write_bytes(b"unique")
+    one_src, two_src = tmp_path / "one", tmp_path / "two"
+    one_src.mkdir()
+    two_src.mkdir()
+    one = add_archive(cfg, str(one_src))["id"]
+    two = add_archive(cfg, str(two_src))["id"]
 
-    result = remove_archive(db_path, str(cache), first)
+    file_one = _seed_file(cfg, one, "one.jpg", "same-bytes-in-both")
+    file_two = _seed_file(cfg, two, "two.jpg", "same-bytes-in-both")
 
-    assert result["ok"] is True
-    assert shared.exists()  # still used by /two
-    assert not exclusive.exists()
-    assert not unique.exists()
-    conn = db.connect(db_path)
-    assert conn.execute("SELECT COUNT(*) FROM roots").fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM files WHERE root_id=?", (first,)).fetchone()[0] == 0
-    assert tuple(conn.execute("SELECT hidden, dup_group_id FROM files WHERE id=?", (second_file,)).fetchone()) == (0, None)
-    conn.close()
+    one_thumb = Path(cfg.archive_cache_dir(one)) / "thumbs" / f"fid{file_one}_v1_320.jpg"
+    two_thumb = Path(cfg.archive_cache_dir(two)) / "thumbs" / f"fid{file_two}_v1_320.jpg"
+    one_thumb.parent.mkdir(parents=True)
+    two_thumb.parent.mkdir(parents=True)
+    one_thumb.write_bytes(b"one")
+    two_thumb.write_bytes(b"two")
+
+    result = remove_archive(cfg, one)
+
+    assert result == {"ok": True, "path": str(one_src.resolve())}
+    assert not paths.archive_dir(one).exists()          # db + cache both gone
+    assert [a["id"] for a in cfg.archives] == [two]
+
+    # Archive two is completely untouched, despite the shared content hash.
+    assert Path(cfg.archive_db_path(two)).is_file()
+    assert two_thumb.exists()
+    conn = db.connect(cfg.archive_db_path(two))
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_remove_archive_reports_error_for_unknown_id(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    cfg = Config.load()
+    assert remove_archive(cfg, 999) == {"error": "archive not found"}

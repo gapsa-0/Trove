@@ -8,13 +8,21 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import sqlite3
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Project layout ------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 from .paths import (app_data_dir, config_file, default_cache_dir,
-                    default_db_path, ensure_app_data_dirs)
+                    default_db_path, ensure_app_data_dirs,
+                    archive_dir, archive_db_path, archive_cache_dir)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _load_dotenv() -> None:
@@ -60,9 +68,21 @@ IGNORE_NAME_SUBSTRINGS = (
 
 @dataclass
 class Config:
+    # ``roots``/``db_path``/``cache_dir`` remain the CLI's single shared catalog
+    # (``oa scan``/``oa dedup``/... — a separate, unchanged tool). The GUI's
+    # notion of an "archive" is fully isolated instead: each entry in
+    # ``archives`` gets its own database and its own thumbnail/face-crop cache
+    # under ``archive_dir(id)``, so nothing about one archive's content is
+    # visible to, or reusable by, another. ``db_path``/``cache_dir`` still back
+    # the app-wide *shared* resources (ML model weights, the app icon) that are
+    # not archive content.
     roots: list[str] = field(default_factory=list)
     db_path: str = field(default_factory=lambda: str(default_db_path()))
     cache_dir: str = field(default_factory=lambda: str(default_cache_dir()))
+    archives: list[dict] = field(default_factory=list)
+    # Latches the one-time copy of a pre-existing shared catalog into the new
+    # per-archive layout, so it runs at most once ever (see migrate_legacy_archive).
+    legacy_migrated: bool = False
 
     # Semantic Browse search (Voyage Multimodal 3.5). The API key is deliberately
     # not a config field: put VOYAGE_API_KEY in the ignored project-root .env
@@ -187,7 +207,92 @@ class Config:
     def ensure_dirs(self) -> None:
         ensure_app_data_dirs()
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        cache_dir = Path(self.cache_dir)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        (cache_dir / "thumbs").mkdir(parents=True, exist_ok=True)
-        (cache_dir / "models").mkdir(parents=True, exist_ok=True)
+        Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
+
+    # -- per-archive isolation ---------------------------------------------
+    # Each GUI archive is a fully self-contained store: its own database, its
+    # own thumbnail/face-crop cache. Only app-wide binaries (ML model weights,
+    # the app icon — see db_path/cache_dir above) are shared between archives.
+
+    def _next_archive_id(self) -> int:
+        return max((a["id"] for a in self.archives), default=0) + 1
+
+    def archive_path(self, archive_id: int) -> str | None:
+        return next((a["path"] for a in self.archives if a["id"] == archive_id), None)
+
+    def archive_db_path(self, archive_id: int) -> str:
+        return str(archive_db_path(archive_id))
+
+    def archive_cache_dir(self, archive_id: int) -> str:
+        return str(archive_cache_dir(archive_id))
+
+    def add_archive_entry(self, path: str) -> dict:
+        """Register a new isolated archive and create its private directory."""
+        aid = self._next_archive_id()
+        archive_dir(aid).mkdir(parents=True, exist_ok=True)
+        entry = {"id": aid, "path": path, "added_at": _now_iso()}
+        self.archives.append(entry)
+        self.save()
+        return entry
+
+    def remove_archive_entry(self, archive_id: int) -> None:
+        self.archives = [a for a in self.archives if a["id"] != archive_id]
+        self.save()
+
+    def migrate_legacy_archive(self) -> None:
+        """One-time copy of the old shared single-catalog database into the new
+        per-archive layout, so a catalog built before this version doesn't
+        appear to vanish from the GUI. Runs at most once (``legacy_migrated``
+        latches even when there was nothing to migrate).
+
+        Only handles the common case of a legacy database with exactly one
+        root — that is what every existing installation actually has. A legacy
+        database with several roots predates per-archive isolation entirely
+        and mixed their data in ways that can't be split back apart
+        automatically (e.g. cross-root duplicate groups); migration is skipped
+        and the folders must be re-added as separate archives instead.
+        """
+        if self.legacy_migrated:
+            return
+        self.legacy_migrated = True
+        legacy_db = Path(self.db_path)
+        if not legacy_db.is_file():
+            self.save()
+            return
+        try:
+            src = sqlite3.connect(str(legacy_db))
+        except sqlite3.DatabaseError:
+            self.save()
+            return
+        try:
+            try:
+                roots = src.execute("SELECT id, path FROM roots").fetchall()
+            except sqlite3.DatabaseError:
+                roots = []
+            if len(roots) == 1:
+                _legacy_root_id, root_path = roots[0]
+                aid = self._next_archive_id()
+                archive_dir(aid).mkdir(parents=True, exist_ok=True)
+                # A plain file copy could miss pages the legacy database hasn't
+                # checkpointed out of its WAL yet if it's open elsewhere (e.g. a
+                # running GUI). Back it up through SQLite instead, so the copy is
+                # always a consistent snapshot regardless of concurrent access.
+                dst = sqlite3.connect(str(archive_db_path(aid)))
+                try:
+                    src.backup(dst)
+                finally:
+                    dst.close()
+                legacy_cache = Path(self.cache_dir)
+                for sub in ("thumbs", "faces"):
+                    cache_src = legacy_cache / sub
+                    if cache_src.is_dir():
+                        shutil.copytree(cache_src, archive_cache_dir(aid) / sub)
+                self.archives.append({"id": aid, "path": root_path, "added_at": _now_iso()})
+            elif len(roots) > 1:
+                print(f"Note: {legacy_db} holds {len(roots)} roots from the previous "
+                      "shared-catalog design. Each archive now needs its own database, "
+                      "so automatic migration was skipped — re-add those folders as "
+                      "separate archives in the GUI.")
+        finally:
+            src.close()
+        self.save()

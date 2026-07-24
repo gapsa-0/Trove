@@ -123,3 +123,18 @@ def get_or_create_root(conn: sqlite3.Connection, path: str) -> int:
     )
     conn.commit()
     return cur.lastrowid
+
+
+def create_root(conn: sqlite3.Connection, root_id: int, path: str) -> None:
+    """Insert the single root of a per-archive database with an explicit id.
+
+    Each isolated archive database has exactly one root, and its id is kept
+    equal to the archive's id in the app registry — every place that already
+    threads a ``root_id`` through (jobs, queries, URLs) keeps meaning the same
+    thing without change; only *which database file* it points at changes.
+    """
+    conn.execute(
+        "INSERT INTO roots(id, path, added_at) VALUES(?, ?, ?)",
+        (root_id, path, now_iso()),
+    )
+    conn.commit()

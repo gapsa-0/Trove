@@ -40,9 +40,31 @@ def default_cache_dir() -> Path:
     return app_data_dir() / "cache"
 
 
+def archives_dir() -> Path:
+    """Root of every isolated per-archive store (own db + own thumbnail cache)."""
+    return app_data_dir() / "archives"
+
+
+def archive_dir(archive_id: int) -> Path:
+    return archives_dir() / str(archive_id)
+
+
+def archive_db_path(archive_id: int) -> Path:
+    return archive_dir(archive_id) / "archive.db"
+
+
+def archive_cache_dir(archive_id: int) -> Path:
+    return archive_dir(archive_id) / "cache"
+
+
 def ensure_app_data_dirs() -> None:
-    """Create the standard mutable-data layout when an operation needs it."""
+    """Create the standard mutable-data layout when an operation needs it.
+
+    Only ``models``/``icons`` live under the shared cache dir now — those are
+    app binaries, not archive content. Thumbnails and face crops are per-archive
+    and get created lazily under each archive's own cache dir.
+    """
     data_dir = app_data_dir()
-    for directory in (data_dir, default_cache_dir() / "thumbs",
-                      default_cache_dir() / "models", data_dir / "logs"):
+    for directory in (data_dir, default_cache_dir() / "models",
+                      default_cache_dir() / "icons", data_dir / "logs"):
         directory.mkdir(parents=True, exist_ok=True)

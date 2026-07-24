@@ -174,6 +174,15 @@ class JobManager:
         """Whether a duplicate rebuild is outstanding for this root."""
         return self._dedup_dirty and self._dedup_root in (None, root_id)
 
+    def current_root_id(self) -> int | None:
+        """Which single archive is open in the GUI right now, if any.
+
+        Each archive is a separate database, so content routes that carry no
+        root/archive id of their own (thumbnails, the original file) resolve
+        against whichever one this is — the GUI only ever browses one at a time.
+        """
+        return self._open_root_id
+
     def _error_ready(self, root_id: int, kind: str) -> bool:
         """True once a kind's post-error cooldown has elapsed (or none is set)."""
         at = self._error_at.get((root_id, kind))
@@ -295,7 +304,7 @@ class JobManager:
         open_root_id = self._open_root_id
         if open_root_id is None:
             return False
-        archive = next((a for a in queries.archives(self.cfg.db_path)
+        archive = next((a for a in queries.archives(self.cfg)
                         if a["id"] == open_root_id and a["exists"]), None)
         if not archive:
             return False
@@ -341,7 +350,7 @@ class JobManager:
                 # Scan and enrich each use their own connection and bypass the
                 # write lock so they can run in parallel. SQLite WAL mode
                 # serializes their brief commits safely.
-                conn = db.connect(self.cfg.db_path)
+                conn = db.connect(self.cfg.archive_db_path(job.root_id))
                 db.init_db(conn)
                 try:
                     if job.kind == "scan":
@@ -352,7 +361,7 @@ class JobManager:
                     conn.close()
             else:
                 with self._write_lock:
-                    conn = db.connect(self.cfg.db_path)
+                    conn = db.connect(self.cfg.archive_db_path(job.root_id))
                     db.init_db(conn)
                     try:
                         if job.kind == "dedup":
@@ -398,7 +407,9 @@ class JobManager:
 
         prog = _JobProgress(job, cancel)
         run_started = db.now_iso()
-        roots = [job.root_path] if job.root_path else list(self.cfg.roots)
+        # An archive database has exactly one root; job.root_path is always
+        # supplied by the scheduler, this is just a defensive fallback.
+        roots = [job.root_path] if job.root_path else [self.cfg.archive_path(job.root_id)]
         prog.total = sum(
             walker.count_files(__import__("pathlib").Path(r))
             for r in roots if __import__("pathlib").Path(r).is_dir()
@@ -441,21 +452,17 @@ class JobManager:
         # durable entities: a root is clustered from scratch only the first time
         # (bootstrap); afterwards new geotagged files are attached incrementally
         # (assign_unplaced), so named/pinned places and manual attachments persist.
+        # Each archive is now its own database, so this only ever touches the
+        # one this job belongs to.
         from ..geo.clusters import cluster_places, assign_unplaced
-        from . import queries
-        roots = [a for a in queries.archives(self.cfg.db_path) if a["exists"]]
-        job.total = len(roots)
-        touched = 0
-        for i, a in enumerate(roots):
-            job.current = a["name"]
-            has_places = conn.execute(
-                "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (a["id"],)
-            ).fetchone()
-            if has_places:
-                touched += assign_unplaced(conn, a["id"]).points
-            else:
-                cluster_places(conn, a["id"])
-            job.done = i + 1
+        job.total, job.done = 1, 0
+        has_places = conn.execute(
+            "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (job.root_id,)
+        ).fetchone()
+        touched = assign_unplaced(conn, job.root_id).points if has_places else 0
+        if not has_places:
+            cluster_places(conn, job.root_id)
+        job.done = 1
         job.message = f"{touched} new geotagged files placed"
 
     def _run_faces(self, conn, job: Job, cancel):
@@ -552,7 +559,7 @@ class JobManager:
 
         # Snapshot candidates under a read-only connection. The API calls below
         # happen without the writer lock so local metadata/faces work continues.
-        read_conn = db.open_readonly(self.cfg.db_path)
+        read_conn = db.open_readonly(self.cfg.archive_db_path(job.root_id))
         try:
             rows = semantic.pending_rows(read_conn, job.root_id, force=force)
             total, already = semantic.work_counts(read_conn, job.root_id, force=force)
@@ -578,9 +585,9 @@ class JobManager:
                 job.current = row["rel_path"]
                 part, kind, reason = semantic.media_part(
                     self.cfg, Path(row["root_path"]) / row["rel_path"],
-                    row["ext"], row["media_type"])
+                    row["ext"], row["media_type"], self.cfg.archive_cache_dir(job.root_id))
                 if reason:
-                    self._save_semantic_outcome(row, None, kind, reason)
+                    self._save_semantic_outcome(job.root_id, row, None, kind, reason)
                     skipped += 1
                     job.done = already + start + offset + 1
                 else:
@@ -608,16 +615,16 @@ class JobManager:
                             job.current = f"Retrying: {item[0]['rel_path']}"
                             outcomes.append((item, semantic.embed_parts(self.cfg, [item[1]])[0]))
                         except Exception as exc:
-                            self._save_semantic_outcome(item[0], None, item[2], str(exc))
+                            self._save_semantic_outcome(job.root_id, item[0], None, item[2], str(exc))
                             failed += 1
                             job.done = already + start + item[3] + 1
                 for (row, _part, kind, offset), values in outcomes:
-                    self._save_semantic_outcome(row, values, kind, None)
+                    self._save_semantic_outcome(job.root_id, row, values, kind, None)
                     indexed += 1
                     job.done = already + start + offset + 1
         return (indexed, skipped, failed, len(rows))
 
-    def _save_semantic_outcome(self, row, values, kind, reason):
+    def _save_semantic_outcome(self, root_id, row, values, kind, reason):
         """Persist one result without taking the manager-wide pipeline lock.
 
         SQLite WAL plus its busy timeout serializes this tiny transaction against
@@ -625,7 +632,7 @@ class JobManager:
         that job's long-lived manager lock.
         """
         from . import semantic
-        conn = db.connect(self.cfg.db_path)
+        conn = db.connect(self.cfg.archive_db_path(root_id))
         try:
             # Dedup may have completed while Voyage was processing this item.
             # Only keep an outcome if this exact source remains canonical.

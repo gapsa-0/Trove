@@ -94,7 +94,8 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
     from . import queries, semantic
     from ..pets.extract import scan_source as pet_scan_source
 
-    conn = db.open_readonly(cfg.db_path)
+    db_path = cfg.archive_db_path(root_id)
+    conn = db.open_readonly(db_path)
     try:
         indexed = conn.execute(
             "SELECT COUNT(*) FROM files f WHERE f.present=1 AND f.root_id=?",
@@ -122,10 +123,10 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
         # set when scan/enrich change data and cleared on a successful rebuild.
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
-        PETS: (queries.pets_pending(cfg.db_path, root_id, pet_scan_source(cfg))
+        PETS: (queries.pets_pending(db_path, root_id, pet_scan_source(cfg))
                if avail[PETS] else 0),
-        FACES: queries.faces_pending(cfg.db_path, root_id) if avail[FACES] else 0,
-        SEMANTIC: (queries.semantic_pending(cfg.db_path, root_id)
+        FACES: queries.faces_pending(db_path, root_id) if avail[FACES] else 0,
+        SEMANTIC: (queries.semantic_pending(db_path, root_id)
                    if avail[SEMANTIC] else 0),
     }
 

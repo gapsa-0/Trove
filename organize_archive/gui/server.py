@@ -15,7 +15,6 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from ..config import Config
-from ..db import database as db
 from . import queries, thumbs, icons
 from .jobs import JobManager
 
@@ -107,6 +106,22 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    # -- per-archive resolution ---------------------------------------------
+    # Each archive is a fully separate database and cache dir; every request
+    # that touches archive content must say which one. Content routes that
+    # take no ``root`` query param (thumbnails, the original file) instead
+    # resolve against whichever archive is currently open in the GUI, since
+    # only one is ever browsed at a time.
+    def _db(self, root_id) -> str:
+        if root_id is None:
+            raise ValueError("root is required")
+        return self.cfg.archive_db_path(root_id)
+
+    def _cache(self, root_id) -> str:
+        if root_id is None:
+            raise ValueError("root is required")
+        return self.cfg.archive_cache_dir(root_id)
+
     # -- GET --------------------------------------------------------------
     def do_GET(self):
         u = urlparse(self.path)
@@ -150,82 +165,102 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._json({"error": "not found"}, 404)
             elif path == "/api/archives":
-                self._json({"archives": queries.archives(self.cfg.db_path)})
+                self._json({"archives": queries.archives(self.cfg)})
             elif path == "/api/summary":
-                self._json(queries.summary(self.cfg.db_path, one("root", int)))
+                rid = one("root", int)
+                self._json(queries.summary(self._db(rid), rid))
             elif path == "/api/timeline":
+                rid = one("root", int)
                 self._json(queries.timeline(
-                    self.cfg.db_path, root_id=one("root", int),
+                    self._db(rid), root_id=rid,
                     bucket=one("bucket", str, "month"), year=one("year"),
                     month=one("month"), person_ids=many("person"),
                     cluster_id=one("place", int)))
             elif path == "/api/dates/sources":
-                self._json(queries.date_sources(self.cfg.db_path, one("root", int)))
+                rid = one("root", int)
+                self._json(queries.date_sources(self._db(rid), rid))
             elif path == "/api/map/clusters":
-                self._json(queries.place_clusters(self.cfg.db_path, one("root", int)))
+                rid = one("root", int)
+                self._json(queries.place_clusters(self._db(rid), rid))
             elif path.startswith("/api/map/cluster/"):
-                c = queries.place_cluster_members(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
+                rid = one("root", int)
+                c = queries.place_cluster_members(self._db(rid), int(path.rsplit("/", 1)[1]))
                 self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/summary":
-                self._json(queries.face_summary(self.cfg.db_path, one("root", int)))
+                rid = one("root", int)
+                self._json(queries.face_summary(self._db(rid), rid))
             elif path == "/api/pets/summary":
                 from ..pets.extract import scan_source as pet_scan_source
+                rid = one("root", int)
                 self._json(queries.pet_summary(
-                    self.cfg.db_path, one("root", int), pet_scan_source(self.cfg)))
+                    self._db(rid), rid, pet_scan_source(self.cfg)))
             elif path == "/api/pets":
+                rid = one("root", int)
                 self._json(queries.pet_groups(
-                    self.cfg.db_path, one("root", int),
+                    self._db(rid), rid,
                     limit=min(one("limit", int, 120), 500),
                     offset=one("offset", int, 0)))
             elif path == "/api/pet/detections":
+                rid = one("root", int)
                 self._json(queries.animal_gallery(
-                    self.cfg.db_path, one("root", int),
+                    self._db(rid), rid,
                     limit=min(one("limit", int, 120), 500),
                     offset=one("offset", int, 0),
                     unassigned=bool(one("unassigned", int, 0))))
             elif path == "/api/nonhuman":
+                rid = one("root", int)
                 self._json(queries.nonhuman_review(
-                    self.cfg.db_path, one("root", int),
+                    self._db(rid), rid,
                     limit=min(one("limit", int, 120), 500),
                     offset=one("offset", int, 0)))
             elif path.startswith("/api/pet/"):
+                rid = one("root", int)
                 result = queries.pet_group(
-                    self.cfg.db_path, int(path.rsplit("/", 1)[1]),
-                    one("root", int), limit=min(one("limit", int, 120), 500),
+                    self._db(rid), int(path.rsplit("/", 1)[1]),
+                    rid, limit=min(one("limit", int, 120), 500),
                     offset=one("offset", int, 0))
                 self._json(result) if result else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/persons":
+                rid = one("root", int)
                 self._json(queries.face_persons(
-                    self.cfg.db_path, one("root", int),
+                    self._db(rid), rid,
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path == "/api/faces/suggestions":
+                rid = one("root", int)
                 self._json(queries.person_suggestions(
-                    self.cfg.db_path, one("root", int), limit=min(one("limit", int, 40), 200)))
+                    self._db(rid), rid, limit=min(one("limit", int, 40), 200)))
             elif path.startswith("/api/faces/person/"):
+                rid = one("root", int)
                 p2 = queries.face_person(
-                    self.cfg.db_path, int(path.rsplit("/", 1)[1]), one("root", int),
+                    self._db(rid), int(path.rsplit("/", 1)[1]), rid,
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0))
                 self._json(p2) if p2 else self._json({"error": "not found"}, 404)
             elif path == "/api/dups/summary":
-                self._json(queries.dup_summary(self.cfg.db_path, one("root", int)))
+                rid = one("root", int)
+                self._json(queries.dup_summary(self._db(rid), rid))
             elif path == "/api/dups":
+                rid = one("root", int)
                 self._json(queries.dup_groups(
-                    self.cfg.db_path, one("root", int),
+                    self._db(rid), rid,
                     limit=min(one("limit", int, 60), 200), offset=one("offset", int, 0)))
             elif path == "/api/media":
+                rid = one("root", int)
                 self._json(queries.media(
-                    self.cfg.db_path, root_id=one("root", int),
+                    self._db(rid), root_id=rid,
                     year=one("year"), month=one("month"), mtype=one("type"),
                     person_ids=many("person"), cluster_id=one("place", int),
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path == "/api/browse/filters":
-                self._json(queries.browse_filters(self.cfg.db_path, one("root", int)))
+                rid = one("root", int)
+                self._json(queries.browse_filters(self._db(rid), rid))
             elif path == "/api/folders":
-                self._json(queries.folders(self.cfg.db_path, one("root", int),
+                rid = one("root", int)
+                self._json(queries.folders(self._db(rid), rid,
                                            limit=min(one("limit", int, 120), 500)))
             elif path == "/api/browse/semantic/status":
                 from . import semantic
-                status = queries.semantic_summary(self.cfg.db_path, one("root", int))
+                rid = one("root", int)
+                status = queries.semantic_summary(self._db(rid), rid)
                 status["configured"] = semantic.api_key_available()
                 self._json(status)
             elif path == "/api/browse/semantic/search":
@@ -241,10 +276,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "A search query is required"}, 400)
                 else:
                     from . import semantic
-                    vectors = semantic.embed_queries(
-                        self.cfg, search_queries, self.cfg.db_path)
+                    rid = one("root", int)
+                    db_path = self._db(rid)
+                    vectors = semantic.embed_queries(self.cfg, search_queries, db_path)
                     self._json(queries.semantic_search(
-                        self.cfg.db_path, vectors[0], root_id=one("root", int),
+                        db_path, vectors[0], root_id=rid,
                         year=one("year"), month=one("month"), mtype=one("type"),
                         person_ids=many("person"), cluster_id=one("place", int),
                         min_similarity=max(-1.0, min(1.0, float(
@@ -252,7 +288,8 @@ class Handler(BaseHTTPRequestHandler):
                         limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0),
                         alternate_vectors=[(vector, 0.01) for vector in vectors[1:]]))
             elif path.startswith("/api/item/"):
-                it = queries.item(self.cfg.db_path, int(path.rsplit("/", 1)[1]))
+                rid = self.jobs.current_root_id()
+                it = queries.item(self._db(rid), int(path.rsplit("/", 1)[1])) if rid else None
                 self._json(it) if it else self._json({"error": "not found"}, 404)
             elif path == "/api/pipeline":
                 # Single source of truth for pipeline status: the same resolved
@@ -260,7 +297,7 @@ class Handler(BaseHTTPRequestHandler):
                 # what's actually running.
                 from . import pipeline
                 rid = one("root", int)
-                arch = next((a for a in queries.archives(self.cfg.db_path)
+                arch = next((a for a in queries.archives(self.cfg)
                              if a["id"] == rid), None)
                 if arch is None:
                     self._json({"error": "unknown archive"}, 404)
@@ -291,20 +328,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._read_json_body()
             if path == "/api/archives":
-                res = queries.add_archive(self.cfg.db_path, body.get("path", ""))
-                if "error" in res:
-                    self._json(res, 400)
-                else:
-                    if res["path"] not in self.cfg.roots:
-                        self.cfg.roots.append(res["path"])
-                        self.cfg.save()
-                    self._json(res)
+                res = queries.add_archive(self.cfg, body.get("path", ""))
+                self._json(res, 400 if "error" in res else 200)
             elif path == "/api/archive/open":
                 root_id = body.get("root_id")
                 if not isinstance(root_id, int):
                     self._json({"error": "root_id is required"}, 400)
                 elif not any(a["id"] == root_id and a["exists"]
-                             for a in queries.archives(self.cfg.db_path)):
+                             for a in queries.archives(self.cfg)):
                     self._json({"error": "archive not found or unavailable"}, 404)
                 else:
                     self.jobs.open_archive(root_id)
@@ -320,117 +351,133 @@ class Handler(BaseHTTPRequestHandler):
                 elif not self.jobs.stop_archive(root_id):
                     self._json({"error": "archive is still stopping; try again shortly"}, 409)
                 else:
-                    res = queries.remove_archive(self.cfg.db_path, self.cfg.cache_dir, root_id)
-                    if "error" not in res:
-                        # `roots` is the user-facing registration list as well
-                        # as scan's default input; removing the DB row alone
-                        # would otherwise register it again at the next scan.
-                        removed = Path(res["path"])
-                        self.cfg.roots = [p for p in self.cfg.roots
-                                          if Path(p).expanduser().resolve() != removed]
-                        self.cfg.save()
+                    res = queries.remove_archive(self.cfg, root_id)
                     self._json(res, 400 if "error" in res else 200)
+            # The mutations below act on an id (person, cluster, face, pet...)
+            # rather than a file the caller already knows the root of, and the
+            # frontend never sends one for them. They resolve against whichever
+            # archive is currently open, same as thumbnail/original serving.
             elif path == "/api/map/cluster/rename":
                 res = queries.rename_place_cluster(
-                    self.cfg.db_path, body.get("cluster_id"), (body.get("name") or "").strip())
+                    self._db(self.jobs.current_root_id()),
+                    body.get("cluster_id"), (body.get("name") or "").strip())
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/person/rename":
                 res = queries.rename_person(
-                    self.cfg.db_path, body.get("person_id"), (body.get("name") or "").strip())
+                    self._db(self.jobs.current_root_id()),
+                    body.get("person_id"), (body.get("name") or "").strip())
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/reassign":
                 res = queries.reassign_face(
-                    self.cfg.db_path, body.get("face_id"), body.get("person_id"))
+                    self._db(self.jobs.current_root_id()),
+                    body.get("face_id"), body.get("person_id"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/merge":
-                res = queries.merge_persons(self.cfg.db_path, body.get("a"), body.get("b"))
+                res = queries.merge_persons(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/different":
-                res = queries.set_persons_different(self.cfg.db_path, body.get("a"), body.get("b"))
+                res = queries.set_persons_different(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/skip":
-                res = queries.set_persons_skip(self.cfg.db_path, body.get("a"), body.get("b"))
+                res = queries.set_persons_skip(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/hide":
                 res = queries.hide_person(
-                    self.cfg.db_path, body.get("person_id"),
+                    self._db(self.jobs.current_root_id()), body.get("person_id"),
                     body.get("kind", "false_detection"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pet/rename":
                 res = queries.rename_pet(
-                    self.cfg.db_path, body.get("pet_id"),
+                    self._db(self.jobs.current_root_id()), body.get("pet_id"),
                     (body.get("name") or "").strip())
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/nonhuman/review":
                 res = queries.review_nonhuman(
-                    self.cfg.db_path, body.get("detection_id"),
+                    self._db(self.jobs.current_root_id()), body.get("detection_id"),
                     body.get("verdict", "confirmed"))
                 if res.get("status") == "human" and res.get("root_id"):
                     self.jobs.start("face_cluster", res["root_id"])
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/date":
                 res = queries.set_date(
-                    self.cfg.db_path, body.get("file_id"), body.get("datetime"))
+                    self._db(self.jobs.current_root_id()),
+                    body.get("file_id"), body.get("datetime"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/place":
+                db_path = self._db(self.jobs.current_root_id())
                 if body.get("clear"):
-                    res = queries.clear_place(self.cfg.db_path, body.get("file_id"))
+                    res = queries.clear_place(db_path, body.get("file_id"))
                 else:
-                    res = queries.set_place(
-                        self.cfg.db_path, body.get("file_id"), body.get("place_id"))
+                    res = queries.set_place(db_path, body.get("file_id"), body.get("place_id"))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/places/create":
                 res = queries.create_place(
-                    self.cfg.db_path, body.get("root"), body.get("name"),
+                    self._db(body.get("root")), body.get("root"), body.get("name"),
                     body.get("lat"), body.get("lon"), body.get("file_id"))
                 self._json(res, 400 if "error" in res else 200)
             else:
                 self._json({"error": "not found"}, 404)
+        except ValueError as e:
+            self._json({"error": str(e)}, 400)
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
     # -- media serving ----------------------------------------------------
+    # Thumbnails and originals are requested by bare id with no ``root``
+    # (the frontend never sends one for these), so they resolve against
+    # whichever single archive is currently open — the GUI never browses two
+    # archives' content at once.
+    def _open_db_and_cache(self):
+        rid = self.jobs.current_root_id()
+        if rid is None:
+            return None, None
+        return self._db(rid), self._cache(rid)
+
     def _serve_thumb(self, fid: int):
-        info = queries.thumb_source(self.cfg.db_path, fid)
+        db_path, cache_dir = self._open_db_and_cache()
+        info = queries.thumb_source(db_path, fid) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256 = info
-        tp = thumbs.thumb_for(self.cfg.cache_dir, fid, src, sha256=sha256)
+        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256)
         self._send_file(tp if tp else src)
 
     def _serve_face_thumb(self, face_id: int):
-        info = queries.face_crop_source(self.cfg.db_path, face_id)
+        db_path, cache_dir = self._open_db_and_cache()
+        info = queries.face_crop_source(db_path, face_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, box = info
-        tp = thumbs.face_thumb_for(self.cfg.cache_dir, face_id, src, box, sha256=sha256)
+        tp = thumbs.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256)
         self._send_file(tp if tp else src)
 
     def _serve_animal_thumb(self, detection_id: int):
-        info = queries.animal_crop_source(self.cfg.db_path, detection_id)
+        db_path, cache_dir = self._open_db_and_cache()
+        info = queries.animal_crop_source(db_path, detection_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, box = info
         tp = thumbs.face_thumb_for(
-            self.cfg.cache_dir, detection_id, src, box, sha256=sha256)
+            cache_dir, detection_id, src, box, sha256=sha256)
         self._send_file(tp if tp else src)
 
     def _serve_original(self, fid: int):
-        src = queries.file_location(self.cfg.db_path, fid)
+        rid = self.jobs.current_root_id()
+        src = queries.file_location(self._db(rid), fid) if rid else None
         if src is None:
             return self._json({"error": "not found"}, 404)
         self._send_file(src)
 
 
 def serve(cfg: Config, host="127.0.0.1", port=8756):
-    # Apply schema migrations before JobManager starts its automatic scheduler.
-    # The scheduler's first tick can query newly added tables/columns.
+    # Only shared, non-archive resources (ML models, the app icon) live at the
+    # top level now; each archive's own database is created when it's added
+    # (queries.add_archive) or opened for the first time by the scheduler.
     cfg.ensure_dirs()
-    conn = db.connect(cfg.db_path)
-    try:
-        db.init_db(conn)
-    finally:
-        conn.close()
+    cfg.migrate_legacy_archive()
     jm = JobManager(cfg)
     handler = type("BoundHandler", (Handler,), {"cfg": cfg, "jobs": jm})
     return ThreadingHTTPServer((host, port), handler)

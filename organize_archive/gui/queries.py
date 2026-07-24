@@ -1,8 +1,10 @@
 """Read-only queries backing the GUI. Each opens its own connection so the
 handler stays thread-safe under ThreadingHTTPServer.
 
-Everything is scoped to an archive (a row in `roots`). A root_id of None means
-"all archives combined".
+Everything is scoped to an archive (a row in `roots`, one per isolated
+database — see ``archives()`` below). A root_id of None on the other query
+functions means "no filter" (harmless: each archive's database only ever
+has the one root anyway).
 """
 
 from __future__ import annotations
@@ -10,10 +12,11 @@ from __future__ import annotations
 import os
 import math
 import struct
-import json
+import shutil
 from pathlib import Path
 
 from ..db import database as db
+from ..paths import archive_dir as archive_dir_path
 
 # Analytics (summary, timeline, map, counts) describe the whole archive, so they
 # count every present file. Only Browse hides non-canonical duplicates.
@@ -28,154 +31,82 @@ def _root_clause(root_id):
 
 
 # -- archives ---------------------------------------------------------------
+#
+# Each archive is fully self-contained: its own database (cfg.archive_db_path),
+# its own thumbnail/face-crop cache (cfg.archive_cache_dir). The registry of
+# which archives exist lives in Config (config.json), not in any one database,
+# since there is no longer a single shared database to hold a `roots` table
+# for all of them.
 
-def archives(db_path: str) -> list[dict]:
-    conn = db.open_readonly(db_path)
-    try:
-        out = []
-        for r in conn.execute("SELECT id, path, added_at FROM roots ORDER BY id"):
-            stats = conn.execute(
-                f"""SELECT COUNT(*) c, COALESCE(SUM(size),0) s,
-                           SUM(sha256 IS NOT NULL) hashed
-                    FROM files f WHERE {_VISIBLE} AND f.root_id=?""",
-                (r["id"],),
-            ).fetchone()
-            dated = conn.execute(
-                """SELECT COUNT(*) FROM files f JOIN dates d ON d.file_id=f.id
-                   WHERE f.root_id=?""", (r["id"],)
-            ).fetchone()[0]
-            last = conn.execute(
-                "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            out.append({
-                "id": r["id"], "path": r["path"],
-                "name": os.path.basename(r["path"].rstrip("/")) or r["path"],
-                "added_at": r["added_at"],
-                "files": stats["c"], "size": stats["s"],
-                "hashed": stats["hashed"] or 0,
-                "enriched": dated,
-                "exists": Path(r["path"]).is_dir(),
-                "last_scan": (last["finished_at"] or last["started_at"]) if last else None,
-            })
-        return out
-    finally:
-        conn.close()
+def archives(cfg) -> list[dict]:
+    out = []
+    for entry in sorted(cfg.archives, key=lambda a: a["id"]):
+        rid, path = entry["id"], entry["path"]
+        db_path = cfg.archive_db_path(rid)
+        row = {
+            "id": rid, "path": path,
+            "name": os.path.basename(path.rstrip("/")) or path,
+            "added_at": entry["added_at"],
+            "files": 0, "size": 0, "hashed": 0, "enriched": 0,
+            "exists": Path(path).is_dir(),
+            "last_scan": None,
+        }
+        if Path(db_path).is_file():
+            conn = db.open_readonly(db_path)
+            try:
+                stats = conn.execute(
+                    f"""SELECT COUNT(*) c, COALESCE(SUM(size),0) s,
+                               SUM(sha256 IS NOT NULL) hashed
+                        FROM files f WHERE {_VISIBLE}"""
+                ).fetchone()
+                dated = conn.execute(
+                    "SELECT COUNT(*) FROM files f JOIN dates d ON d.file_id=f.id"
+                ).fetchone()[0]
+                last = conn.execute(
+                    "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                row.update(
+                    files=stats["c"], size=stats["s"], hashed=stats["hashed"] or 0,
+                    enriched=dated,
+                    last_scan=(last["finished_at"] or last["started_at"]) if last else None,
+                )
+            finally:
+                conn.close()
+        out.append(row)
+    return out
 
 
-def add_archive(db_path: str, path: str) -> dict:
+def add_archive(cfg, path: str) -> dict:
     p = Path(path).expanduser()
     if not p.is_dir():
         return {"error": f"Not a directory: {path}"}
-    conn = db.connect(db_path)
+    resolved = str(p.resolve())
+    if any(a["path"] == resolved for a in cfg.archives):
+        return {"error": "That folder is already an archive."}
+    entry = cfg.add_archive_entry(resolved)
+    conn = db.connect(cfg.archive_db_path(entry["id"]))
     try:
         db.init_db(conn)
-        rid = db.get_or_create_root(conn, str(p.resolve()))
-        return {"id": rid, "path": str(p.resolve())}
+        db.create_root(conn, entry["id"], resolved)
     finally:
         conn.close()
+    return {"id": entry["id"], "path": resolved}
 
 
-def remove_archive(db_path: str, cache_dir: str, root_id: int) -> dict:
-    """Forget one archive and its derived data, without touching its originals.
+def remove_archive(cfg, root_id: int) -> dict:
+    """Forget one archive: delete its private database and cache wholesale.
 
-    The catalog database and thumbnail cache are shared by all configured roots.
-    Cache entries keyed by a content hash are therefore removed only when no
-    remaining file uses that hash.  Model files, icons, and other global cache
-    assets intentionally remain in place.
+    Nothing is shared between archives, so unlike the old shared-catalog
+    design this never needs to touch any other archive's rows or cache files.
     """
     if not isinstance(root_id, int):
         return {"error": "root_id is required"}
-    conn = db.connect(db_path)
-    try:
-        root = conn.execute("SELECT path FROM roots WHERE id=?", (root_id,)).fetchone()
-        if not root:
-            return {"error": "archive not found"}
-        root_path = root["path"]
-        files = conn.execute(
-            "SELECT id, sha256 FROM files WHERE root_id=?", (root_id,)
-        ).fetchall()
-        file_ids = [row["id"] for row in files]
-        hashes = {row["sha256"] for row in files if row["sha256"]}
-        face_ids = [row[0] for row in conn.execute(
-            "SELECT id FROM faces WHERE file_id IN (SELECT id FROM files WHERE root_id=?)",
-            (root_id,),
-        )]
-
-        # A legacy whole-catalog dedup group can still contain files from another
-        # root. Remove that group as a whole and unhide its surviving members;
-        # keeping it would leave them pointing at a deleted canonical file.
-        group_ids = [row[0] for row in conn.execute(
-            """SELECT DISTINCT dm.group_id FROM dup_members dm
-               JOIN files f ON f.id=dm.file_id WHERE f.root_id=?""", (root_id,)
-        )]
-        if group_ids:
-            marks = ",".join("?" for _ in group_ids)
-            conn.execute(
-                f"UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IN ({marks})",
-                group_ids,
-            )
-            conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", group_ids)
-
-        # The derived tables attached to files use ON DELETE CASCADE. Persons are
-        # global clusters, so prune only clusters left with no faces afterwards.
-        conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
-        conn.execute("DELETE FROM persons WHERE NOT EXISTS "
-                     "(SELECT 1 FROM faces WHERE faces.person_id=persons.id)")
-
-        # Scan history may cover several roots. Retain those records, minus this
-        # root, rather than losing the other archives' history.
-        for run in conn.execute("SELECT id, roots FROM scan_runs").fetchall():
-            try:
-                paths = json.loads(run["roots"] or "[]")
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if not isinstance(paths, list) or root_path not in paths:
-                continue
-            paths = [p for p in paths if p != root_path]
-            if paths:
-                conn.execute("UPDATE scan_runs SET roots=? WHERE id=?",
-                             (json.dumps(paths), run["id"]))
-            else:
-                conn.execute("DELETE FROM scan_runs WHERE id=?", (run["id"],))
-
-        conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
-        # Work out which content-addressed cache files are truly exclusive only
-        # after the root's file rows are gone.
-        removable_hashes = {
-            digest for digest in hashes
-            if conn.execute("SELECT 1 FROM files WHERE sha256=? LIMIT 1", (digest,)).fetchone() is None
-        }
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-    cache = Path(cache_dir)
-    removed_cache = 0
-    # Unhashed thumbnails use a file/face id. Those ids are unique to the rows
-    # just removed. Hashed keys can be shared across roots, hence the check above.
-    patterns = (
-        [(cache / "thumbs", f"fid{fid}_*") for fid in file_ids]
-        + [(cache / "faces", f"fid{face_id}_*") for face_id in face_ids]
-        + [(cache / "thumbs", f"{digest}_*") for digest in removable_hashes]
-        + [(cache / "faces", f"{digest}_*") for digest in removable_hashes]
-    )
-    for directory, pattern in patterns:
-        if not directory.is_dir():
-            continue
-        for item in directory.glob(pattern):
-            try:
-                if item.is_file():
-                    item.unlink()
-                    removed_cache += 1
-            except OSError:
-                # A cache miss or a concurrently-regenerated thumbnail must not
-                # turn a completed database removal into an error.
-                pass
-    return {"ok": True, "path": root_path, "files": len(file_ids),
-            "cache_files": removed_cache}
+    path = cfg.archive_path(root_id)
+    if path is None:
+        return {"error": "archive not found"}
+    shutil.rmtree(archive_dir_path(root_id), ignore_errors=True)
+    cfg.remove_archive_entry(root_id)
+    return {"ok": True, "path": path}
 
 
 # -- dashboard --------------------------------------------------------------

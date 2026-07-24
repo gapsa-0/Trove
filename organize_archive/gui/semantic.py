@@ -102,8 +102,14 @@ def embed_parts(cfg, parts: list[dict]) -> list[list[float]]:
     return _embed(cfg, parts, input_type="document")
 
 
-def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None, str | None, str | None]:
-    """Create one Voyage multimodal input, or a non-fatal skip reason."""
+def media_part(cfg, path: Path, ext: str, media_type: str,
+               cache_dir: str) -> tuple[dict | None, str | None, str | None]:
+    """Create one Voyage multimodal input, or a non-fatal skip reason.
+
+    ``cache_dir`` is the calling archive's own cache — semantic indexing
+    thumbnails are content derived from that archive and never shared with
+    another one.
+    """
     ext = (ext or path.suffix.lstrip(".")).lower()
     source, mime, kind = path, _IMAGE_MIMES.get(ext), "image"
     content_type = "image_base64"
@@ -113,7 +119,7 @@ def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None,
         # for archive-level visual retrieval. It also converts HEIC/RAW/etc.
         # to a format Voyage accepts.
         cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-        thumb = thumbs.thumb_for(cfg.cache_dir, cache_id, path, size=1024)
+        thumb = thumbs.thumb_for(cache_dir, cache_id, path, size=1024)
         if thumb is not None:
             source, mime, kind = thumb, "image/jpeg", "thumbnail"
         elif mime is None:
@@ -134,7 +140,7 @@ def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None,
         # A large photo can use a local JPEG thumbnail; video must be skipped.
         if media_type == "image" and source == path:
             cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-            source = thumbs.thumb_for(cfg.cache_dir, cache_id, path, size=1024)
+            source = thumbs.thumb_for(cache_dir, cache_id, path, size=1024)
             if source is not None and source.stat().st_size <= cfg.semantic_inline_max_bytes:
                 mime, kind, content_type = "image/jpeg", "thumbnail", "image_base64"
             else:
@@ -148,11 +154,11 @@ def media_part(cfg, path: Path, ext: str, media_type: str) -> tuple[dict | None,
     return {"content": [{content_type: f"data:{mime};base64,{data}", "type": content_type}]}, kind, None
 
 
-def embed_media(cfg, path: Path, ext: str, media_type: str, _db_path: str,
+def embed_media(cfg, path: Path, ext: str, media_type: str, cache_dir: str,
                 cancel=None) -> tuple[list[float] | None, str | None, str | None]:
     if cancel is not None and cancel.is_set():
         raise KeyboardInterrupt
-    part, kind, skip_reason = media_part(cfg, path, ext, media_type)
+    part, kind, skip_reason = media_part(cfg, path, ext, media_type, cache_dir)
     if skip_reason:
         return None, kind, skip_reason
     return _embed(cfg, [part], input_type="document")[0], kind, None
