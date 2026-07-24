@@ -530,10 +530,21 @@ def semantic_summary(db_path: str, root_id=None) -> dict:
                 GROUP BY e.status""", (*rp, semantic.INDEXER_VERSION)).fetchall()
         counts = {r["status"]: r["c"] for r in rows}
         completed = sum(counts.values())
+        # Per media-type tally of files that actually carry a current embedding
+        # (status='indexed'), so Browse can report its search reach as
+        # "N images, M videos" rather than a single opaque total.
+        type_rows = conn.execute(
+            f"""SELECT f.media_type mt, COUNT(*) c FROM semantic_embeddings e
+                JOIN files f ON f.id=e.file_id
+                WHERE {_NOT_HIDDEN}{rc} AND e.source_sha256=f.sha256
+                  AND COALESCE(e.indexer_version, '')=? AND e.status='indexed'
+                GROUP BY f.media_type ORDER BY c DESC""",
+            (*rp, semantic.INDEXER_VERSION)).fetchall()
+        by_type = [{"type": r["mt"], "count": r["c"]} for r in type_rows]
         return {
             "total": total, "indexed": counts.get("indexed", 0),
             "skipped": counts.get("skipped", 0), "errors": counts.get("error", 0),
-            "pending": max(0, total - completed),
+            "pending": max(0, total - completed), "by_type": by_type,
         }
     finally:
         conn.close()

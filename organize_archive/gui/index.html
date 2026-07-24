@@ -3388,6 +3388,48 @@
       white-space: nowrap
     }
 
+    /* Search reach: how much of the library the description search can currently
+       find, broken down by media type. Colored keys match the Overview's
+       "Storage by type" legend so a hue means the same type everywhere. */
+    .search-reach {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px 15px;
+      padding: 11px 4px 3px 10px;
+      font-size: 12px;
+      color: var(--muted)
+    }
+
+    .search-reach .reach-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px
+    }
+
+    .search-reach .reach-item b {
+      color: var(--text);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums
+    }
+
+    .search-reach .reach-key {
+      width: 8px;
+      height: 8px;
+      flex: none;
+      border-radius: 50%
+    }
+
+    .search-reach .reach-div {
+      width: 1px;
+      height: 11px;
+      background: var(--line-strong)
+    }
+
+    .search-reach .reach-note {
+      color: var(--muted)
+    }
+
     .check-control {
       display: flex;
       align-items: center;
@@ -4798,6 +4840,7 @@
     }
     function resumeSection(id) {
       if (id === "overview") startPoll();
+      else if (id === "library") renderSearchReach();
       else if (id === "people" && document.getElementById("facejob")) startFacePoll();
       else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
       else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawClusters(); }, 0);
@@ -5468,6 +5511,7 @@
         <button class="btn" type="submit">Search</button>
       </form>
       <div class="search-expansion" id="search-expansion" hidden></div>
+      <div class="search-reach" id="search-reach" aria-live="polite" hidden></div>
       <div class="library-toolbar">
         <div class="filterbar" id="filterbar"></div>
         <div class="chips">
@@ -5483,6 +5527,7 @@
       composer.addEventListener("compositionend", () => { S.composerComposing = false; renderSemanticComposer(false); });
       await buildFilterBar();
       if (gen !== NAV) return;
+      renderSearchReach();
       if (restored) {
         restoreLibraryControls(g);
         renderGridPages(g);
@@ -5522,25 +5567,54 @@
       const sr = sentinel.getBoundingClientRect(), mr = main.getBoundingClientRect();
       return direction === "prepend" ? sr.bottom >= mr.top - 600 : sr.top <= mr.bottom + 600;
     }
-    async function updateSemanticStatus() {
-      const el = document.getElementById("semantic-status"); if (!el || !S.arch) return;
-      try {
-        const s = await jget("/api/browse/semantic/status?root=" + S.arch.id);
-        if (!document.getElementById("semantic-status")) return;
-        const snap = await jget("/api/pipeline?root=" + S.arch.id);
-        const st = (snap.stages || []).find(x => x.id === "semantic" && x.state === "running");
-        const j = st && st.progress ? st.progress : null;
-        const progress = j ? ` ${jobDescription("semantic")} Indexing ${(j.done || 0).toLocaleString()} / ${(j.total || 0).toLocaleString()}${j.current ? ` · ${j.current}` : ""}…` :
-          (s.pending ? ` ${s.pending.toLocaleString()} media still need indexing.` : "");
-        const keyNote = s.configured ? "" : " Add VOYAGE_API_KEY to the root .env file and restart the app.";
-        el.innerHTML = `<span class="dot ${s.indexed ? "ok" : "check"}"></span>${s.indexed.toLocaleString()} indexed`
-          + `${s.skipped ? `, ${s.skipped.toLocaleString()} skipped` : ""}${s.errors ? `, ${s.errors.toLocaleString()} errors` : ""}.`
-          + progress + ` <span style="opacity:.8">Indexing sends images and MP4 video to Voyage; vectors stay local. Audio, PDFs, and other video formats are skipped.</span>`
-          + ` <span style="opacity:.8">${j ? "Automatic indexing is running." : "Automatic indexing starts when compatible media is pending."}${keyNote}</span>`;
-        // The scheduler briefly pauses between resumable batches. Keep polling
-        // while there is remaining work so the status does not appear to vanish.
-        if (j || s.pending) setTimeout(updateSemanticStatus, 2000);
-      } catch (e) { el.textContent = "Semantic search needs VOYAGE_API_KEY in the app environment."; }
+    // Natural singular/plural label for a media type, so the reach line reads
+    // "1 video" / "12 videos" rather than a bare type slug.
+    function reachTypeLabel(type, n) {
+      const forms = {
+        image: ["image", "images"], video: ["video", "videos"],
+        audio: ["audio file", "audio files"], document: ["document", "documents"],
+        archive: ["archive", "archives"], other: ["file", "files"],
+      }[type] || [type, type + "s"];
+      return forms[n === 1 ? 0 : 1];
+    }
+    // Each fresh render supersedes any earlier poll chain (leaving and returning
+    // to Library must not leave two timers fetching in parallel).
+    let SEARCH_REACH_GEN = 0;
+    function renderSearchReach() { searchReachTick(++SEARCH_REACH_GEN); }
+    async function searchReachTick(gen) {
+      if (gen !== SEARCH_REACH_GEN || S.section !== "library" || !S.arch) return;
+      const el = document.getElementById("search-reach"); if (!el) return;
+      let s;
+      try { s = await jget("/api/browse/semantic/status?root=" + S.arch.id); }
+      catch {
+        const cur = document.getElementById("search-reach");
+        if (cur && gen === SEARCH_REACH_GEN) {
+          cur.hidden = false;
+          cur.innerHTML = `<span class="reach-note">Description search is unavailable right now.</span>`;
+        }
+        return;
+      }
+      if (gen !== SEARCH_REACH_GEN || S.section !== "library") return;
+      const cur = document.getElementById("search-reach"); if (!cur) return;
+      const by = (s.by_type || []).filter(t => t.count > 0);
+      const pending = s.pending || 0;
+      let html;
+      if (by.length) {
+        const chips = by.map(t =>
+          `<span class="reach-item"><span class="reach-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span><b>${t.count.toLocaleString()}</b> ${reachTypeLabel(t.type, t.count)}</span>`
+        ).join("");
+        html = `${chips}<span class="reach-div" aria-hidden="true"></span><span class="reach-note">searchable by description</span>`;
+      } else if (!s.configured) {
+        html = `<span class="reach-note">Search by description needs a Voyage key — add VOYAGE_API_KEY to this archive’s .env file and restart.</span>`;
+      } else if (pending) {
+        html = `<span class="reach-note">Indexing your images and videos so you can search them by description…</span>`;
+      } else {
+        html = `<span class="reach-note">Nothing is searchable by description yet.</span>`;
+      }
+      cur.hidden = false;
+      cur.innerHTML = html;
+      // Indexing runs automatically; keep the counts live until it drains.
+      if (s.configured && pending) setTimeout(() => searchReachTick(gen), 2500);
     }
     function normalizedWords(value) {
       return (value || "").normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase()
