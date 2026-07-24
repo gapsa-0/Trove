@@ -108,7 +108,7 @@ def ensure_models(cache_dir: str, log=None) -> Path:
             if os.path.getsize(tmp) < min_size:
                 raise OSError(
                     f"downloaded {name} is too small "
-                    f"({os.path.getsize(tmp)} bytes) — expected the LFS binary")
+                    f"({os.path.getsize(tmp)} bytes); expected the LFS binary")
             os.replace(tmp, p)
         finally:
             if os.path.exists(tmp):
@@ -191,7 +191,7 @@ class FaceBackend:
                  embed_backend: str = "adaface", log=None):
         if not available():
             raise RuntimeError(
-                "OpenCV face APIs unavailable — install the 'media' extra "
+                "OpenCV face APIs unavailable; install the 'media' extra "
                 "(a modern opencv-python provides FaceDetectorYN/FaceRecognizerSF).")
         d = ensure_models(cache_dir, log=log)
         self.min_score = min_score

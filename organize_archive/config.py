@@ -291,7 +291,7 @@ class Config:
             elif len(roots) > 1:
                 print(f"Note: {legacy_db} holds {len(roots)} roots from the previous "
                       "shared-catalog design. Each archive now needs its own database, "
-                      "so automatic migration was skipped — re-add those folders as "
+                      "so automatic migration was skipped; re-add those folders as "
                       "separate archives in the GUI.")
         finally:
             src.close()

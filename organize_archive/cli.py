@@ -133,7 +133,7 @@ def cmd_scan(args, cfg: Config) -> int:
     conn.close()
 
     if interrupted:
-        print("\n\nInterrupted — progress saved. Re-run 'oa scan' to resume "
+        print("\n\nInterrupted; progress saved. Re-run 'oa scan' to resume "
               "(already-hashed files are skipped).")
     print("\nScan complete:" if not interrupted else "\nProgress so far:")
     print(f"  media files seen : {totals.seen}")
@@ -159,10 +159,10 @@ def cmd_enrich(args, cfg: Config) -> int:
         return 1
 
     if not exif_available():
-        print("Note: exiftool not found — resolving dates from Takeout JSON, "
+        print("Note: exiftool not found; resolving dates from Takeout JSON, "
               "filenames and file times only (no EXIF).")
     if cfg.timezone is None:
-        print("Note: no timezone set — Takeout (UTC) dates may shift evening "
+        print("Note: no timezone set; Takeout (UTC) dates may shift evening "
               "photos by a day. Set one with:  oa config --set-timezone <IANA>")
 
     conn = db.connect(cfg.db_path)
@@ -398,7 +398,7 @@ def cmd_gui(args, cfg: Config) -> int:
         if how == "app-window":
             print("Opened in a standalone app window.")
         elif not args.tab:
-            print("(No Chrome/Chromium/Edge found — opened a browser tab instead.)")
+            print("(No Chrome/Chromium/Edge found; opened a browser tab instead.)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

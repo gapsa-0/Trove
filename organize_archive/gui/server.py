@@ -22,9 +22,9 @@ _INDEX = Path(__file__).with_name("index.html")
 _CHUNK = 256 * 1024
 
 _MANIFEST = {
-    "name": "organize_archive", "short_name": "archive",
+    "name": "Trove", "short_name": "Trove",
     "start_url": "/", "scope": "/", "display": "standalone",
-    "background_color": "#14161a", "theme_color": "#14161a",
+    "background_color": "#f5f5f7", "theme_color": "#f5f5f7",
     "icons": [
         {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
         {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png",
@@ -166,6 +166,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "not found"}, 404)
             elif path == "/api/archives":
                 self._json({"archives": queries.archives(self.cfg)})
+            elif path == "/api/settings":
+                from . import semantic
+                self._json({"voyage": semantic.api_key_status()})
             elif path == "/api/summary":
                 rid = one("root", int)
                 self._json(queries.summary(self._db(rid), rid))
@@ -303,6 +306,12 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "unknown archive"}, 404)
                 else:
                     self._json(pipeline.snapshot(self.cfg, self.jobs, rid, arch["path"]))
+            elif path.startswith("/archivethumb/"):
+                parts = path.split("/")   # ['', 'archivethumb', root_id, file_id]
+                if len(parts) == 4 and parts[2].isdigit() and parts[3].isdigit():
+                    self._serve_archive_thumb(int(parts[2]), int(parts[3]))
+                else:
+                    self._json({"error": "not found"}, 404)
             elif path.startswith("/thumb/"):
                 self._serve_thumb(int(path.rsplit("/", 1)[1]))
             elif path.startswith("/faceThumb/"):
@@ -353,6 +362,12 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     res = queries.remove_archive(self.cfg, root_id)
                     self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/settings/voyage-key":
+                from . import semantic
+                if body.get("clear"):
+                    self._json({"voyage": semantic.clear_api_key()})
+                else:
+                    self._json({"voyage": semantic.store_api_key(body.get("key", ""))})
             # The mutations below act on an id (person, cluster, face, pet...)
             # rather than a file the caller already knows the root of, and the
             # frontend never sends one for them. They resolve against whichever
@@ -428,7 +443,7 @@ class Handler(BaseHTTPRequestHandler):
     # -- media serving ----------------------------------------------------
     # Thumbnails and originals are requested by bare id with no ``root``
     # (the frontend never sends one for these), so they resolve against
-    # whichever single archive is currently open — the GUI never browses two
+    # whichever single archive is currently open, the GUI never browses two
     # archives' content at once.
     def _open_db_and_cache(self):
         rid = self.jobs.current_root_id()
@@ -439,6 +454,20 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_thumb(self, fid: int):
         db_path, cache_dir = self._open_db_and_cache()
         info = queries.thumb_source(db_path, fid) if db_path else None
+        if info is None:
+            return self._json({"error": "not found"}, 404)
+        src, sha256 = info
+        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256)
+        self._send_file(tp if tp else src)
+
+    def _serve_archive_thumb(self, root_id: int, fid: int):
+        # Root-scoped thumbnail for the start-page cover mosaic: the picker shows
+        # several archives at once with none "open", so the id alone (as /thumb/
+        # uses) is not enough, the archive is named explicitly here.
+        if self.cfg.archive_path(root_id) is None:
+            return self._json({"error": "not found"}, 404)
+        db_path, cache_dir = self._db(root_id), self._cache(root_id)
+        info = queries.thumb_source(db_path, fid)
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256 = info
@@ -478,6 +507,10 @@ def serve(cfg: Config, host="127.0.0.1", port=8756):
     # (queries.add_archive) or opened for the first time by the scheduler.
     cfg.ensure_dirs()
     cfg.migrate_legacy_archive()
+    # Activate a locally stored Voyage key (Settings drawer) before serving, so the
+    # pipeline and status endpoints see it from the first request. A real env var wins.
+    from . import semantic
+    semantic.load_stored_key()
     jm = JobManager(cfg)
     handler = type("BoundHandler", (Handler,), {"cfg": cfg, "jobs": jm})
     return ThreadingHTTPServer((host, port), handler)

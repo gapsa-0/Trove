@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>organize_archive</title>
+  <title>Trove</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#14161a">
   <link rel="icon" href="/icon-192.png">
@@ -1548,471 +1548,6 @@
       border-color: #c0504d;
     }
 
-    /* Step 2 — COA Noir archive system.  These overrides intentionally retain
-     the small, dependency-free application while replacing the old dashboard
-     visual language. */
-    :root {
-      --asphalt: #0E0E0E;
-      --charcoal: #141414;
-      --surface: #1C1C1C;
-      --surface2: #252525;
-      --parchment: #F0EAD6;
-      --parchment-muted: #A89E8A;
-      --parchment-faint: #3A352C;
-      --accent: #B5614A;
-      --accent-dim: #6B3828;
-      --accent-rgb: 181, 97, 74;
-      --tungsten: #E8A842;
-      --crimson: #8B2E2E;
-      --bg: var(--asphalt);
-      --panel: var(--surface);
-      --panel2: var(--surface2);
-      --line: var(--parchment-faint);
-      --text: var(--parchment);
-      --muted: var(--parchment-muted);
-      --good: #b8c47b;
-      --focus: var(--tungsten);
-      --space-1: 6px;
-      --space-2: 10px;
-      --space-3: 16px;
-      --space-4: 24px;
-      --space-5: 36px;
-    }
-
-    body {
-      font: 14px/1.5 "JetBrains Mono", "Courier New", monospace;
-      background: var(--asphalt);
-    }
-
-    body:before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: .025;
-      z-index: 50;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
-    }
-
-    h1,
-    h2,
-    h3,
-    .display {
-      font-family: "Playfair Display", Georgia, serif;
-      letter-spacing: -.02em;
-    }
-
-    button,
-    input,
-    select {
-      font: inherit;
-    }
-
-    button:focus-visible,
-    input:focus-visible,
-    select:focus-visible,
-    a:focus-visible {
-      outline: 2px solid var(--focus);
-      outline-offset: 2px;
-    }
-
-    .btn {
-      border-radius: 0;
-      background: var(--accent);
-      color: var(--parchment);
-      padding: 9px 14px;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-
-    .btn:hover {
-      background: #ce755b
-    }
-
-    .btn.sec {
-      background: transparent;
-      border-color: var(--parchment-faint)
-    }
-
-    #picker {
-      max-width: 1100px;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      padding: 48px 30px;
-    }
-
-    .welcome {
-      max-width: 700px
-    }
-
-    .welcome .eyebrow,
-    .eyebrow {
-      color: var(--accent);
-      font-size: 11px;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-    }
-
-    .welcome h1 {
-      font-size: clamp(42px, 7vw, 78px);
-      line-height: .95;
-      margin: 12px 0 18px;
-    }
-
-    .welcome .sub {
-      font-family: "Newsreader", Georgia, serif;
-      font-size: 21px;
-      max-width: 650px;
-    }
-
-    .setup-form {
-      display: flex;
-      gap: 8px;
-      margin: 28px 0 14px;
-      max-width: 660px
-    }
-
-    .setup-form input {
-      min-width: 0;
-      flex: 1;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 0;
-      background: var(--surface);
-      color: var(--text)
-    }
-
-    .privacy-note {
-      font-family: "Newsreader", Georgia, serif;
-      color: var(--muted);
-      max-width: 680px
-    }
-
-    .archive-list-title {
-      margin-top: 42px;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: .12em;
-      color: var(--muted)
-    }
-
-    .card {
-      border-radius: 0;
-      background: var(--surface);
-      border-color: var(--line);
-    }
-
-    .card:hover {
-      border-color: var(--accent)
-    }
-
-    .card.add {
-      min-height: 80px;
-      border-radius: 0
-    }
-
-    .remove-archive {
-      border-radius: 0;
-      color: #e59585;
-      border-color: var(--accent-dim)
-    }
-
-    #app.on {
-      display: grid;
-      grid-template-columns: 220px minmax(0, 1fr);
-      min-height: 100vh;
-    }
-
-    nav {
-      width: auto;
-      background: var(--charcoal);
-      border-right-color: var(--accent-dim);
-      padding: 18px 10px;
-      height: 100vh;
-    }
-
-    nav .brand {
-      font-family: "Bebas Neue", Impact, sans-serif;
-      font-size: 22px;
-      letter-spacing: .09em;
-      border-top: 1px solid var(--accent);
-      border-bottom: 1px solid var(--accent-dim);
-      padding: 9px 8px 12px;
-    }
-
-    nav .arch {
-      font-family: "Newsreader", Georgia, serif;
-      border-bottom-color: var(--line);
-      padding-bottom: 16px
-    }
-
-    .navitem {
-      border-radius: 4px;
-      font-family: "Bebas Neue", Impact, sans-serif;
-      letter-spacing: .08em;
-      font-size: 15px;
-      padding: 10px;
-      position: relative;
-    }
-
-    .navitem {
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--parchment)
-    }
-
-    .navitem:hover {
-      background: var(--surface2);
-      color: var(--parchment)
-    }
-
-    .navitem.active {
-      background: linear-gradient(90deg, var(--accent-dim), transparent);
-      border-color: var(--accent-dim);
-      color: var(--parchment)
-    }
-
-    .navitem.active:before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 5px;
-      bottom: 5px;
-      width: 2px;
-      background: var(--accent)
-    }
-
-    .gstat {
-      border-top-color: var(--accent-dim)
-    }
-
-    main {
-      height: auto;
-      min-height: 100vh;
-      padding: 34px 42px 60px;
-      overflow: visible;
-    }
-
-    h2.sec {
-      font-size: 34px;
-      font-weight: 500;
-      margin-bottom: 22px;
-    }
-
-    .panel,
-    .stat,
-    .dupgroup,
-    .pcard,
-    .suggest {
-      border-radius: 0;
-      border-color: var(--line);
-      box-shadow: none
-    }
-
-    .panel {
-      padding: 18px;
-      background: var(--surface)
-    }
-
-    .stat {
-      background: transparent;
-      padding: 12px
-    }
-
-    .stat .k,
-    .isec>.h {
-      color: var(--muted)
-    }
-
-    .grid {
-      gap: 4px;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    }
-
-    .tile {
-      border-radius: 0;
-      border: 0;
-      background: var(--surface2)
-    }
-
-    .tile:hover {
-      outline: 2px solid var(--accent);
-      outline-offset: -2px
-    }
-
-    .tile .cap {
-      font-size: 10px
-    }
-
-    .date-heading {
-      grid-column: 1/-1;
-      font-family: "Playfair Display", Georgia, serif;
-      font-size: 28px;
-      padding: 30px 0 5px;
-      border-bottom: 1px solid var(--accent-dim)
-    }
-
-    .fsel {
-      border-radius: 0;
-      background: var(--surface);
-      border-color: var(--line)
-    }
-
-    .filterbar {
-      border-top: 1px solid var(--accent-dim);
-      padding-top: 12px
-    }
-
-    .chips {
-      font-size: 11px
-    }
-
-    .linkbtn {
-      color: var(--tungsten)
-    }
-
-    .library-search {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      flex-wrap: wrap;
-      padding: 12px 14px;
-      margin-bottom: 16px;
-      border: 1px solid var(--line);
-      background: linear-gradient(135deg, var(--surface), #191816)
-    }
-
-    .library-search input {
-      flex: 1;
-      min-width: 220px;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 0;
-      background: var(--asphalt);
-      color: var(--text);
-      font: inherit;
-    }
-
-    .library-search input::placeholder {
-      color: var(--muted);
-      opacity: .8
-    }
-
-    .library-search input:focus {
-      outline: none;
-      border-color: var(--tungsten)
-    }
-
-    .library-search .search-note {
-      width: 100%;
-      font-size: 11px;
-      color: var(--muted)
-    }
-
-    .modal {
-      background: #000e
-    }
-
-    .viewer {
-      max-width: 100vw;
-      max-height: 100vh;
-      border: 0;
-      border-radius: 0;
-      background: var(--asphalt)
-    }
-
-    .viewer .media {
-      max-width: calc(100vw - 370px);
-    }
-
-    .viewer .media img,
-    .viewer .media video {
-      max-width: calc(100vw - 370px);
-      max-height: 100vh
-    }
-
-    .viewer .info {
-      width: 370px;
-      max-height: 100vh;
-      background: var(--surface);
-      padding: 24px
-    }
-
-    .close {
-      color: var(--parchment)
-    }
-
-    @media(max-width:800px) {
-      #app.on {
-        display: block
-      }
-
-      nav {
-        position: sticky;
-        width: 100%;
-        height: auto;
-        z-index: 10;
-        flex-direction: row;
-        align-items: center;
-        padding: 8px;
-        overflow: auto
-      }
-
-      nav .brand {
-        border: 0;
-        padding: 3px 8px
-      }
-
-      .back,
-      .arch,
-      .gstat {
-        display: none !important
-      }
-
-      #navitems {
-        display: flex;
-        gap: 2px
-      }
-
-      .navitem {
-        white-space: nowrap;
-        padding: 7px 8px
-      }
-
-      .navitem span:first-child {
-        display: none
-      }
-
-      main {
-        padding: 24px 16px
-      }
-
-      .setup-form {
-        flex-direction: column
-      }
-
-      .viewer {
-        align-self: stretch
-      }
-
-      .viewer .media,
-      .viewer .media img,
-      .viewer .media video {
-        max-width: 100vw
-      }
-
-      .viewer .info {
-        position: absolute;
-        right: 0;
-        bottom: 0;
-        width: 100%;
-        max-height: 42vh;
-        border-top: 1px solid var(--line)
-      }
-    }
-
     @media(prefers-reduced-motion:reduce) {
 
       *,
@@ -2024,8 +1559,8 @@
       }
     }
 
-    /* Light Photos library — intentionally a complete visual reset of the
-     experimental Noir treatment above.  Keep the application dependency-free;
+    /* Light Photos library: the base visual language: a clean, Apple-style light
+     theme (with a dark variant below).  Keep the application dependency-free;
      this is presentation, not a new frontend framework. */
     :root {
       --bg: #f5f5f7;
@@ -2038,14 +1573,6 @@
       --accent2: #0066d6;
       --good: #34a853;
       --focus: #007aff;
-      --asphalt: #f5f5f7;
-      --charcoal: #ffffff;
-      --surface: #ffffff;
-      --surface2: #f0f0f2;
-      --parchment: #1d1d1f;
-      --parchment-muted: #6e6e73;
-      --parchment-faint: #d9d9de;
-      --accent-dim: #cfe4ff;
     }
 
     body {
@@ -2353,7 +1880,7 @@
       }
     }
 
-    /* Archive 3.0 — a single, deliberate visual system inspired by the quiet,
+    /* Archive 3.0: a single, deliberate visual system inspired by the quiet,
      photo-first restraint of native media libraries. This final layer supersedes
      the earlier experiments while preserving every existing behavior. */
     :root {
@@ -2659,6 +2186,192 @@
     .remove-archive:hover {
       background: color-mix(in srgb, var(--bad) 10%, transparent);
       color: var(--bad)
+    }
+
+    /* Settings drawer */
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(0, 0, 0, .32);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .2s, visibility .2s;
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px)
+    }
+
+    .drawer-backdrop.open {
+      opacity: 1;
+      visibility: visible
+    }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 41;
+      width: min(430px, 92vw);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-elevated);
+      border-left: 1px solid var(--line);
+      box-shadow: var(--shadow-md);
+      transform: translateX(100%);
+      transition: transform .24s cubic-bezier(.4, 0, .2, 1)
+    }
+
+    .drawer.open {
+      transform: translateX(0)
+    }
+
+    .drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line)
+    }
+
+    .drawer-head h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.02em
+    }
+
+    .drawer-close {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 26px;
+      line-height: 1;
+      padding: 0 4px;
+      border-radius: 8px;
+      cursor: pointer
+    }
+
+    .drawer-close:hover {
+      color: var(--text)
+    }
+
+    .drawer-body {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      padding: 22px;
+      overflow-y: auto
+    }
+
+    .drawer-section-head h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 650
+    }
+
+    .drawer-section-head p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5
+    }
+
+    .keycard {
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm)
+    }
+
+    .keycard-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px
+    }
+
+    .keycard-name {
+      font-weight: 650;
+      font-size: 14px
+    }
+
+    .keycard-desc {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5
+    }
+
+    .keycard-link {
+      color: var(--accent)
+    }
+
+    .key-badge {
+      flex: none;
+      font-size: 11px;
+      font-weight: 650;
+      padding: 4px 9px;
+      border-radius: 99px;
+      background: var(--panel2);
+      color: var(--faint);
+      border: 1px solid var(--line);
+      white-space: nowrap
+    }
+
+    .key-badge.set {
+      background: color-mix(in srgb, var(--good) 16%, transparent);
+      color: var(--good);
+      border-color: transparent
+    }
+
+    .keyform {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px
+    }
+
+    .keyform input {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--text);
+      padding: 9px 11px;
+      font-size: 13px
+    }
+
+    .keyform input:focus {
+      outline: 0;
+      border-color: var(--accent)
+    }
+
+    .keyform input:disabled {
+      color: var(--faint);
+      background: var(--panel2)
+    }
+
+    .key-help {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      min-height: 0
+    }
+
+    .drawer-theme {
+      margin-top: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel)
+    }
+
+    .drawer-theme:hover {
+      background: var(--panel2)
     }
 
     /* Shell and sidebar */
@@ -3136,6 +2849,23 @@
       line-height: 1.4;
       word-wrap: break-word;
       overflow-wrap: break-word;
+    }
+
+    .health-cta {
+      display: inline-block;
+      margin-top: 7px;
+      padding: 4px 10px;
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 650;
+      cursor: pointer
+    }
+
+    .health-cta:hover {
+      background: color-mix(in srgb, var(--accent) 18%, transparent)
     }
 
     .health-task.running {
@@ -4409,6 +4139,411 @@
         display: none
       }
     }
+
+    /* ============ Start page: gallery layout (overrides base #picker) ============ */
+    #picker {
+      max-width: none;
+      min-height: 0;
+      height: 100vh;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch
+    }
+
+    .p-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px clamp(20px, 3vw, 40px);
+      border-bottom: 1px solid var(--line);
+      background: var(--sidebar);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px)
+    }
+
+    .p-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px
+    }
+
+    .p-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(140deg, var(--accent), var(--accent2));
+      display: grid;
+      place-items: center;
+      box-shadow: 0 5px 14px rgba(0, 122, 255, .3)
+    }
+
+    .p-logo svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: #fff;
+      stroke-width: 1.9
+    }
+
+    .p-brand b {
+      font-size: 16.5px;
+      font-weight: 720;
+      letter-spacing: -.02em
+    }
+
+    .p-tools {
+      display: flex;
+      gap: 9px
+    }
+
+    /* Gear pill (also reused by the in-archive sidebar via .gear-icon) */
+    .gear-fab {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 34px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      background: var(--panel);
+      color: var(--muted);
+      font: 600 12px/1 inherit;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm)
+    }
+
+    .gear-fab:hover {
+      color: var(--text);
+      border-color: var(--line-strong)
+    }
+
+    .gear-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      width: 18px;
+      height: 18px
+    }
+
+    .gear-icon svg {
+      width: 100%;
+      height: 100%;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.75;
+      stroke-linecap: round;
+      stroke-linejoin: round
+    }
+
+    .gear-fab .gear-icon {
+      width: 15px;
+      height: 15px
+    }
+
+    /* The theme pill lives in the top bar here, not fixed to the viewport corner. */
+    .p-tools .appearance-fab {
+      position: static;
+      top: auto;
+      right: auto;
+      height: 34px;
+      background: var(--panel);
+      box-shadow: var(--shadow-sm)
+    }
+
+    .p-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 clamp(20px, 3vw, 40px) 30px
+    }
+
+    .p-hero {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 30px;
+      padding: clamp(24px, 3vw, 34px);
+      margin: clamp(18px, 2.4vw, 26px) 0 clamp(22px, 2.6vw, 30px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, var(--accent-soft), transparent 62%), var(--panel);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden
+    }
+
+    .p-eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .01em
+    }
+
+    .p-hero h1 {
+      margin: 8px 0 0;
+      font-size: clamp(28px, 3.4vw, 38px);
+      line-height: 1.05;
+      font-weight: 750;
+      letter-spacing: -.035em;
+      text-wrap: balance
+    }
+
+    .p-hero p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 15.5px;
+      line-height: 1.5;
+      max-width: 54ch
+    }
+
+    .p-add {
+      flex: none;
+      display: flex;
+      gap: 8px;
+      padding: 6px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow-sm);
+      min-width: 340px
+    }
+
+    .p-add input {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      padding: 11px 12px;
+      font-size: 14px;
+      outline: 0
+    }
+
+    .p-add input::placeholder {
+      color: var(--faint)
+    }
+
+    .p-add .btn {
+      white-space: nowrap
+    }
+
+    .p-sec {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 16px
+    }
+
+    .p-sec h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -.02em
+    }
+
+    .p-sec small {
+      color: var(--faint);
+      font-weight: 600;
+      font-size: 12.5px
+    }
+
+    .p-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px
+    }
+
+    .p-card {
+      text-align: left;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      overflow: hidden;
+      transition: transform .16s, box-shadow .16s, border-color .16s
+    }
+
+    .p-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--line-strong);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .1)
+    }
+
+    .p-cover {
+      position: relative;
+      height: 132px;
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 2px;
+      background: var(--panel2)
+    }
+
+    .p-cover .cell {
+      position: relative;
+      overflow: hidden;
+      background: var(--panel2)
+    }
+
+    .p-cover .cell:first-child {
+      grid-row: 1 / span 2
+    }
+
+    .p-cover .cell img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block
+    }
+
+    /* Cover with no thumbnails yet: a calm folder glyph instead of blank tiles. */
+    .p-cover.empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--faint);
+      background: linear-gradient(135deg, var(--accent-soft), var(--panel2))
+    }
+
+    .p-cover.empty svg {
+      width: 34px;
+      height: 34px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6
+    }
+
+    .p-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, .55);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 99px;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px)
+    }
+
+    .p-meta {
+      padding: 13px 15px 15px
+    }
+
+    .p-meta .nm {
+      font-size: 15.5px;
+      font-weight: 650;
+      letter-spacing: -.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .p-meta .st {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12.5px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap
+    }
+
+    .p-meta .warn {
+      color: var(--warning);
+      font-weight: 600
+    }
+
+    .p-remove {
+      float: right;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--bad);
+      padding: 4px 7px;
+      font-size: 11px;
+      cursor: pointer
+    }
+
+    .p-remove:hover {
+      background: color-mix(in srgb, var(--bad) 10%, transparent)
+    }
+
+    .p-card.add {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      border-style: dashed;
+      border-color: var(--line-strong);
+      background: transparent;
+      box-shadow: none;
+      color: var(--accent);
+      font-weight: 600;
+      min-height: 207px
+    }
+
+    .p-card.add:hover {
+      transform: none;
+      background: var(--accent-soft)
+    }
+
+    .p-card.add span {
+      font-size: 28px;
+      line-height: 1
+    }
+
+    .p-guide {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 30px;
+      margin: 26px 2px 4px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 12.5px
+    }
+
+    .p-guide em {
+      color: var(--accent);
+      font-style: normal;
+      font-weight: 700;
+      margin-right: 7px
+    }
+
+    .p-guide b {
+      color: var(--muted);
+      font-weight: 650
+    }
+
+    @media (max-width: 1080px) {
+      .p-grid {
+        grid-template-columns: repeat(2, 1fr)
+      }
+    }
+
+    @media (max-width: 900px) {
+      .p-hero {
+        flex-direction: column;
+        align-items: flex-start
+      }
+
+      .p-add {
+        width: 100%;
+        min-width: 0
+      }
+    }
+
+    @media (max-width: 620px) {
+      .p-grid {
+        grid-template-columns: 1fr
+      }
+    }
   </style>
 </head>
 
@@ -4416,21 +4551,40 @@
 
   <!-- ARCHIVE PICKER -->
   <div id="picker">
-    <button class="appearance-fab" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
-      <span class="theme-icon" aria-hidden="true"></span>
-      <span class="theme-label">Dark appearance</span>
-    </button>
-    <div class="welcome">
-      <div class="eyebrow">organize_archive</div>
-      <h1>Your library, all in one place.</h1>
-      <div class="sub">Bring together the photographs, films, and records that already live on this computer.</div>
-      <form class="setup-form" onsubmit="return addArchiveFromForm(event)"><input id="archive-path"
-          aria-label="Media folder path" placeholder="/path/to/media folder"><button class="btn" id="choose-folder"
-          type="submit">Choose media folder</button></form>
-      <div class="privacy-note">Files are catalogued in place. They are never moved, edited, uploaded, or deleted. You
-        can add more folders whenever you need.</div>
-      <div class="archive-list-title" id="archive-list-title">Your archives</div>
-      <div class="cards" id="archcards"></div>
+    <div class="p-bar">
+      <div class="p-brand">
+        <span class="p-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="m3 16 5-4 4 3 3-3 6 5"/><circle cx="9" cy="11" r="1.4"/><path d="M7 6 8.5 3.5h7L17 6"/></svg></span>
+        <b>Trove</b>
+      </div>
+      <div class="p-tools">
+        <button class="gear-fab" type="button" onclick="openSettings()" aria-label="Open app settings">
+          <span class="gear-icon" aria-hidden="true"></span><span>Settings</span>
+        </button>
+        <button class="appearance-fab" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
+          <span class="theme-icon" aria-hidden="true"></span><span class="theme-label">Dark appearance</span>
+        </button>
+      </div>
+    </div>
+    <div class="p-scroll">
+      <div class="p-hero">
+        <div class="p-hero-copy">
+          <div class="p-eyebrow">Local media library</div>
+          <h1>All your memories, one place.</h1>
+          <p>Every photo, video, and voice note across your takeouts, phone dumps, and old drives, catalogued
+            where it lives, and searchable in seconds. Nothing is ever uploaded.</p>
+        </div>
+        <form class="p-add" onsubmit="return addArchiveFromForm(event)">
+          <input id="archive-path" aria-label="Media folder path" placeholder="/path/to/your media folder">
+          <button class="btn" id="choose-folder" type="submit">Add folder</button>
+        </form>
+      </div>
+      <div class="p-sec" id="archive-list-title"><h2>Your archives</h2><small id="arch-summary"></small></div>
+      <div class="p-grid" id="archcards"></div>
+      <div class="p-guide">
+        <span><em>1</em><b>Add</b> a folder: a Takeout export, phone backup, or drive.</span>
+        <span><em>2</em>Trove <b>catalogs it in place</b>: dates, places, faces, duplicates.</span>
+        <span><em>3</em><b>Browse &amp; search</b>: timeline, people, map, or a description.</span>
+      </div>
     </div>
   </div>
 
@@ -4438,7 +4592,7 @@
   <div id="app">
     <nav id="nav">
       <div class="brand"><img src="/icon-192.png" width="22" height="22" style="border-radius:5px">
-        <span class="brandtxt">organize_archive</span>
+        <span class="brandtxt">Trove</span>
         <span class="navtoggle" onclick="toggleNav()" title="Collapse sidebar">«</span>
       </div>
       <button class="back back-control" type="button" onclick="toPicker()" aria-label="Back to all archives">
@@ -4449,6 +4603,10 @@
       </button>
       <div class="arch" id="archname"></div>
       <div id="navitems"></div>
+      <button class="theme-toggle settings-nav" type="button" onclick="openSettings()" aria-label="Open app settings">
+        <span class="gear-icon" aria-hidden="true"></span>
+        <span>App settings</span>
+      </button>
       <button class="theme-toggle" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
         <span class="theme-icon" aria-hidden="true"></span>
         <span class="theme-label">Dark appearance</span>
@@ -4466,6 +4624,53 @@
       <div class="info" id="minfo"></div>
     </div>
   </div>
+
+  <!-- SETTINGS DRAWER -->
+  <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeSettings()"></div>
+  <aside class="drawer" id="settings-drawer" aria-hidden="true" aria-label="Settings" role="dialog"
+    aria-modal="true">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="drawer-close" type="button" onclick="closeSettings()" aria-label="Close settings">×</button>
+    </div>
+    <div class="drawer-body">
+      <section class="drawer-section">
+        <div class="drawer-section-head">
+          <h3>API keys</h3>
+          <p>Optional. Enables features that use an online service. Keys are stored only on this computer.</p>
+        </div>
+        <div class="keycard" id="voyage-keycard">
+          <div class="keycard-top">
+            <div>
+              <div class="keycard-name">Voyage AI</div>
+              <div class="keycard-desc">Powers search by description: find photos by what’s in them. Get a key at
+                <span class="keycard-link">voyageai.com</span>.</div>
+            </div>
+            <span class="key-badge" id="voyage-badge">Not set</span>
+          </div>
+          <form class="keyform" onsubmit="return saveVoyageKey(event)">
+            <input id="voyage-key-input" type="password" autocomplete="off" spellcheck="false"
+              aria-label="Voyage API key" placeholder="Paste your Voyage API key">
+            <button class="btn" type="submit" id="voyage-save">Save</button>
+            <button class="btn sec" type="button" id="voyage-remove" onclick="removeVoyageKey()"
+              style="display:none">Remove</button>
+          </form>
+          <div class="key-help" id="voyage-help"></div>
+        </div>
+      </section>
+      <section class="drawer-section">
+        <div class="drawer-section-head">
+          <h3>Appearance</h3>
+          <p>Switch between light and dark.</p>
+        </div>
+        <button class="theme-toggle drawer-theme" type="button" onclick="toggleTheme()"
+          aria-label="Switch color theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+          <span class="theme-label">Dark appearance</span>
+        </button>
+      </section>
+    </div>
+  </aside>
 
   <script>
     const TYPE_ICON = { image: "🖼️", video: "🎞️", audio: "🎵", document: "📄", archive: "🗜️", other: "📦" };
@@ -4523,11 +4728,17 @@
     function currentTheme() { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
     function syncThemeControl() {
       const dark = currentTheme() === "dark";
+      // Gear buttons (settings) share the .theme-toggle look but carry no theme
+      // icon/label, so skip anything without a .theme-icon so they don't break here.
       document.querySelectorAll(".theme-toggle,.appearance-fab").forEach(button => {
-        button.querySelector(".theme-icon").innerHTML = dark ? ICONS.sun : ICONS.moon;
-        button.querySelector(".theme-label").textContent = dark ? "Light appearance" : "Dark appearance";
+        const icon = button.querySelector(".theme-icon");
+        if (!icon) return;
+        icon.innerHTML = dark ? ICONS.sun : ICONS.moon;
+        const label = button.querySelector(".theme-label");
+        if (label) label.textContent = dark ? "Light appearance" : "Dark appearance";
         button.title = dark ? "Use light appearance" : "Use dark appearance";
       });
+      document.querySelectorAll(".gear-icon").forEach(el => { el.innerHTML = ICONS.settings; });
     }
     function toggleTheme() {
       const next = currentTheme() === "dark" ? "light" : "dark";
@@ -4538,8 +4749,75 @@
       syncMapTiles();
     }
 
+    /* ---------- settings drawer (app-wide config; API keys) ---------- */
+    function openSettings() {
+      const d = document.getElementById("settings-drawer"), b = document.getElementById("drawer-backdrop");
+      b.classList.add("open"); d.classList.add("open"); d.setAttribute("aria-hidden", "false");
+      loadSettings();
+      setTimeout(() => document.getElementById("voyage-key-input")?.focus(), 60);
+    }
+    function closeSettings() {
+      const d = document.getElementById("settings-drawer"), b = document.getElementById("drawer-backdrop");
+      b.classList.remove("open"); d.classList.remove("open"); d.setAttribute("aria-hidden", "true");
+    }
+    async function loadSettings() {
+      let s;
+      try { s = await jget("/api/settings"); } catch (e) { return; }
+      applyVoyageStatus(s && s.voyage);
+    }
+    // Reflect the key state everywhere: badge, buttons, help text. Never shows the key.
+    function applyVoyageStatus(v) {
+      v = v || { set: false, hint: null, source: null };
+      const badge = document.getElementById("voyage-badge");
+      const input = document.getElementById("voyage-key-input");
+      const save = document.getElementById("voyage-save");
+      const remove = document.getElementById("voyage-remove");
+      const help = document.getElementById("voyage-help");
+      const fromEnv = v.set && v.source === "env";
+      badge.textContent = v.set ? `Set · ends in …${v.hint}` : "Not set";
+      badge.classList.toggle("set", !!v.set);
+      input.value = "";
+      input.disabled = fromEnv;
+      input.placeholder = fromEnv ? "Set by environment variable" : "Paste your Voyage API key";
+      save.style.display = fromEnv ? "none" : "";
+      remove.style.display = (v.set && !fromEnv) ? "" : "none";
+      help.textContent = fromEnv
+        ? "Provided by the VOYAGE_API_KEY environment variable, so it can’t be changed here."
+        : (v.set ? "Semantic search is enabled. Paste a new key to replace it."
+          : "Without a key, everything else works; only search by description is turned off.");
+    }
+    async function saveVoyageKey(event) {
+      event.preventDefault();
+      const input = document.getElementById("voyage-key-input");
+      const key = input.value.trim();
+      if (!key) { toast("Paste a key first.", true); return false; }
+      const save = document.getElementById("voyage-save");
+      save.disabled = true;
+      try {
+        const r = await jpost("/api/settings/voyage-key", { key });
+        if (r.error) { toast(r.error, true); return false; }
+        applyVoyageStatus(r.voyage);
+        toast("Voyage API key saved. Semantic search is now enabled.");
+        afterKeyChange();
+      } finally { save.disabled = false; }
+      return false;
+    }
+    async function removeVoyageKey() {
+      if (!confirm("Remove the Voyage API key from this computer?\n\nSearch by description will be turned off. Everything already indexed stays.")) return;
+      const r = await jpost("/api/settings/voyage-key", { clear: true });
+      if (r.error) { toast(r.error, true); return; }
+      applyVoyageStatus(r.voyage);
+      toast("Voyage API key removed.");
+      afterKeyChange();
+    }
+    // The pipeline reads the key live, so a change flips the Overview's semantic
+    // card. Nudge the poller so the card updates without waiting for a section switch.
+    function afterKeyChange() {
+      if (S.arch && S.section === "overview" && typeof refreshPipeline === "function") refreshPipeline();
+    }
+
     function fmtBytes(n) {
-      if (n == null) return "—"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, f = n;
+      if (n == null) return "-"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, f = n;
       while (f >= 1024 && i < 4) { f /= 1024; i++; } return f.toFixed(1) + " " + u[i];
     }
     async function jget(u) { return (await fetch(u, { cache: "no-store" })).json(); }
@@ -4605,25 +4883,54 @@
 
     /* ---------- picker ---------- */
     let ARCHIVES = [];
+    // Build one archive card's cover mosaic from a few real thumbnails (served by
+    // the root-scoped /archivethumb route, since no archive is "open" here). Cells
+    // cycle the available thumbs so partial covers still fill the grid; an archive
+    // with none yet (freshly added, still scanning) shows a calm folder glyph.
+    function pickerCover(a) {
+      const ids = (a.covers || []).filter(x => x != null);
+      const badge = a.size ? `<span class="p-badge">${fmtBytes(a.size)}</span>` : "";
+      if (!ids.length) {
+        return `<div class="p-cover empty"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>${badge}</div>`;
+      }
+      let cells = "";
+      for (let i = 0; i < 5; i++) {
+        const id = ids[i % ids.length];
+        cells += `<div class="cell"><img src="/archivethumb/${a.id}/${id}" loading="lazy" alt="" onerror="this.remove()"></div>`;
+      }
+      return `<div class="p-cover">${cells}${badge}</div>`;
+    }
     async function loadPicker() {
       const { archives } = await jget("/api/archives"); ARCHIVES = archives;
       const el = document.getElementById("archcards"); el.innerHTML = "";
-      document.getElementById("archive-list-title").style.display = archives.length ? "block" : "none";
+      const title = document.getElementById("archive-list-title");
+      const sum = document.getElementById("arch-summary");
+      const totalFiles = archives.reduce((s, a) => s + (a.files || 0), 0);
+      title.style.display = archives.length ? "flex" : "none";
+      if (sum) sum.textContent = archives.length
+        ? `${archives.length} folder${archives.length === 1 ? "" : "s"} · ${totalFiles.toLocaleString()} files`
+        : "";
       archives.forEach(a => {
-        const c = document.createElement("div"); c.className = "card"; c.onclick = () => openArchive(a);
-        const warn = a.exists ? "" : '<span class="badge-warn">⚠ not mounted</span>';
-        const enr = a.enriched < a.files ? `<span class="badge-warn">${(a.files - a.enriched).toLocaleString()} not enriched</span>` : "";
-        c.innerHTML = `<h3>${a.name} ${warn}</h3><div class="path">${a.path}</div>
-      <div class="stats"><span>${a.files.toLocaleString()} files</span>
-      <span>${fmtBytes(a.size)}</span>${enr}</div>
-      <div class="cardfoot"><span class="muted">Stored locally</span><button class="remove-archive" aria-label="Remove archive">Remove</button></div>`;
-        c.querySelector(".remove-archive").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
+        const c = document.createElement("div");
+        c.className = "p-card"; c.setAttribute("role", "button"); c.tabIndex = 0;
+        c.onclick = () => openArchive(a);
+        c.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArchive(a); } };
+        const warn = a.exists ? "" : ` · <span class="warn">not mounted</span>`;
+        const enr = (a.enriched < a.files) ? ` · <span class="warn">${(a.files - a.enriched).toLocaleString()} to enrich</span>` : "";
+        c.innerHTML = pickerCover(a) +
+          `<div class="p-meta">
+             <button class="p-remove" type="button" aria-label="Remove archive">Remove</button>
+             <div class="nm">${esc(a.name)}</div>
+             <div class="st">${a.files.toLocaleString()} files${warn}${enr}</div>
+           </div>`;
+        c.querySelector(".p-remove").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
         el.appendChild(c);
       });
-      if (archives.length) {
-        const add = document.createElement("button"); add.className = "card add";
-        add.type = "button"; add.textContent = "+ Add another folder"; add.onclick = () => document.getElementById("archive-path").focus(); el.appendChild(add);
-      }
+      const add = document.createElement("button");
+      add.className = "p-card add"; add.type = "button";
+      add.innerHTML = `<span>+</span>${archives.length ? "Add another folder" : "Add your first folder"}`;
+      add.onclick = () => document.getElementById("archive-path").focus();
+      el.appendChild(add);
     }
     async function addArchiveFromForm(event) {
       event.preventDefault(); const field = document.getElementById("archive-path"); let p = field.value.trim();
@@ -4640,7 +4947,7 @@
       openArchive(a, "overview"); return false;
     }
     async function removeArchive(a) {
-      const message = `Remove “${a.name}” from organize_archive?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
+      const message = `Remove “${a.name}” from Trove?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
       if (!confirm(message)) return;
       const r = await jpost("/api/archive/remove", { root_id: a.id });
       if (r.error) { alert(r.error); return; }
@@ -4748,7 +5055,7 @@
       if (S.arch) jpost("/api/archive/close", { root_id: S.arch.id });
       stopPoll(); stopGlobalStatus(); resetSectionViews(); S.arch = null;
       document.getElementById("app").classList.remove("on");
-      document.getElementById("picker").style.display = "block";
+      document.getElementById("picker").style.display = "";
       loadPicker();
     }
     window.addEventListener("pagehide", () => {
@@ -4944,7 +5251,7 @@
     // Everything runs automatically in the background; this panel only reports
     // what's happening. Every card is rendered the SAME way from one resolved
     // state the server computes (running/queued/blocked/up_to_date/unavailable/
-    // error) — no per-card logic here — so the six cards can never disagree with
+    // error), no per-card logic here, so the six cards can never disagree with
     // each other or with what the pipeline is actually doing.
     const HEALTH_CARDCLASS = { running: "running", queued: "pending", blocked: "", up_to_date: "", unavailable: "", error: "error" };
     const HEALTH_DOT = { queued: "pending", blocked: "check", up_to_date: "ok", unavailable: "check", error: "check" };
@@ -4988,10 +5295,17 @@
         prog = `<div class="job" style="margin-top:8px; border:none; padding:0; background:transparent"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
         <div class="cur" style="margin-top:4px">${pct}% · ${(p.done || 0).toLocaleString()}${p.total ? "/" + p.total.toLocaleString() : ""} · ${p.elapsed || 0}s${p.current ? " · " + p.current : ""}</div></div>`;
       }
+      // Semantic indexing needs a Voyage API key. When it's missing, turn the
+      // otherwise dead-end "unavailable" card into a way in: say what's missing and
+      // open the Settings drawer to paste a key.
+      let cta = "";
+      if (stage.id === "semantic" && st === "unavailable") {
+        cta = `<button type="button" class="health-cta" onclick="openSettings()">Add API key →</button>`;
+      }
       const cls = stage.next ? "next" : (HEALTH_CARDCLASS[st] || "");
       return `<div class="health-task ${cls}">
       <div class="health-task-head">${head}</div>
-      <div class="health-task-state">${message}${prog}</div></div>`;
+      <div class="health-task-state">${message}${prog}${cta}</div></div>`;
     }
 
     function renderHealthCards() {
@@ -5100,7 +5414,7 @@
           opt("", "All months") + `</select>`);
       parts.push(peopleFilterHTML("tl", f.people || []));
       parts.push(`<select class="fsel" id="tl-place-filter" onchange="applyTimelineFilters()" ${f.places && f.places.length ? "" : "disabled"} title="${f.places && f.places.length ? "Filter by place" : "Name places in Places to enable this filter"}">` +
-        opt("", f.places && f.places.length ? "Places — anywhere" : "Places — none named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
+        opt("", f.places && f.places.length ? "All places" : "No places named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
       parts.push(`<button class="linkbtn" id="tl-clear" onclick="clearTimelineFilters()" style="display:none">Clear filters</button>`);
       bar.innerHTML = parts.join("");
       S.timelineOpts = f;
@@ -5282,9 +5596,9 @@
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Places</h2>
       <p>Explore geolocated media and give meaningful names to the places you return to.</p></div></div>
     <div class="statrow map-stats">
-      <div class="stat"><div><div class="k">Photos with location</div><div class="v" id="map-photo-count">—</div></div></div>
-      <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">—</div></div></div>
-      <div class="stat"><div><div class="k">Named places</div><div class="v" id="map-named-count">—</div></div></div>
+      <div class="stat"><div><div class="k">Photos with location</div><div class="v" id="map-photo-count">-</div></div></div>
+      <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">-</div></div></div>
+      <div class="stat"><div><div class="k">Named places</div><div class="v" id="map-named-count">-</div></div></div>
     </div>
     <div class="mapwrap">
       <div id="lmap"></div>
@@ -5505,7 +5819,7 @@
     <div class="library-controls">
       <form class="library-search" onsubmit="return semanticSubmit(event)">
         <div class="semantic-composer" id="semantic-q" contenteditable="true" role="textbox"
-          aria-label="Search your library by description" data-placeholder="Search your library — describe anything"
+          aria-label="Search your library by description" data-placeholder="Search your library, describe anything"
           spellcheck="true" oninput="onSemanticComposerInput()" onkeydown="onSemanticComposerKeydown(event)"
           onpaste="onSemanticComposerPaste(event)"></div>
         <button class="btn" type="submit">Search</button>
@@ -5605,7 +5919,7 @@
         ).join("");
         html = `${chips}<span class="reach-div" aria-hidden="true"></span><span class="reach-note">searchable by description</span>`;
       } else if (!s.configured) {
-        html = `<span class="reach-note">Search by description needs a Voyage key — add VOYAGE_API_KEY to this archive’s .env file and restart.</span>`;
+        html = `<span class="reach-note">Search by description needs a Voyage API key: <button type="button" class="linkbtn" style="padding:0;font-size:inherit" onclick="openSettings()">add one in App settings</button>.</span>`;
       } else if (pending) {
         html = `<span class="reach-note">Indexing your images and videos so you can search them by description…</span>`;
       } else {
@@ -5832,7 +6146,7 @@
       // People is a checkbox menu because several people can be joined together.
       parts.push(peopleFilterHTML("f", f.people || []));
       parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()" ${f.places && f.places.length ? "" : "disabled"} title="${f.places && f.places.length ? "Filter by place" : "Name places in Places to enable this filter"}">` +
-        opt("", f.places && f.places.length ? "Places — anywhere" : "Places — none named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
+        opt("", f.places && f.places.length ? "All places" : "No places named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
       parts.push(`<button class="linkbtn" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
       bar.innerHTML = parts.join("");
       renderSemanticComposer(false);
@@ -5843,7 +6157,7 @@
         if (!y) { msel.innerHTML = '<option value="">All months</option>'; msel.disabled = true; }
         else {
           // .filter(Boolean): a year-only period ("2024", from a manual year-precision
-          // date) yields an empty month slice — drop it so no blank month option appears.
+          // date) yields an empty month slice, so drop it so no blank month option appears.
           const months = [...new Set((S.filterOpts.periods || [])
             .filter(p => p.slice(0, 4) === y).map(p => p.slice(5, 7)).filter(Boolean))].sort();
           msel.innerHTML = '<option value="">All months</option>' +
@@ -5873,9 +6187,9 @@
     function selVal(id) { const e = document.getElementById(id); return e ? e.value : ""; }
     function peopleFilterHTML(prefix, people) {
       if (!people.length)
-        return `<span class="fsel filter-placeholder" title="Name people in People to enable this filter">People — none named yet</span>`;
+        return `<span class="fsel filter-placeholder" title="Name people in People to enable this filter">No people named yet</span>`;
       return `<details class="multi-filter" id="${prefix}-people-filter">
-    <summary class="fsel"><span id="${prefix}-people-label">People — anyone</span></summary>
+    <summary class="fsel"><span id="${prefix}-people-label">Anyone</span></summary>
     <div class="multi-menu">${people.map(p => `<label class="multi-option">
       <input type="checkbox" value="${p.id}" onchange="onPeopleFilterChange('${prefix}')"><span>${esc(p.name)}</span>
     </label>`).join("")}
@@ -5891,7 +6205,7 @@
     function updatePeopleFilterLabel(prefix, people) {
       const label = document.getElementById(`${prefix}-people-label`); if (!label) return;
       const ids = checkedPeople(prefix), names = ids.map(id => (people.find(p => String(p.id) === id) || {}).name).filter(Boolean);
-      label.textContent = !names.length ? "People — anyone" : names.length === 1 ? names[0] :
+      label.textContent = !names.length ? "Anyone" : names.length === 1 ? names[0] :
         names.length === 2 ? `${names[0]} + ${names[1]}` : `${names.length} people together`;
       label.closest("summary").title = names.length > 1 ? "Only media containing all selected people" : names.join("");
     }
@@ -6082,7 +6396,7 @@
         m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
       <div class="soonbox"><div class="big">🧹</div>
       <p>No duplicates found yet.</p>
-      <p class="muted">This runs automatically once files are scanned and dated — see the Overview tab for progress. Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
+      <p class="muted">This runs automatically once files are scanned and dated. See the Overview tab for progress. Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
         return;
       }
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
@@ -6155,7 +6469,7 @@
     // Faces run automatically as part of the background pipeline (scan → dates →
     // faces → duplicates); this panel only reports status. Clustering into people
     // re-runs automatically after every detection chunk, so there is no manual
-    // start/stop/recompute — it all happens on its own and halts only on app close.
+    // start/stop/recompute; it all happens on its own and halts only on app close.
     function renderFaceControls() {
       const el = document.getElementById("facectl"); if (!el) return;
       const sum = S.faceSum;
@@ -6163,7 +6477,7 @@
         el.innerHTML = `<div class="d"><span class="spin"></span>Detecting faces locally…</div>`;
       } else if (sum.unscanned > 0) {
         const first = sum.scanned === 0;
-        const note = `${sum.unscanned.toLocaleString()} photo${sum.unscanned === 1 ? "" : "s"} not yet scanned — runs automatically${first ? " (first run fetches a ~38 MB face model once)" : ""}.`;
+        const note = `${sum.unscanned.toLocaleString()} photo${sum.unscanned === 1 ? "" : "s"} not yet scanned; runs automatically${first ? " (first run fetches a ~38 MB face model once)" : ""}.`;
         el.innerHTML = `<div class="d pending"><span class="dot pending"></span>${note}</div>`;
       } else {
         el.innerHTML = `<div class="d ok"><span class="dot ok"></span>All ${sum.total_images.toLocaleString()} photos scanned.</div>`;
@@ -6199,7 +6513,7 @@
         if (sum.people !== prev.people || sum.faces !== prev.faces) renderPeople();
       } else if (failedFace && sum.unscanned > 0) {
         const detail = failedFace.message || "The face worker stopped before reporting progress.";
-        area.innerHTML = `<div class="job error"><div class="what">Face detection paused — retrying automatically.</div>
+        area.innerHTML = `<div class="job error"><div class="what">Face detection paused; retrying automatically.</div>
       <div class="cur">${esc(detail)}</div></div>`;
         if (wasRunning) renderPeople();
       } else {
@@ -6217,7 +6531,7 @@
             ? `<p>No recurring people found yet.</p><p class="muted">${s.faces.toLocaleString()} face${s.faces === 1 ? "" : "s"} detected, but none repeat often enough to group into a person. People appear automatically as more photos are scanned.</p>`
             : (s.scanned > 0
               ? `<p>No faces detected in the scanned photos.</p>`
-              : `<p>No faces yet — detection runs automatically in the background.</p>`)) + `</div>`;
+              : `<p>No faces yet; detection runs automatically in the background.</p>`)) + `</div>`;
         return;
       }
       wrap.innerHTML = `<div id="suggestwrap"></div><div class="people" id="peoplegrid"></div>`;
@@ -6247,7 +6561,7 @@
       <button class="sug-no" onclick="answerSuggest('different')">Not the same</button>
       <button class="sug-skip" onclick="answerSuggest('skip')">Skip</button>
     </div>
-    <div class="sug-extra"><button onclick="answerSuggest('notpeople')">🚫 Neither is a person — hide both (dolls / pets / cartoons)</button></div>
+    <div class="sug-extra"><button onclick="answerSuggest('notpeople')">🚫 Neither is a person; hide both (dolls / pets / cartoons)</button></div>
     </div>`;
     }
     async function answerSuggest(kind) {
@@ -6413,7 +6727,7 @@
       try { r = await jpost("/api/faces/person/rename", { person_id: id, name }); }
       catch (e) { r = { error: String(e) }; }
       if (!r || r.error) {
-        toast((r && r.error) ? ("Couldn’t save — " + r.error) : "Couldn’t save the person’s name.", true);
+        toast((r && r.error) ? ("Couldn’t save: " + r.error) : "Couldn’t save the person’s name.", true);
       }
       showPerson(id);
     }
@@ -6424,7 +6738,7 @@
     function renderSoon(m, id) {
       const S2 = {
         places: ["📍", "Places", "Reverse-geocode coordinates into place names and browse by location."],
-        situations: ["🔎", "Situations", "Search by content — “beach sunset”, “birthday” — using local image embeddings."]
+        situations: ["🔎", "Situations", "Search by content: “beach sunset”, “birthday”, using local image embeddings."]
       }[id];
       m.innerHTML = `<h2 class="sec">${S2[1]}</h2><div class="soonbox"><div class="big">${S2[0]}</div>
     <p>${S2[2]}</p><p class="muted">Coming in a later phase.</p></div>`;
@@ -6530,7 +6844,7 @@
     let MITEM = null;                 // the currently-open item, mutated in place on edit
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     function fmtDate(v) {
-      if (!v) return "—";
+      if (!v) return "-";
       const p = v.split("T")[0].split("-");
       if (p.length === 1) return p[0];                                  // year
       if (p.length === 2) return (MONTHS[(+p[1]) - 1] || p[1]) + " " + p[0];     // year-month
@@ -6587,7 +6901,7 @@
     function faceRow(f) {
       const named = MITEM.person_options || [];
       const isNamed = f.person_id && f.name;
-      let opts = isNamed ? "" : `<option value="" selected>${f.name ? esc(f.name) : "— unknown —"}</option>`;
+      let opts = isNamed ? "" : `<option value="" selected>${f.name ? esc(f.name) : "unknown"}</option>`;
       named.forEach(p => { opts += `<option value="${p.id}"${p.id === f.person_id ? " selected" : ""}>${esc(p.name)}</option>`; });
       if (!named.length && !isNamed)
         return `<div class="facerow"><img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
@@ -6597,7 +6911,7 @@
     <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select></div>`;
     }
     // Optimistic saves: update the panel now, persist in the background, and roll back
-    // only if the DB write actually fails — so editing feels instant even while the
+    // only if the DB write actually fails, so editing feels instant even while the
     // pipeline holds the single writer. Every background callback bails out (or re-checks
     // stillOpen) if the modal has since closed or moved to another item.
     let _toastT = null;
@@ -6622,8 +6936,8 @@
         toast(msg, true);
       };
       qpost("/api/faces/reassign", { face_id: faceId, person_id: +pid })
-        .then(r => { if (!(r && r.ok)) revert("Couldn’t reassign that face — " + ((r && r.error) || "try again")); })
-        .catch(() => revert("Couldn’t reassign that face — connection error"));
+        .then(r => { if (!(r && r.ok)) revert("Couldn’t reassign that face: " + ((r && r.error) || "try again")); })
+        .catch(() => revert("Couldn’t reassign that face: connection error"));
     }
     function flashSaved(el) {
       const o = el.style.borderColor; el.style.transition = "border-color .2s";
@@ -6639,7 +6953,7 @@
       <input id="d-m" type="text" inputmode="numeric" maxlength="2" placeholder="Mon" value="${p[1] ? (+p[1]) : ""}">
       <input id="d-d" type="text" inputmode="numeric" maxlength="2" placeholder="Day" value="${p[2] ? (+p[2]) : ""}">
     </div>
-    <div class="muted" style="font-size:11px">Enter only what you know — year alone is fine.</div>
+    <div class="muted" style="font-size:11px">Enter only what you know; year alone is fine.</div>
     <div class="btnrow"><button class="btn" onclick="saveDate()">Save</button>
       <button class="btn sec" onclick="renderInfo()">Cancel</button></div>`;
       document.getElementById("d-y").focus();
@@ -6659,14 +6973,14 @@
         toast(msg, true);
       };
       qpost("/api/item/date", { file_id: id, datetime: v })
-        .then(r => { if (!(r && r.ok)) revert("Couldn’t save the date — " + ((r && r.error) || "try again")); })
-        .catch(() => revert("Couldn’t save the date — connection error"));
+        .then(r => { if (!(r && r.ok)) revert("Couldn’t save the date: " + ((r && r.error) || "try again")); })
+        .catch(() => revert("Couldn’t save the date: connection error"));
     }
 
     /* ----- place: attach to a named place, or create one by pin ----- */
     function editPlace() {
       const cur = MITEM.place ? MITEM.place.id : "";
-      let sel = `<select class="fsel" onchange="onPlaceSelect(this.value)"><option value="">— No place —</option>`;
+      let sel = `<select class="fsel" onchange="onPlaceSelect(this.value)"><option value="">No place</option>`;
       (MITEM.place_options || []).forEach(p => sel += `<option value="${p.id}"${p.id === cur ? " selected" : ""}>${esc(p.name)}</option>`);
       sel += `</select>`;
       document.getElementById("placeval").innerHTML = sel +
@@ -6677,12 +6991,12 @@
     function onPlaceSelect(pid) {
       const id = MITEM.id, prev = MITEM.place;
       MITEM.place = pid ? ((MITEM.place_options || []).find(p => p.id === +pid) || { id: +pid, name: null }) : null;
-      renderInfo();   // instant — collapses the editor back to display
+      renderInfo();   // instant; collapses the editor back to display
       const body = pid ? { file_id: id, place_id: +pid } : { file_id: id, clear: true };
       const revert = (msg) => { if (stillOpen(id)) { MITEM.place = prev; renderInfo(); } toast(msg, true); };
       qpost("/api/item/place", body)
-        .then(r => { if (!(r && r.ok)) revert("Couldn’t update the place — " + ((r && r.error) || "try again")); })
-        .catch(() => revert("Couldn’t update the place — connection error"));
+        .then(r => { if (!(r && r.ok)) revert("Couldn’t update the place: " + ((r && r.error) || "try again")); })
+        .catch(() => revert("Couldn’t update the place: connection error"));
     }
     let MPICK = null, MPICK_TILES = null, MPICK_MARK = null, MPICK_LL = null;
     function closePick() { if (MPICK) { MPICK.remove(); MPICK = null; } MPICK_TILES = null; MPICK_MARK = null; MPICK_LL = null; }
@@ -6692,7 +7006,7 @@
     <input id="np-name" placeholder="Place name (e.g. Casa abuela)"
       style="width:100%;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;margin:8px 0 0;box-sizing:border-box">
     <div class="placepick" id="np-map"></div>
-    <div class="muted" style="font-size:11px;margin:-2px 0 2px">Click the map to drop a pin — that becomes the place’s location.</div>
+    <div class="muted" style="font-size:11px;margin:-2px 0 2px">Click the map to drop a pin; that becomes the place’s location.</div>
     <div class="btnrow"><button class="btn" id="np-save" onclick="saveNewPlace()" disabled>Create & attach</button>
       <button class="btn sec" onclick="closePick();editPlace()">Cancel</button></div>`;
       const start = MITEM.gps ? [MITEM.gps.lat, MITEM.gps.lon] : null;
@@ -6728,11 +7042,11 @@
           }
         } else {
           if (stillOpen(id)) { MITEM.place = prev; renderInfo(); }
-          toast("Couldn’t create the place — " + ((r && r.error) || "try again"), true);
+          toast("Couldn’t create the place: " + ((r && r.error) || "try again"), true);
         }
       }).catch(() => {
         if (stillOpen(id)) { MITEM.place = prev; renderInfo(); }
-        toast("Couldn’t create the place — connection error", true);
+        toast("Couldn’t create the place: connection error", true);
       });
     }
 
@@ -6741,6 +7055,9 @@
       document.getElementById("mmedia").innerHTML = ""; MITEM = null;
     }
     document.addEventListener("keydown", e => {
+      if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
+        closeSettings(); return;
+      }
       if (e.key === "Escape") { closeModal(); return; }
       if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;

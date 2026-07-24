@@ -2,7 +2,7 @@
 handler stays thread-safe under ThreadingHTTPServer.
 
 Everything is scoped to an archive (a row in `roots`, one per isolated
-database — see ``archives()`` below). A root_id of None on the other query
+database, see ``archives()`` below). A root_id of None on the other query
 functions means "no filter" (harmless: each archive's database only ever
 has the one root anyway).
 """
@@ -49,7 +49,7 @@ def archives(cfg) -> list[dict]:
             "added_at": entry["added_at"],
             "files": 0, "size": 0, "hashed": 0, "enriched": 0,
             "exists": Path(path).is_dir(),
-            "last_scan": None,
+            "last_scan": None, "covers": [],
         }
         if Path(db_path).is_file():
             conn = db.open_readonly(db_path)
@@ -65,9 +65,16 @@ def archives(cfg) -> list[dict]:
                 last = conn.execute(
                     "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
                 ).fetchone()
+                # A few canonical image ids for the start-page cover mosaic. Served
+                # by the root-scoped /archivethumb route (no archive is "open" on
+                # the picker). Newest first so the cover reflects recent additions.
+                covers = [r[0] for r in conn.execute(
+                    f"""SELECT f.id FROM files f
+                        WHERE {_NOT_HIDDEN} AND f.media_type='image'
+                        ORDER BY f.id DESC LIMIT 5""").fetchall()]
                 row.update(
                     files=stats["c"], size=stats["s"], hashed=stats["hashed"] or 0,
-                    enriched=dated,
+                    enriched=dated, covers=covers,
                     last_scan=(last["finished_at"] or last["started_at"]) if last else None,
                 )
             finally:
@@ -343,7 +350,7 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
         # Use `f.id IN (SELECT file_id ...)` rather than a correlated EXISTS:
         # the subquery materialises the (small) set of the person's/place's
         # file_ids once up front. A correlated EXISTS instead makes SQLite scan
-        # every present file (~150k) and re-run the subquery per row — and for
+        # every present file (~150k) and re-run the subquery per row, and for
         # the person case it picked idx_faces_person, pulling *all* of that
         # person's faces on each of the 150k iterations, which pushed the
         # request past 120s and left the grid stuck on a bare "Load more".
@@ -389,7 +396,7 @@ def browse_filters(db_path: str, root_id=None) -> dict:
     people and named places actually occur in this archive. Scoped to the
     default browse view (_NOT_HIDDEN), so the choices match what the grid shows.
 
-    Only *named* people/places are offered — an unnamed auto-cluster is not a
+    Only *named* people/places are offered, an unnamed auto-cluster is not a
     label a user would filter by, and naming is how they become meaningful."""
     conn = db.open_readonly(db_path)
     try:
@@ -643,7 +650,7 @@ def dup_groups(db_path: str, root_id=None, limit=60, offset=0) -> dict:
 # -- faces / people ---------------------------------------------------------
 
 def faces_pending(db_path: str, root_id=None) -> int:
-    """Present images not yet face-scanned (DB-only, no disk walk) — used by the
+    """Present images not yet face-scanned (DB-only, no disk walk), used by the
     auto-scheduler to decide whether to queue a faces job."""
     conn = db.open_readonly(db_path)
     try:
@@ -903,7 +910,7 @@ def face_summary(db_path: str, root_id=None) -> dict:
     try:
         rc, rp = _root_clause(root_id)
         # Face detection only runs on canonical (non-duplicate) images, so every
-        # count here is over _NOT_HIDDEN — the "total" is unique media, matching
+        # count here is over _NOT_HIDDEN, the "total" is unique media, matching
         # the people grid and what actually gets scanned.
         total_images = conn.execute(
             f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN} AND f.media_type='image'{rc}",
@@ -934,7 +941,7 @@ def face_summary(db_path: str, root_id=None) -> dict:
 
 
 def _preview_faces(conn, pids, k=4) -> dict:
-    """Up to k sharpest (highest det_score), non-hidden face ids per person — for
+    """Up to k sharpest (highest det_score), non-hidden face ids per person, for
     the 4-up collage on each person card. One window-function query for the page."""
     pids = [p for p in pids if p is not None]
     if not pids:
@@ -1255,7 +1262,7 @@ def hide_person(db_path: str, person_id, kind="false_detection") -> dict:
 def person_suggestions(db_path: str, root_id=None, limit=40, min_sim=0.45) -> dict:
     """Top candidate "same person?" pairs: distinct clusters whose centroids are
     >= min_sim cosine, highest first, excluding pairs the user already answered
-    'different'. This is the review queue — the pairs the automatic pass left
+    'different'. This is the review queue, the pairs the automatic pass left
     apart but that look like they could be one person."""
     import numpy as np
     conn = db.open_readonly(db_path)
@@ -1275,7 +1282,7 @@ def person_suggestions(db_path: str, root_id=None, limit=40, min_sim=0.45) -> di
         ii, jj, ss = iu[0][keep], iu[1][keep], sims[keep]
         order = np.argsort(-ss)
         # person-pairs the user already answered 'different' (cannot-link) or
-        # 'skip' (reviewed, undecided) — both are removed from the queue so it
+        # 'skip' (reviewed, undecided), both are removed from the queue so it
         # stops resurfacing the same pairs.
         excl = set()
         for lk in conn.execute(
@@ -1311,7 +1318,7 @@ def person_suggestions(db_path: str, root_id=None, limit=40, min_sim=0.45) -> di
 
 
 def set_place(db_path: str, file_id, place_id) -> dict:
-    """Attach a file to a place as a MANUAL member (membership only — no geo is
+    """Attach a file to a place as a MANUAL member (membership only, no geo is
     written, so provenance stays honest). Replaces any existing membership."""
     if not file_id or not place_id:
         return {"error": "missing file_id or place_id"}

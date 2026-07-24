@@ -32,6 +32,15 @@ def config_file() -> Path:
     return app_data_dir() / "config.json"
 
 
+def secrets_file() -> Path:
+    """Locally stored, user-managed secrets (API keys).
+
+    Kept out of ``config.json`` on purpose: it holds credentials, is written with
+    owner-only permissions, and never leaves this machine.
+    """
+    return app_data_dir() / "secrets.json"
+
+
 def default_db_path() -> Path:
     return app_data_dir() / "archive.db"
 
@@ -60,7 +69,7 @@ def archive_cache_dir(archive_id: int) -> Path:
 def ensure_app_data_dirs() -> None:
     """Create the standard mutable-data layout when an operation needs it.
 
-    Only ``models``/``icons`` live under the shared cache dir now — those are
+    Only ``models``/``icons`` live under the shared cache dir now, those are
     app binaries, not archive content. Thumbnails and face crops are per-archive
     and get created lazily under each archive's own cache dir.
     """

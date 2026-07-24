@@ -386,7 +386,7 @@ class JobManager:
             self._error_at.pop((job.root_id, job.kind), None)
         except KeyboardInterrupt:
             job.status = "cancelled"
-            job.message = "cancelled — progress saved"
+            job.message = "cancelled; progress saved"
         except Exception as e:
             job.status = "error"
             job.message = f"{e}"

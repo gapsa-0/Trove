@@ -6,11 +6,11 @@ never disagree with what the pipeline is actually doing.
 
 A stage's state is derived, in one place, from two things:
 
-* **countable pending work in the catalog** — a file with no ``dates`` row *is*
+* **countable pending work in the catalog**, a file with no ``dates`` row *is*
   enrich-pending; a canonical image with no ``face_scan`` row *is* faces-pending.
   Nothing about "what's left to do" is persisted separately, because the catalog
   already implies it and re-derives it for free on restart.
-* **the live in-process jobs** — whether a worker of that kind is running right
+* **the live in-process jobs**, whether a worker of that kind is running right
   now, and whether the last one errored.
 
 Every stage resolves through the SAME rule
@@ -63,7 +63,7 @@ CARD_LABEL = {
     "faces": "Face recognition", "places": "Location mapping",
     "semantic": "Semantic indexing",
 }
-# What a card says while its stage is actively running — one consistent
+# What a card says while its stage is actively running, one consistent
 # "<verb>ing <object>…" format across every stage.
 _RUN_TEXT = {
     "scan": "Scanning files…", "dedup": "Finding duplicates…",
@@ -72,7 +72,7 @@ _RUN_TEXT = {
 }
 _UNAVAILABLE_TEXT = {
     "faces": "Face detection unavailable", "pets": "Pet detection unavailable",
-    "semantic": "Not configured",
+    "semantic": "No Voyage API key",
 }
 
 
@@ -119,7 +119,7 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
     return {
         SCAN: new_files,
         ENRICH: max(0, indexed - enriched),
-        # Dedup rebuilds wholesale, so it has no per-file backlog — a dirty flag,
+        # Dedup rebuilds wholesale, so it has no per-file backlog, a dirty flag,
         # set when scan/enrich change data and cleared on a successful rebuild.
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
@@ -232,7 +232,7 @@ def cards(states: list[dict]) -> list[dict]:
             "message": message,
         })
 
-    # Second pass — the "up next" marker. A blocked card is *next in line* when the
+    # Second pass, the "up next" marker. A blocked card is *next in line* when the
     # stage it's waiting on is running right now: it's the one that starts the
     # moment the current work finishes. Flag it (the GUI colours it and swaps the
     # flat "Waiting for …" line for a "goes next" line) so the queue reads as an
@@ -266,7 +266,7 @@ def _message(card_id: str, state: str, pending, blocker, error) -> str | None:
     if state == "unavailable":
         return _UNAVAILABLE_TEXT.get(card_id, "Not available")
     if state == "error":
-        return error or "Last run failed — will retry"
+        return error or "Last run failed, will retry"
     return None
 
 

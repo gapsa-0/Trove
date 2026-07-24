@@ -18,6 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ..db import database as db
+from ..paths import secrets_file
 from . import thumbs
 
 _ENDPOINT = "https://api.voyageai.com/v1/multimodalembeddings"
@@ -43,6 +44,92 @@ def _api_key() -> str:
     if not key:
         raise VoyageEmbeddingError("VOYAGE_API_KEY is not set for this app process")
     return key
+
+
+# ---- user-managed key storage --------------------------------------------
+# The rest of the app reads the key from ``os.environ`` (see ``api_key_available``
+# / ``_api_key`` above). To let users paste a key in the GUI without changing that
+# contract, we persist it to a local, owner-only ``secrets.json`` and inject it
+# into ``os.environ`` at startup. A real environment variable (shell export or the
+# project ``.env`` loaded by ``config._load_dotenv``) always wins and is never
+# overwritten or cleared, the UI shows such a key as read-only.
+
+_SECRET_KEY = "voyage_api_key"
+_env_provided = False   # active key came from the real environment, not our store
+_loaded = False
+
+
+def _read_secrets() -> dict:
+    try:
+        return json.loads(secrets_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_secrets(data: dict) -> None:
+    path = secrets_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Owner-only from creation, the file holds a credential.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def load_stored_key() -> None:
+    """Activate a locally stored Voyage key at startup, unless the environment
+    already provides one (which always wins)."""
+    global _env_provided, _loaded
+    _loaded = True
+    if os.environ.get("VOYAGE_API_KEY", "").strip():
+        _env_provided = True
+        return
+    _env_provided = False
+    stored = str(_read_secrets().get(_SECRET_KEY, "")).strip()
+    if stored:
+        os.environ["VOYAGE_API_KEY"] = stored
+
+
+def store_api_key(key: str) -> dict:
+    """Persist a user-supplied Voyage key and activate it for this process."""
+    global _env_provided
+    key = (key or "").strip()
+    if not key:
+        raise ValueError("An API key is required")
+    data = _read_secrets()
+    data[_SECRET_KEY] = key
+    _write_secrets(data)
+    os.environ["VOYAGE_API_KEY"] = key
+    _env_provided = False
+    return api_key_status()
+
+
+def clear_api_key() -> dict:
+    """Forget the stored Voyage key. An environment-provided key is left untouched
+    (the UI presents it as read-only, so there is nothing to clear)."""
+    data = _read_secrets()
+    if _SECRET_KEY in data:
+        data.pop(_SECRET_KEY, None)
+        _write_secrets(data)
+    if not _env_provided:
+        os.environ.pop("VOYAGE_API_KEY", None)
+    return api_key_status()
+
+
+def api_key_status() -> dict:
+    """Non-secret description of the key state for the UI. Never returns the key
+    itself, only whether one is set, a last-4 hint, and where it came from
+    ('env' = read-only, 'stored' = managed here)."""
+    if not _loaded:
+        load_stored_key()
+    active = os.environ.get("VOYAGE_API_KEY", "").strip()
+    if not active:
+        return {"set": False, "hint": None, "source": None}
+    hint = active[-4:] if len(active) >= 4 else active
+    return {"set": True, "hint": hint, "source": "env" if _env_provided else "stored"}
 
 
 def _embed(cfg, inputs: list[dict], *, input_type: str) -> list[list[float]]:
@@ -106,7 +193,7 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
                cache_dir: str) -> tuple[dict | None, str | None, str | None]:
     """Create one Voyage multimodal input, or a non-fatal skip reason.
 
-    ``cache_dir`` is the calling archive's own cache — semantic indexing
+    ``cache_dir`` is the calling archive's own cache, semantic indexing
     thumbnails are content derived from that archive and never shared with
     another one.
     """
