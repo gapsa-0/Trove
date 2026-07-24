@@ -105,7 +105,9 @@ async function stopBackend() {
 }
 
 function onlyArchiveOrigin(url) {
-  return backendPort !== null && url === `http://${LOOPBACK}:${backendPort}/`;
+  if (backendPort === null) return false;
+  const origin = `http://${LOOPBACK}:${backendPort}`;
+  return url === origin || url.startsWith(`${origin}/`);
 }
 
 function createWindow() {

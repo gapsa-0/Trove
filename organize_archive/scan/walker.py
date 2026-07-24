@@ -179,7 +179,7 @@ def scan_root(conn, cfg: Config, root_path: str, run_started: str,
 
         # Commit by count or by time, so an abrupt kill loses little work.
         batch += 1
-        if batch >= commit_every or (time.monotonic() - last_commit) > 20:
+        if batch >= commit_every or (time.monotonic() - last_commit) > 2:
             conn.commit()
             batch = 0
             last_commit = time.monotonic()

@@ -20,7 +20,7 @@ from ..scan import walker
 @dataclass
 class Job:
     id: int
-    kind: str                 # "scan" | "enrich"
+    kind: str                 # "scan" | "enrich" | "dedup" | "places" | "faces" | "pets" | "semantic"
     root_id: int | None
     root_path: str | None
     force: bool = False
@@ -258,26 +258,23 @@ class JobManager:
                 if queries.semantic_pending(self.cfg.db_path, archive["id"]):
                     self.start("semantic", archive["id"], archive["path"])
                     return True
-        # A scan owns a small companion metadata worker, which reads each committed
-        # scan batch while hashing proceeds. All other local stages stay exclusive.
-        # Semantic indexing spends almost all of its time waiting on Voyage and
-        # only locks SQLite for one completed-result write at a time. It must not
-        # stall the local scan/enrich/faces pipeline while those requests run.
-        if any(j.status == "running" and j.kind != "semantic"
-               for j in self._jobs.values()):
-            return True
+        # Scan and enrich run as independent parallel jobs: scanning hashes
+        # files while enrichment reads metadata from already-committed rows.
+        # Both use their own DB connections and WAL mode serializes writes.
+        # Semantic indexing also overlaps safely (mostly waiting on Voyage).
+        # Later stages (dedup, faces, pets, places) wait for both to finish.
         for a in archives:
             fresh = queries.freshness(self.cfg.db_path, a["id"])
-            if fresh.get("new_files", 0) > 0:
+            if fresh.get("new_files", 0) > 0 and not self.active_kind("scan"):
                 self.start("scan", a["id"], a["path"])
                 self._dedup_dirty, self._dedup_root = True, a["id"]
                 self._places_dirty, self._places_root = True, a["id"]
-                return True
-            if fresh.get("not_enriched", 0) > 0:
+            if fresh.get("not_enriched", 0) > 0 and not self.active_kind("enrich"):
                 self.start("enrich", a["id"], a["path"])
                 self._dedup_dirty, self._dedup_root = True, a["id"]
                 self._places_dirty, self._places_root = True, a["id"]
-                return True
+        if self.active_kind("scan") or self.active_kind("enrich"):
+            return True
         # Dedup runs BEFORE faces on purpose: it sets files.hidden on duplicate
         # copies, and the face pass skips hidden files — so faces only ever run on
         # unique/canonical images (no wasted detection on duplicate photos).
@@ -286,6 +283,19 @@ class JobManager:
             root_id = open_root_id
             self.start("dedup", root_id, None)
             return True
+        if self.active_kind("dedup"):
+            return True
+
+        # Map place-clustering runs fast and only needs metadata (Scan/Enrich)
+        # and Dedup (to skip duplicates). We run it before ML passes so the Map
+        # populates quickly instead of waiting hours for face detection.
+        if self._places_dirty:
+            self._places_dirty = False
+            self.start("places", open_root_id, None)
+            return True
+        if self.active_kind("places"):
+            return True
+
         # Animals run before human faces. Their boxes suppress YuNet detections
         # that are substantially contained by a pet/toy region.
         from ..pets import backend as pet_backend
@@ -305,12 +315,6 @@ class JobManager:
                 if queries.faces_pending(self.cfg.db_path, a["id"]) > 0:
                     self.start("faces", a["id"], a["path"])
                     return True
-        # Map place-clustering: rebuild whenever new geo data landed, so the Map
-        # stays in sync on its own (it used to refresh only via a manual button).
-        if self._places_dirty:
-            self._places_dirty = False
-            self.start("places", open_root_id, None)
-            return True
         return False
 
     # -- worker -----------------------------------------------------------
@@ -318,14 +322,17 @@ class JobManager:
         try:
             if job.kind == "semantic":
                 self._run_semantic(job, cancel)
-            elif job.kind == "scan":
-                # A scan is the one exception to the long-held writer lock:
-                # _run_scan starts a metadata worker which uses a separate
-                # connection. SQLite/WAL still serializes their brief commits.
+            elif job.kind in ("scan", "enrich"):
+                # Scan and enrich each use their own connection and bypass the
+                # write lock so they can run in parallel. SQLite WAL mode
+                # serializes their brief commits safely.
                 conn = db.connect(self.cfg.db_path)
                 db.init_db(conn)
                 try:
-                    self._run_scan(conn, job, cancel)
+                    if job.kind == "scan":
+                        self._run_scan(conn, job, cancel)
+                    else:
+                        self._run_enrich(conn, job, cancel)
                 finally:
                     conn.close()
             else:
@@ -333,11 +340,7 @@ class JobManager:
                     conn = db.connect(self.cfg.db_path)
                     db.init_db(conn)
                     try:
-                        if job.kind == "scan":
-                            self._run_scan(conn, job, cancel)
-                        elif job.kind == "enrich":
-                            self._run_enrich(conn, job, cancel)
-                        elif job.kind == "dedup":
+                        if job.kind == "dedup":
                             self._run_dedup(conn, job, cancel)
                         elif job.kind == "places":
                             self._run_places(conn, job, cancel)
@@ -364,7 +367,6 @@ class JobManager:
 
     def _run_scan(self, conn, job: Job, cancel):
         from pathlib import Path
-        from ..metadata import enrich as enrich_mod
 
         prog = _JobProgress(job, cancel)
         run_started = db.now_iso()
@@ -373,66 +375,21 @@ class JobManager:
             walker.count_files(__import__("pathlib").Path(r))
             for r in roots if __import__("pathlib").Path(r).is_dir()
         )
-        # Establish roots before starting the companion worker. It only sees
-        # batches after scan_root commits them, and it is deliberately confined
-        # to this scan's roots so other archives keep their normal scheduling.
-        root_ids = tuple(
-            db.get_or_create_root(conn, str(Path(r)))
-            for r in roots if Path(r).is_dir()
-        )
-        scan_finished = threading.Event()
-        metadata_error: list[BaseException] = []
-        metadata_stats = enrich_mod.EnrichStats()
-
-        def enrich_while_scanning():
-            nonlocal metadata_stats
-            meta_conn = db.connect(self.cfg.db_path)
-            try:
-                while True:
-                    if cancel.is_set():
-                        raise KeyboardInterrupt
-                    # Enrichment itself commits every 80 files, keeping write
-                    # transactions short and yielding often to the hash scan.
-                    # Once scanning finishes, keep draining its final batches.
-                    stats = enrich_mod.enrich(
-                        meta_conn, self.cfg, batch_size=80, root_ids=root_ids,
-                    )
-                    metadata_stats.processed += stats.processed
-                    metadata_stats.with_takeout += stats.with_takeout
-                    metadata_stats.with_gps += stats.with_gps
-                    if scan_finished.is_set() and stats.processed == 0:
-                        return
-                    scan_finished.wait(0.15)
-            except BaseException as exc:
-                metadata_error.append(exc)
-            finally:
-                meta_conn.close()
-
-        metadata_thread = None
-        if root_ids:
-            metadata_thread = threading.Thread(target=enrich_while_scanning, daemon=True)
-            metadata_thread.start()
         base = 0
-        try:
-            for r in roots:
-                stats = walker.scan_root(conn, self.cfg, r, run_started,
-                                         progress=prog, base_done=base,
-                                         # Publish small batches so metadata can
-                                         # begin while the scanner hashes later files.
-                                         commit_every=80)
-                base += stats.seen
-        finally:
-            scan_finished.set()
-            if metadata_thread is not None:
-                metadata_thread.join()
-        if metadata_error:
-            raise metadata_error[0]
-        job.message = f"{base} files scanned · {metadata_stats.processed} metadata extracted"
+        for r in roots:
+            stats = walker.scan_root(conn, self.cfg, r, run_started,
+                                     progress=prog, base_done=base,
+                                     # Small batches so the parallel enrich job
+                                     # can begin reading committed rows quickly.
+                                     commit_every=80)
+            base += stats.seen
+        job.message = f"{base} files scanned"
 
     def _run_enrich(self, conn, job: Job, cancel):
         from ..metadata import enrich as enrich_mod
         prog = _JobProgress(job, cancel)
-        stats = enrich_mod.enrich(conn, self.cfg, progress=prog)
+        root_ids = (job.root_id,) if job.root_id else None
+        stats = enrich_mod.enrich(conn, self.cfg, progress=prog, root_ids=root_ids)
         job.message = (f"{stats.processed} processed, "
                        f"{stats.with_takeout} Takeout-matched, "
                        f"{stats.with_gps} with GPS")

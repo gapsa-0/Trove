@@ -96,6 +96,8 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
     stats = EnrichStats()
     matcher = SidecarMatcher()
     reader = ExifReader() if (ExifReader and exif_available()) else None
+    import time as _time
+    _last_commit = _time.monotonic()
 
     where = "d.file_id IS NULL AND f.present=1"
     params: list[int] = []
@@ -214,7 +216,13 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
             if progress is not None:
                 progress.update(stats.processed, 0)
 
+            # Flush to DB by time so the API reflects near-real-time counts.
+            if (_time.monotonic() - _last_commit) >= 2:
+                conn.commit()
+                _last_commit = _time.monotonic()
+
         conn.commit()
+        _last_commit = _time.monotonic()
 
     return stats
 
