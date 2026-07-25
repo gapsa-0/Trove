@@ -247,6 +247,14 @@ class JobManager:
     # next time that archive is opened.
     def open_archive(self, root_id: int):
         """Allow automatic work for this archive while it is being viewed."""
+        # Bring the schema up to date before anything can read: the read-only
+        # query paths (thumbnails, the viewer) join tables this version expects,
+        # and an archive catalogued by an older one would not have them yet.
+        conn = db.connect(self.cfg.archive_db_path(root_id))
+        try:
+            db.init_db(conn)
+        finally:
+            conn.close()
         with self._lock:
             previous = self._open_root_id
             self._open_root_id = root_id
@@ -484,6 +492,7 @@ class JobManager:
         face_be, pet_be = dx.make_backends(
             self.cfg, log=lambda m: setattr(job, "current", m))
         processed = faces_found = animals = suppressed = human_pets = 0
+        turned = 0
         while True:
             if cancel.is_set():
                 raise KeyboardInterrupt
@@ -497,6 +506,7 @@ class JobManager:
             animals += st.animals
             suppressed += st.nonhuman_suppressed
             human_pets += st.human_animals_dropped
+            turned += st.rotated
             job.current = "grouping people & pets…"
             fc.cluster_faces(conn, self.cfg)
             pc.cluster_pets(conn, self.cfg, root_id=job.root_id)
@@ -506,7 +516,8 @@ class JobManager:
             f"{faces_found} faces · {people} people · {animals} animals · "
             f"{groups} pet groups"
             + (f" · {suppressed} animal-face FPs dropped" if suppressed else "")
-            + (f" · {human_pets} people misread as pets" if human_pets else ""))
+            + (f" · {human_pets} people misread as pets" if human_pets else "")
+            + (f" · {turned} photos turned upright" if turned else ""))
 
     def _run_face_cluster(self, conn, job: Job, cancel):
         from ..faces.cluster import cluster_faces
@@ -571,7 +582,8 @@ class JobManager:
                 job.current = row["rel_path"]
                 part, kind, reason = semantic.media_part(
                     self.cfg, Path(row["root_path"]) / row["rel_path"],
-                    row["ext"], row["media_type"], self.cfg.archive_cache_dir(job.root_id))
+                    row["ext"], row["media_type"],
+                    self.cfg.archive_cache_dir(job.root_id), row["rotate_deg"])
                 if reason:
                     self._save_semantic_outcome(job.root_id, row, None, kind, reason)
                     skipped += 1

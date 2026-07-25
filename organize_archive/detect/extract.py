@@ -23,6 +23,17 @@ That replaces the old one-directional rule, which dropped any face merely
 *contained* in an animal box — so a bogus full-frame "dog" over a reclining
 person deleted the real face from People *and* kept the phantom pet.
 
+The same signal gives the stage its other job: **resolving true orientation**.
+EXIF is applied on decode and settles most photos, but this archive is full of
+re-exports whose pixels are turned while their orientation tag says they are
+not, and on those every model here fails — SCRFD finds no face at all and the
+person becomes a ``dog``. A ``person`` that reads clearly at a quarter turn and
+not upright says which way up the photo really is; it is recorded in
+``orientation`` and detection is redone there, so the boxes and the app's view
+of the photo are both upright. Deliberately narrow (see ``_resolve_rotation``):
+turning a correctly stored photo over is worse than leaving a sideways one
+alone, so only a frame-filling subject that out-reads the animal score moves.
+
 Resumable and incremental, like the stages it replaces: an image is pending when
 it lacks a current ``face_scan`` OR a current ``pet_scan`` row, and is processed
 as a unit (both detectors run, both ``faces`` and ``animal_detections`` for the
@@ -51,6 +62,7 @@ class DetectStats:
     photos_with_animals: int = 0
     nonhuman_suppressed: int = 0   # faces dropped as an animal's own face
     human_animals_dropped: int = 0  # "pets" that a person box exposed as people
+    rotated: int = 0               # photos found to be stored sideways
     candidates: int = 0
     rejected_score: int = 0
     rejected_size: int = 0
@@ -227,15 +239,171 @@ def _human_boxes_on_turns(img, pet_be):
     return found
 
 
-def _drop_human_animals(animals, humans, min_iou: float):
-    """Split animal boxes into (real animals, boxes that are really people)."""
+def _drop_human_animals(animals, humans, min_iou: float, *, outscore=False):
+    """Split animal boxes into (real animals, boxes that are really people).
+
+    ``outscore`` additionally requires the person box to read at least as
+    strongly as the animal it would overturn. Evidence found only by turning the
+    image is worth less — a bird in flight or a cat curled up will read as a
+    person from some angle — so a confident animal is left alone unless the
+    person reading matches it.
+    """
     kept, human_like = [], []
     for a in animals:
-        if any(_iou(a, p) >= min_iou for p in humans):
+        if any(_iou(a, p) >= min_iou and (not outscore or p.score >= a.score)
+               for p in humans):
             human_like.append(a)
         else:
             kept.append(a)
     return kept, human_like
+
+
+# Clockwise display degrees <-> counter-clockwise np.rot90 turns.
+_TURNS = {90: 3, 180: 2, 270: 1}
+
+
+def rotate_image(img, deg: int):
+    """Rotate a decoded array clockwise by 0/90/180/270 degrees."""
+    if not deg:
+        return img
+    import numpy as np
+    return np.ascontiguousarray(np.rot90(img, _TURNS[deg]))
+
+
+@dataclass
+class _Found:
+    """Everything one decoded frame yielded, already cross-checked."""
+
+    faces: list = field(default_factory=list)      # kept, human
+    animals: list = field(default_factory=list)    # kept, real animals
+    humans: list = field(default_factory=list)     # person boxes (context)
+    report: object = None                          # the raw DetectionReport
+    human_animals: int = 0                         # pets that were really people
+    suppressed_faces: int = 0                      # animals' own faces
+    max_subject_share: float = 0.0                 # biggest box, as a frame share
+    animal_score: float = 0.0                      # best animal reading, pre-veto
+
+
+def _detect_on(img, scale, cfg: Config, face_be, pet_be) -> _Found:
+    """Run both detectors over one frame and cross-check them.
+
+    Boxes come out in the frame's own full-resolution pixels (``1/scale``), so
+    a caller that rotated ``img`` first gets boxes in that rotated frame — which
+    is exactly where the app draws them.
+    """
+    inv = 1.0 / scale if scale else 1.0
+    found = _Found(report=face_backend.DetectionReport())
+
+    if pet_be is not None:
+        animals, humans = pet_be.detect_with_humans(img)
+        # Kept from before the veto: how confidently the photo reads as an
+        # animal the way it is stored, which the orientation check weighs
+        # against a person reading from some other angle.
+        found.animal_score = max((a.score for a in animals), default=0.0)
+        h, w = img.shape[:2]
+        found.max_subject_share = max(
+            (b.w * b.h for b in (*animals, *humans)), default=0) / max(1, w * h)
+        animals, human_like = _drop_human_animals(
+            animals, humans, cfg.pets_human_iou)
+        if animals:
+            # Survivors may still be people who are simply not vertical here —
+            # the quarter-turns are where YOLOX reads them as `person` again.
+            turn_humans = _human_boxes_on_turns(img, pet_be)
+            humans += turn_humans
+            animals, turned = _drop_human_animals(
+                animals, turn_humans, cfg.pets_human_iou, outscore=True)
+            human_like += turned
+        found.human_animals = len(human_like)
+        for box in (*animals, *humans):     # -> this frame's full-res pixels
+            box.x = max(0, round(box.x * inv))
+            box.y = max(0, round(box.y * inv))
+            box.w = round(box.w * inv)
+            box.h = round(box.h * inv)
+        found.animals, found.humans = animals, humans
+
+    if face_be is not None:
+        found.report = face_be.detect_report(img, scale)
+
+    for fc in found.report.faces:
+        in_animal = any(
+            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, a.x, a.y, a.w, a.h)
+            >= cfg.pets_face_overlap for a in found.animals)
+        in_person = any(
+            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, p.x, p.y, p.w, p.h)
+            >= cfg.pets_face_overlap for p in found.humans)
+        if in_animal and not in_person:
+            found.report.rejected["nonhuman"] = (
+                found.report.rejected.get("nonhuman", 0) + 1)
+            found.suppressed_faces += 1
+            continue
+        found.faces.append(fc)
+    return found
+
+
+def _best_person(pet_be, img) -> tuple[float, float]:
+    """``(confidence, share of the frame)`` of the most confident person box."""
+    h, w = img.shape[:2]
+    frame = max(1, w * h)
+    best = max(pet_be.detect_humans(img), key=lambda p: p.score, default=None)
+    return (best.score, best.w * best.h / frame) if best else (0.0, 0.0)
+
+
+def _resolve_rotation(img, pet_be, cfg: Config, subject_share: float,
+                      animal_score: float):
+    """Find the quarter turn that makes this photo's subject upright.
+
+    The evidence is a YOLOX ``person`` reading that appears at a quarter turn
+    and *not* upright. That asymmetry is the signature of a sideways-stored
+    photo of a person, and it is what the pet cross-check already exploits.
+
+    Being wrong here is expensive — turning a correctly stored photo over is
+    worse than leaving a sideways one alone — so every guard below earns its
+    place against a real counterexample from this archive:
+
+    * **The subject must fill the frame.** Someone lying on the grass in a
+      landscape shot reads as an upright person once turned, exactly like a
+      standing person in a sideways photo. The difference is that the sideways
+      portrait's subject covers most of the frame (measured: 0.93) while the
+      person lying down is a detail of a scene (0.03) whose own horizon settles
+      the question.
+    * **Only landscape becomes portrait.** A person filling the frame is a
+      portrait composition, so the frame that needs turning is the one stored
+      the wrong way round — landscape. Without this, a close-up of someone
+      lying in bed (already portrait, subject filling it, and indistinguishable
+      from a sideways photo by every other measure) gets turned on its side.
+    * **It must beat the animal reading.** A cat close-up reads as a mediocre
+      ``person`` from some angle; if the photo is a more confident animal the
+      way it is stored, nothing moves.
+    * **Only the quarter turns.** Pixels stored upside down are vanishingly
+      rare, while detectors happily fire on upside-down subjects.
+
+    Faces are deliberately *not* used to decide this. On this archive a face
+    that only appears when the photo is turned is nearly always a doll, a cake
+    figurine or a person lying down rather than a sideways photo — the signal
+    is there, but its precision is not good enough to move photos on.
+
+    Returns ``(degrees, confidence, source)``, or ``(0, 0.0, "")`` to leave the
+    photo untouched.
+    """
+    # Three YOLOX passes — the most expensive thing in this stage — and they can
+    # only ever succeed on a dominant subject, so a photo without one skips them
+    # entirely.
+    h, w = img.shape[:2]
+    if (pet_be is None or subject_share < cfg.orientation_min_subject
+            or w <= h):
+        return 0, 0.0, ""
+    upright, _ = _best_person(pet_be, img)
+    best_deg, best_score, best_share = 0, upright, 0.0
+    for deg in (90, 270):
+        score, share = _best_person(pet_be, rotate_image(img, deg))
+        if score > best_score:
+            best_deg, best_score, best_share = deg, score, share
+    if (best_deg and best_score >= cfg.orientation_person_min
+            and best_score - upright >= cfg.orientation_person_margin
+            and best_share >= cfg.orientation_min_subject
+            and best_score >= animal_score):
+        return best_deg, best_score, "person"
+    return 0, 0.0, ""
 
 
 def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
@@ -275,58 +443,47 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
             fid = row["id"]
             path = Path(row["root_path"]) / row["rel_path"]
             n_faces = n_animals = 0
+            rotate, conf, orient_src = 0, 0.0, ""
             face_report = face_backend.DetectionReport()
             try:
                 img, scale = _load_bgr(str(path), cfg.detect_max_side)
-                inv = 1.0 / scale if scale else 1.0
+                found = _detect_on(img, scale, cfg, face_be, pet_be)
 
-                # -- animals + people (YOLOX), in detected-image pixels -------
-                animals, humans = [], []
-                if pet_be is not None:
-                    animals, humans = pet_be.detect_with_humans(img)
-                    animals, human_like = _drop_human_animals(
-                        animals, humans, cfg.pets_human_iou)
-                    if animals:
-                        # Survivors may still be people who are simply not
-                        # vertical here — the quarter-turns are where YOLOX
-                        # reads them as `person` again.
-                        humans += _human_boxes_on_turns(img, pet_be)
-                        animals, turned = _drop_human_animals(
-                            animals, humans, cfg.pets_human_iou)
-                        human_like += turned
-                    stats.human_animals_dropped += len(human_like)
-                    for box in (*animals, *humans):   # -> ORIGINAL pixels
-                        box.x = max(0, round(box.x * inv))
-                        box.y = max(0, round(box.y * inv))
-                        box.w = round(box.w * inv)
-                        box.h = round(box.h * inv)
+                # -- is this photo stored sideways? --------------------------
+                # Someone/something is here but no face resolved: that is the
+                # signature of a photo whose pixels are turned. Probing costs
+                # three score-only SCRFD passes and is skipped for the vast
+                # majority of images, which answer on the first pass.
+                # SCRFD finding nothing at all is the signal, not the
+                # cross-check's verdict: a face it did find and an animal then
+                # claimed says the photo was readable, so leave it be.
+                if (face_be is not None and not found.report.faces
+                        and (found.animals or found.humans)):
+                    rotate, conf, orient_src = _resolve_rotation(
+                        img, pet_be, cfg, found.max_subject_share,
+                        found.animal_score)
+                    if rotate:
+                        img = rotate_image(img, rotate)
+                        found = _detect_on(img, scale, cfg, face_be, pet_be)
+                        stats.rotated += 1
 
-                # -- faces (SCRFD): already mapped to ORIGINAL via scale ------
-                if face_be is not None:
-                    face_report = face_be.detect_report(img, scale)
-
-                # -- inline cross-check: drop only animals' own faces ---------
-                human_faces = []
-                for fc in face_report.faces:
-                    in_animal = any(
-                        _overlap_fraction(fc.x, fc.y, fc.w, fc.h,
-                                          a.x, a.y, a.w, a.h) >= cfg.pets_face_overlap
-                        for a in animals)
-                    in_person = any(
-                        _overlap_fraction(fc.x, fc.y, fc.w, fc.h,
-                                          p.x, p.y, p.w, p.h) >= cfg.pets_face_overlap
-                        for p in humans)
-                    if in_animal and not in_person:
-                        face_report.rejected["nonhuman"] = (
-                            face_report.rejected.get("nonhuman", 0) + 1)
-                        stats.nonhuman_suppressed += 1
-                        continue
-                    human_faces.append(fc)
+                face_report = found.report
+                human_faces = found.faces
+                animals, humans = found.animals, found.humans
+                stats.human_animals_dropped += found.human_animals
+                stats.nonhuman_suppressed += found.suppressed_faces
 
                 # -- rewrite this file's detections as a unit ----------------
                 conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
                 conn.execute("DELETE FROM animal_detections WHERE file_id=?", (fid,))
                 conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?", (fid,))
+                conn.execute("DELETE FROM orientation WHERE file_id=?", (fid,))
+                if rotate:
+                    conn.execute(
+                        """INSERT INTO orientation
+                           (file_id, rotate_deg, source, confidence, created_at)
+                           VALUES (?,?,?,?,?)""",
+                        (fid, rotate, orient_src, conf, now))
                 for a in animals:
                     conn.execute(
                         """INSERT INTO animal_detections

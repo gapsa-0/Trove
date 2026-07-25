@@ -190,12 +190,14 @@ def embed_parts(cfg, parts: list[dict]) -> list[list[float]]:
 
 
 def media_part(cfg, path: Path, ext: str, media_type: str,
-               cache_dir: str) -> tuple[dict | None, str | None, str | None]:
+               cache_dir: str, rotate: int = 0
+               ) -> tuple[dict | None, str | None, str | None]:
     """Create one Voyage multimodal input, or a non-fatal skip reason.
 
     ``cache_dir`` is the calling archive's own cache, semantic indexing
     thumbnails are content derived from that archive and never shared with
-    another one.
+    another one. ``rotate`` sends a sideways-stored photo the way up the app
+    shows it, so retrieval sees what the user sees.
     """
     ext = (ext or path.suffix.lstrip(".")).lower()
     source, mime, kind = path, _IMAGE_MIMES.get(ext), "image"
@@ -206,7 +208,8 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
         # for archive-level visual retrieval. It also converts HEIC/RAW/etc.
         # to a format Voyage accepts.
         cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-        thumb = thumbs.thumb_for(cache_dir, cache_id, path, size=1024)
+        thumb = thumbs.thumb_for(cache_dir, cache_id, path, size=1024,
+                                 rotate=rotate)
         if thumb is not None:
             source, mime, kind = thumb, "image/jpeg", "thumbnail"
         elif mime is None:
@@ -227,7 +230,8 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
         # A large photo can use a local JPEG thumbnail; video must be skipped.
         if media_type == "image" and source == path:
             cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-            source = thumbs.thumb_for(cache_dir, cache_id, path, size=1024)
+            source = thumbs.thumb_for(cache_dir, cache_id, path, size=1024,
+                                      rotate=rotate)
             if source is not None and source.stat().st_size <= cfg.semantic_inline_max_bytes:
                 mime, kind, content_type = "image/jpeg", "thumbnail", "image_base64"
             else:
@@ -242,10 +246,12 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
 
 
 def embed_media(cfg, path: Path, ext: str, media_type: str, cache_dir: str,
-                cancel=None) -> tuple[list[float] | None, str | None, str | None]:
+                cancel=None, rotate: int = 0
+                ) -> tuple[list[float] | None, str | None, str | None]:
     if cancel is not None and cancel.is_set():
         raise KeyboardInterrupt
-    part, kind, skip_reason = media_part(cfg, path, ext, media_type, cache_dir)
+    part, kind, skip_reason = media_part(
+        cfg, path, ext, media_type, cache_dir, rotate)
     if skip_reason:
         return None, kind, skip_reason
     return _embed(cfg, [part], input_type="document")[0], kind, None
@@ -261,10 +267,15 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
         where.append("(e.file_id IS NULL OR e.source_sha256 IS NOT f.sha256 "
                      "OR COALESCE(e.indexer_version, '') != ?)")
         params.append(INDEXER_VERSION)
+    # rotate_deg: index the photo the way up the app shows it. Detection runs
+    # alongside this stage rather than before it, so a photo indexed first is
+    # sent as stored; it is re-indexed only if its bytes change.
     return conn.execute(
-        f"""SELECT f.id, f.rel_path, f.ext, f.media_type, f.sha256, r.path AS root_path
+        f"""SELECT f.id, f.rel_path, f.ext, f.media_type, f.sha256, r.path AS root_path,
+                   COALESCE(o.rotate_deg, 0) AS rotate_deg
              FROM files f JOIN roots r ON r.id=f.root_id
              LEFT JOIN semantic_embeddings e ON e.file_id=f.id
+             LEFT JOIN orientation o ON o.file_id=f.id
              WHERE {' AND '.join(where)} ORDER BY f.id""", params).fetchall()
 
 

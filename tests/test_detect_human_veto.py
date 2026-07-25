@@ -53,39 +53,61 @@ def _face(*, x=30, y=20, w=30, h=30, score=.9):
         quality_source="test", embedding=np.array([1.0, 0.0], dtype="float32"))
 
 
+# Landscape, and deliberately not square: a stub can tell an upright frame from
+# a quarter turn by its shape alone, and only a landscape frame is ever a
+# candidate for being turned upright (see _resolve_rotation).
+_IMG_H, _IMG_W = 100, 120
+
+
 class _PetBackend:
     """Returns fixed boxes; records how many forward passes were asked for.
 
-    ``turn_humans`` are reported already mapped back to the upright frame, which
-    is what the stage sees once ``_human_boxes_on_turns`` has un-rotated them.
+    ``turn_humans`` is what a quarter-turned frame reports, given in that turned
+    frame's own coordinates — the stage maps them back itself.
     """
 
-    def __init__(self, animals, humans, turn_humans=()):
+    def __init__(self, animals, humans, turn_humans=(), turned_animals=()):
         self.animals, self.humans, self.turn_humans = animals, humans, turn_humans
-        self.passes = self.turn_passes = 0
+        # What a full pass over the *turned* frame reports, for the case where
+        # turning is what finally makes the subject legible.
+        self.turned_animals = turned_animals
+        self.passes = self.turn_passes = self.human_calls = 0
 
     def detect_with_humans(self, _img):
         self.passes += 1
+        if self.passes > 1:
+            return list(self.turned_animals), list(self.turn_humans)
         return list(self.animals), list(self.humans)
 
-    def detect_humans(self, _img):
+    def detect_humans(self, img):
+        self.human_calls += 1
+        if img.shape[:2] == (_IMG_H, _IMG_W):        # upright frame
+            return list(self.humans)
         self.turn_passes += 1
         return list(self.turn_humans)
 
 
 class _FaceBackend:
-    def __init__(self, faces):
+    """``faces`` upright; ``turned_faces`` once the frame has been rotated."""
+
+    def __init__(self, faces, turned_faces=None):
         self.faces = faces
+        self.turned_faces = turned_faces
+        self.reports = 0
 
     def detect_report(self, _img, _scale=1.0):
+        self.reports += 1
+        shown = (self.turned_faces if self.reports > 1
+                 and self.turned_faces is not None else self.faces)
         return face_backend.DetectionReport(
-            faces=list(self.faces), candidates=len(self.faces))
+            faces=list(shown), candidates=len(shown))
 
 
-def _run(conn, cfg, pet_be, face_be, monkeypatch):
+def _run(conn, cfg, pet_be, face_be, monkeypatch, shape=(_IMG_H, _IMG_W)):
     monkeypatch.setattr(dx, "available", lambda: True)
     monkeypatch.setattr(
-        dx, "_load_bgr", lambda _p, _s: (np.zeros((100, 100, 3), "uint8"), 1.0))
+        dx, "_load_bgr",
+        lambda _p, _s: (np.zeros((*shape, 3), "uint8"), 1.0))
     return dx.extract(conn, cfg, face_be=face_be, pet_be=pet_be)
 
 
@@ -164,15 +186,158 @@ def test_an_animal_box_is_re_tested_on_the_quarter_turns(tmp_path, monkeypatch):
     makes YOLOX read the same region as `person`."""
     conn = _catalog(tmp_path)
     # Upright: no person at all. On a quarter turn: a person over the same box.
-    pet_be = _PetBackend([_animal()], [], turn_humans=[_human(w=100, h=100)])
-    face_be = _FaceBackend([])
+    pet_be = _PetBackend([_animal()], [],
+                         turn_humans=[_human(w=100, h=100, score=.85)])
+    # A face elsewhere keeps the orientation probe out of this test — the photo
+    # is already upright, only the animal box is in question.
+    face_be = _FaceBackend([_face()])
 
     stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
 
     assert stats.human_animals_dropped == 1
     assert stats.animals == 0
+    assert stats.faces_found == 1          # no animal left to suppress it
     assert pet_be.turn_passes == 2         # both turns, and only because a box
     conn.close()                           # survived the upright check
+
+
+def test_a_sideways_photo_is_turned_upright_and_redetected(tmp_path, monkeypatch):
+    """The archive's rotated re-exports: the photo reads as a `dog` filling the
+    frame as stored, and as a confident person once turned. Record the turn and
+    redo detection there, so the boxes belong to the frame the app shows."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(w=100, h=110)], [])
+    pet_be.turn_humans = [_human(w=110, h=100, score=.90)]
+    face_be = _FaceBackend([], turned_faces=[_face()])
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 1
+    assert stats.faces_found == 1              # the face only the turn could see
+    row = conn.execute("SELECT * FROM orientation").fetchone()
+    assert row["rotate_deg"] in (90, 270)
+    assert row["source"] == "person"
+    assert row["confidence"] == pytest.approx(0.90)
+    assert face_be.reports == 2                # upright, then the real frame
+    conn.close()
+
+
+def test_someone_lying_down_does_not_turn_a_correct_photo(tmp_path, monkeypatch):
+    """Kids lying prone on grass: a turn reads them as upright people, but they
+    are a detail of a landscape, not the photo. Leave it alone — and don't pay
+    for the person probe at all, since a small subject can never win it."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(w=12, h=8)], [])
+    pet_be.turn_humans = [_human(w=12, h=8, score=.85)]      # small in frame
+    face_be = _FaceBackend([])
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 0
+    assert conn.execute("SELECT COUNT(*) FROM orientation").fetchone()[0] == 0
+    # Only the pet cross-check's two turns; the orientation probe would have
+    # added three more YOLOX calls, and it was skipped before spending them.
+    assert pet_be.human_calls == 2
+    conn.close()
+
+
+def test_a_confident_pet_outweighs_a_mediocre_person_reading(tmp_path, monkeypatch):
+    """A cat close-up reads as a weak `person` from some angle. The photo is a
+    more confident cat the way it is stored, so nothing moves — and the cat is
+    still a pet."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(species="cat", w=100, h=110, score=.92)], [])
+    pet_be.turn_humans = [_human(w=110, h=100, score=.80)]
+    face_be = _FaceBackend([])
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 0
+    assert stats.animals == 1
+    assert conn.execute("SELECT COUNT(*) FROM orientation").fetchone()[0] == 0
+    conn.close()
+
+
+def test_a_bird_that_reads_as_a_person_when_turned_stays_a_bird(
+        tmp_path, monkeypatch):
+    """A bird in flight reads as a person from some angle. Evidence found only
+    by turning the image has to at least match the animal it would overturn."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(species="bird", score=.93)], [],
+                         turn_humans=[_human(w=100, h=100, score=.55)])
+    face_be = _FaceBackend([_face()])
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.animals == 1
+    assert stats.human_animals_dropped == 0
+    conn.close()
+
+
+def test_a_portrait_of_someone_lying_down_is_left_alone(tmp_path, monkeypatch):
+    """A close-up of someone lying in bed fills the frame and reads as an
+    upright person once turned — identical to a sideways photo by every other
+    measure. It is already portrait, and a frame-filling person is a portrait
+    composition, so there is nothing to fix."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(w=90, h=110)], [],
+                         turn_humans=[_human(w=110, h=90, score=.95)])
+
+    stats = _run(conn, Config(), pet_be, _FaceBackend([]), monkeypatch,
+                 shape=(_IMG_W, _IMG_H))            # stored portrait
+
+    assert stats.rotated == 0
+    conn.close()
+
+
+def test_a_weak_person_reading_never_turns_a_photo(tmp_path, monkeypatch):
+    """A wrongly turned photo is worse than an untouched one, so a turn that is
+    only slightly more person-shaped is not enough."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(w=100, h=110)], [],
+                         turn_humans=[_human(w=110, h=100, score=.55)])
+    face_be = _FaceBackend([])
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 0
+    assert conn.execute("SELECT COUNT(*) FROM orientation").fetchone()[0] == 0
+    conn.close()
+
+
+def test_an_upright_photo_is_never_probed(tmp_path, monkeypatch):
+    """The common case must not pay for the orientation check."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([], [_human()])
+    face_be = _FaceBackend([_face()])
+
+    _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert pet_be.human_calls == 0
+    assert face_be.reports == 1
+    conn.close()
+
+
+def test_a_photo_with_nothing_in_it_is_never_probed(tmp_path, monkeypatch):
+    """No face, but also no person or animal: there is nothing to go on, so no
+    probe — most of the archive's landscapes land here."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([], [])
+
+    _run(conn, Config(), pet_be, _FaceBackend([]), monkeypatch)
+
+    assert pet_be.human_calls == 0
+    conn.close()
+
+
+@pytest.mark.parametrize("deg,expected", [(90, (2, 3)), (180, (3, 2)), (270, (2, 3))])
+def test_rotate_image_turns_clockwise(deg, expected):
+    img = np.arange(6, dtype="uint8").reshape(3, 2)      # 3 rows x 2 cols
+    turned = dx.rotate_image(img, deg)
+    assert turned.shape == expected
+    # top-left of the original must land where a clockwise turn puts it
+    corner = {90: turned[0, -1], 180: turned[-1, -1], 270: turned[-1, 0]}[deg]
+    assert corner == img[0, 0]
 
 
 @pytest.mark.parametrize("k", [1, 3])

@@ -158,6 +158,22 @@ class Config:
     # two with room on both sides; below ~0.7 it starts eating held pets.
     pets_human_iou: float = 0.80
     pets_model_version: str = "yolox-s-2022nov+dinov2s-petreid-v2-humanveto"
+
+    # True orientation (detect/extract.py). Many photos here are stored with
+    # their pixels turned while EXIF claims otherwise, which blinds every model
+    # in the pipeline. A turn that yields a confident face (faces_min_score)
+    # settles it; when the copy is too degraded for SCRFD at any angle, a YOLOX
+    # `person` reading is the fallback and needs both an absolute score and a
+    # clear margin over upright, because person scores vary far less between
+    # turns than face scores do.
+    orientation_person_min: float = 0.75
+    orientation_person_margin: float = 0.25
+    # Share of the frame a lone subject must cover before its own angle is taken
+    # to be the photo's. Someone lying on the grass in a landscape shot reads
+    # exactly like a standing person in a sideways one; the difference is that
+    # the sideways portrait's subject fills the frame (measured on-archive: 0.93)
+    # while the person lying down is a detail of a scene (0.03).
+    orientation_min_subject: float = 0.35
     # Clustering into people is two-stage (faces/cluster.py). Stage 1 over-clusters
     # into small, PURE fragments via a *mutual k-NN* graph: link two faces only
     # when each is among the other's `faces_knn_k` most-similar faces AND their

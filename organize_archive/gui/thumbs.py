@@ -23,11 +23,29 @@ VIDEO_EXTS = {".mp4", ".mov", ".avi", ".wmv", ".3gp", ".mkv", ".m4v", ".mpg", ".
 THUMB_VER = 1
 
 
-def _cache_key(fid: int, sha256: str | None) -> str:
+def _cache_key(fid: int, sha256: str | None, rotate: int = 0) -> str:
     # Content-addressed when we have the hash: byte-identical duplicates then map
     # to the same file, so they can never show different frames. Fall back to fid
-    # only for not-yet-hashed files.
-    return f"{sha256}_v{THUMB_VER}" if sha256 else f"fid{fid}_v{THUMB_VER}"
+    # only for not-yet-hashed files. The rotation is part of the key so a photo
+    # whose orientation is resolved later doesn't keep serving a sideways
+    # thumbnail from before.
+    base = sha256 if sha256 else f"fid{fid}"
+    return f"{base}_v{THUMB_VER}" + (f"_r{rotate}" if rotate else "")
+
+
+def _apply_rotation(im, rotate: int):
+    """Turn a decoded image clockwise by 0/90/180/270 degrees.
+
+    Uses the lossless transposes rather than ``rotate()`` so no resampling or
+    off-by-one padding creeps into a quarter turn.
+    """
+    from PIL import Image
+    transpose = {
+        90: Image.Transpose.ROTATE_270,     # PIL names turns counter-clockwise
+        180: Image.Transpose.ROTATE_180,
+        270: Image.Transpose.ROTATE_90,
+    }.get(rotate)
+    return im.transpose(transpose) if transpose else im
 
 
 def _try_pillow():
@@ -72,18 +90,25 @@ def _thumb_video(tp: Path, src: Path, size: int) -> Path | None:
 FACE_THUMB_VER = 2
 
 
-def _face_key(fid: int, sha256: str | None, box) -> str:
+def _face_key(fid: int, sha256: str | None, box, rotate: int = 0) -> str:
     x, y, w, h = box
     base = sha256 if sha256 else f"fid{fid}"
-    return f"{base}_{x}_{y}_{w}_{h}_fv{FACE_THUMB_VER}"
+    return (f"{base}_{x}_{y}_{w}_{h}_fv{FACE_THUMB_VER}"
+            + (f"_r{rotate}" if rotate else ""))
 
 
 def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
-                   sha256: str | None = None, size: int = 200) -> Path | None:
+                   sha256: str | None = None, size: int = 200,
+                   rotate: int = 0) -> Path | None:
     """A padded square crop around one face box, disk-cached. Content-addressed
     (sha + box) so the same face in byte-identical duplicates shares one crop.
-    Read-only over the original; returns None if Pillow is unavailable."""
-    tp = Path(cache_dir) / "faces" / f"{_face_key(face_id, sha256, box)}_{size}.jpg"
+    Read-only over the original; returns None if Pillow is unavailable.
+
+    ``rotate`` is applied before cropping: boxes are stored in the frame the
+    detector actually looked at, which for a sideways-stored photo is the turned
+    one."""
+    tp = Path(cache_dir) / "faces" / \
+        f"{_face_key(face_id, sha256, box, rotate)}_{size}.jpg"
     if tp.exists():
         return tp
     pil = _try_pillow()
@@ -93,7 +118,7 @@ def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
     try:
         tp.parent.mkdir(parents=True, exist_ok=True)
         with Image.open(src) as im:
-            im = ImageOps.exif_transpose(im).convert("RGB")
+            im = _apply_rotation(ImageOps.exif_transpose(im), rotate).convert("RGB")
             W, H = im.size
             x, y, w, h = box
             cx, cy = x + w / 2, y + h / 2
@@ -116,8 +141,9 @@ def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
 
 
 def thumb_for(cache_dir: str, fid: int, src: Path, size: int = 320,
-              sha256: str | None = None) -> Path | None:
-    tp = Path(cache_dir) / "thumbs" / f"{_cache_key(fid, sha256)}_{size}.jpg"
+              sha256: str | None = None, rotate: int = 0) -> Path | None:
+    tp = Path(cache_dir) / "thumbs" / \
+        f"{_cache_key(fid, sha256, rotate)}_{size}.jpg"
     if tp.exists():
         return tp
     if src.suffix.lower() in VIDEO_EXTS:
@@ -129,9 +155,41 @@ def thumb_for(cache_dir: str, fid: int, src: Path, size: int = 320,
     try:
         tp.parent.mkdir(parents=True, exist_ok=True)
         with Image.open(src) as im:
-            im = ImageOps.exif_transpose(im)
+            im = _apply_rotation(ImageOps.exif_transpose(im), rotate)
             im.thumbnail((size, size))
             im.convert("RGB").save(tp, "JPEG", quality=80)
+        return tp
+    except Exception:
+        return None
+
+
+# Bump when the upright full-size rendering changes.
+UPRIGHT_VER = 1
+
+
+def upright_for(cache_dir: str, fid: int, src: Path, rotate: int,
+                sha256: str | None = None) -> Path | None:
+    """A full-size copy of a sideways-stored photo, turned upright.
+
+    Only for the viewer, and only when ``rotate`` is non-zero — an untouched
+    photo is always served as its own bytes. Re-encoding is the honest cost of
+    never writing to the original: the file on disk stays exactly as it was.
+    """
+    if not rotate:
+        return None
+    tp = Path(cache_dir) / "upright" / \
+        f"{_cache_key(fid, sha256, rotate)}_u{UPRIGHT_VER}.jpg"
+    if tp.exists():
+        return tp
+    pil = _try_pillow()
+    if pil is None:
+        return None
+    Image, ImageOps = pil
+    try:
+        tp.parent.mkdir(parents=True, exist_ok=True)
+        with Image.open(src) as im:
+            im = _apply_rotation(ImageOps.exif_transpose(im), rotate)
+            im.convert("RGB").save(tp, "JPEG", quality=90)
         return tp
     except Exception:
         return None

@@ -1426,33 +1426,44 @@ def _recount_place(conn, cluster_id):
 
 
 def face_crop_source(db_path: str, face_id: int):
-    """(abs path, sha256, box) for a face id, or None. Path is DB-derived."""
+    """(abs path, sha256, box, rotate_deg) for a face id, or None.
+
+    Path is DB-derived. ``rotate_deg`` is the turn the photo needs on top of its
+    EXIF orientation — the box was detected in that rotated frame, so a crop has
+    to rotate before it cuts."""
     conn = db.open_readonly(db_path)
     try:
         r = conn.execute(
             """SELECT r.path AS root, f.rel_path, f.sha256,
-                      fa.box_x, fa.box_y, fa.box_w, fa.box_h
+                      fa.box_x, fa.box_y, fa.box_w, fa.box_h,
+                      COALESCE(o.rotate_deg, 0) AS rotate_deg
                FROM faces fa JOIN files f ON f.id=fa.file_id
-               JOIN roots r ON r.id=f.root_id WHERE fa.id=?""", (face_id,)).fetchone()
+               JOIN roots r ON r.id=f.root_id
+               LEFT JOIN orientation o ON o.file_id=f.id
+               WHERE fa.id=?""", (face_id,)).fetchone()
         if not r:
             return None
         p = Path(r["root"]) / r["rel_path"]
         if not p.is_file():
             return None
-        return p, r["sha256"], (r["box_x"], r["box_y"], r["box_w"], r["box_h"])
+        return (p, r["sha256"],
+                (r["box_x"], r["box_y"], r["box_w"], r["box_h"]), r["rotate_deg"])
     finally:
         conn.close()
 
 
 def animal_crop_source(db_path: str, detection_id: int):
-    """(abs path, sha256, box) for an animal detection id."""
+    """(abs path, sha256, box, rotate_deg) for an animal detection id."""
     conn = db.open_readonly(db_path)
     try:
         row = conn.execute(
             """SELECT r.path root,f.rel_path,f.sha256,
-                      a.box_x,a.box_y,a.box_w,a.box_h
+                      a.box_x,a.box_y,a.box_w,a.box_h,
+                      COALESCE(o.rotate_deg, 0) AS rotate_deg
                FROM animal_detections a JOIN files f ON f.id=a.file_id
-               JOIN roots r ON r.id=f.root_id WHERE a.id=?""",
+               JOIN roots r ON r.id=f.root_id
+               LEFT JOIN orientation o ON o.file_id=f.id
+               WHERE a.id=?""",
             (detection_id,)).fetchone()
         if not row:
             return None
@@ -1460,7 +1471,7 @@ def animal_crop_source(db_path: str, detection_id: int):
         if not path.is_file():
             return None
         return path, row["sha256"], (
-            row["box_x"], row["box_y"], row["box_w"], row["box_h"])
+            row["box_x"], row["box_y"], row["box_w"], row["box_h"]), row["rotate_deg"]
     finally:
         conn.close()
 
@@ -1528,38 +1539,27 @@ def item(db_path: str, fid: int) -> dict | None:
         conn.close()
 
 
-def file_location(db_path: str, fid: int) -> Path | None:
-    """Absolute path of a file id, or None. Path comes from the DB (never from
-    the request), so the server cannot be tricked into path traversal."""
-    conn = db.open_readonly(db_path)
-    try:
-        r = conn.execute(
-            """SELECT r.path AS root, f.rel_path FROM files f
-               JOIN roots r ON r.id=f.root_id WHERE f.id=?""", (fid,)).fetchone()
-        if not r:
-            return None
-        p = Path(r["root"]) / r["rel_path"]
-        return p if p.is_file() else None
-    finally:
-        conn.close()
-
-
-def thumb_source(db_path: str, fid: int) -> tuple[Path, str | None] | None:
-    """(absolute path, content sha256) for a file id, or None if missing.
+def media_source(db_path: str, fid: int):
+    """(absolute path, content sha256, rotate_deg) for a file id, or None.
 
     The sha256 is what the thumbnail cache is keyed on, so byte-identical
     duplicates (rife in this cross-takeout archive) share one thumbnail and can
-    never disagree. Path is DB-derived, so no request-driven path traversal."""
+    never disagree. Path is DB-derived, so no request-driven path traversal.
+    ``rotate_deg`` is the turn detection found this photo's pixels to be stored
+    at, on top of EXIF (0 whenever EXIF alone was right)."""
     conn = db.open_readonly(db_path)
     try:
         r = conn.execute(
-            """SELECT r.path AS root, f.rel_path, f.sha256 FROM files f
-               JOIN roots r ON r.id=f.root_id WHERE f.id=?""", (fid,)).fetchone()
+            """SELECT r.path AS root, f.rel_path, f.sha256,
+                      COALESCE(o.rotate_deg, 0) AS rotate_deg
+               FROM files f JOIN roots r ON r.id=f.root_id
+               LEFT JOIN orientation o ON o.file_id=f.id
+               WHERE f.id=?""", (fid,)).fetchone()
         if not r:
             return None
         p = Path(r["root"]) / r["rel_path"]
         if not p.is_file():
             return None
-        return p, r["sha256"]
+        return p, r["sha256"], r["rotate_deg"]
     finally:
         conn.close()

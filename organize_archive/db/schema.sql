@@ -235,6 +235,22 @@ CREATE TABLE IF NOT EXISTS pet_scan (
     scanned_at     TEXT NOT NULL
 );
 
+-- Photos whose PIXELS are stored sideways while their EXIF orientation says
+-- otherwise (or says nothing) — rife in this archive, where Google re-exports
+-- and old camera dumps disagree about the same shot. EXIF is applied first and
+-- for free; this records the leftover turn that only the detectors can see, so
+-- the app can show the photo upright. Only corrections are stored: no row means
+-- EXIF alone was right (or nothing was detectable). Rotation is CLOCKWISE
+-- degrees to apply on top of the EXIF-corrected image, and every box in `faces`
+-- and `animal_detections` for that file is already in this rotated frame.
+CREATE TABLE IF NOT EXISTS orientation (
+    file_id        INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    rotate_deg     INTEGER NOT NULL,     -- 90 / 180 / 270, clockwise
+    source         TEXT NOT NULL,        -- which evidence resolved it
+    confidence     REAL NOT NULL,
+    created_at     TEXT NOT NULL
+);
+
 -- Face-like regions suppressed because they overlap an animal/toy detection.
 -- These are reviewable evidence, not People and not pet identities.
 CREATE TABLE IF NOT EXISTS nonhuman_detections (

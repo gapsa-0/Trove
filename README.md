@@ -31,6 +31,12 @@ application-data folder.
   other: an animal's own face is kept out of People, while a person who is not
   upright in the frame — lying down, or a photo stored sideways — is kept out of
   Pets rather than being catalogued as a dog.
+- Shows photos the right way up. EXIF orientation is always honoured, and a photo
+  whose pixels are stored turned while its EXIF says otherwise (common among
+  re-exports of the same shot) is recognised by the detectors and displayed
+  upright. The file on disk is never modified. This only applies where there is
+  solid evidence — a person filling the frame — so photos of scenery, documents
+  or distant subjects are shown exactly as stored.
 - Generates cached thumbnails and serves the interface only on `127.0.0.1`.
 
 When an archive is open in the app, its pipeline runs automatically:

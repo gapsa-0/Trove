@@ -453,11 +453,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_thumb(self, fid: int):
         db_path, cache_dir = self._open_db_and_cache()
-        info = queries.thumb_source(db_path, fid) if db_path else None
+        info = queries.media_source(db_path, fid) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256 = info
-        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256)
+        src, sha256, rotate = info
+        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_archive_thumb(self, root_id: int, fid: int):
@@ -467,11 +467,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.cfg.archive_path(root_id) is None:
             return self._json({"error": "not found"}, 404)
         db_path, cache_dir = self._db(root_id), self._cache(root_id)
-        info = queries.thumb_source(db_path, fid)
+        info = queries.media_source(db_path, fid)
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256 = info
-        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256)
+        src, sha256, rotate = info
+        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_face_thumb(self, face_id: int):
@@ -479,8 +479,9 @@ class Handler(BaseHTTPRequestHandler):
         info = queries.face_crop_source(db_path, face_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256, box = info
-        tp = thumbs.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256)
+        src, sha256, box, rotate = info
+        tp = thumbs.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256,
+                                   rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_animal_thumb(self, detection_id: int):
@@ -488,17 +489,21 @@ class Handler(BaseHTTPRequestHandler):
         info = queries.animal_crop_source(db_path, detection_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256, box = info
+        src, sha256, box, rotate = info
         tp = thumbs.face_thumb_for(
-            cache_dir, detection_id, src, box, sha256=sha256)
+            cache_dir, detection_id, src, box, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_original(self, fid: int):
-        rid = self.jobs.current_root_id()
-        src = queries.file_location(self._db(rid), fid) if rid else None
-        if src is None:
+        db_path, cache_dir = self._open_db_and_cache()
+        info = queries.media_source(db_path, fid) if db_path else None
+        if info is None:
             return self._json({"error": "not found"}, 404)
-        self._send_file(src)
+        src, sha256, rotate = info
+        # A photo stored sideways is served from an upright re-encode; every
+        # other file is served as its own untouched bytes.
+        up = thumbs.upright_for(cache_dir, fid, src, rotate, sha256=sha256)
+        self._send_file(up if up else src)
 
 
 def serve(cfg: Config, host="127.0.0.1", port=8756):
