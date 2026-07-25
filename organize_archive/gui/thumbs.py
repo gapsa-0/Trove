@@ -86,6 +86,41 @@ def _thumb_video(tp: Path, src: Path, size: int) -> Path | None:
     return None
 
 
+# Frames used for semantic video indexing (see gui/semantic.py): a handful of
+# sampled frames sent to Voyage as one multi-image input, instead of the raw
+# video file, so a video's request stays token-sized like a photo. Cached the
+# same way as the grid thumbnail so a repeated semantic pass over an
+# unchanged video costs no extra ffmpeg calls. Bump when extraction changes.
+SEMANTIC_FRAME_VER = 1
+
+
+def _semantic_frame_key(fid: int, sha256: str | None, index: int, rotate: int = 0) -> str:
+    base = sha256 if sha256 else f"fid{fid}"
+    return (f"{base}_sf{index}_v{SEMANTIC_FRAME_VER}"
+            + (f"_r{rotate}" if rotate else ""))
+
+
+def video_frames_for(cache_dir: str, fid: int, src: Path, offsets: list[str],
+                     size: int = 1024, sha256: str | None = None,
+                     rotate: int = 0) -> list[Path]:
+    """Disk-cached frames at each of ``offsets``, reusing ``_video_frame``.
+
+    An offset ffmpeg can't produce (past a very short clip's end) is skipped
+    rather than failing the whole video, so a video yields whatever frames it
+    can instead of nothing at all. Returns ``[]`` if ffmpeg is missing or
+    every offset fails -- the caller treats that as a clean, permanent skip.
+    Read-only over the original.
+    """
+    out = []
+    for i, offset in enumerate(offsets):
+        tp = Path(cache_dir) / "semantic_frames" / \
+            f"{_semantic_frame_key(fid, sha256, i, rotate)}_{size}.jpg"
+        tp.parent.mkdir(parents=True, exist_ok=True)
+        if tp.exists() or _video_frame(tp, src, size, offset):
+            out.append(tp)
+    return out
+
+
 # Bump when the face-crop framing changes so old crops are regenerated.
 FACE_THUMB_VER = 2
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from ..config import Config
+from ..db import database as db
 from . import queries, thumbs, icons
 from .jobs import JobManager
 
@@ -373,65 +374,67 @@ class Handler(BaseHTTPRequestHandler):
             # frontend never sends one for them. They resolve against whichever
             # archive is currently open, same as thumbnail/original serving.
             elif path == "/api/map/cluster/rename":
-                res = queries.rename_place_cluster(
+                res = db.write_with_retry(lambda: queries.rename_place_cluster(
                     self._db(self.jobs.current_root_id()),
-                    body.get("cluster_id"), (body.get("name") or "").strip())
+                    body.get("cluster_id"), (body.get("name") or "").strip()))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/person/rename":
-                res = queries.rename_person(
+                res = db.write_with_retry(lambda: queries.rename_person(
                     self._db(self.jobs.current_root_id()),
-                    body.get("person_id"), (body.get("name") or "").strip())
+                    body.get("person_id"), (body.get("name") or "").strip()))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/reassign":
-                res = queries.reassign_face(
+                res = db.write_with_retry(lambda: queries.reassign_face(
                     self._db(self.jobs.current_root_id()),
-                    body.get("face_id"), body.get("person_id"))
+                    body.get("face_id"), body.get("person_id")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/merge":
-                res = queries.merge_persons(
-                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"))
+                res = db.write_with_retry(lambda: queries.merge_persons(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/different":
-                res = queries.set_persons_different(
-                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"))
+                res = db.write_with_retry(lambda: queries.set_persons_different(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/skip":
-                res = queries.set_persons_skip(
-                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"))
+                res = db.write_with_retry(lambda: queries.set_persons_skip(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/hide":
-                res = queries.hide_person(
+                res = db.write_with_retry(lambda: queries.hide_person(
                     self._db(self.jobs.current_root_id()), body.get("person_id"),
-                    body.get("kind", "false_detection"))
+                    body.get("kind", "false_detection")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pet/rename":
-                res = queries.rename_pet(
+                res = db.write_with_retry(lambda: queries.rename_pet(
                     self._db(self.jobs.current_root_id()), body.get("pet_id"),
-                    (body.get("name") or "").strip())
+                    (body.get("name") or "").strip()))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/nonhuman/review":
-                res = queries.review_nonhuman(
+                res = db.write_with_retry(lambda: queries.review_nonhuman(
                     self._db(self.jobs.current_root_id()), body.get("detection_id"),
-                    body.get("verdict", "confirmed"))
+                    body.get("verdict", "confirmed")))
                 if res.get("status") == "human" and res.get("root_id"):
                     self.jobs.start("face_cluster", res["root_id"])
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/date":
-                res = queries.set_date(
+                res = db.write_with_retry(lambda: queries.set_date(
                     self._db(self.jobs.current_root_id()),
-                    body.get("file_id"), body.get("datetime"))
+                    body.get("file_id"), body.get("datetime")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/place":
                 db_path = self._db(self.jobs.current_root_id())
                 if body.get("clear"):
-                    res = queries.clear_place(db_path, body.get("file_id"))
+                    res = db.write_with_retry(
+                        lambda: queries.clear_place(db_path, body.get("file_id")))
                 else:
-                    res = queries.set_place(db_path, body.get("file_id"), body.get("place_id"))
+                    res = db.write_with_retry(lambda: queries.set_place(
+                        db_path, body.get("file_id"), body.get("place_id")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/places/create":
-                res = queries.create_place(
+                res = db.write_with_retry(lambda: queries.create_place(
                     self._db(body.get("root")), body.get("root"), body.get("name"),
-                    body.get("lat"), body.get("lon"), body.get("file_id"))
+                    body.get("lat"), body.get("lon"), body.get("file_id")))
                 self._json(res, 400 if "error" in res else 200)
             else:
                 self._json({"error": "not found"}, 404)

@@ -212,6 +212,14 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     # Older versions grouped the whole catalog. If such a group touches this
     # archive, discard the whole group: retaining it would keep files in a
     # different archive hidden because of a cross-archive match.
+    #
+    # From here to the final commit below is deliberately ONE transaction: no
+    # commit lands between clearing the old groups and writing the new ones,
+    # so a crash or a cancelled run partway through regrouping leaves the
+    # previous grouping fully intact (rolled back with everything else this
+    # connection hasn't committed) instead of publishing a window where every
+    # reader sees zero duplicates -- the People/pets backlog inflating and the
+    # Overview's duplicate-count tile dropping to zero for the whole run.
     group_clause = "" if root_id is None else (
         " WHERE id IN (SELECT DISTINCT m.group_id FROM dup_members m "
         "JOIN files f ON f.id=m.file_id WHERE f.root_id=?)")
@@ -225,7 +233,6 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
             ids,
         )
         conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", ids)
-        conn.commit()
 
     buckets: dict[int, list] = {}
     for r in rows:

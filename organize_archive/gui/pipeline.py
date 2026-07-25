@@ -221,6 +221,30 @@ def cards(states: list[dict]) -> list[dict]:
                 progress = None
                 message = "Finalizing metadata extraction…"
 
+        # Dedup is `counted=False` (a wholesale rebuild has no per-file backlog),
+        # so it would otherwise sit on the flat "Finding duplicates…" text for
+        # the whole run. It actually has two real phases sharing one job's
+        # progress: `_perceptual_hashes` fingerprints images (current=rel_path),
+        # then `run()`'s grouping loop unions them into groups (current=
+        # "<n>× exact/perceptual"). Tell them apart from that shape rather than
+        # threading a phase flag through jobs.py. `done > total` catches the
+        # instant the grouping phase starts, before its own first progress
+        # update: `total` has already flipped from the image count to the
+        # (usually smaller) group count while `current`/`done` still hold the
+        # fingerprinting pass's final values.
+        if card_id == "dedup" and state == "running" and progress:
+            current = progress.get("current") or ""
+            total = progress.get("total") or 0
+            done = progress.get("done") or 0
+            if "×" in current or (total and done > total):
+                message = "Grouping duplicates…"
+            elif total and current and done < total:
+                # `current` is only a photo path while fingerprinting is actually
+                # running. Without it (no imagehash installed, so `run()` skips
+                # straight to grouping and sets `total` itself) claiming to
+                # fingerprint would be a lie; the flat text stands instead.
+                message = f"Fingerprinting {done:,} of {total:,} photos…"
+
         result.append({
             "id": card_id, "label": CARD_LABEL[card_id], "state": state,
             "pending": pending, "counted": counted, "progress": progress,

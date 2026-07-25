@@ -1,8 +1,13 @@
 """Voyage Multimodal client and local semantic-index helpers.
 
-The archive index uses Voyage's multimodal endpoint for image and MP4 video
-retrieval.  Vectors remain in SQLite; only source media sent for indexing and
-the user's search query leave the machine.  Voyage's Batch API does not yet
+The archive index uses Voyage's multimodal endpoint for image and video
+retrieval. A video is never sent as its raw bytes -- a few MB of video easily
+busts the endpoint's 32K-token context window, so every video failed
+identically forever. Instead a handful of frames sampled across the clip are
+sent as one input holding several ``image_base64`` contents, which stays
+token-sized like a photo and works for any container ffmpeg can decode, not
+only mp4. Vectors remain in SQLite; only source media sent for indexing and
+the user's search query leave the machine. Voyage's Batch API does not yet
 support its multimodal model, so this module uses the endpoint's regular
 multi-input requests instead.
 """
@@ -26,9 +31,14 @@ _IMAGE_MIMES = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
     "webp": "image/webp", "gif": "image/gif",
 }
-_VIDEO_MIMES = {"mp4": "video/mp4"}
 _MAX_INPUTS = 1_000
 INDEXER_VERSION = "voyage-mm-3.5-2"
+
+# Frames sampled per video, and where in the clip: evenly spread but pulled in
+# from the very ends, where a title card or a black open/close frame sits more
+# often than a moment that actually represents the video.
+_VIDEO_FRAME_SIZE = 1024
+_VIDEO_FRAME_FRACTIONS = (0.15, 0.5, 0.85)
 
 
 class VoyageEmbeddingError(RuntimeError):
@@ -189,17 +199,79 @@ def embed_parts(cfg, parts: list[dict]) -> list[list[float]]:
     return _embed(cfg, parts, input_type="document")
 
 
+def _format_offset(secs: float) -> str:
+    secs = max(0.0, secs)
+    h, rem = divmod(secs, 3600)
+    m, s = divmod(rem, 60)
+    return f"{int(h):02d}:{int(m):02d}:{s:06.3f}"
+
+
+def _video_frame_offsets(duration_s) -> list[str]:
+    """ffmpeg ``-ss`` offsets for a handful of frames spread across the clip.
+
+    Falls back to one fixed early offset when the duration is unknown (enrich
+    hasn't run yet, or ffprobe couldn't read this container) rather than
+    refusing to index the video at all.
+    """
+    try:
+        duration_s = float(duration_s)
+    except (TypeError, ValueError):
+        duration_s = 0.0
+    if duration_s <= 0:
+        return ["00:00:01"]
+    offsets, seen = [], set()
+    for frac in _VIDEO_FRAME_FRACTIONS:
+        text = _format_offset(min(duration_s * frac, max(0.0, duration_s - 0.05)))
+        if text not in seen:
+            seen.add(text)
+            offsets.append(text)
+    return offsets
+
+
+def _video_frames_part(path: Path, cache_dir: str, rotate: int, duration_s
+                        ) -> tuple[dict | None, str | None, str | None]:
+    """One Voyage input holding several sampled frames, instead of the whole
+    video file: a few MB of raw video easily busts the multimodal endpoint's
+    32K-token context window (every video failed identically on this
+    archive), while a few small JPEGs land around 2-6K tokens combined --
+    comfortably inside it, and one embedding still comes back per video.
+    """
+    cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
+    frames = thumbs.video_frames_for(
+        cache_dir, cache_id, path, _video_frame_offsets(duration_s),
+        size=_VIDEO_FRAME_SIZE, rotate=rotate)
+    if not frames:
+        # "unsupported" prefix matches the other permanent-skip reasons below
+        # (save_outcome/_is_permanent_skip): no ffmpeg, or a container it
+        # can't read, is a clean permanent skip, not a retryable error.
+        return None, None, "unsupported video: could not extract any frames (ffmpeg missing or unreadable video)"
+    contents = []
+    for fp in frames:
+        try:
+            data = base64.b64encode(fp.read_bytes()).decode("ascii")
+        except OSError:
+            continue
+        contents.append({"type": "image_base64", "image_base64": f"data:image/jpeg;base64,{data}"})
+    if not contents:
+        return None, None, "unsupported video: could not read extracted frames"
+    return {"content": contents}, "video_frames", None
+
+
 def media_part(cfg, path: Path, ext: str, media_type: str,
-               cache_dir: str, rotate: int = 0
+               cache_dir: str, rotate: int = 0, duration_s=None
                ) -> tuple[dict | None, str | None, str | None]:
     """Create one Voyage multimodal input, or a non-fatal skip reason.
 
     ``cache_dir`` is the calling archive's own cache, semantic indexing
     thumbnails are content derived from that archive and never shared with
     another one. ``rotate`` sends a sideways-stored photo the way up the app
-    shows it, so retrieval sees what the user sees.
+    shows it, so retrieval sees what the user sees. ``duration_s`` (from
+    ``media_meta``, already populated by enrich for every video) spaces a
+    video's sampled frames across its length; unused for other media types.
     """
     ext = (ext or path.suffix.lstrip(".")).lower()
+    if media_type == "video":
+        return _video_frames_part(path, cache_dir, rotate, duration_s)
     source, mime, kind = path, _IMAGE_MIMES.get(ext), "image"
     content_type = "image_base64"
     if media_type == "image":
@@ -214,8 +286,6 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
             source, mime, kind = thumb, "image/jpeg", "thumbnail"
         elif mime is None:
             return None, None, f"unsupported image format: .{ext or 'unknown'}"
-    elif media_type == "video":
-        mime, kind, content_type = _VIDEO_MIMES.get(ext), "video", "video_base64"
     elif media_type == "audio":
         return None, None, "unsupported audio format (Voyage multimodal has no audio input)"
     else:
@@ -227,7 +297,8 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
     except OSError as exc:
         return None, None, f"cannot read media: {exc}"
     if size > cfg.semantic_inline_max_bytes:
-        # A large photo can use a local JPEG thumbnail; video must be skipped.
+        # A large photo can use a local JPEG thumbnail (video is handled
+        # separately, above, and never reaches this branch).
         if media_type == "image" and source == path:
             cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
             source = thumbs.thumb_for(cache_dir, cache_id, path, size=1024,
@@ -246,12 +317,12 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
 
 
 def embed_media(cfg, path: Path, ext: str, media_type: str, cache_dir: str,
-                cancel=None, rotate: int = 0
+                cancel=None, rotate: int = 0, duration_s=None
                 ) -> tuple[list[float] | None, str | None, str | None]:
     if cancel is not None and cancel.is_set():
         raise KeyboardInterrupt
     part, kind, skip_reason = media_part(
-        cfg, path, ext, media_type, cache_dir, rotate)
+        cfg, path, ext, media_type, cache_dir, rotate, duration_s)
     if skip_reason:
         return None, kind, skip_reason
     return _embed(cfg, [part], input_type="document")[0], kind, None
@@ -269,13 +340,16 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
         params.append(INDEXER_VERSION)
     # rotate_deg: index the photo the way up the app shows it. Detection runs
     # alongside this stage rather than before it, so a photo indexed first is
-    # sent as stored; it is re-indexed only if its bytes change.
+    # sent as stored; it is re-indexed only if its bytes change. duration_s
+    # (populated by enrich for every video) spaces a video's sampled frames
+    # across its length with no extra ffprobe call needed here.
     return conn.execute(
         f"""SELECT f.id, f.rel_path, f.ext, f.media_type, f.sha256, r.path AS root_path,
-                   COALESCE(o.rotate_deg, 0) AS rotate_deg
+                   COALESCE(o.rotate_deg, 0) AS rotate_deg, m.duration_s
              FROM files f JOIN roots r ON r.id=f.root_id
              LEFT JOIN semantic_embeddings e ON e.file_id=f.id
              LEFT JOIN orientation o ON o.file_id=f.id
+             LEFT JOIN media_meta m ON m.file_id=f.id
              WHERE {' AND '.join(where)} ORDER BY f.id""", params).fetchall()
 
 
@@ -295,8 +369,21 @@ def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, in
     return total, completed
 
 
+def _is_permanent_skip(error: str | None) -> bool:
+    """An outcome nothing should ever promise to retry: the input itself is the
+    problem (unsupported format, too large, or -- an oversize/context-window
+    400 -- too many tokens for the model), not a transient network/auth/server
+    issue. Resending identical bytes would only reproduce the same failure.
+    """
+    if not error:
+        return False
+    if error.startswith(("unsupported", "media exceeds")):
+        return True
+    return "context window" in error.lower()
+
+
 def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) -> None:
-    status = "indexed" if values is not None else ("skipped" if error and error.startswith(("unsupported", "media exceeds")) else "error")
+    status = "indexed" if values is not None else ("skipped" if _is_permanent_skip(error) else "error")
     import struct
     blob = struct.pack(f"<{len(values)}f", *values) if values is not None else None
     conn.execute(

@@ -7,6 +7,7 @@ touches the SQLite writer at a time (reads via the GUI stay concurrent).
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 import time
 import traceback
@@ -101,13 +102,10 @@ class JobManager:
         self._write_lock = threading.Lock()    # serializes DB writers
 
         # Dedup rebuilds every group wholesale (no per-file backlog), so its
-        # "needs a run" signal is this flag: set when scan/enrich change data,
-        # cleared only on a *successful* rebuild (so a cancelled/errored dedup
-        # still retries). Places, by contrast, has a real count (unplaced
-        # geotagged files), so it no longer needs a flag. Defaults dirty so the
-        # first open of an archive reconciles duplicates once.
-        self._dedup_dirty = True
-        self._dedup_root: int | None = None
+        # "needs a run" signal is catalog-derived (db.dedup_needed /
+        # dedup_runs) rather than an in-memory flag -- see dedup_needed()
+        # below. That table is what survives a restart; nothing about dedup
+        # readiness lives on this object.
         # Disk-walk cache per root: counting files on disk is the one expensive
         # part of freshness, so the status endpoint (polled ~1/s) reads a cached
         # count instead of walking ~150k files every time. (monotonic_ts, count)
@@ -172,8 +170,48 @@ class JobManager:
         return count
 
     def dedup_needed(self, root_id: int) -> bool:
-        """Whether a duplicate rebuild is outstanding for this root."""
-        return self._dedup_dirty and self._dedup_root in (None, root_id)
+        """Whether a duplicate rebuild is outstanding for this root.
+
+        Derived entirely from the catalog (db.dedup_needed / dedup_runs):
+        a freshly constructed JobManager -- e.g. right after an app restart --
+        gives the same answer a long-running one would have, instead of the
+        old in-memory flag's default-dirty-on-every-start behaviour.
+        """
+        conn = db.open_readonly(self.cfg.archive_db_path(root_id))
+        try:
+            return db.dedup_needed(conn, root_id)
+        finally:
+            conn.close()
+
+    def _mark_dedup_owed(self, root_id: int) -> None:
+        """Persist that a dedup rebuild is owed for this root.
+
+        Scan can change the file set and enrich can populate metadata dedup's
+        canonical-selection rule reads (Takeout sidecar, resolved date,
+        dimensions) without changing the count/max id of present, hashed
+        files `dedup_needed` otherwise compares (enrich never touches
+        `files.sha256`/`present`) -- so that comparison alone would miss a
+        case where the previous grouping's canonical pick is now stale.
+        Invalidating through the same persisted marker `_run_dedup` writes on
+        success means this obligation survives a restart too.
+
+        Runs on the scheduler thread, which must not die on a transient lock:
+        this tiny write can land while a detect batch holds the writer, and an
+        escaping OperationalError would abort the whole tick before any stage
+        starts. A lost invalidation is harmless — the next tick re-derives the
+        same obligation and tries again.
+        """
+        def _write():
+            conn = db.connect(self.cfg.archive_db_path(root_id))
+            try:
+                db.dedup_invalidate(conn, root_id)
+                conn.commit()
+            finally:
+                conn.close()
+        try:
+            db.write_with_retry(_write)
+        except sqlite3.OperationalError:
+            pass
 
     def current_root_id(self) -> int | None:
         """Which single archive is open in the GUI right now, if any.
@@ -338,7 +376,7 @@ class JobManager:
             # Scanning or enriching may change the file set, so a fresh duplicate
             # rebuild is owed once they finish.
             if kind in (pipeline.SCAN, pipeline.ENRICH):
-                self._dedup_dirty, self._dedup_root = True, open_root_id
+                self._mark_dedup_owed(open_root_id)
             # dedup/places operate per-root via root_id and ignore root_path.
             path = None if kind in (pipeline.DEDUP, pipeline.PLACES) else archive["path"]
             if "error" not in self.start(kind, open_root_id, path):
@@ -386,10 +424,9 @@ class JobManager:
                     finally:
                         conn.close()
             job.status = "done"
-            # A successful rebuild is the only thing that clears the dedup flag,
-            # so a cancelled or errored dedup stays queued and retries.
-            if job.kind == "dedup":
-                self._dedup_dirty = False
+            # A successful rebuild is the only thing that marks dedup_runs (see
+            # _run_dedup), so a cancelled or errored dedup leaves no marker and
+            # stays queued/retries next tick.
             self._error_at.pop((job.root_id, job.kind), None)
         except KeyboardInterrupt:
             job.status = "cancelled"
@@ -450,6 +487,16 @@ class JobManager:
             "DELETE FROM semantic_embeddings WHERE file_id IN "
             "(SELECT id FROM files WHERE hidden=1)"
         )
+        # Record what this successful rebuild covered so dedup_needed() can
+        # tell -- from the catalog alone, even after a restart -- that nothing
+        # is owed, until a later scan/enrich invalidates it again
+        # (_mark_dedup_owed). Sharing this commit with the DELETE above (not
+        # exact.run()'s own, earlier commit) is fine: if the process dies
+        # between them, the grouping already landed correctly and the only
+        # cost is one redundant, harmless re-run that re-derives the same
+        # grouping and then marks it.
+        covered_files, covered_max_id = db.dedup_coverage(conn, job.root_id)
+        db.dedup_mark_done(conn, job.root_id, covered_files, covered_max_id)
         conn.commit()
         job.message = (f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
                        f"{stats.reclaimable_bytes/1e9:.1f} GB reclaimable")
@@ -583,39 +630,53 @@ class JobManager:
                 part, kind, reason = semantic.media_part(
                     self.cfg, Path(row["root_path"]) / row["rel_path"],
                     row["ext"], row["media_type"],
-                    self.cfg.archive_cache_dir(job.root_id), row["rotate_deg"])
+                    self.cfg.archive_cache_dir(job.root_id), row["rotate_deg"],
+                    row["duration_s"])
                 if reason:
                     self._save_semantic_outcome(job.root_id, row, None, kind, reason)
                     skipped += 1
                     job.done = already + start + offset + 1
                 else:
                     prepared.append((row, part, kind, offset))
-            # Video token counts depend on sampled frames, so never combine
-            # them with other files. Thumbnails have a bounded pixel count and
-            # are safe to submit together.
-            api_groups = [[item] for item in prepared if item[2] == "video"]
-            images = [item for item in prepared if item[2] != "video"]
-            api_groups += [images[n:n + batch_size] for n in range(0, len(images), batch_size)]
+            # Video is now a handful of sampled frames (gui/semantic.py), not
+            # the raw file, so it stays within the same small token budget as
+            # a photo thumbnail and can batch with everything else.
+            api_groups = [prepared[n:n + batch_size] for n in range(0, len(prepared), batch_size)]
             for api_group in api_groups:
-                if len(api_group) == 1 and api_group[0][2] == "video":
-                    job.current = f"Sending video: {api_group[0][0]['rel_path']}"
+                if len(api_group) == 1:
+                    job.current = f"Sending {api_group[0][0]['rel_path']}"
                 else:
-                    job.current = f"Sending {len(api_group)} prepared photos to Voyage…"
+                    job.current = f"Sending {len(api_group)} prepared media files to Voyage…"
                 try:
                     vectors = semantic.embed_parts(self.cfg, [p[1] for p in api_group])
                     outcomes = zip(api_group, vectors)
-                except Exception:
-                    # Fall back to isolated calls; this identifies and records
-                    # a bad source without discarding good neighbours.
-                    outcomes = []
-                    for item in api_group:
-                        try:
-                            job.current = f"Retrying: {item[0]['rel_path']}"
-                            outcomes.append((item, semantic.embed_parts(self.cfg, [item[1]])[0]))
-                        except Exception as exc:
-                            self._save_semantic_outcome(job.root_id, item[0], None, item[2], str(exc))
-                            failed += 1
-                            job.done = already + start + item[3] + 1
+                except Exception as batch_exc:
+                    if len(api_group) == 1:
+                        # A lone item IS the failing request; isolating it
+                        # again would only repeat it (this is exactly how a
+                        # video used to get uploaded twice for the same
+                        # context-window 400 before frame-sampling).
+                        item = api_group[0]
+                        self._save_semantic_outcome(
+                            job.root_id, item[0], None, item[2], str(batch_exc))
+                        failed += 1
+                        job.done = already + start + item[3] + 1
+                        outcomes = []
+                    else:
+                        # Fall back to isolated calls; this identifies and
+                        # records a bad source without discarding good
+                        # neighbours.
+                        outcomes = []
+                        for item in api_group:
+                            try:
+                                job.current = f"Retrying: {item[0]['rel_path']}"
+                                outcomes.append(
+                                    (item, semantic.embed_parts(self.cfg, [item[1]])[0]))
+                            except Exception as exc:
+                                self._save_semantic_outcome(
+                                    job.root_id, item[0], None, item[2], str(exc))
+                                failed += 1
+                                job.done = already + start + item[3] + 1
                 for (row, _part, kind, offset), values in outcomes:
                     self._save_semantic_outcome(job.root_id, row, values, kind, None)
                     indexed += 1
@@ -627,7 +688,12 @@ class JobManager:
 
         SQLite WAL plus its busy timeout serializes this tiny transaction against
         a metadata/faces batch, while the semantic worker remains independent of
-        that job's long-lived manager lock.
+        that job's long-lived manager lock. ``write_with_retry`` covers the rarer
+        case where that still isn't enough (a batch write holding the writer past
+        busy_timeout, see detect's commit budget); if the lock still won't clear,
+        this row is left pending instead of turning into the card's error text --
+        a lock is not a stage failure, and the next semantic pass will retry it
+        since no embedding was ever written for it.
         """
         from . import semantic
         conn = db.connect(self.cfg.archive_db_path(root_id))
@@ -640,7 +706,14 @@ class JobManager:
             if (current is None or current["hidden"] or
                     current["sha256"] != row["sha256"]):
                 return
-            semantic.save_outcome(conn, self.cfg, row, values, kind, reason)
-            conn.commit()
+
+            def _write():
+                semantic.save_outcome(conn, self.cfg, row, values, kind, reason)
+                conn.commit()
+
+            try:
+                db.write_with_retry(_write)
+            except sqlite3.OperationalError:
+                conn.rollback()
         finally:
             conn.close()

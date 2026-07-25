@@ -453,6 +453,8 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
 
     now = db.now_iso()
     pet_src = pet_scan_source(cfg)
+    import time as _time
+    _last_commit = _time.monotonic()
     while True:
         remaining = None if limit is None else max(0, limit - stats.processed)
         if remaining == 0:
@@ -569,6 +571,18 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
             if progress is not None:
                 progress.update(stats.processed, 0, path.name)
 
+            # Flush to DB by time, not by batch size: a full 32-image batch is
+            # a full SCRFD+YOLOX decode plus up to three extra YOLOX passes
+            # each, which can hold the single writer well past the 30s
+            # busy_timeout other connections (the parallel semantic worker,
+            # HTTP handler writes) wait on -- surfacing as a spurious
+            # "database is locked". This also cuts worst-case work lost on a
+            # kill from a full batch to about 2 seconds.
+            if (_time.monotonic() - _last_commit) >= 2:
+                conn.commit()
+                _last_commit = _time.monotonic()
+
         conn.commit()
+        _last_commit = _time.monotonic()
 
     return stats

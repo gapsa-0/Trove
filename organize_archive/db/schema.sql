@@ -111,6 +111,23 @@ CREATE TABLE IF NOT EXISTS perceptual_hashes (
 CREATE INDEX IF NOT EXISTS idx_perceptual_hashes_algorithm
     ON perceptual_hashes(algorithm);
 
+-- One row per archive root: the file population covered by the last
+-- successful wholesale dedup rebuild. A rebuild has no per-file backlog to
+-- count the way enrich/faces/semantic do, so the GUI scheduler's "is a
+-- rebuild owed" question (jobs.dedup_needed / db.dedup_needed) is answered by
+-- comparing `covered_files`/`covered_max_file_id` against a fresh count of
+-- present, hashed files for the root -- entirely catalog-derived, so it
+-- survives an app restart instead of depending on an in-memory flag that
+-- defaulted to "dirty" on every process start. No row (never rebuilt yet, or
+-- explicitly invalidated after a scan/enrich that could change what dedup
+-- reads) means a rebuild is owed.
+CREATE TABLE IF NOT EXISTS dedup_runs (
+    root_id             INTEGER PRIMARY KEY REFERENCES roots(id) ON DELETE CASCADE,
+    covered_files       INTEGER NOT NULL,
+    covered_max_file_id INTEGER,
+    run_at              TEXT NOT NULL
+);
+
 -- ---- Phase: geo place clustering ------------------------------------------
 
 -- Photos within radius_m of each other, grouped into one nameable place.

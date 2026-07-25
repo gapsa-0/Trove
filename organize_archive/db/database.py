@@ -7,10 +7,11 @@ mode and a schema version tracked via ``PRAGMA user_version``.
 from __future__ import annotations
 
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
@@ -36,6 +37,30 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def write_with_retry(fn, *, retries: int = 4, initial_delay: float = 0.25):
+    """Call ``fn()``, retrying with backoff if SQLite reports a locked writer.
+
+    ``fn`` takes no arguments and performs one bounded write, including its own
+    commit. ``busy_timeout`` (set in ``connect``) already makes a single write
+    wait out most overlaps with the pipeline's writer before ever raising; this
+    covers the rarer case where a write still loses that race (e.g. a batch
+    that holds the writer past the busy_timeout window). A caller that must
+    not fail outright on a persistent lock should catch
+    ``sqlite3.OperationalError`` around this call and decide what "leave it
+    for later" means for that write, instead of letting a lock become a stage
+    or request failure.
+    """
+    delay = initial_delay
+    for attempt in range(retries + 1):
+        try:
+            return fn()
+        except sqlite3.OperationalError as exc:
+            if "database is locked" not in str(exc).lower() or attempt == retries:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
+
 def open_readonly(db_path: str | Path) -> sqlite3.Connection:
     """Open a read-only connection safe to use while a scan is writing.
 
@@ -56,6 +81,13 @@ def _add_column_if_missing(conn, table, column, decl):
 
 def init_db(conn: sqlite3.Connection) -> None:
     """Create/upgrade the schema. Idempotent."""
+    # Read before touching anything: executescript's CREATE TABLE/INDEX IF NOT
+    # EXISTS statements never change user_version, so this is a true "what did
+    # this file last see" marker for gating one-time migrations below. This
+    # call runs at every job start (see gui/jobs.py), so anything gated on it
+    # must stay cheap once the database is already current -- a version check
+    # is one page read, not a table scan.
+    previous_version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.executescript(_SCHEMA_SQL.read_text())
     # Migrations for columns added to existing tables.
     _add_column_if_missing(conn, "files", "dup_group_id", "INTEGER")
@@ -110,6 +142,19 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "nonhuman_detections", "restored_face_id", "INTEGER")
     _add_column_if_missing(conn, "pet_scan", "source_sha256", "TEXT")
     _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
+    if previous_version < 12:
+        # One-time cleanup, gated to schema version 12 so it runs exactly once
+        # ever instead of on every init_db call (init_db runs at every job
+        # start -- an unconditional DELETE here was a full-table write taking
+        # the single writer's lock on every job, independent of whether there
+        # was anything to clean up). Earlier runs embedded a video's raw bytes
+        # wholesale (input_kind='video'), which busts Voyage's context window
+        # on anything but a tiny clip and so failed identically forever.
+        # Frame-sampled video indexing (gui/semantic.py) writes a new
+        # input_kind ('video_frames'), so this DELETE only ever matches the
+        # old rows; rows with input_kind='video' become pending again exactly
+        # once, the first time a pre-12 database is opened.
+        conn.execute("DELETE FROM semantic_embeddings WHERE input_kind='video'")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
 
@@ -138,3 +183,80 @@ def create_root(conn: sqlite3.Connection, root_id: int, path: str) -> None:
         (root_id, path, now_iso()),
     )
     conn.commit()
+
+
+# ---- Dedup rebuild coverage (catalog-derived "is a rebuild owed") ----------
+#
+# A wholesale dedup rebuild has no per-file backlog to count the way
+# enrich/faces/semantic do, so "is a rebuild owed" is instead answered by
+# comparing what the last successful rebuild covered against what the catalog
+# looks like now. Persisting that comparison point (`dedup_runs`) instead of
+# keeping it in an in-memory flag is what makes the answer survive a restart:
+# a freshly constructed JobManager re-derives the same answer a live one
+# would have given, rather than defaulting to "rebuild everything" the moment
+# the process restarts.
+
+def dedup_coverage(conn: sqlite3.Connection, root_id: int) -> tuple[int, int | None]:
+    """(count, max id) of files eligible for dedup grouping under this root:
+    present, content-hashed files -- the same population dedup/exact.py's
+    `run()` groups. `None` for the max id means there are no such files yet.
+    """
+    row = conn.execute(
+        "SELECT COUNT(*), MAX(id) FROM files "
+        "WHERE present=1 AND sha256 IS NOT NULL AND root_id=?",
+        (root_id,),
+    ).fetchone()
+    return row[0], row[1]
+
+
+def dedup_mark_done(conn: sqlite3.Connection, root_id: int,
+                     covered_files: int, covered_max_file_id: int | None) -> None:
+    """Record a successful rebuild's coverage.
+
+    Its caller (``jobs._run_dedup``) writes this on the rebuild's connection but
+    in a later transaction than ``exact.run``'s own commit, so the marker can
+    lag the grouping it describes if the process dies in that narrow window.
+    That direction is the safe one: the grouping is already correct and the only
+    cost is one redundant rebuild. Never write it *before* the grouping commits,
+    which would strand a stale grouping behind an up-to-date marker."""
+    conn.execute(
+        """INSERT INTO dedup_runs(root_id, covered_files, covered_max_file_id, run_at)
+           VALUES(?, ?, ?, ?)
+           ON CONFLICT(root_id) DO UPDATE SET
+               covered_files=excluded.covered_files,
+               covered_max_file_id=excluded.covered_max_file_id,
+               run_at=excluded.run_at""",
+        (root_id, covered_files, covered_max_file_id, now_iso()),
+    )
+
+
+def dedup_invalidate(conn: sqlite3.Connection, root_id: int) -> None:
+    """Mark a rebuild as owed for this root again, persistently.
+
+    Scan/enrich can change either the file set or metadata dedup's canonical
+    -selection rule reads (Takeout sidecar, resolved date, dimensions)
+    *without* changing the count/max id `dedup_needed` otherwise compares
+    (enrich never touches `files.sha256`/`present`), so that comparison alone
+    would miss a case where the previous grouping's canonical pick is now
+    stale. Deleting the marker forces `dedup_needed` back to True regardless,
+    until the next successful rebuild re-marks it.
+    """
+    conn.execute("DELETE FROM dedup_runs WHERE root_id=?", (root_id,))
+
+
+def dedup_needed(conn: sqlite3.Connection, root_id: int) -> bool:
+    """Whether a duplicate rebuild is outstanding for this root.
+
+    No stored marker (never rebuilt, or explicitly invalidated -- see
+    `dedup_invalidate`) means a rebuild is owed. Otherwise, owed exactly when
+    the present, hashed file population has moved on from what the marker
+    recorded.
+    """
+    row = conn.execute(
+        "SELECT covered_files, covered_max_file_id FROM dedup_runs WHERE root_id=?",
+        (root_id,),
+    ).fetchone()
+    if row is None:
+        return True
+    current_files, current_max_id = dedup_coverage(conn, root_id)
+    return row[0] != current_files or row[1] != current_max_id

@@ -5226,19 +5226,35 @@
       <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div></div>
         <div id="syncstatus"></div><div id="jobarea"></div>
       </div>
-      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage by type</h3><p>${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div></div>
+      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage by type</h3><p id="ov-storage-caption">${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div></div>
         <div id="typebar"></div><table class="types" id="typetbl"></table>
       </div>
     </div>`;
+      renderStoragePanel(s);
+      S.summary = s;
+      renderHealthCards();   // paint immediately from the last snapshot (if any)
+      startPoll();           // single poller: /api/pipeline drives every status surface
+    }
+
+    // Fills the "Storage by type" panel (byte total + bar + table) from an
+    // /api/summary payload. Called from renderOverview on first paint AND from
+    // refreshPipeline on every poll tick while the pipeline is busy, so bytes
+    // reclaimed/added by scan+dedup show up live instead of only at the
+    // busy→idle edge (the caption, bar and table share stable ids for this).
+    function renderStoragePanel(s) {
+      const cap = document.getElementById("ov-storage-caption");
+      if (cap) cap.textContent = `${fmtBytes(s.size)} across ${s.total.toLocaleString()} items`;
       const types = s.types.filter(t => t.count > 0);
       const totalTypes = types.reduce((sum, t) => sum + t.count, 0) || 1;
       const typebar = document.getElementById("typebar");
-      typebar.innerHTML = `<div class="type-summary-bar">${types.map(t =>
+      if (typebar) typebar.innerHTML = `<div class="type-summary-bar">${types.map(t =>
         `<div class="type-summary-segment" style="width:${100 * t.count / totalTypes}%;background:${TYPE_COL[t.type] || TYPE_COL.other}" title="${t.type}: ${t.count.toLocaleString()} files"></div>`
       ).join("")}</div><div class="type-summary-legend">${types.map(t =>
         `<span><span class="type-summary-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span>${t.type} <span class="muted">, ${(100 * t.count / totalTypes).toFixed(1)}%</span></span>`
       ).join("")}</div>`;
       const tbl = document.getElementById("typetbl");
+      if (!tbl) return;
+      tbl.innerHTML = "";
       types.forEach(t => {
         const tr = document.createElement("tr");
         tr.innerHTML = `<td>${t.type}</td>
@@ -5246,9 +5262,6 @@
       <td class="num">${fmtBytes(t.size)}</td>`;
         tbl.appendChild(tr);
       });
-      S.summary = s;
-      renderHealthCards();   // paint immediately from the last snapshot (if any)
-      startPoll();           // single poller: /api/pipeline drives every status surface
     }
 
     // Everything runs automatically in the background; this panel only reports
@@ -5347,6 +5360,7 @@
           set("ov-enriched", s.enriched.toLocaleString());
           set("ov-gps", s.with_gps.toLocaleString());
           set("ov-dups", ds.duplicates.toLocaleString());
+          renderStoragePanel(s);
         } catch (_) { /* non-critical; next tick retries */ }
       }
       // On the busy→idle edge, re-render the Overview once so the "done" messages
