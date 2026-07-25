@@ -147,7 +147,11 @@ def _perceptual_hashes(conn, cfg, progress=None, root_id: int | None = None) -> 
             )
             hashes[row["id"]] = value
             computed += 1
-        except (OSError, ValueError, Image.DecompressionBombError):
+        except Exception:
+            # Corrupt/malformed images throw all sorts of things from deep
+            # inside Pillow decoders (struct.error on a bad TIFF/EXIF offset,
+            # zlib errors, etc.), not just OSError/ValueError. One bad file
+            # must never abort the whole dedup run -- skip and keep going.
             errors += 1
         if progress is not None and i % 100 == 0:
             progress.update(i, 0, row["rel_path"])
