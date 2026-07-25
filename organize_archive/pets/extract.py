@@ -25,7 +25,8 @@ def scan_source(cfg: Config) -> str:
     species = ",".join(sorted(set(cfg.pets_species)))
     return (
         f"{cfg.pets_model_version};score={cfg.pets_min_score:g};"
-        f"minpx={cfg.pets_min_px};side={cfg.pets_max_side};species={species}")
+        f"minpx={cfg.pets_min_px};side={cfg.pets_max_side};species={species};"
+        f"human={cfg.pets_human_min_score:g}/{cfg.pets_human_iou:g}")
 
 
 def image_count(conn, root_id=None):
@@ -79,6 +80,7 @@ def make_backend(cfg: Config, log=None):
     return backend.PetBackend(
         cfg.cache_dir, min_score=cfg.pets_min_score, min_px=cfg.pets_min_px,
         max_side=cfg.pets_max_side, species=cfg.pets_species,
+        human_min_score=cfg.pets_human_min_score,
         model_source=source, log=log)
 
 

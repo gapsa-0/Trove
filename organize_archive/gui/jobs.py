@@ -483,7 +483,7 @@ class JobManager:
         # Load both detector model sets once and reuse across every chunk.
         face_be, pet_be = dx.make_backends(
             self.cfg, log=lambda m: setattr(job, "current", m))
-        processed = faces_found = animals = suppressed = 0
+        processed = faces_found = animals = suppressed = human_pets = 0
         while True:
             if cancel.is_set():
                 raise KeyboardInterrupt
@@ -496,6 +496,7 @@ class JobManager:
             faces_found += st.faces_found
             animals += st.animals
             suppressed += st.nonhuman_suppressed
+            human_pets += st.human_animals_dropped
             job.current = "grouping people & pets…"
             fc.cluster_faces(conn, self.cfg)
             pc.cluster_pets(conn, self.cfg, root_id=job.root_id)
@@ -504,7 +505,8 @@ class JobManager:
         job.message = (
             f"{faces_found} faces · {people} people · {animals} animals · "
             f"{groups} pet groups"
-            + (f" · {suppressed} animal-face FPs dropped" if suppressed else ""))
+            + (f" · {suppressed} animal-face FPs dropped" if suppressed else "")
+            + (f" · {human_pets} people misread as pets" if human_pets else ""))
 
     def _run_face_cluster(self, conn, job: Job, cancel):
         from ..faces.cluster import cluster_faces

@@ -26,9 +26,11 @@ application-data folder.
   map pin, and manually assigned without altering the media's GPS metadata.
 - Detects and clusters faces locally into people. You can name people, correct a face,
   merge or separate suggested people, and dismiss non-person detections.
-- Detects cats, dogs, birds, and horses locally, groups conservative likely-pet
-  identities, and uses animal/toy regions plus conservative learning from manual
-  doll/cartoon corrections to keep non-human faces out of People.
+- Detects cats, dogs, birds, and horses locally and groups conservative likely-pet
+  identities. People and animals are found in the same pass and cross-check each
+  other: an animal's own face is kept out of People, while a person who is not
+  upright in the frame — lying down, or a photo stored sideways — is kept out of
+  Pets rather than being catalogued as a dog.
 - Generates cached thumbnails and serves the interface only on `127.0.0.1`.
 
 When an archive is open in the app, its pipeline runs automatically:

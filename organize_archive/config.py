@@ -144,7 +144,20 @@ class Config:
                                             # complete-link keeps 0.75 conservative)
     pets_min_detections: int = 2
     pets_face_overlap: float = 0.60  # face-in-animal overlap that marks a non-human
-    pets_model_version: str = "yolox-s-2022nov+dinov2s-petreid-v1"
+    # Human cross-check. The same YOLOX pass reports COCO `person` boxes at
+    # `pets_human_min_score` (well under pets_min_score — a weak person box over
+    # an animal box is already strong evidence). An animal box whose IoU with one
+    # reaches `pets_human_iou` is a misclassified human, not a pet: YOLOX calls a
+    # person who is not vertical in the frame — lying down, or a whole photo
+    # stored sideways — a `dog` with real confidence. IoU (same object), not
+    # containment, so a person *holding* a pet never vetoes it.
+    pets_human_min_score: float = 0.20
+    # Calibrated on-archive: a person misread as a dog produces a box on top of
+    # its own person box (IoU 0.95-0.97), while a person *holding* a pet only
+    # reaches 0.20-0.63 even when the animal fills their arms. 0.80 separates the
+    # two with room on both sides; below ~0.7 it starts eating held pets.
+    pets_human_iou: float = 0.80
+    pets_model_version: str = "yolox-s-2022nov+dinov2s-petreid-v2-humanveto"
     # Clustering into people is two-stage (faces/cluster.py). Stage 1 over-clusters
     # into small, PURE fragments via a *mutual k-NN* graph: link two faces only
     # when each is among the other's `faces_knn_k` most-similar faces AND their

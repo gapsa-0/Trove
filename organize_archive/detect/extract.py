@@ -3,10 +3,25 @@
 The old pipeline detected pets and faces in two separate stages, each decoding
 every photo independently — so ~150k images were decoded twice. Here each image
 is decoded a single time (at ``cfg.detect_max_side``) and both detectors run on
-that one array. The animal boxes then cross-check the faces inline: a face mostly
-inside an animal box is an animal-face false positive and is dropped from People.
-That single rule replaces the old sprawl (a separate suppression sweep, a learned
-non-human k-NN, and a ``nonhuman_detections`` review limbo).
+that one array.
+
+The cross-check between them is anchored on one signal: the COCO ``person`` box
+that the same YOLOX pass already produces (see pets/backend.py). It arbitrates
+in both directions, because both detectors fail on humans who are not vertical
+in the frame — a photo stored sideways, or someone lying down:
+
+* an animal box that *is* a person box (high IoU) is a misread human, not a pet.
+  YOLOX calls a non-vertical person ``dog`` with real confidence; rotating the
+  same photo upright flips it back to ``person``, so when nothing vetoes an
+  animal box upright the box is re-tested on the quarter-turns before it is
+  believed (only for the few images that have animal boxes at all).
+* a face inside a person box is human and is never suppressed; a face inside an
+  animal box with no person over it is an animal's face and is dropped from
+  People.
+
+That replaces the old one-directional rule, which dropped any face merely
+*contained* in an animal box — so a bogus full-frame "dog" over a reclining
+person deleted the real face from People *and* kept the phantom pet.
 
 Resumable and incremental, like the stages it replaces: an image is pending when
 it lacks a current ``face_scan`` OR a current ``pet_scan`` row, and is processed
@@ -34,7 +49,8 @@ class DetectStats:
     images_with_faces: int = 0
     animals: int = 0
     photos_with_animals: int = 0
-    nonhuman_suppressed: int = 0   # faces dropped for overlapping an animal box
+    nonhuman_suppressed: int = 0   # faces dropped as an animal's own face
+    human_animals_dropped: int = 0  # "pets" that a person box exposed as people
     candidates: int = 0
     rejected_score: int = 0
     rejected_size: int = 0
@@ -115,6 +131,7 @@ def make_backends(cfg: Config, log=None):
         pet_be = pet_backend.PetBackend(
             cfg.cache_dir, min_score=cfg.pets_min_score, min_px=cfg.pets_min_px,
             max_side=cfg.pets_max_side, species=cfg.pets_species,
+            human_min_score=cfg.pets_human_min_score,
             model_source=pet_scan_source(cfg), log=log)
     return face_be, pet_be
 
@@ -152,13 +169,73 @@ def _load_bgr(path: str, max_side: int):
 
 
 def _overlap_fraction(fx, fy, fw, fh, ax, ay, aw, ah) -> float:
-    """Fraction of the FACE box that lies inside the animal box."""
+    """Fraction of the FIRST box that lies inside the second."""
     left = max(fx, ax)
     top = max(fy, ay)
     right = min(fx + fw, ax + aw)
     bottom = min(fy + fh, ay + ah)
     inter = max(0, right - left) * max(0, bottom - top)
     return inter / max(1, fw * fh)
+
+
+def _iou(a, b) -> float:
+    """Intersection over union of two boxes that expose .x/.y/.w/.h.
+
+    IoU, not containment: two boxes only score high here when they describe the
+    *same object*. A person holding a cat contains the cat's box but overlaps it
+    poorly; a person misread as a dog produces two near-identical boxes.
+    """
+    left, top = max(a.x, b.x), max(a.y, b.y)
+    right, bottom = min(a.x + a.w, b.x + b.w), min(a.y + a.h, b.y + b.h)
+    inter = max(0, right - left) * max(0, bottom - top)
+    union = a.w * a.h + b.w * b.h - inter
+    return inter / max(1, union)
+
+
+def _rotate_boxes_back(humans, k: int, w: int, h: int):
+    """Map boxes found in a ``np.rot90(img, k)`` frame back to the upright one.
+
+    ``k`` counts counter-clockwise quarter turns; ``w``/``h`` are the *upright*
+    frame's size. Under k=1 an upright point (x, y) lands at (y, w-1-x), so a
+    rotated box (xr, yr, wr, hr) came from (w-yr-hr, xr, hr, wr); k=3 is the
+    mirror of that.
+    """
+    from ..pets.backend import HumanDetection
+    out = []
+    for d in humans:
+        if k == 1:
+            x, y, bw, bh = w - (d.y + d.h), d.x, d.h, d.w
+        else:  # k == 3
+            x, y, bw, bh = d.y, h - (d.x + d.w), d.h, d.w
+        out.append(HumanDetection(x=x, y=y, w=bw, h=bh, score=d.score))
+    return out
+
+
+def _human_boxes_on_turns(img, pet_be):
+    """Person boxes from both quarter-turns, mapped back to the upright frame.
+
+    Only called for images that still hold an unvetoed animal box — a few
+    percent of the archive. The extra passes are YOLOX-only and reuse the array
+    already in memory, so no image is ever decoded twice.
+    """
+    import numpy as np
+    h, w = img.shape[:2]
+    found = []
+    for k in (1, 3):
+        humans = pet_be.detect_humans(np.ascontiguousarray(np.rot90(img, k)))
+        found.extend(_rotate_boxes_back(humans, k, w, h))
+    return found
+
+
+def _drop_human_animals(animals, humans, min_iou: float):
+    """Split animal boxes into (real animals, boxes that are really people)."""
+    kept, human_like = [], []
+    for a in animals:
+        if any(_iou(a, p) >= min_iou for p in humans):
+            human_like.append(a)
+        else:
+            kept.append(a)
+    return kept, human_like
 
 
 def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
@@ -203,26 +280,43 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                 img, scale = _load_bgr(str(path), cfg.detect_max_side)
                 inv = 1.0 / scale if scale else 1.0
 
-                # -- animals (YOLOX): map boxes to ORIGINAL pixels ------------
-                animals = []
+                # -- animals + people (YOLOX), in detected-image pixels -------
+                animals, humans = [], []
                 if pet_be is not None:
-                    for a in pet_be.detect(img):
-                        a.x = max(0, round(a.x * inv))
-                        a.y = max(0, round(a.y * inv))
-                        a.w = round(a.w * inv)
-                        a.h = round(a.h * inv)
-                        animals.append(a)
+                    animals, humans = pet_be.detect_with_humans(img)
+                    animals, human_like = _drop_human_animals(
+                        animals, humans, cfg.pets_human_iou)
+                    if animals:
+                        # Survivors may still be people who are simply not
+                        # vertical here — the quarter-turns are where YOLOX
+                        # reads them as `person` again.
+                        humans += _human_boxes_on_turns(img, pet_be)
+                        animals, turned = _drop_human_animals(
+                            animals, humans, cfg.pets_human_iou)
+                        human_like += turned
+                    stats.human_animals_dropped += len(human_like)
+                    for box in (*animals, *humans):   # -> ORIGINAL pixels
+                        box.x = max(0, round(box.x * inv))
+                        box.y = max(0, round(box.y * inv))
+                        box.w = round(box.w * inv)
+                        box.h = round(box.h * inv)
 
                 # -- faces (SCRFD): already mapped to ORIGINAL via scale ------
                 if face_be is not None:
                     face_report = face_be.detect_report(img, scale)
 
-                # -- inline cross-check: drop faces inside an animal box ------
+                # -- inline cross-check: drop only animals' own faces ---------
                 human_faces = []
                 for fc in face_report.faces:
-                    if any(_overlap_fraction(fc.x, fc.y, fc.w, fc.h,
-                                             a.x, a.y, a.w, a.h) >= cfg.pets_face_overlap
-                           for a in animals):
+                    in_animal = any(
+                        _overlap_fraction(fc.x, fc.y, fc.w, fc.h,
+                                          a.x, a.y, a.w, a.h) >= cfg.pets_face_overlap
+                        for a in animals)
+                    in_person = any(
+                        _overlap_fraction(fc.x, fc.y, fc.w, fc.h,
+                                          p.x, p.y, p.w, p.h) >= cfg.pets_face_overlap
+                        for p in humans)
+                    if in_animal and not in_person:
                         face_report.rejected["nonhuman"] = (
                             face_report.rejected.get("nonhuman", 0) + 1)
                         stats.nonhuman_suppressed += 1

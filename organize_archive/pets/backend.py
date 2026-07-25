@@ -4,6 +4,12 @@ The OpenCV Zoo YOLOX-S model is downloaded once into the application cache.
 Inference is entirely local. The implementation follows OpenCV Zoo's reference
 pre/post-processing and keeps only configured pet species plus ``teddy bear``
 as non-human context for the People pipeline.
+
+The same forward pass also reports COCO ``person`` boxes (at a lower floor, and
+never as pets). They cost nothing extra and are the archive's human signal: a
+human who is not vertical in the frame — lying down, or a whole photo stored
+sideways — is reliably misread by YOLOX as ``dog``, and a ``person`` box over
+the same region is what tells the fused detect stage it is a human, not a pet.
 """
 
 from __future__ import annotations
@@ -112,6 +118,21 @@ class AnimalDetection:
     embedding: "np.ndarray"
 
 
+@dataclass
+class HumanDetection:
+    """A COCO ``person`` box: context for the face/pet cross-check, never a pet.
+
+    Kept deliberately separate from ``AnimalDetection`` (no species, no re-ID
+    embedding) so it cannot be written to ``animal_detections`` by accident.
+    """
+
+    x: int
+    y: int
+    w: int
+    h: int
+    score: float
+
+
 def _load_dinov2(cache_dir: str):
     """Create the onnxruntime session for the DINOv2 pet-reID embedder."""
     try:
@@ -136,12 +157,17 @@ class PetBackend:
 
     def __init__(self, cache_dir: str, *, min_score: float = 0.60,
                  min_px: int = 48, max_side: int = 1280, species=(),
+                 human_min_score: float = 0.20,
                  model_source="opencv-yolox-s-2022nov", log=None):
         if not available():
             raise RuntimeError("pet detection needs OpenCV DNN and NumPy")
         self.min_score = float(min_score)
         self.min_px = int(min_px)
         self.max_side = int(max_side)
+        # `person` is only ever context for the cross-check, so its floor is well
+        # below min_score: a weak person box over an animal box is already strong
+        # evidence the "animal" is a misread human.
+        self.human_min_score = float(human_min_score)
         self.species = set(species) | {"teddy bear"}
         self.model_source = model_source
         self.net = cv2.dnn.readNet(str(ensure_model(cache_dir, log=log)))
@@ -176,6 +202,47 @@ class PetBackend:
                 loaded_w / max(1, original_w), loaded_h / max(1, original_h))
 
     def detect(self, image_bgr) -> list[AnimalDetection]:
+        """Pet-species boxes only (unchanged contract for the standalone path)."""
+        return self.detect_with_humans(image_bgr)[0]
+
+    def detect_with_humans(self, image_bgr):
+        """``(animals, humans)`` from ONE forward pass.
+
+        ``humans`` are COCO ``person`` boxes kept at ``human_min_score`` purely as
+        cross-check context — they carry no re-ID embedding (DINOv2 only runs on
+        animal crops) and are never persisted as pets.
+        """
+        animals, humans = [], []
+        for species, box, score in self._forward(image_bgr):
+            if species == "person":
+                humans.append(HumanDetection(*box, score=score))
+                continue
+            x, y, width, height = box
+            if min(width, height) < self.min_px:
+                continue
+            animals.append(AnimalDetection(
+                species=species, x=x, y=y, w=width, h=height, score=score,
+                embedding=self._embed_crop(
+                    image_bgr[y:y + height, x:x + width]),
+            ))
+        return animals, humans
+
+    def detect_humans(self, image_bgr) -> list[HumanDetection]:
+        """Person boxes only — no animal crops, so no DINOv2 work.
+
+        Used for the quarter-turn re-test, where the animal boxes of the rotated
+        frame are of no interest and embedding them would be pure waste.
+        """
+        return [HumanDetection(*box, score=score)
+                for species, box, score in self._forward(image_bgr)
+                if species == "person"]
+
+    def _forward(self, image_bgr):
+        """One YOLOX pass -> ``(species, (x, y, w, h), score)`` in image pixels.
+
+        Boxes are already NMS'd and mapped back out of the letterboxed 640x640
+        input; ``min_px`` and re-ID embedding are the callers' business.
+        """
         original_h, original_w = image_bgr.shape[:2]
         rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         ratio = min(
@@ -202,10 +269,18 @@ class PetBackend:
         scores = dets[:, 4:5] * dets[:, 5:]
         class_ids = np.argmax(scores, axis=1)
         confidences = np.max(scores, axis=1)
+        # Two floors in one pass: pet species at min_score, `person` lower. NMS
+        # applies its own score threshold, so it has to run at the lower of the
+        # two or every weak person box would be discarded there. NMS is per
+        # class either way, so the added person candidates cannot change which
+        # animal boxes survive.
+        nms_floor = min(self.min_score, self.human_min_score)
         eligible = [
             i for i, class_id in enumerate(class_ids)
-            if confidences[i] >= self.min_score
-            and COCO_CLASSES[int(class_id)] in self.species
+            if (COCO_CLASSES[int(class_id)] in self.species
+                and confidences[i] >= self.min_score)
+            or (COCO_CLASSES[int(class_id)] == "person"
+                and confidences[i] >= self.human_min_score)
         ]
         if not eligible:
             return []
@@ -215,7 +290,7 @@ class PetBackend:
         if hasattr(cv2.dnn, "NMSBoxesBatched"):
             keep = cv2.dnn.NMSBoxesBatched(
                 candidate_boxes, candidate_scores, candidate_classes,
-                self.min_score, 0.50)
+                nms_floor, 0.50)
         else:  # OpenCV 4.8 compatibility: perform NMS independently per class.
             kept = []
             for class_id in set(candidate_classes):
@@ -224,7 +299,7 @@ class PetBackend:
                 selected = cv2.dnn.NMSBoxes(
                     [candidate_boxes[index] for index in local],
                     [candidate_scores[index] for index in local],
-                    self.min_score, 0.50)
+                    nms_floor, 0.50)
                 kept.extend(local[int(index)]
                             for index in np.asarray(selected).reshape(-1))
             keep = kept
@@ -236,15 +311,9 @@ class PetBackend:
             y = max(0, round(float(y) / ratio))
             width = min(original_w - x, round(float(width) / ratio))
             height = min(original_h - y, round(float(height) / ratio))
-            if min(width, height) < self.min_px:
-                continue
-            crop = image_bgr[y:y + height, x:x + width]
-            out.append(AnimalDetection(
-                species=COCO_CLASSES[int(class_ids[source_index])],
-                x=x, y=y, w=width, h=height,
-                score=float(confidences[source_index]),
-                embedding=self._embed_crop(crop),
-            ))
+            out.append((COCO_CLASSES[int(class_ids[source_index])],
+                        (x, y, width, height),
+                        float(confidences[source_index])))
         return out
 
     def _embed_crop(self, crop_bgr) -> "np.ndarray":
