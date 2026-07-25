@@ -369,6 +369,13 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"voyage": semantic.clear_api_key()})
                 else:
                     self._json({"voyage": semantic.store_api_key(body.get("key", ""))})
+            elif path == "/api/pipeline/pause":
+                paused = body.get("paused")
+                if not isinstance(paused, bool):
+                    self._json({"error": "paused (bool) is required"}, 400)
+                else:
+                    self.jobs.set_paused(paused)
+                    self._json({"paused": self.jobs.paused()})
             # The mutations below act on an id (person, cluster, face, pet...)
             # rather than a file the caller already knows the root of, and the
             # frontend never sends one for them. They resolve against whichever

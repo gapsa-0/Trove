@@ -292,13 +292,27 @@ def _message(card_id: str, state: str, pending, blocker, error) -> str | None:
 
 
 def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
-    """The `/api/pipeline` payload: resolved cards plus one overall verdict."""
+    """The `/api/pipeline` payload: resolved cards plus one overall verdict.
+
+    ``paused`` reflects the whole-pipeline pause (JobManager.paused()). While
+    paused, a queued/error card must not claim work is imminent, so its
+    message is overridden to "Paused" (its `state` is left untouched -- the
+    client and scheduler both key off that); and ``overall`` becomes "paused"
+    once nothing is actually still running.
+    """
     states = stage_states(cfg, jobs, root_id, root_path)
     card_list = cards(states)
+    paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
+    if paused:
+        for c in card_list:
+            if c["state"] in ("queued", "error"):
+                c["message"] = "Paused"
     if any(c["state"] == "running" for c in card_list):
         overall = "running"
+    elif paused:
+        overall = "paused"
     elif any(c["state"] in ("queued", "blocked", "error") for c in card_list):
         overall = "working"
     else:
         overall = "idle"
-    return {"root_id": root_id, "overall": overall, "stages": card_list}
+    return {"root_id": root_id, "overall": overall, "stages": card_list, "paused": paused}

@@ -157,7 +157,7 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
                 candidates["exif"] = ex
 
             # --- Filename ---
-            fn = filename_dates.parse(name)
+            fn = filename_dates.parse(name, day_first=cfg.filename_date_day_first)
             if fn is not None:
                 candidates["filename"] = fn
 

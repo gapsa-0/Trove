@@ -2631,10 +2631,11 @@
     /* Main content and overview */
     main {
       --main-gutter: clamp(28px, 4vw, 62px);
+      --main-pad-top: 42px;
       height: 100vh;
       min-height: 0;
       overflow: auto;
-      padding: 42px var(--main-gutter) 80px;
+      padding: var(--main-pad-top) var(--main-gutter) 80px;
       background: var(--bg)
     }
 
@@ -2806,6 +2807,16 @@
 
     .panel-heading p {
       margin: 0;
+      color: var(--muted);
+      font-size: 11px
+    }
+
+    .panel-heading .pause-btn {
+      margin-left: auto
+    }
+
+    .pause-note {
+      margin: -12px 0 16px;
       color: var(--muted);
       font-size: 11px
     }
@@ -3016,25 +3027,6 @@
       content: attr(data-placeholder);
       color: var(--muted);
       pointer-events: none
-    }
-
-    .search-expansion {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      margin: 8px 7px 0 34px;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.4
-    }
-
-    .search-expansion[hidden] {
-      display: none
-    }
-
-    .search-expansion strong {
-      color: var(--text);
-      font-weight: 620
     }
 
     .person-token {
@@ -3625,9 +3617,9 @@
     }
 
     .facetopbar {
-      top: 0;
+      top: calc(0px - var(--main-pad-top));
       min-height: 82px;
-      margin: -42px calc(0px - var(--main-gutter)) 18px;
+      margin: calc(0px - var(--main-pad-top)) calc(0px - var(--main-gutter)) 18px;
       padding: 12px var(--main-gutter);
       gap: 12px;
       border: 0;
@@ -3916,6 +3908,12 @@
         display: none !important
       }
 
+      /* main stops scrolling here, so the bar pins against the viewport,
+         below the 61px top nav — not against main's padded scrollport. */
+      .facetopbar {
+        top: 61px
+      }
+
       .facetopbar .back-control {
         display: inline-flex !important
       }
@@ -3947,10 +3945,11 @@
 
       main {
         --main-gutter: 16px;
+        --main-pad-top: 29px;
         height: auto;
         min-height: calc(100vh - 61px);
         overflow: visible;
-        padding: 29px var(--main-gutter) 60px
+        padding: var(--main-pad-top) var(--main-gutter) 60px
       }
 
       main>h2.sec,
@@ -4332,6 +4331,12 @@
       white-space: nowrap
     }
 
+    .p-add.needs-path input {
+      border-radius: 8px;
+      box-shadow: 0 0 0 2px var(--focus);
+      transition: box-shadow .2s
+    }
+
     .p-sec {
       display: flex;
       align-items: baseline;
@@ -4561,7 +4566,7 @@
         <b>Trove</b>
       </div>
       <div class="p-tools">
-        <button class="gear-fab" type="button" onclick="openSettings()" aria-label="Open app settings">
+        <button class="gear-fab" type="button" onclick="openSettings()" aria-label="Open settings">
           <span class="gear-icon" aria-hidden="true"></span><span>Settings</span>
         </button>
         <button class="appearance-fab" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
@@ -4607,13 +4612,9 @@
       </button>
       <div class="arch" id="archname"></div>
       <div id="navitems"></div>
-      <button class="theme-toggle settings-nav" type="button" onclick="openSettings()" aria-label="Open app settings">
+      <button class="theme-toggle" type="button" onclick="openSettings()" aria-label="Open settings">
         <span class="gear-icon" aria-hidden="true"></span>
-        <span>App settings</span>
-      </button>
-      <button class="theme-toggle" type="button" onclick="toggleTheme()" aria-label="Switch color theme">
-        <span class="theme-icon" aria-hidden="true"></span>
-        <span class="theme-label">Dark appearance</span>
+        <span>Settings</span>
       </button>
       <div id="gstat" class="gstat"></div>
     </nav>
@@ -4679,6 +4680,8 @@
   <script>
     const TYPE_ICON = { image: "🖼️", video: "🎞️", audio: "🎵", document: "📄", archive: "🗜️", other: "📦" };
     const TYPE_COL = { image: "#ff375f", video: "#ff9f0a", audio: "#30d158", document: "#64d2ff", archive: "#bf5af2", other: "#8e8e93" };
+    const TYPE_LABEL = { archive: "compressed" };
+    const typeLabel = t => TYPE_LABEL[t] || t;
     const ICONS = {
       overview: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
       library: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 2-2L20 19"/></svg>',
@@ -4699,7 +4702,6 @@
       { id: "pets", label: "Pets" },
       { id: "places", label: "Places" },
       { id: "dups", label: "Duplicates" },
-      { id: "settings", label: "Settings" },
     ];
     const S = {
       arch: null, section: "overview", grid: null,
@@ -4933,22 +4935,35 @@
       const add = document.createElement("button");
       add.className = "p-card add"; add.type = "button";
       add.innerHTML = `<span>+</span>${archives.length ? "Add another folder" : "Add your first folder"}`;
-      add.onclick = () => document.getElementById("archive-path").focus();
+      add.onclick = () => startAddArchive();
       el.appendChild(add);
     }
-    async function addArchiveFromForm(event) {
-      event.preventDefault(); const field = document.getElementById("archive-path"); let p = field.value.trim();
+    async function startAddArchive() {
+      const field = document.getElementById("archive-path"); let p = field.value.trim();
       if (window.archiveDesktop?.chooseFolder) {
         const picked = await window.archiveDesktop.chooseFolder();
         if (picked.cancelled) return false;
         p = picked.path || ""; field.value = p;
       }
-      if (!p) return;
+      if (!p) { highlightAddArchiveField(); return false; }
       const r = await jpost("/api/archives", { path: p });
       if (r.error) { toast(r.error, true); return false; }
       field.value = ""; await loadPicker();
       const a = ARCHIVES.find(x => x.id === r.id) || { id: r.id, path: r.path, name: r.path.split("/").filter(Boolean).pop(), files: 0, size: 0, exists: true };
       openArchive(a, "overview"); return false;
+    }
+    function highlightAddArchiveField() {
+      const field = document.getElementById("archive-path"); const wrap = field.closest(".p-add");
+      field.focus(); field.scrollIntoView({ block: "center" });
+      if (!wrap) return;
+      wrap.classList.add("needs-path");
+      clearTimeout(wrap._needsPathTimer);
+      wrap._needsPathTimer = setTimeout(() => wrap.classList.remove("needs-path"), 1500);
+      field.addEventListener("input", () => wrap.classList.remove("needs-path"), { once: true });
+    }
+    async function addArchiveFromForm(event) {
+      event.preventDefault();
+      return startAddArchive();
     }
     async function removeArchive(a) {
       const message = `Remove “${a.name}” from Trove?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
@@ -5011,6 +5026,11 @@
         el.innerHTML = `<span class="spin"></span><span class="gtxt">Checking for new work…</span>`;
       } else if (snap.overall === "idle") {
         el.title = "Up to date"; el.innerHTML = `<span class="dot ok"></span><span class="gtxt">Up to date</span>`;
+      } else if (snap.overall === "paused") {
+        // Nothing is actually running (the `run` branch above already
+        // caught that); reads as stopped, not "Working…".
+        el.title = "Background processing is paused";
+        el.innerHTML = `<span class="dot check"></span><span class="gtxt">Paused</span>`;
       } else {
         // Work is waiting to run (queued/blocked) but nothing is on the writer yet.
         el.title = "Work is queued"; el.innerHTML = `<span class="dot pending"></span><span class="gtxt">Working…</span>`;
@@ -5086,7 +5106,7 @@
     applyNavCollapsed();
     const RENDERERS = {
       overview: renderOverview, library: renderPhotos, timeline: renderTimeline, places: renderMap,
-      people: renderFaces, pets: renderPets, dups: renderDedup, settings: renderSettings
+      people: renderFaces, pets: renderPets, dups: renderDedup
     };
     const SECTION_VIEWS = new Map();
     const SECTION_READY = new Set();
@@ -5223,7 +5243,8 @@
       <button class="stat" onclick="showSection('dups')"><span class="metric-icon orange">${ICONS.dups}</span><div><div class="k">Duplicate copies</div><div class="v" id="ov-dups">${ds.duplicates.toLocaleString()}</div></div></button>
     </div>
     <div class="overview-grid">
-      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div></div>
+      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause</button></div>
+        <p class="pause-note" id="pause-note" style="display:none">Paused — background processing is stopped.</p>
         <div id="syncstatus"></div><div id="jobarea"></div>
       </div>
       <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage by type</h3><p id="ov-storage-caption">${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div></div>
@@ -5248,16 +5269,16 @@
       const totalTypes = types.reduce((sum, t) => sum + t.count, 0) || 1;
       const typebar = document.getElementById("typebar");
       if (typebar) typebar.innerHTML = `<div class="type-summary-bar">${types.map(t =>
-        `<div class="type-summary-segment" style="width:${100 * t.count / totalTypes}%;background:${TYPE_COL[t.type] || TYPE_COL.other}" title="${t.type}: ${t.count.toLocaleString()} files"></div>`
+        `<div class="type-summary-segment" style="width:${100 * t.count / totalTypes}%;background:${TYPE_COL[t.type] || TYPE_COL.other}" title="${typeLabel(t.type)}: ${t.count.toLocaleString()} files"></div>`
       ).join("")}</div><div class="type-summary-legend">${types.map(t =>
-        `<span><span class="type-summary-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span>${t.type} <span class="muted">, ${(100 * t.count / totalTypes).toFixed(1)}%</span></span>`
+        `<span><span class="type-summary-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span>${typeLabel(t.type)} <span class="muted">, ${(100 * t.count / totalTypes).toFixed(1)}%</span></span>`
       ).join("")}</div>`;
       const tbl = document.getElementById("typetbl");
       if (!tbl) return;
       tbl.innerHTML = "";
       types.forEach(t => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${t.type}</td>
+        tr.innerHTML = `<td>${typeLabel(t.type)}</td>
       <td class="num">${t.count.toLocaleString()}</td>
       <td class="num">${fmtBytes(t.size)}</td>`;
         tbl.appendChild(tr);
@@ -5300,7 +5321,12 @@
 
     function healthCard(stage) {
       const st = stage.state;
-      const dot = stage.next ? "next" : (HEALTH_DOT[st] || "check");
+      // Paused (queued/error) cards should read as stopped, not "about to
+      // run": swap the amber pending dot for the same neutral one blocked
+      // cards use. A genuinely still-running (winding-down) stage is
+      // untouched here -- its dot/spinner already come from `st`.
+      const paused = !!(S.pipeline && S.pipeline.paused) && (st === "queued" || st === "error");
+      const dot = stage.next ? "next" : (paused ? "check" : (HEALTH_DOT[st] || "check"));
       const head = st === "running"
         ? `<span class="spin"></span>${stage.label}`
         : `<span class="dot ${dot}"></span>${stage.label}`;
@@ -5328,11 +5354,37 @@
     function renderHealthCards() {
       const el = document.getElementById("syncstatus"); if (!el) return;
       const snap = S.pipeline;
+      renderPauseControl();
       if (!snap || !snap.stages) {
         el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-head"><span class="spin"></span>Checking for work…</div></div></div>`;
         return;
       }
       el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;
+    }
+
+    // Whole-pipeline pause/resume (things_to_fix #19). Single button, no
+    // per-job controls: pausing cancels every running job at its next batch
+    // checkpoint (see JobManager.set_paused), and the scheduler simply stops
+    // starting new ones until resumed.
+    function renderPauseControl() {
+      const btn = document.getElementById("pause-btn");
+      const note = document.getElementById("pause-note");
+      const paused = !!(S.pipeline && S.pipeline.paused);
+      if (btn) { btn.textContent = paused ? "Resume" : "Pause"; btn.disabled = !!S.pausing; }
+      if (note) note.style.display = paused ? "" : "none";
+    }
+
+    async function togglePipelinePause() {
+      if (!S.arch || S.pausing) return;
+      const next = !(S.pipeline && S.pipeline.paused);
+      S.pausing = true;
+      renderPauseControl();
+      try {
+        const r = await jpost("/api/pipeline/pause", { paused: next });
+        if (r && r.error) toast(r.error, true);
+      } catch { toast(next ? "Could not pause processing." : "Could not resume processing.", true); }
+      finally { S.pausing = false; }
+      await refreshPipeline();
     }
 
     // The one poller behind every status surface: fetch the snapshot, render the
@@ -5346,7 +5398,9 @@
       renderHealthCards();
       renderGstat(snap);
       const area = document.getElementById("jobarea"); if (area) area.innerHTML = "";
-      const busy = snap.overall !== "idle";
+      // Paused counts as not busy: nothing can change, so don't keep re-running
+      // the summary/duplicate queries behind the user's back.
+      const busy = snap.overall !== "idle" && !snap.paused;
       if (busy && S.section === "overview") {
         // Numbers should climb live while work runs, without waiting for the
         // whole pipeline to finish.
@@ -5842,7 +5896,6 @@
           onpaste="onSemanticComposerPaste(event)"></div>
         <button class="btn" type="submit">Search</button>
       </form>
-      <div class="search-expansion" id="search-expansion" hidden></div>
       <div class="search-reach" id="search-reach" aria-live="polite" hidden></div>
       <div class="library-toolbar">
         <div class="filterbar" id="filterbar"></div>
@@ -5905,7 +5958,7 @@
       const forms = {
         image: ["image", "images"], video: ["video", "videos"],
         audio: ["audio file", "audio files"], document: ["document", "documents"],
-        archive: ["archive", "archives"], other: ["file", "files"],
+        archive: ["compressed file", "compressed files"], other: ["file", "files"],
       }[type] || [type, type + "s"];
       return forms[n === 1 ? 0 : 1];
     }
@@ -5937,11 +5990,13 @@
         ).join("");
         html = `${chips}<span class="reach-div" aria-hidden="true"></span><span class="reach-note">searchable by description</span>`;
       } else if (!s.configured) {
-        html = `<span class="reach-note">Search by description needs a Voyage API key: <button type="button" class="linkbtn" style="padding:0;font-size:inherit" onclick="openSettings()">add one in App settings</button>.</span>`;
-      } else if (pending) {
-        html = `<span class="reach-note">Indexing your images and videos so you can search them by description…</span>`;
+        html = `<span class="reach-note">Search by description needs a Voyage API key: <button type="button" class="linkbtn" style="padding:0;font-size:inherit" onclick="openSettings()">add one in Settings</button>.</span>`;
       } else {
-        html = `<span class="reach-note">Nothing is searchable by description yet.</span>`;
+        // Nothing indexed yet: say so as a count, and only promise indexing when
+        // there is actually work queued (an empty archive never gets any).
+        const note = pending ? "searchable by description. Wait for semantic indexing to run."
+          : "searchable by description.";
+        html = `<span class="reach-item"><b>0</b> files</span><span class="reach-div" aria-hidden="true"></span><span class="reach-note">${note}</span>`;
       }
       cur.hidden = false;
       cur.innerHTML = html;
@@ -6101,12 +6156,6 @@
       document.querySelectorAll(`#${prefix}-people-filter input[type="checkbox"]`)
         .forEach(input => input.checked = chosen.has(input.value));
     }
-    function renderSearchExpansion() {
-      const el = document.getElementById("search-expansion"), g = S.grid;
-      if (!el || !g || !g.expandedQuery) { if (el) el.hidden = true; return; }
-      el.hidden = false;
-      el.innerHTML = `<span>Searching locally in English: <strong>${esc(g.expandedQuery)}</strong></span>`;
-    }
     async function semanticSubmit(ev) {
       ev.preventDefault();
       const submission = ++SEARCH_SUBMISSION, form = ev.currentTarget;
@@ -6136,7 +6185,6 @@
       if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;
       g.expandedQuery = expandedQuery;
       g.expandedEmbeddingQuery = visualSearchExpansion(expandedQuery);
-      renderSearchExpansion();
       if (submit) { submit.disabled = false; submit.textContent = oldLabel; }
       resetGridResults(g);
       updateClearBtn();
@@ -6160,7 +6208,7 @@
           opt("", "All months") + `</select>`);
       if (f.types && f.types.length > 1)
         parts.push(`<select class="fsel" id="f-type" onchange="applyFilters()">` +
-          opt("", "All types") + f.types.map(t => opt(t, cap(t))).join("") + `</select>`);
+          opt("", "All types") + f.types.map(t => opt(t, cap(typeLabel(t)))).join("") + `</select>`);
       // People is a checkbox menu because several people can be joined together.
       parts.push(peopleFilterHTML("f", f.people || []));
       parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()" ${f.places && f.places.length ? "" : "disabled"} title="${f.places && f.places.length ? "Filter by place" : "Name places in Places to enable this filter"}">` +
@@ -6194,7 +6242,6 @@
       updatePeopleFilterLabel("f", S.filterOpts.people || []);
       const composer = document.getElementById("semantic-q");
       if (composer) { composer.textContent = g.rawQuery || ""; renderSemanticComposer(true); }
-      renderSearchExpansion();
       updateClearBtn();
     }
     function onYearChange() {
@@ -6380,31 +6427,6 @@
       const res = await jget("/api/folders?root=" + S.arch.id); const folders = res.folders || [];
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Folders</h2><p>See where the original files in this archive live. Nothing here changes them.</p></div></div><div class="panel"><div class="folder-list">${folders.length ? folders.map(f => `<div class="taskcard"><span class="ico">□</span><div class="body"><div class="t">${esc(f.path)}</div></div><div class="num">${f.count.toLocaleString()}</div></div>`).join("") : '<div class="muted">No catalogued files yet.</div>'}</div></div>`;
     }
-    async function renderSettings(m) {
-      const gen = NAV, root = S.arch.id;
-      const [summary, snap] = await Promise.all([jget("/api/summary?root=" + root), jget("/api/pipeline?root=" + root)]);
-      if (gen !== NAV) return;
-      const rstage = (snap.stages || []).find(s => s.state === "running");
-      const running = rstage ? { kind: CARD_KIND[rstage.id], current: rstage.message,
-        percent: rstage.progress ? rstage.progress.percent : null } : null;
-      m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Archive settings</h2><p>Review this archive’s source, processing status, and local application details.</p></div></div>
-    <div class="panel"><h3>Source</h3><div class="path muted">${esc(S.arch.path)}</div><p class="privacy-note">This archive is catalogued and processed on this computer. The source files are never moved, edited, uploaded, or deleted.</p></div>
-    <div class="panel"><h3>Archive activity</h3>${running ? `<p><span class="spin"></span>${JOB_LABEL[running.kind] || running.kind}</p><div class="progress"><div class="progfill" style="width:${running.percent || 0}%"></div></div><div class="muted">${running.current || jobDescription(running.kind)}</div>` : `<p><span class="dot ok"></span> No work needs attention.</p>`}<p class="muted">${summary.total.toLocaleString()} catalogued files · ${fmtBytes(summary.size)}</p></div>
-    <div class="panel" id="desktop-about" style="display:none"></div>
-    <div class="panel"><h3>Remove archive</h3><p class="muted">Removes catalogue records and any exclusive cached thumbnails. Original media remains untouched.</p><button class="btn sec" onclick="removeCurrentArchive()">Remove this archive</button></div>`;
-      if (window.archiveDesktop?.about) {
-        const about = await window.archiveDesktop.about(); const panel = document.getElementById("desktop-about");
-        panel.style.display = "block"; panel.innerHTML = `<h3>About Archive</h3><p class="muted">Version ${esc(about.version)} · commit ${esc(about.commit)}<br>Backend ${esc(about.backendVersion)}</p><p class="muted">The data folder contains the catalogue and cache, not your original media. Back it up while Archive is closed.</p><button class="btn sec" onclick="copyDesktopDiagnostics()">Copy diagnostics</button> <button class="btn sec" onclick="openDesktopDataFolder()">Open data folder</button>`;
-      }
-    }
-    async function copyDesktopDiagnostics() { await window.archiveDesktop.copyDiagnostics(); toast("Diagnostics copied. It excludes catalogue content and media paths."); }
-    async function openDesktopDataFolder() { const r = await window.archiveDesktop.openDataFolder(); if (r) toast("Could not open the data folder.", true); }
-    async function removeCurrentArchive() {
-      const a = S.arch; await removeArchive(a);
-      const still = ARCHIVES.some(x => x.id === a.id);
-      if (!still) toPicker();
-    }
-
     /* ---------- duplicates ---------- */
     async function renderDedup(m) {
       const gen = NAV, root = S.arch.id;
@@ -6465,8 +6487,8 @@
       const sum = await jget("/api/faces/summary?root=" + root);
       if (gen !== NAV) return;
       if (!sum.backend_available) {
-        m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces and organize them with names.</p></div></div><div class="soonbox"><div class="big">🙂</div>
-      <p>Face detection needs OpenCV's DNN face module.</p>
+        m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces and organize them with names.</p></div></div>
+      <div class="panel"><div class="d pending"><span class="dot pending"></span>Face detection needs OpenCV's DNN face module.</div>
       <p class="muted">Install a modern <code>opencv-python</code> (the <code>media</code> extra) and reopen this tab.</p></div>`;
         return;
       }
@@ -6478,7 +6500,7 @@
       <div class="stat"><div class="k">Photos with faces</div><div class="v" id="fs-photos">${sum.photos_with_faces.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Scanned</div><div class="v" id="fs-scanned">${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small></div></div>
     </div>
-    <div class="panel"><div id="facectl"></div><div id="facejob"></div></div>
+    <div class="panel" id="facejob"></div>
     <div id="peoplewrap"><div class="muted" style="padding:20px">Loading people…</div></div>`;
       renderFaceControls();
       renderPeople();
@@ -6488,11 +6510,15 @@
     // faces → duplicates); this panel only reports status. Clustering into people
     // re-runs automatically after every detection chunk, so there is no manual
     // start/stop/recompute; it all happens on its own and halts only on app close.
-    function renderFaceControls() {
-      const el = document.getElementById("facectl"); if (!el) return;
+    // One-line status, same shape as the Pets panel (#petjob): no progress bar,
+    // no emoji, exactly one row so the panel never reserves empty space.
+    function renderFaceControls(failed) {
+      const el = document.getElementById("facejob"); if (!el) return;
       const sum = S.faceSum;
       if (S.faceJobRunning) {
         el.innerHTML = `<div class="d"><span class="spin"></span>Detecting faces locally…</div>`;
+      } else if (failed) {
+        el.innerHTML = `<div class="d pending"><span class="dot pending"></span>Face detection paused; retrying automatically. ${esc(failed)}</div>`;
       } else if (sum.unscanned > 0) {
         const first = sum.scanned === 0;
         const note = `${sum.unscanned.toLocaleString()} photo${sum.unscanned === 1 ? "" : "s"} not yet scanned; runs automatically${first ? " (first run fetches a ~38 MB face model once)" : ""}.`;
@@ -6523,20 +6549,13 @@
       setText("fs-photos", sum.photos_with_faces.toLocaleString());
       const sc = document.getElementById("fs-scanned");
       if (sc) sc.innerHTML = `${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
-      renderFaceControls();
+      const failed = failedFace && sum.unscanned > 0
+        ? (failedFace.message || "The face worker stopped before reporting progress.") : null;
+      renderFaceControls(failed);
       if (fj) {
-        const pct = fj.percent != null ? fj.percent : 0;
-        area.innerHTML = `<div class="job"><div class="what">${jobDescription("detect")}</div><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-      <div class="cur">${pct}% · ${fj.done.toLocaleString()}${fj.total ? "/" + fj.total.toLocaleString() : ""} · ${fj.elapsed}s${fj.current ? " · " + fj.current : ""}</div></div>`;
         if (sum.people !== prev.people || sum.faces !== prev.faces) renderPeople();
-      } else if (failedFace && sum.unscanned > 0) {
-        const detail = failedFace.message || "The face worker stopped before reporting progress.";
-        area.innerHTML = `<div class="job error"><div class="what">Face detection paused; retrying automatically.</div>
-      <div class="cur">${esc(detail)}</div></div>`;
-        if (wasRunning) renderPeople();
-      } else {
-        area.innerHTML = "";
-        if (wasRunning) renderPeople();   // final pass finished → refresh grid
+      } else if (wasRunning) {
+        renderPeople();   // final pass finished → refresh grid
       }
     }
     async function renderPeople() {
@@ -6544,12 +6563,12 @@
       const { people } = await jget("/api/faces/persons?root=" + S.arch.id + "&limit=300");
       if (!people.length) {
         const s = S.faceSum;
-        wrap.innerHTML = `<div class="soonbox"><div class="big">🙂</div>` + (
+        wrap.innerHTML = `<div class="muted" style="padding:20px">` + (
           s.faces > 0
-            ? `<p>No recurring people found yet.</p><p class="muted">${s.faces.toLocaleString()} face${s.faces === 1 ? "" : "s"} detected, but none repeat often enough to group into a person. People appear automatically as more photos are scanned.</p>`
+            ? `No recurring people found yet. ${s.faces.toLocaleString()} face${s.faces === 1 ? "" : "s"} detected, but none repeat often enough to group into a person. People appear automatically as more photos are scanned.`
             : (s.scanned > 0
-              ? `<p>No faces detected in the scanned photos.</p>`
-              : `<p>No faces yet; detection runs automatically in the background.</p>`)) + `</div>`;
+              ? `No faces detected in the scanned photos.`
+              : `No faces yet; detection runs automatically in the background.`)) + `</div>`;
         return;
       }
       wrap.innerHTML = `<div id="suggestwrap"></div><div class="people" id="peoplegrid"></div>`;
@@ -6908,7 +6927,7 @@
         `<div class="isec"><div class="h">Date <button class="linkbtn" onclick="editDate()">Edit</button></div>
        <div id="dateval" class="val">${fmtDate(it.date)}${dsrc}</div></div>` +
         `<div class="isec"><div class="h">Details</div>` +
-        kv("Type", it.type) + kv("Size", fmtBytes(it.size)) + kv("Dimensions", dims) + kv("Camera", cam) +
+        kv("Type", typeLabel(it.type)) + kv("Size", fmtBytes(it.size)) + kv("Dimensions", dims) + kv("Camera", cam) +
         kv("Coordinates", gps) + kv("Description", it.description ? esc(it.description) : "") + `</div>` +
         `<div class="isec"><div class="h">File</div>
        <div style="font-size:11px;color:var(--muted);word-break:break-all">${esc(it.rel_path)}</div>

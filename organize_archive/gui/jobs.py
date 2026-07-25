@@ -113,6 +113,11 @@ class JobManager:
         # When a stage's job errors, hold off auto-restarting that kind for a
         # cooldown so a hard failure can't hot-loop through the nudge path.
         self._error_at: dict[tuple[int, str], float] = {}
+        # Whole-pipeline pause (things_to_fix #19): one global flag, not
+        # per-archive -- only one archive is ever open at a time (see
+        # current_root_id). Seeded from the persisted config so a pause
+        # survives an app restart.
+        self._paused = bool(getattr(cfg, "pipeline_paused", False))
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
@@ -222,6 +227,9 @@ class JobManager:
         """
         return self._open_root_id
 
+    def paused(self) -> bool:
+        return self._paused
+
     def _error_ready(self, root_id: int, kind: str) -> bool:
         """True once a kind's post-error cooldown has elapsed (or none is set)."""
         at = self._error_at.get((root_id, kind))
@@ -316,6 +324,30 @@ class JobManager:
                 if job.status == "running" and job.root_id == closing:
                     self._cancels[jid].set()
 
+    def set_paused(self, value: bool) -> None:
+        """Toggle the whole-pipeline pause.
+
+        The in-memory flag is what actually gates the scheduler and cancels
+        running jobs, so it's set first and stays authoritative even if the
+        config write below fails -- a disk hiccup must not silently leave a
+        user who just asked to stop the CPU load still running.
+        """
+        self._paused = bool(value)
+        self.cfg.pipeline_paused = self._paused
+        try:
+            self.cfg.save()
+        except OSError:
+            pass
+        if self._paused:
+            # This is what actually stops the CPU load; jobs resume from
+            # their last committed batch, same mechanism as close_archive.
+            with self._lock:
+                for jid, job in self._jobs.items():
+                    if job.status == "running":
+                        self._cancels[jid].set()
+        else:
+            self.nudge()
+
     def nudge(self):
         """Wake the scheduler now after an archive has been opened."""
         self._auto_interval = self._AUTO_MIN
@@ -347,6 +379,8 @@ class JobManager:
         together; the DB-writer stages (dedup → places/pets → faces) start one at
         a time, matching the single write lock.
         """
+        if self._paused:
+            return False
         from . import pipeline, queries
         open_root_id = self._open_root_id
         if open_root_id is None:

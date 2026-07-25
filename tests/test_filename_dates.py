@@ -87,3 +87,45 @@ def test_no_date():
 def test_ignores_non_date_digits():
     # model-ish number that isn't a date shouldn't false-match
     assert fd.parse("DSC12345.jpg") is None
+
+
+def test_forced_day_first_no_year():
+    # Real archive filename: 18 > 12, so it can only be a day (DD-MM-YYYY).
+    dt, _ = fd.parse("Roberto_to_to_18-05-2015_10-48.mp4")
+    assert dt == datetime(2015, 5, 18, 10, 48)
+
+
+def test_forced_month_first_no_year():
+    # 25 > 12, so it can only be a day -> the first number must be the month.
+    dt, _ = fd.parse("08-25-2015_photo.jpg")
+    assert dt == datetime(2015, 8, 25)
+
+
+def test_ambiguous_uses_day_first_default():
+    dt, _ = fd.parse("05-08-2015.jpg")
+    assert dt == datetime(2015, 8, 5)
+
+
+def test_ambiguous_month_first_when_configured():
+    dt, _ = fd.parse("05-08-2015.jpg", day_first=False)
+    assert dt == datetime(2015, 5, 8)
+
+
+def test_both_over_12_invalid():
+    assert fd.parse("13-14-2015.jpg") is None
+
+
+def test_yfirst_dash_datetime_standard():
+    dt, _ = fd.parse("2020-05-14-09-30-00.jpg")
+    assert dt == datetime(2020, 5, 14, 9, 30, 0)
+
+
+def test_yfirst_dash_datetime_rescue():
+    # Real archive filename: month slot is 14 (invalid) -> rescued as Y-D-M.
+    dt, _ = fd.parse("2018-14-03-21-07-07.png")
+    assert dt == datetime(2018, 3, 14, 21, 7, 7)
+
+
+def test_date_only_yfirst_rescue():
+    dt, _ = fd.parse("vacation_2019-25-06.jpg")
+    assert dt == datetime(2019, 6, 25)

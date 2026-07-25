@@ -83,6 +83,10 @@ class Config:
     # Latches the one-time copy of a pre-existing shared catalog into the new
     # per-archive layout, so it runs at most once ever (see migrate_legacy_archive).
     legacy_migrated: bool = False
+    # Whole-pipeline pause (GUI "Library health" panel). A single flag, not
+    # per-archive: only one archive is ever open at a time. Persisted so a
+    # paused background pipeline stays paused across an app restart.
+    pipeline_paused: bool = False
 
     # Semantic Browse search (Voyage Multimodal 3.5). The API key is deliberately
     # not a config field: put VOYAGE_API_KEY in the ignored project-root .env
@@ -229,6 +233,11 @@ class Config:
     # Google Takeout's UTC timestamps to local wall-clock time, so evening
     # photos don't roll into the next day. None => keep UTC.
     timezone: str | None = None
+    # Day-vs-month order to assume for a numeric D-M-Y filename date that is
+    # genuinely ambiguous (both numbers <= 12, no forcing value on either
+    # side). Forced cases (either number > 12) resolve unambiguously
+    # regardless of this flag; this is only the tie-break fallback.
+    filename_date_day_first: bool = True
 
     @classmethod
     def load(cls) -> "Config":
@@ -327,7 +336,13 @@ class Config:
                 for sub in ("thumbs", "faces"):
                     cache_src = legacy_cache / sub
                     if cache_src.is_dir():
-                        shutil.copytree(cache_src, archive_cache_dir(aid) / sub)
+                        # dirs_exist_ok: this whole method must stay safe to
+                        # re-run (see the hard "resumable & idempotent" rule)
+                        # -- a prior attempt may have partially copied before
+                        # crashing or being interrupted, leaving the target
+                        # directory already present.
+                        shutil.copytree(cache_src, archive_cache_dir(aid) / sub,
+                                         dirs_exist_ok=True)
                 self.archives.append({"id": aid, "path": root_path, "added_at": _now_iso()})
             elif len(roots) > 1:
                 print(f"Note: {legacy_db} holds {len(roots)} roots from the previous "

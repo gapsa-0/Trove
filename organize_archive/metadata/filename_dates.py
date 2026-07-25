@@ -48,6 +48,42 @@ def _from_ms(ms) -> datetime | None:
         return None
 
 
+def _dt_yfirst_rescue(y, g1, g2, h=0, mi=0, s=0) -> datetime | None:
+    """Year-first date: assume (month=g1, day=g2) first (ISO order); if
+    that's invalid, retry as (month=g2, day=g1). Handles the rare Y-D-M
+    naming quirk without affecting any name that already parses under the
+    standard reading."""
+    return _dt(y, g1, g2, h, mi, s) or _dt(y, g2, g1, h, mi, s)
+
+
+def _forced_day_month(a: int, b: int) -> tuple[int, int] | None:
+    """(day, month) if a value > 12 forces the order, else None (ambiguous
+    when both <= 12, invalid when both > 12)."""
+    if a > 12 and b <= 12:
+        return a, b
+    if b > 12 and a <= 12:
+        return b, a
+    return None
+
+
+def _dt_two_number_date(a, b, y, day_first, h=0, mi=0, s=0, base_conf=0.55):
+    """Non-year-led numeric date (DD-MM-YYYY / MM-DD-YYYY). Resolved
+    unambiguously when one value is > 12; otherwise falls back to
+    `day_first` at a lower confidence since the order is a guess."""
+    a, b = int(a), int(b)
+    forced = _forced_day_month(a, b)
+    if forced is not None:
+        day, month = forced
+        conf = base_conf
+    elif a <= 12 and b <= 12:
+        day, month = (a, b) if day_first else (b, a)
+        conf = base_conf - 0.10
+    else:
+        return None  # both > 12: invalid
+    dt = _dt(y, month, day, h, mi, s)
+    return (dt, conf) if dt is not None else None
+
+
 # (regex, builder, confidence). Tried in order; first successful build wins.
 # Higher-confidence / more-specific patterns come first.
 _PATTERNS: list[tuple[re.Pattern, "callable", float]] = [
@@ -69,9 +105,20 @@ _PATTERNS: list[tuple[re.Pattern, "callable", float]] = [
     # 20220514090957 / BURST20240213093218240 / ..._20201226073741907
     (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\d{0,3}(?!\d)"),
      lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]), 0.75),
+    # Year-first, fully dash-separated date+time: 2018-14-03-21-07-07.
+    # Standard Y-M-D is tried first; rescued as Y-D-M only if that's invalid
+    # (no known app writes this shape, so both orders are attempted).
+    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})(?!\d)"),
+     lambda m: _dt_yfirst_rescue(m[1], m[2], m[3], m[4], m[5], m[6]), 0.75),
     # Date + HHMM (4-digit time, no seconds): IMG00243-20120105-1855
     (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})[-_](\d{2})(\d{2})(?!\d)"),
      lambda m: _dt(m[1], m[2], m[3], m[4], m[5]), 0.65),
+    # Non-year-led date+time: DD-MM-YYYY_HH-MM / MM-DD-YYYY_HH-MM (e.g. a
+    # WhatsApp-forwarded video renamed by the OS locale's date format).
+    # Dynamic confidence (see parse()): conf=None marks this entry.
+    (re.compile(r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2}|19\d{2})[_\-](\d{2})[-_.:](\d{2})(?!\d)"),
+     lambda m, day_first: _dt_two_number_date(
+         m[1], m[2], m[3], day_first, m[4], m[5], base_conf=0.65), None),
     # WhatsApp mobile: IMG-20220514-WA0001  (date only)
     (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})-WA\d+", re.IGNORECASE),
      lambda m: _dt(m[1], m[2], m[3]), 0.6),
@@ -80,9 +127,14 @@ _PATTERNS: list[tuple[re.Pattern, "callable", float]] = [
     (re.compile(r"(?:FB_IMG|FaceApp|picture|Signal|PANO|IMG|VID)[ _\-]?(1[0-9]{12})(?!\d)",
                 re.IGNORECASE),
      lambda m: _from_ms(m[1]), 0.6),
-    # Date only: 2022-05-14 / 2022_05_14 / 2022.05.14
+    # Date only: 2022-05-14 / 2022_05_14 / 2022.05.14 (rescued as Y-D-M if
+    # the standard Y-M-D reading is invalid, e.g. "2019-25-06").
     (re.compile(r"(?<!\d)(20\d{2}|19\d{2})[\-_\.](\d{2})[\-_\.](\d{2})(?!\d)"),
-     lambda m: _dt(m[1], m[2], m[3]), 0.55),
+     lambda m: _dt_yfirst_rescue(m[1], m[2], m[3]), 0.55),
+    # Non-year-led date only: DD-MM-YYYY / MM-DD-YYYY (dynamic confidence).
+    (re.compile(r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2}|19\d{2})(?!\d)"),
+     lambda m, day_first: _dt_two_number_date(
+         m[1], m[2], m[3], day_first, base_conf=0.55), None),
     # Bare 13-digit unix-ms timestamp (low confidence — could be an id).
     (re.compile(r"(?<!\d)(1[0-9]{12})(?!\d)"),
      lambda m: _from_ms(m[1]), 0.4),
@@ -92,11 +144,21 @@ _PATTERNS: list[tuple[re.Pattern, "callable", float]] = [
 ]
 
 
-def parse(name: str) -> tuple[datetime, float] | None:
-    """Return (datetime, confidence) for the first matching pattern, else None."""
+def parse(name: str, day_first: bool = True) -> tuple[datetime, float] | None:
+    """Return (datetime, confidence) for the first matching pattern, else None.
+
+    `day_first` only affects the non-year-led two-number-date patterns
+    (DD-MM-YYYY vs MM-DD-YYYY) when neither number forces the order.
+    """
     for rx, build, conf in _PATTERNS:
         m = rx.search(name)
-        if m:
+        if not m:
+            continue
+        if conf is None:
+            result = build(m, day_first)
+            if result is not None:
+                return result
+        else:
             dt = build(m)
             if dt is not None:
                 return dt, conf
