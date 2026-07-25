@@ -818,6 +818,10 @@
       position: relative;
       aspect-ratio: 1;
       background: var(--panel);
+      /* A tile is a <button>, so it inherits the UA's 1px 6px padding unless
+         told otherwise. That padding inset the thumbnail inside its own square
+         and showed the tile background as grey strips down both sides. */
+      padding: 0;
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
