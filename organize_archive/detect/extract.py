@@ -27,12 +27,12 @@ The same signal gives the stage its other job: **resolving true orientation**.
 EXIF is applied on decode and settles most photos, but this archive is full of
 re-exports whose pixels are turned while their orientation tag says they are
 not, and on those every model here fails — SCRFD finds no face at all and the
-person becomes a ``dog``. A ``person`` that reads clearly at a quarter turn and
-not upright says which way up the photo really is; it is recorded in
-``orientation`` and detection is redone there, so the boxes and the app's view
-of the photo are both upright. Deliberately narrow (see ``_resolve_rotation``):
-turning a correctly stored photo over is worse than leaving a sideways one
-alone, so only a frame-filling subject that out-reads the animal score moves.
+person becomes a ``dog``. A quorum of faces — or a ``person`` box — that resolves
+at a quarter turn and not upright says which way up the photo really is; it is
+recorded in ``orientation`` and detection is redone there, so the boxes and the
+app's view of the photo are both upright. Deliberately narrow (see
+``_resolve_rotation``): turning a correctly stored photo over is worse than
+leaving a sideways one alone.
 
 Resumable and incremental, like the stages it replaces: an image is pending when
 it lacks a current ``face_scan`` OR a current ``pet_scan`` row, and is processed
@@ -348,17 +348,30 @@ def _best_person(pet_be, img) -> tuple[float, float]:
     return (best.score, best.w * best.h / frame) if best else (0.0, 0.0)
 
 
-def _resolve_rotation(img, pet_be, cfg: Config, subject_share: float,
+def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float,
                       animal_score: float):
-    """Find the quarter turn that makes this photo's subject upright.
+    """Find the quarter turn that makes this photo's subjects upright.
 
-    The evidence is a YOLOX ``person`` reading that appears at a quarter turn
-    and *not* upright. That asymmetry is the signature of a sideways-stored
-    photo of a person, and it is what the pet cross-check already exploits.
+    Two kinds of evidence, in order of how specific they are:
+
+    **A quorum of faces.** Several faces that only resolve once the photo is
+    turned is decisive — people do not all lie down in the same direction. This
+    is what catches a sideways group photo, the case with the most to lose: one
+    such photo in this archive shows five faces at 90 degrees and none at all as
+    stored, so leaving it costs five people from People *and* leaves a phantom
+    pet on top of them. A quorum is required because a *lone* rotated face is
+    nearly always a doll, a cake figurine or someone lying down — that was
+    measured on this archive, and single-face evidence is not used at all.
+
+    **A person box.** A YOLOX ``person`` reading that appears at a quarter turn
+    and not upright. That asymmetry is the signature of a sideways-stored photo
+    of a person, and it is what the pet cross-check already exploits. It carries
+    less information than a face quorum, so it is fenced in much more tightly
+    (below).
 
     Being wrong here is expensive — turning a correctly stored photo over is
-    worse than leaving a sideways one alone — so every guard below earns its
-    place against a real counterexample from this archive:
+    worse than leaving a sideways one alone — so the person path's guards each
+    earn their place against a real counterexample from this archive:
 
     * **The subject must fill the frame.** Someone lying on the grass in a
       landscape shot reads as an upright person once turned, exactly like a
@@ -374,20 +387,30 @@ def _resolve_rotation(img, pet_be, cfg: Config, subject_share: float,
     * **It must beat the animal reading.** A cat close-up reads as a mediocre
       ``person`` from some angle; if the photo is a more confident animal the
       way it is stored, nothing moves.
-    * **Only the quarter turns.** Pixels stored upside down are vanishingly
-      rare, while detectors happily fire on upside-down subjects.
 
-    Faces are deliberately *not* used to decide this. On this archive a face
-    that only appears when the photo is turned is nearly always a doll, a cake
-    figurine or a person lying down rather than a sideways photo — the signal
-    is there, but its precision is not good enough to move photos on.
+    A face quorum needs none of those: it is already saying "several people are
+    upright this way", which no lying-down or close-up pet case can imitate.
+    Both paths try the quarter turns only — pixels stored upside down are
+    vanishingly rare, while detectors fire happily on upside-down subjects.
 
     Returns ``(degrees, confidence, source)``, or ``(0, 0.0, "")`` to leave the
     photo untouched.
     """
+    # A quorum of faces first: cheaper than the person path (SCRFD without
+    # ArcFace) and far more specific when it fires.
+    if face_be is not None:
+        best_deg, best = 0, []
+        for deg in (90, 270):
+            faces = [s for s in face_be.probe_faces(rotate_image(img, deg))
+                     if s >= cfg.faces_min_score]
+            if len(faces) > len(best):
+                best_deg, best = deg, faces
+        if len(best) >= cfg.orientation_min_faces:
+            return best_deg, max(best), "faces"
+
     # Three YOLOX passes — the most expensive thing in this stage — and they can
-    # only ever succeed on a dominant subject, so a photo without one skips them
-    # entirely.
+    # only ever succeed on a dominant subject in a landscape frame, so a photo
+    # without one skips them entirely.
     h, w = img.shape[:2]
     if (pet_be is None or subject_share < cfg.orientation_min_subject
             or w <= h):
@@ -460,7 +483,7 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                 if (face_be is not None and not found.report.faces
                         and (found.animals or found.humans)):
                     rotate, conf, orient_src = _resolve_rotation(
-                        img, pet_be, cfg, found.max_subject_share,
+                        img, face_be, pet_be, cfg, found.max_subject_share,
                         found.animal_score)
                     if rotate:
                         img = rotate_image(img, rotate)

@@ -88,12 +88,25 @@ class _PetBackend:
 
 
 class _FaceBackend:
-    """``faces`` upright; ``turned_faces`` once the frame has been rotated."""
+    """``faces`` upright; ``turned_faces`` once the frame has been rotated.
 
-    def __init__(self, faces, turned_faces=None):
+    ``probe`` maps a clockwise turn to the raw confidences an orientation probe
+    would see there, standing in for SCRFD's rotation sensitivity.
+    """
+
+    def __init__(self, faces, turned_faces=None, probe=None):
         self.faces = faces
         self.turned_faces = turned_faces
+        self.probe = probe or {}
         self.reports = 0
+        self.probed = []
+
+    _PROBE_ORDER = (90, 270)
+
+    def probe_faces(self, _img):
+        deg = self._PROBE_ORDER[len(self.probed)]
+        self.probed.append(deg)
+        return list(self.probe.get(deg, ()))
 
     def detect_report(self, _img, _scale=1.0):
         self.reports += 1
@@ -219,6 +232,54 @@ def test_a_sideways_photo_is_turned_upright_and_redetected(tmp_path, monkeypatch
     assert row["source"] == "person"
     assert row["confidence"] == pytest.approx(0.90)
     assert face_be.reports == 2                # upright, then the real frame
+    conn.close()
+
+
+def test_several_faces_agreeing_on_a_turn_turn_the_photo(tmp_path, monkeypatch):
+    """A sideways group photo: nothing resolves as stored, but a quarter turn
+    yields a quorum of faces. Several people are never all lying down the same
+    way, so this needs none of the person path's guards — the subject need not
+    fill the frame, and the bogus pet sitting on top of them goes with it."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([_animal(species="bird", w=40, h=30, score=.83)], [])
+    face_be = _FaceBackend([], turned_faces=[_face(), _face(x=60)],
+                           probe={90: (.78, .71, .70, .68, .61)})
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 1
+    assert stats.faces_found == 2           # people the upright pass never saw
+    assert stats.animals == 0               # and no phantom pet over them
+    row = conn.execute("SELECT * FROM orientation").fetchone()
+    assert (row["rotate_deg"], row["source"]) == (90, "faces")
+    assert row["confidence"] == pytest.approx(0.78)
+    conn.close()
+
+
+def test_two_weak_faces_are_not_a_quorum(tmp_path, monkeypatch):
+    """An upright meme collage yields two weak faces at a turn. Two was not
+    enough to trust on this archive."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([], [_human(w=30, h=40, score=.4)])
+    face_be = _FaceBackend([], probe={270: (.67, .61)})
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 0
+    assert conn.execute("SELECT COUNT(*) FROM orientation").fetchone()[0] == 0
+    conn.close()
+
+
+def test_one_rotated_face_is_never_a_reason_to_turn(tmp_path, monkeypatch):
+    """A lone face that only resolves when turned is a doll, a cake figurine or
+    someone lying down far more often than a sideways photo."""
+    conn = _catalog(tmp_path)
+    pet_be = _PetBackend([], [_human(w=30, h=40, score=.4)])
+    face_be = _FaceBackend([], probe={90: (.95,)})
+
+    stats = _run(conn, Config(), pet_be, face_be, monkeypatch)
+
+    assert stats.rotated == 0
     conn.close()
 
 

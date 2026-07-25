@@ -276,6 +276,18 @@ class FaceBackend:
         inside_h = max(0.0, min(y + h, image_h) - max(y, 0.0))
         return max(0.0, min(1.0, 1.0 - (inside_w * inside_h / area)))
 
+    def probe_faces(self, img_bgr) -> list[float]:
+        """Face confidences only — no alignment, no embedding.
+
+        For comparing the same photo at several rotations, where only "which way
+        up produces faces" matters. ArcFace is the expensive half of a
+        detect_report call, so skipping it keeps an orientation probe cheap.
+        """
+        bboxes, _kpss = self._det.detect(img_bgr, input_size=self.det_size)
+        if bboxes is None or len(bboxes) == 0:
+            return []
+        return [float(b[4]) for b in bboxes]
+
     def detect_report(self, img_bgr, scale: float = 1.0,
                       *, apply_quality_gate: bool = True) -> DetectionReport:
         """Detect + embed faces in a preloaded BGR image.

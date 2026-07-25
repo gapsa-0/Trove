@@ -166,6 +166,12 @@ class Config:
     # `person` reading is the fallback and needs both an absolute score and a
     # clear margin over upright, because person scores vary far less between
     # turns than face scores do.
+    # Faces that must resolve at the same quarter turn before that turn is
+    # believed. Several people are never all lying down the same way, so a quorum
+    # is decisive; a lone rotated face is nearly always a doll, a cake figurine
+    # or someone lying down (measured on-archive), and two was still thin — a
+    # meme collage produced two weak ones. Three separates every case seen here.
+    orientation_min_faces: int = 3
     orientation_person_min: float = 0.75
     orientation_person_margin: float = 0.25
     # Share of the frame a lone subject must cover before its own angle is taken

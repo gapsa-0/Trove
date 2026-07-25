@@ -35,8 +35,9 @@ application-data folder.
   whose pixels are stored turned while its EXIF says otherwise (common among
   re-exports of the same shot) is recognised by the detectors and displayed
   upright. The file on disk is never modified. This only applies where there is
-  solid evidence — a person filling the frame — so photos of scenery, documents
-  or distant subjects are shown exactly as stored.
+  solid evidence — several faces that line up once the photo is turned, or a
+  person filling the frame — so photos of scenery, documents or distant subjects
+  are shown exactly as stored.
 - Generates cached thumbnails and serves the interface only on `127.0.0.1`.
 
 When an archive is open in the app, its pipeline runs automatically:
