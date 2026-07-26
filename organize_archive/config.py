@@ -147,6 +147,26 @@ class Config:
     # detectors run on that array, so ~150k photos are decoded once, not twice.
     detect_max_side: int = 1280      # long-side cap for the single shared decode
 
+    # Video detection. Videos are detected from a handful of sampled keyframes
+    # rather than decoded frame-by-frame (mirrors semantic.py's video indexing).
+    detect_video_frames: int = 5      # keyframes sampled per video; 0 disables
+                                      # video detection entirely (falls back to
+                                      # today's images-only behaviour)
+    detect_video_frame_px: int = 1280  # width frames are extracted at. LOAD-
+                                      # BEARING, not cosmetic: detection boxes for
+                                      # a video are stored in the *extracted
+                                      # frame's* pixel coordinates, so a crop must
+                                      # re-extract at this exact size later.
+                                      # Changing it invalidates existing video
+                                      # detections (their boxes no longer line up
+                                      # with a freshly extracted frame).
+    detect_video_same_face: float = 0.55  # cosine similarity above which two
+                                      # faces found in different frames of the
+                                      # SAME video are considered the same person
+                                      # and collapsed to one row
+    detect_video_same_animal: float = 0.80  # same, for animal DINOv2 embeddings
+                                      # (same species is additionally required)
+
     # Pets. YOLOX detects animal regions locally; identities are grouped from a
     # DINOv2 re-ID embedding of each crop (cache/models/dinov2_pet/). The animal
     # boxes also cross-check the face pass: a face mostly inside an animal box is

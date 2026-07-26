@@ -16,7 +16,7 @@ it. It is pinned from SourceForge rather than exiftool.org, which serves only th
 current version and would break the pin at the next upstream release.
 
 ExifTool is explicitly `unavailable` on Linux: its upstream Linux distribution is
-Perl source, not a self-contained executable, and Archive must not silently
+Perl source, not a self-contained executable, and Trove must not silently
 depend on the tester's host Perl/runtime. The application continues with safe
 date fallbacks (Takeout sidecars, filename parsing, mtime), but Linux builds read
 no embedded EXIF — camera make/model, orientation and GPS are missing for files

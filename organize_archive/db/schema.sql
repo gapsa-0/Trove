@@ -192,6 +192,11 @@ CREATE TABLE IF NOT EXISTS faces (
     not_person INTEGER NOT NULL DEFAULT 0,  -- 1 = user marked "not a person" (doll/animal/cartoon); excluded from clustering
     nonhuman_kind TEXT,              -- animal | toy | cartoon | false_detection
     nonhuman_source TEXT,            -- manual | animal-overlap:<model>
+    -- Videos are detected on a handful of sampled keyframes, not on the file
+    -- itself, so a box means nothing without knowing WHICH frame it came from.
+    -- Holds the ffmpeg -ss offset ("00:00:07") the crop must be taken from;
+    -- NULL for photos, where the file IS the image.
+    frame_offset TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_faces_file   ON faces(file_id);
@@ -238,6 +243,7 @@ CREATE TABLE IF NOT EXISTS animal_detections (
     pet_id         INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     manual_pet     TEXT,
     model_source   TEXT NOT NULL,
+    frame_offset   TEXT,            -- sampled-keyframe offset for videos; NULL for photos (see faces.frame_offset)
     created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_animals_file ON animal_detections(file_id);
@@ -322,6 +328,70 @@ CREATE TABLE IF NOT EXISTS pet_links (
     created_at TEXT NOT NULL,
     PRIMARY KEY (det_a, det_b)
 );
+
+-- One drag-to-merge, recorded so it can be undone. Merging is destructive on
+-- the losing side (its faces move, its persons row is deleted), so undo needs
+-- the losing side written down: which faces to move back, what it was called,
+-- and which face_links row the merge wrote (deleting that row is what stops
+-- the next recluster from silently re-merging them).
+CREATE TABLE IF NOT EXISTS person_merges (
+    id           INTEGER PRIMARY KEY,
+    survivor_id  INTEGER NOT NULL,        -- persons.id kept by the merge (may be reclustered away later)
+    survivor_name TEXT,                   -- name at merge time, to re-find the survivor after a recluster
+    dropped_name TEXT,                    -- name the losing cluster carried, restored on undo
+    face_ids     TEXT NOT NULL,           -- JSON array of the faces the merge moved
+    link_a       INTEGER,                 -- the face_links row this merge wrote
+    link_b       INTEGER,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_person_merges_survivor ON person_merges(survivor_id);
+
+-- Same, for pets. Undo is simpler here: cluster_pets rebuilds `pets` wholesale
+-- from pet_links, so deleting the recorded link and reclustering is enough --
+-- no detections need moving by hand.
+CREATE TABLE IF NOT EXISTS pet_merges (
+    id           INTEGER PRIMARY KEY,
+    survivor_id  INTEGER NOT NULL,
+    survivor_name TEXT,
+    dropped_name TEXT,
+    det_ids      TEXT NOT NULL,           -- JSON array of the detections folded in
+    link_a       INTEGER,
+    link_b       INTEGER,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pet_merges_survivor ON pet_merges(survivor_id);
+
+-- "This person is in this photo" stated by hand, for media where no face was
+-- detected at all (a back of a head, a video still, a group shot the detector
+-- missed). Deliberately NOT a face row: there is no box and no embedding, so it
+-- must never reach clustering.
+--
+-- Anchored by NAME as well as id, for the same reason faces.manual_person is:
+-- faces/cluster.py deletes and recreates persons rows, so an id alone would rot
+-- on the next pass. Only NAMED people can be tagged this way (the endpoint
+-- enforces it), which is what makes the name a usable anchor -- see
+-- queries.repair_manual_person_files.
+CREATE TABLE IF NOT EXISTS person_files (
+    person_id   INTEGER NOT NULL,
+    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    person_name TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (person_id, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_person_files_file ON person_files(file_id);
+CREATE INDEX IF NOT EXISTS idx_person_files_name ON person_files(person_name);
+
+-- Same, for pets. The name anchor is load-bearing here rather than defensive:
+-- cluster_pets DELETEs the whole `pets` table on every detect chunk.
+CREATE TABLE IF NOT EXISTS pet_files (
+    pet_id     INTEGER NOT NULL,
+    file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    pet_name   TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (pet_id, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pet_files_file ON pet_files(file_id);
+CREATE INDEX IF NOT EXISTS idx_pet_files_name ON pet_files(pet_name);
 
 -- Matched Google Takeout sidecar, with the fields we consume.
 CREATE TABLE IF NOT EXISTS takeout_sidecar (

@@ -230,7 +230,16 @@ def _refresh_person_stats(conn, pids) -> None:
 def _finalize(conn, stats, now, progress):
     """Re-apply manual pins, tidy affected person stats, commit. Every return path
     of cluster_faces goes through here so pins are honored even when the automatic
-    clustering found nothing."""
+    clustering found nothing.
+
+    Also repairs person_files (manual "this person is in this photo" tags for
+    media with no detected face at all): cluster_faces just DELETEd and
+    rebuilt every `persons` row above, so any manual tag whose person_id no
+    longer carries its anchored name needs re-pointing at whichever person
+    (if any) carries it now. This is the single choke point every return path
+    goes through, so it's the one place that needs the call."""
+    from ..gui.queries import repair_manual_person_files
+    repair_manual_person_files(conn)
     _refresh_person_stats(conn, _apply_manual_pins(conn, now))
     stats.people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
     conn.commit()

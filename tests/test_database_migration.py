@@ -29,8 +29,11 @@ def _insert_video_row(conn, file_id=1):
 def test_fresh_database_lands_on_schema_version_12():
     conn = db.connect(":memory:")
     db.init_db(conn)
-    assert db.SCHEMA_VERSION == 12
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+    # SCHEMA_VERSION has since moved past 12 (faces/animal_detections.frame_offset,
+    # for video detection), so this only pins "a fresh db lands on the current
+    # version", not the literal number in this test's name.
+    assert db.SCHEMA_VERSION >= 12
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
 
 
 def test_pre_12_database_clears_stale_video_embeddings_on_upgrade():
@@ -54,7 +57,9 @@ def test_pre_12_database_clears_stale_video_embeddings_on_upgrade():
         "SELECT COUNT(*) FROM semantic_embeddings WHERE input_kind='video'"
     ).fetchone()[0]
     assert remaining == 0
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+    # Landed on (at least) version 12, whatever later migrations have since
+    # bumped SCHEMA_VERSION to.
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
 
 
 def test_already_current_database_never_reruns_the_video_cleanup():

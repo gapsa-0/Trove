@@ -36,22 +36,31 @@ def _clusters(vectors, threshold):
 
 
 def _apply_links(conn, groups, emb_rows):
-    """Fold durable "same pet?" answers (``pet_links``) into the automatic
-    groups, mirroring ``faces/cluster.py``'s ``_apply_links`` (read that one
-    first). Links are anchored to DETECTION ids rather than pet ids because
-    ``cluster_pets`` deletes and rebuilds every ``pets`` row after EVERY detect
-    chunk (see ``gui/jobs.py``'s ``cluster_pets`` call) -- a pet id from the run
-    a link was recorded in no longer exists by the time this runs again, but
-    its member detections do. Called on the flat, all-species group list
-    *before* ``pets_min_detections`` is applied, so a link can union two
-    groups that came from *different* per-species passes: a dog once
-    misdetected as a cat still needs to rejoin its real identity.
+    """Fold durable "same pet?" / "different pet?" answers (``pet_links``)
+    into the automatic groups, mirroring ``faces/cluster.py``'s
+    ``_apply_links`` (read that one first). Links are anchored to DETECTION
+    ids rather than pet ids because ``cluster_pets`` deletes and rebuilds
+    every ``pets`` row after EVERY detect chunk (see ``gui/jobs.py``'s
+    ``cluster_pets`` call) -- a pet id from the run a link was recorded in no
+    longer exists by the time this runs again, but its member detections do.
+    Called on the flat, all-species group list *before*
+    ``pets_min_detections`` is applied, so a link can union two groups that
+    came from *different* per-species passes: a dog once misdetected as a cat
+    still needs to rejoin its real identity.
+
+    'same' is a must-link (unions two groups); 'different' is a cannot-link
+    written by unmerge_pets to keep an undone merge from silently reforming --
+    it BLOCKS a union that would put its two detections' groups together,
+    taking precedence over any 'same' chain (mirrors faces/cluster.py's
+    cannot-link-wins rule exactly). Like that version, this only affects the
+    merge graph among the automatic groups -- it never splits a group the
+    automatic pass already formed on its own.
 
     A link is ignored when either detection no longer exists (its file was
     removed, or it was never embedded) or when both are already in the same
     group. Returns ``groups`` unchanged when there are no links at all."""
     links = conn.execute(
-        "SELECT det_a, det_b FROM pet_links WHERE kind='same'").fetchall()
+        "SELECT det_a, det_b, kind FROM pet_links").fetchall()
     if not links:
         return groups
     det_to_group: dict[int, int] = {}
@@ -70,13 +79,23 @@ def _apply_links(conn, groups, emb_rows):
             x = parent[x]
         return x
 
+    same, cannot = [], []
     for link in links:
         ga = det_to_group.get(link["det_a"])
         gb = det_to_group.get(link["det_b"])
-        if ga is None or gb is None:
+        if ga is None or gb is None or ga == gb:
             continue
+        (same if link["kind"] == "same" else cannot).append((ga, gb))
+
+    def would_violate(ra, rb):
+        for ga, gb in cannot:
+            if {find(ga), find(gb)} == {ra, rb}:
+                return True
+        return False
+
+    for ga, gb in same:
         ra, rb = find(ga), find(gb)
-        if ra != rb:
+        if ra != rb and not would_violate(ra, rb):
             parent[ra] = rb
 
     merged: dict[int, list[int]] = {}
@@ -107,6 +126,12 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     conn.execute("DELETE FROM pets")
     now = db.now_iso()
 
+    # pet_files (manual "this pet is in this photo" tags) anchor by NAME
+    # because `pets` is rebuilt wholesale on every call, unlike persons this
+    # isn't a defensive backstop -- pet ids are GUARANTEED to change every
+    # chunk, so every return path below must repair before it commits.
+    from ..gui.queries import repair_manual_pet_files
+
     # One global embedding matrix (rather than per-species, as before) so a
     # pet_links merge (below) can union two groups formed in different
     # per-species passes -- a merge needs both sides addressable by the same
@@ -115,6 +140,7 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     emb_rows = [row for row in rows if row["embedding"]]
     if not emb_rows:
         stats.unassigned = stats.detections
+        repair_manual_pet_files(conn)
         conn.commit()
         return stats
     V = np.array(
@@ -172,5 +198,6 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
         stats.clustered += len(group)
         stats.names_preserved += int(best_name is not None)
     stats.unassigned = stats.detections - stats.clustered
+    repair_manual_pet_files(conn)
     conn.commit()
     return stats

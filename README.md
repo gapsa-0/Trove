@@ -1,6 +1,6 @@
-# Archive
+# Trove
 
-Archive is a desktop catalogue for a large, messy media collection: family photos,
+Trove is a desktop catalogue for a large, messy media collection: family photos,
 videos, audio, documents, phone dumps, and Google Takeout exports spread across one
 or more folders. It indexes the collection in place so it can be browsed by date,
 person, place, type, folder, and duplicate group.
@@ -59,12 +59,12 @@ active stage and progress.
 
 The normal catalogue is local-first. Scanning, hashing, metadata extraction,
 duplicates, thumbnails, place clustering, face detection, face embeddings, face
-clustering, and the SQLite catalogue all stay on the machine. Archive has no telemetry
+clustering, and the SQLite catalogue all stay on the machine. Trove has no telemetry
 and does not modify source media. Enabling the map's street-map layer fetches public
 map tiles online, which discloses the viewed coordinates but never uploads photos.
 
 Optional multimodal embedding is the one exception. If `VOYAGE_API_KEY` is available,
-Archive automatically indexes compatible canonical media with Voyage Multimodal and
+Trove automatically indexes compatible canonical media with Voyage Multimodal and
 stores the returned vectors locally in SQLite. It sends a downscaled cached JPEG for
 images where possible, or the original compatible MP4 video; it never sends an
 original image merely because a thumbnail was available. Audio, PDFs, other document
@@ -78,7 +78,7 @@ Put the key in a project-root `.env` file or in the environment of the app proce
 VOYAGE_API_KEY=...
 ```
 
-The key is deliberately not stored in Archive's `config.json`. Embedding is resumable,
+The key is deliberately not stored in Trove's `config.json`. Embedding is resumable,
 does not process hidden duplicates, and can run alongside the local pipeline.
 
 ## Install and run the desktop app
@@ -92,8 +92,8 @@ release guide for the current publication and signing requirements.
 For an AppImage:
 
 ```bash
-chmod +x Archive-<version>.AppImage
-./Archive-<version>.AppImage
+chmod +x Trove-<version>.AppImage
+./Trove-<version>.AppImage
 ```
 
 For Debian or Ubuntu:
@@ -102,7 +102,7 @@ For Debian or Ubuntu:
 sudo apt install ./organize-archive-desktop_<version>_amd64.deb
 ```
 
-Linux packages bundle FFmpeg and FFprobe. ExifTool is optional: without it, Archive
+Linux packages bundle FFmpeg and FFprobe. ExifTool is optional: without it, Trove
 still uses Takeout sidecars, filenames, and file timestamps, but cannot read the full
 range of embedded metadata.
 
@@ -112,18 +112,18 @@ signature, and uninstall behavior.
 
 ### First use
 
-Open Archive and choose the folder containing your media. Opening that archive starts
+Open Trove and choose the folder containing your media. Opening that archive starts
 the automatic pipeline. You can add additional folders from the archive picker. An
 archive whose drive is disconnected remains registered and is shown as unavailable;
 mount it again to continue.
 
-Removing an archive from Archive removes its catalogue records and derived cache for
+Removing an archive from Trove removes its catalogue records and derived cache for
 that archive after background work has stopped. It does not remove the selected source
 folder or any file under it.
 
 ## Command line and source setup
 
-Archive requires Python 3.13 or newer. Create a virtual environment and install the
+Trove requires Python 3.13 or newer. Create a virtual environment and install the
 package with the extras appropriate to the features you want:
 
 ```bash
@@ -174,7 +174,7 @@ folder*. Use the packaged desktop app if you want to click through a folder dial
 
 ## Data locations and backups
 
-Archive keeps mutable data outside both the source archive and the installed app:
+Trove keeps mutable data outside both the source archive and the installed app:
 
 | Platform | Default location |
 | --- | --- |
@@ -184,7 +184,7 @@ Archive keeps mutable data outside both the source archive and the installed app
 
 This directory contains `archive.db`, `config.json`, cached thumbnails, face/model
 assets, and logs. It is valuable derived data: back it up by copying the directory
-while Archive is closed. Restoring it does not change the original media.
+while Trove is closed. Restoring it does not change the original media.
 
 ## Build the desktop app
 

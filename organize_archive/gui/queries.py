@@ -10,6 +10,7 @@ has the one root anyway).
 from __future__ import annotations
 
 import os
+import json
 import math
 import struct
 import shutil
@@ -200,7 +201,13 @@ def timeline(db_path: str, root_id=None, bucket="month", year=None, month=None,
         selected_people = list(dict.fromkeys(
             person_ids or ([person_id] if person_id else [])))
         for selected_person in selected_people:
-            where.append("f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=?)")
+            # Mirrors media()'s person filter (see the comment there): union in
+            # person_files so manually tagged files count too, without a
+            # correlated EXISTS.
+            where.append(
+                "f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
+                "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)")
+            params.append(selected_person)
             params.append(selected_person)
         if cluster_id:
             where.append(
@@ -377,7 +384,14 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
         selected_people = list(dict.fromkeys(
             person_ids or ([person_id] if person_id else [])))
         for selected_person in selected_people:
-            where.append("f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=?)")
+            # UNION of two `SELECT file_id` subqueries inside the same IN, so
+            # manually tagged files (person_files, for media with no detected
+            # face) match the filter too, without reshaping this into the
+            # correlated-EXISTS shape the comment above warns off.
+            where.append(
+                "f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
+                "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)")
+            params.append(selected_person)
             params.append(selected_person)
         if cluster_id:
             where.append(
@@ -555,7 +569,12 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
         selected_people = list(dict.fromkeys(
             person_ids or ([person_id] if person_id else [])))
         for selected_person in selected_people:
-            where.append("f.id IN (SELECT file_id FROM faces WHERE person_id=?)")
+            # Mirrors media()'s person filter: union in person_files so
+            # manually tagged files (no detected face) match too.
+            where.append(
+                "f.id IN (SELECT file_id FROM faces WHERE person_id=? "
+                "UNION SELECT file_id FROM person_files WHERE person_id=?)")
+            params.append(selected_person)
             params.append(selected_person)
         if cluster_id:
             where.append("f.id IN (SELECT file_id FROM place_cluster_members WHERE cluster_id=?)")
@@ -710,14 +729,20 @@ def pets_pending(db_path: str, root_id=None, model_source=None) -> int:
         conn.close()
 
 
-def detect_pending(db_path: str, root_id=None, model_source=None) -> int:
-    """Present canonical images missing a current face OR pet scan — the fused
-    detect stage's backlog (mirrors detect.extract.pending_count). One image is
+def detect_pending(db_path: str, root_id=None, model_source=None,
+                   detect_video_frames: int = 0) -> int:
+    """Present canonical media missing a current face OR pet scan — the fused
+    detect stage's backlog (mirrors detect.extract.pending_count). One file is
     'pending' if either detector still owes it work, so the scheduler keeps the
-    single detect stage running until both are drained."""
+    single detect stage running until both are drained.
+
+    ``detect_video_frames`` mirrors ``cfg.detect_video_frames``: videos only
+    count toward the backlog when it is > 0, otherwise the stage would never
+    reach "up to date" while video detection is disabled."""
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
+        media_types = "('image','video')" if detect_video_frames > 0 else "('image')"
         params = [model_source, *rp]
         return conn.execute(
             f"""SELECT COUNT(*) FROM files f
@@ -727,20 +752,24 @@ def detect_pending(db_path: str, root_id=None, model_source=None) -> int:
                        OR ps.file_id IS NULL
                        OR ps.source_sha256 IS NOT f.sha256
                        OR ps.model_source IS NOT ?)
-                  AND {_NOT_HIDDEN} AND f.media_type='image'{rc}""",
+                  AND {_NOT_HIDDEN} AND f.media_type IN {media_types}{rc}""",
             params).fetchone()[0]
     finally:
         conn.close()
 
 
-def pet_summary(db_path: str, root_id=None, model_source=None) -> dict:
+def pet_summary(db_path: str, root_id=None, model_source=None,
+                detect_video_frames: int = 0) -> dict:
     from ..pets import backend as pet_backend
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
+        # See face_summary: videos only join the counted population once the
+        # detect stage actually processes them.
+        media_types = "('image','video')" if detect_video_frames > 0 else "('image')"
         total = conn.execute(
             f"""SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}
-                AND f.media_type='image'{rc}""", rp).fetchone()[0]
+                AND f.media_type IN {media_types}{rc}""", rp).fetchone()[0]
         scan_filter = " AND s.source_sha256 IS f.sha256"
         scan_params = list(rp)
         if model_source is not None:
@@ -788,10 +817,29 @@ def pet_groups(db_path: str, root_id=None, limit=120, offset=0) -> dict:
                 ORDER BY CASE WHEN NULLIF(TRIM(p.name),'') IS NULL THEN 1 ELSE 0 END,
                          detections DESC,a.pet_id
                 LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
+        # Manual-only tags (pet_files), same treatment as face_persons: a
+        # second small query scoped to this page's pet ids, counting only
+        # files not already reachable through animal_detections for that pet.
+        pids = [row["pet_id"] for row in rows]
+        manual_counts: dict[int, int] = {}
+        if pids:
+            marks = ",".join("?" for _ in pids)
+            rc2 = rc.replace("f.root_id", "f2.root_id") if rc else rc
+            manual_rows = conn.execute(
+                f"""SELECT pf.pet_id pid, COUNT(*) c
+                    FROM pet_files pf JOIN files f2 ON f2.id=pf.file_id
+                    WHERE pf.pet_id IN ({marks})
+                      AND f2.present=1 AND f2.hidden=0{rc2}
+                      AND pf.file_id NOT IN (
+                          SELECT a2.file_id FROM animal_detections a2
+                          WHERE a2.pet_id=pf.pet_id)
+                    GROUP BY pf.pet_id""", (*pids, *rp)).fetchall()
+            manual_counts = {row["pid"]: row["c"] for row in manual_rows}
         return {"pets": [{
             "id": row["pet_id"], "name": row["name"], "species": row["species"],
             "cover_detection_id": row["cover_detection_id"],
-            "detections": row["detections"], "photos": row["photos"],
+            "detections": row["detections"],
+            "photos": row["photos"] + manual_counts.get(row["pet_id"], 0),
         } for row in rows], "offset": offset, "count": len(rows)}
     finally:
         conn.close()
@@ -821,6 +869,10 @@ def animal_gallery(db_path: str, root_id=None, limit=120, offset=0,
 
 
 def pet_group(db_path: str, pet_id: int, root_id=None, limit=120, offset=0):
+    """Files this pet appears in: files with a detection of them, UNION ALL
+    files manually tagged with them (pet_files) that don't already have such
+    a detection -- mirrors face_person. Manual-only items carry
+    detection_id=None."""
     conn = db.open_readonly(db_path)
     try:
         pet = conn.execute(
@@ -829,18 +881,37 @@ def pet_group(db_path: str, pet_id: int, root_id=None, limit=120, offset=0):
             return None
         rc, rp = _root_clause(root_id)
         rows = conn.execute(
-            f"""SELECT f.id,f.rel_path,d.best_datetime dt,a.id detection_id
-                FROM animal_detections a JOIN files f ON f.id=a.file_id
-                LEFT JOIN dates d ON d.file_id=f.id
-                WHERE a.pet_id=? AND {_NOT_HIDDEN}{rc}
-                ORDER BY (d.best_datetime IS NULL),d.best_datetime DESC,f.id
+            f"""SELECT id, rel_path, dt, detection_id FROM (
+                    SELECT f.id AS id, f.rel_path, d.best_datetime AS dt,
+                           a.id AS detection_id
+                    FROM animal_detections a JOIN files f ON f.id=a.file_id
+                    LEFT JOIN dates d ON d.file_id=f.id
+                    WHERE a.pet_id=? AND {_NOT_HIDDEN}{rc}
+                    UNION ALL
+                    SELECT f.id AS id, f.rel_path, d.best_datetime AS dt,
+                           NULL AS detection_id
+                    FROM pet_files pf JOIN files f ON f.id=pf.file_id
+                    LEFT JOIN dates d ON d.file_id=f.id
+                    WHERE pf.pet_id=? AND {_NOT_HIDDEN}{rc}
+                      AND pf.file_id NOT IN (
+                          SELECT a2.file_id FROM animal_detections a2
+                          WHERE a2.pet_id=?)
+                )
+                ORDER BY (dt IS NULL),dt DESC,id
                 LIMIT ? OFFSET ?""",
-            (pet_id, *rp, limit, offset)).fetchall()
+            (pet_id, *rp, pet_id, *rp, pet_id, limit, offset)).fetchall()
         total = conn.execute(
-            f"""SELECT COUNT(DISTINCT a.file_id) FROM animal_detections a
-                JOIN files f ON f.id=a.file_id
-                WHERE a.pet_id=? AND {_NOT_HIDDEN}{rc}""",
-            (pet_id, *rp)).fetchone()[0]
+            f"""SELECT
+                    (SELECT COUNT(DISTINCT a.file_id) FROM animal_detections a
+                     JOIN files f ON f.id=a.file_id
+                     WHERE a.pet_id=? AND {_NOT_HIDDEN}{rc})
+                  + (SELECT COUNT(*) FROM pet_files pf
+                     JOIN files f ON f.id=pf.file_id
+                     WHERE pf.pet_id=? AND {_NOT_HIDDEN}{rc}
+                       AND pf.file_id NOT IN (
+                           SELECT a2.file_id FROM animal_detections a2
+                           WHERE a2.pet_id=?))""",
+            (pet_id, *rp, pet_id, *rp, pet_id)).fetchone()[0]
         return {
             "id": pet["id"], "name": pet["name"], "species": pet["species"],
             "photos": total,
@@ -849,9 +920,35 @@ def pet_group(db_path: str, pet_id: int, root_id=None, limit=120, offset=0):
                        "type": "image", "has_gps": False}
                       for row in rows],
             "offset": offset, "count": len(rows),
+            "merges": _pet_merges_for(conn, pet_id, pet["name"]),
         }
     finally:
         conn.close()
+
+
+def _pet_merges_for(conn, pet_id, name) -> list[dict]:
+    """Merges this pet can undo. Looked up by survivor_id OR by survivor_name
+    (when non-empty), mirroring _person_merges_for: cluster_pets rebuilds
+    `pets` wholesale after every detect chunk, so a merge's survivor_id can
+    rot -- the name is the durable anchor."""
+    name = name or ""
+    rows = conn.execute(
+        """SELECT id, dropped_name, det_ids, created_at FROM pet_merges
+           WHERE survivor_id=? OR (? != '' AND survivor_name=?)
+           ORDER BY created_at DESC""",
+        (pet_id, name, name)).fetchall()
+    out = []
+    for row in rows:
+        dids = json.loads(row["det_ids"])
+        photos = 0
+        if dids:
+            marks = ",".join("?" for _ in dids)
+            photos = conn.execute(
+                f"SELECT COUNT(DISTINCT file_id) FROM animal_detections WHERE id IN ({marks})",
+                dids).fetchone()[0]
+        out.append({"id": row["id"], "dropped_name": row["dropped_name"],
+                    "photos_folded_in": photos, "created_at": row["created_at"]})
+    return out
 
 
 def rename_pet(db_path: str, pet_id, name: str) -> dict:
@@ -947,20 +1044,24 @@ def review_nonhuman(db_path: str, detection_id, verdict: str) -> dict:
         conn.close()
 
 
-def face_summary(db_path: str, root_id=None) -> dict:
+def face_summary(db_path: str, root_id=None, detect_video_frames: int = 0) -> dict:
     from ..faces import backend as fb
     conn = db.open_readonly(db_path)
     try:
         rc, rp = _root_clause(root_id)
-        # Face detection only runs on canonical (non-duplicate) images, so every
+        # Face detection only runs on canonical (non-duplicate) media, so every
         # count here is over _NOT_HIDDEN, the "total" is unique media, matching
-        # the people grid and what actually gets scanned.
+        # the people grid and what actually gets scanned. Videos only count
+        # once the detect stage actually processes them (detect_video_frames >
+        # 0) — otherwise this would claim videos are "unscanned" forever even
+        # though the stage deliberately skips them while the feature is off.
+        media_types = "('image','video')" if detect_video_frames > 0 else "('image')"
         total_images = conn.execute(
-            f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN} AND f.media_type='image'{rc}",
+            f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN} AND f.media_type IN {media_types}{rc}",
             rp).fetchone()[0]
         scanned = conn.execute(
             f"""SELECT COUNT(*) FROM files f JOIN face_scan s ON s.file_id=f.id
-                WHERE {_NOT_HIDDEN} AND f.media_type='image'{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND f.media_type IN {media_types}{rc}""", rp).fetchone()[0]
         faces = conn.execute(
             f"""SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id
                 WHERE {_NOT_HIDDEN} AND fa.not_person=0{rc}""", rp).fetchone()[0]
@@ -1021,10 +1122,34 @@ def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
                          faces DESC, pid
                 LIMIT ? OFFSET ?""", (*rp, limit, offset)).fetchall()
         prev = _preview_faces(conn, [r["pid"] for r in rows])
+        # Manual-only tags (person_files) aren't reachable from the faces JOIN
+        # above, so a person's card would undercount photos for anyone also
+        # tagged by hand on a file with no detected face of them. Rather than
+        # reshape the main query (see the long comment in media() about why a
+        # correlated EXISTS over this archive is a trap), do a second small
+        # query scoped to just this page's person ids, counting only files
+        # NOT already reachable through faces for that same person so a file
+        # tagged both ways still counts once.
+        pids = [r["pid"] for r in rows]
+        manual_counts: dict[int, int] = {}
+        if pids:
+            marks = ",".join("?" for _ in pids)
+            rc2 = rc.replace("f.root_id", "f2.root_id") if rc else rc
+            manual_rows = conn.execute(
+                f"""SELECT pf.person_id pid, COUNT(*) c
+                    FROM person_files pf JOIN files f2 ON f2.id=pf.file_id
+                    WHERE pf.person_id IN ({marks})
+                      AND f2.present=1 AND f2.hidden=0{rc2}
+                      AND pf.file_id NOT IN (
+                          SELECT fa2.file_id FROM faces fa2
+                          WHERE fa2.person_id=pf.person_id)
+                    GROUP BY pf.person_id""", (*pids, *rp)).fetchall()
+            manual_counts = {r["pid"]: r["c"] for r in manual_rows}
         people = [{
             "id": r["pid"], "name": r["name"], "cover_face_id": r["cover_face_id"],
             "faces_preview": prev.get(r["pid"], []),
-            "photos": r["photos"], "faces": r["faces"],
+            "photos": r["photos"] + manual_counts.get(r["pid"], 0),
+            "faces": r["faces"],
         } for r in rows]
         return {"people": people, "offset": offset, "count": len(people)}
     finally:
@@ -1033,6 +1158,10 @@ def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
 
 def face_person(db_path: str, person_id: int, root_id=None,
                 limit=120, offset=0) -> dict | None:
+    """Files this person appears in: files with a detected face of them,
+    UNION ALL files manually tagged with them (person_files) that don't
+    already have such a face -- so a file tagged both ways appears once, and
+    manual-only items carry face_id=None."""
     conn = db.open_readonly(db_path)
     try:
         p = conn.execute(
@@ -1041,24 +1170,43 @@ def face_person(db_path: str, person_id: int, root_id=None,
             return None
         rc, rp = _root_clause(root_id)
         rows = conn.execute(
-            f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
-                       d.date_source AS dsrc,
-                       EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
-                       (SELECT fa2.id FROM faces fa2
-                        WHERE fa2.file_id=f.id AND fa2.person_id=?
-                        ORDER BY fa2.det_score DESC LIMIT 1) AS face_id
-                FROM faces fa JOIN files f ON f.id=fa.file_id
-                LEFT JOIN dates d ON d.file_id=f.id
-                WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc}
-                GROUP BY f.id
-                ORDER BY (d.best_datetime IS NULL), d.best_datetime DESC, f.id
+            f"""SELECT id, media_type, rel_path, dt, dsrc, has_gps, face_id FROM (
+                    SELECT f.id AS id, f.media_type, f.rel_path,
+                           d.best_datetime AS dt, d.date_source AS dsrc,
+                           EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
+                           (SELECT fa2.id FROM faces fa2
+                            WHERE fa2.file_id=f.id AND fa2.person_id=?
+                            ORDER BY fa2.det_score DESC LIMIT 1) AS face_id
+                    FROM faces fa JOIN files f ON f.id=fa.file_id
+                    LEFT JOIN dates d ON d.file_id=f.id
+                    WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc}
+                    GROUP BY f.id
+                    UNION ALL
+                    SELECT f.id AS id, f.media_type, f.rel_path,
+                           d.best_datetime AS dt, d.date_source AS dsrc,
+                           EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
+                           NULL AS face_id
+                    FROM person_files pf JOIN files f ON f.id=pf.file_id
+                    LEFT JOIN dates d ON d.file_id=f.id
+                    WHERE pf.person_id=? AND {_NOT_HIDDEN}{rc}
+                      AND pf.file_id NOT IN (
+                          SELECT fa2.file_id FROM faces fa2 WHERE fa2.person_id=?)
+                )
+                ORDER BY (dt IS NULL), dt DESC, id
                 LIMIT ? OFFSET ?""",
-            (person_id, person_id, *rp, limit, offset)).fetchall()
+            (person_id, person_id, *rp, person_id, *rp, person_id,
+             limit, offset)).fetchall()
         total = conn.execute(
-            f"""SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
-                JOIN files f ON f.id=fa.file_id
-                WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc}""",
-            (person_id, *rp)).fetchone()[0]
+            f"""SELECT
+                    (SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
+                     JOIN files f ON f.id=fa.file_id
+                     WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc})
+                  + (SELECT COUNT(*) FROM person_files pf
+                     JOIN files f ON f.id=pf.file_id
+                     WHERE pf.person_id=? AND {_NOT_HIDDEN}{rc}
+                       AND pf.file_id NOT IN (
+                           SELECT fa2.file_id FROM faces fa2 WHERE fa2.person_id=?))""",
+            (person_id, *rp, person_id, *rp, person_id)).fetchone()[0]
         items = [{
             "id": r["id"], "type": r["media_type"],
             "name": os.path.basename(r["rel_path"]),
@@ -1066,9 +1214,36 @@ def face_person(db_path: str, person_id: int, root_id=None,
             "has_gps": bool(r["has_gps"]), "face_id": r["face_id"],
         } for r in rows]
         return {"id": person_id, "name": p["name"], "photos": total,
-                "items": items, "offset": offset, "count": len(items)}
+                "items": items, "offset": offset, "count": len(items),
+                "merges": _person_merges_for(conn, person_id, p["name"])}
     finally:
         conn.close()
+
+
+def _person_merges_for(conn, person_id, name) -> list[dict]:
+    """Merges this person can undo. Looked up by survivor_id OR by
+    survivor_name (when non-empty) rather than survivor_id alone: cluster_faces
+    DELETEs and rebuilds every `persons` row, so a merge's survivor_id can
+    rot after a recluster -- the name is the durable anchor, same reasoning
+    as person_files (see repair_manual_person_files)."""
+    name = name or ""
+    rows = conn.execute(
+        """SELECT id, dropped_name, face_ids, created_at FROM person_merges
+           WHERE survivor_id=? OR (? != '' AND survivor_name=?)
+           ORDER BY created_at DESC""",
+        (person_id, name, name)).fetchall()
+    out = []
+    for row in rows:
+        fids = json.loads(row["face_ids"])
+        photos = 0
+        if fids:
+            marks = ",".join("?" for _ in fids)
+            photos = conn.execute(
+                f"SELECT COUNT(DISTINCT file_id) FROM faces WHERE id IN ({marks})",
+                fids).fetchone()[0]
+        out.append({"id": row["id"], "dropped_name": row["dropped_name"],
+                    "photos_folded_in": photos, "created_at": row["created_at"]})
+    return out
 
 
 def rename_person(db_path: str, person_id, name: str) -> dict:
@@ -1177,6 +1352,195 @@ def reassign_face(db_path: str, face_id, person_id) -> dict:
         conn.close()
 
 
+def detach_file_from_person(db_path: str, person_id, file_id) -> dict:
+    """"This photo isn't them": release every face of this file currently
+    assigned to person_id, and durably block them from drifting back.
+
+    Each detached face is unassigned (person_id and manual_person cleared)
+    and pinned with a cannot-link (face_links 'different') against the
+    person's representative face, so a later recluster can't quietly re-add
+    it -- same mechanism unmerge_persons uses, just against a single face
+    instead of a whole cluster.
+
+    Also drops any person_files manual tag for this (person, file) pair: a
+    manual tag added earlier today would otherwise keep the photo showing on
+    the person's page despite the detach (see person_files' schema comment)."""
+    if not person_id or not file_id:
+        return {"error": "missing person_id or file_id"}
+    conn = db.connect(db_path)
+    try:
+        p = conn.execute(
+            "SELECT id, cover_face_id FROM persons WHERE id=?", (person_id,)).fetchone()
+        if not p:
+            return {"error": "unknown person"}
+        faces = conn.execute(
+            "SELECT id FROM faces WHERE file_id=? AND person_id=?",
+            (file_id, person_id)).fetchall()
+        if not faces:
+            return {"error": "this file has no face assigned to that person"}
+        rep = _rep_face(conn, person_id, p["cover_face_id"])
+        now = db.now_iso()
+        face_ids = [r["id"] for r in faces]
+        for fid in face_ids:
+            _record_link(conn, rep, fid, "different", now)
+        marks = ",".join("?" for _ in face_ids)
+        conn.execute(
+            f"UPDATE faces SET person_id=NULL, manual_person=NULL WHERE id IN ({marks})",
+            face_ids)
+        conn.execute(
+            "DELETE FROM person_files WHERE person_id=? AND file_id=?",
+            (person_id, file_id))
+        _sync_person_stats(conn, person_id)
+        _update_person_centroid(conn, person_id)
+        conn.commit()
+        return {"ok": True, "detached_faces": len(face_ids)}
+    finally:
+        conn.close()
+
+
+def add_person_to_file(db_path: str, person_id, file_id) -> dict:
+    """Tag a file with a named person by hand, for media where no face was
+    detected at all. Only named persons are valid targets (mirrors
+    reassign_face) -- an unnamed auto-cluster id is ephemeral and wouldn't
+    survive the next re-cluster anyway."""
+    if not person_id or not file_id:
+        return {"error": "missing person_id or file_id"}
+    conn = db.connect(db_path)
+    try:
+        p = conn.execute(
+            "SELECT id, name FROM persons WHERE id=?", (person_id,)).fetchone()
+        if not p or not p["name"]:
+            return {"error": "target must be a named person"}
+        if not conn.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
+            return {"error": "unknown file"}
+        conn.execute(
+            """INSERT OR REPLACE INTO person_files(person_id, file_id, person_name, created_at)
+               VALUES(?,?,?,?)""", (person_id, file_id, p["name"], db.now_iso()))
+        conn.commit()
+        return {"ok": True, "person": {"id": p["id"], "name": p["name"]}}
+    finally:
+        conn.close()
+
+
+def remove_person_from_file(db_path: str, person_id, file_id) -> dict:
+    if not person_id or not file_id:
+        return {"error": "missing person_id or file_id"}
+    conn = db.connect(db_path)
+    try:
+        conn.execute(
+            "DELETE FROM person_files WHERE person_id=? AND file_id=?",
+            (person_id, file_id))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def add_pet_to_file(db_path: str, pet_id, file_id) -> dict:
+    """Tag a file with a named pet by hand. Same shape as add_person_to_file,
+    against pet_files/pets."""
+    if not pet_id or not file_id:
+        return {"error": "missing pet_id or file_id"}
+    conn = db.connect(db_path)
+    try:
+        p = conn.execute(
+            "SELECT id, name FROM pets WHERE id=?", (pet_id,)).fetchone()
+        if not p or not p["name"]:
+            return {"error": "target must be a named pet"}
+        if not conn.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
+            return {"error": "unknown file"}
+        conn.execute(
+            """INSERT OR REPLACE INTO pet_files(pet_id, file_id, pet_name, created_at)
+               VALUES(?,?,?,?)""", (pet_id, file_id, p["name"], db.now_iso()))
+        conn.commit()
+        return {"ok": True, "pet": {"id": p["id"], "name": p["name"]}}
+    finally:
+        conn.close()
+
+
+def remove_pet_from_file(db_path: str, pet_id, file_id) -> dict:
+    if not pet_id or not file_id:
+        return {"error": "missing pet_id or file_id"}
+    conn = db.connect(db_path)
+    try:
+        conn.execute(
+            "DELETE FROM pet_files WHERE pet_id=? AND file_id=?", (pet_id, file_id))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def repair_manual_person_files(conn) -> None:
+    """Re-point manual person_files rows onto whatever person id currently
+    carries the stored name, after a re-cluster has rebuilt `persons`.
+
+    Called from inside faces/cluster.py's clustering transaction (see
+    _finalize), on an already-open connection -- no commit here, the caller
+    commits.
+
+    If no person currently carries a row's stored name, the row is left
+    untouched: the name may come back on a later pass (a rename, another
+    re-cluster), and deleting the user's statement just because a clustering
+    pass momentarily lost the name would be data loss.
+
+    Re-pointing can collide with an existing row for the same (target
+    person, file) -- person_files' primary key is (person_id, file_id) --
+    so any losing duplicate is dropped rather than allowed to raise.
+    """
+    rows = conn.execute(
+        "SELECT person_id, file_id, person_name FROM person_files").fetchall()
+    for row in rows:
+        name_row = conn.execute(
+            "SELECT name FROM persons WHERE id=?", (row["person_id"],)).fetchone()
+        if name_row and name_row["name"] == row["person_name"]:
+            continue  # still points at a person carrying the anchored name
+        target = conn.execute(
+            "SELECT id FROM persons WHERE name=?", (row["person_name"],)).fetchone()
+        if not target:
+            continue  # name doesn't exist right now; leave the row alone
+        if target["id"] == row["person_id"]:
+            continue
+        conn.execute(
+            "DELETE FROM person_files WHERE person_id=? AND file_id=?",
+            (target["id"], row["file_id"]))
+        conn.execute(
+            "UPDATE person_files SET person_id=? WHERE person_id=? AND file_id=?",
+            (target["id"], row["person_id"], row["file_id"]))
+
+
+def repair_manual_pet_files(conn) -> None:
+    """Re-point manual pet_files rows onto whatever pet id currently carries
+    the stored name, after cluster_pets has rebuilt `pets`.
+
+    Called from pets/cluster.py before every commit/return -- unlike the
+    person version this isn't defensive, it's mandatory: pet ids are
+    guaranteed to change on every detect chunk (cluster_pets DELETEs and
+    rebuilds `pets` wholesale each time). See repair_manual_person_files for
+    the "leave untouched if the name isn't currently held" and
+    primary-key-collision handling, which are identical here.
+    """
+    rows = conn.execute(
+        "SELECT pet_id, file_id, pet_name, created_at FROM pet_files").fetchall()
+    for row in rows:
+        name_row = conn.execute(
+            "SELECT name FROM pets WHERE id=?", (row["pet_id"],)).fetchone()
+        if name_row and name_row["name"] == row["pet_name"]:
+            continue
+        target = conn.execute(
+            "SELECT id FROM pets WHERE name=?", (row["pet_name"],)).fetchone()
+        if not target:
+            continue  # name doesn't exist right now; leave the row alone
+        if target["id"] == row["pet_id"]:
+            continue
+        conn.execute(
+            "DELETE FROM pet_files WHERE pet_id=? AND file_id=?",
+            (target["id"], row["file_id"]))
+        conn.execute(
+            "UPDATE pet_files SET pet_id=? WHERE pet_id=? AND file_id=?",
+            (target["id"], row["pet_id"], row["file_id"]))
+
+
 # -- "same person?" review: merges + constraints ---------------------------
 
 def _rep_face(conn, pid, cover) -> int | None:
@@ -1202,12 +1566,17 @@ def _rep_detection(conn, pid, cover) -> int | None:
     return r["id"] if r else None
 
 
-def _record_link(conn, fa, fb, kind: str, now: str) -> None:
+def _record_link(conn, fa, fb, kind: str, now: str) -> tuple[int, int] | None:
+    """Write a durable face_links constraint. Returns the (sorted) pair it
+    wrote, or None if there was nothing to link -- callers that need to record
+    exactly which link a merge produced (person_merges.link_a/link_b, for
+    undo) key off this return value rather than re-deriving the sort."""
     if not fa or not fb or fa == fb:
-        return
+        return None
     a, b = sorted((fa, fb))
     conn.execute("INSERT OR REPLACE INTO face_links(face_a, face_b, kind, created_at) "
                  "VALUES(?,?,?,?)", (a, b, kind, now))
+    return (a, b)
 
 
 def _update_person_centroid(conn, pid) -> None:
@@ -1257,8 +1626,13 @@ def merge_persons(db_path: str, id_a, id_b, name=None) -> dict:
         else:
             keep, drop = pb, pa
         now = db.now_iso()
-        _record_link(conn, _rep_face(conn, keep["id"], keep["cover_face_id"]),
-                     _rep_face(conn, drop["id"], drop["cover_face_id"]), "same", now)
+        # Captured before the UPDATE below moves them: this is exactly the set
+        # unmerge_persons needs to know which faces to hand back to the losing
+        # side (see person_merges.face_ids).
+        drop_face_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM faces WHERE person_id=?", (drop["id"],)).fetchall()]
+        link = _record_link(conn, _rep_face(conn, keep["id"], keep["cover_face_id"]),
+                            _rep_face(conn, drop["id"], drop["cover_face_id"]), "same", now)
         conn.execute("UPDATE faces SET person_id=? WHERE person_id=?", (keep["id"], drop["id"]))
         conn.execute("DELETE FROM persons WHERE id=?", (drop["id"],))
         survivor_name = name or keep["name"]
@@ -1277,9 +1651,77 @@ def merge_persons(db_path: str, id_a, id_b, name=None) -> dict:
                 (survivor_name, keep["id"]))
         _sync_person_stats(conn, keep["id"])
         _update_person_centroid(conn, keep["id"])
+        # Recorded so this merge can be undone later (see unmerge_persons):
+        # which faces moved, what the losing side was called, and which
+        # face_links row to retract.
+        conn.execute(
+            """INSERT INTO person_merges(survivor_id, survivor_name, dropped_name,
+                                          face_ids, link_a, link_b, created_at)
+               VALUES(?,?,?,?,?,?,?)""",
+            (keep["id"], survivor_name, drop["name"], json.dumps(drop_face_ids),
+             link[0] if link else None, link[1] if link else None, now))
         conn.commit()
         r = conn.execute("SELECT id,name,face_count FROM persons WHERE id=?", (keep["id"],)).fetchone()
         return {"ok": True, "person": {"id": r["id"], "name": r["name"], "face_count": r["face_count"]}}
+    finally:
+        conn.close()
+
+
+def unmerge_persons(db_path: str, merge_id) -> dict:
+    """Undo a drag-merge recorded by merge_persons.
+
+    Deleting the 'same' face_links row it wrote is not enough on its own: if
+    the automatic clusterer would group these two faces back together anyway,
+    they'd silently re-merge on the very next recluster. So this also writes
+    a 'different' (cannot-link) row over the same pair -- _apply_links gives
+    cannot-link precedence over must-link, and it stays reversible (merging
+    them again writes 'same' back over it via INSERT OR REPLACE).
+
+    It also restores names: any recorded face whose manual_person currently
+    equals the survivor's name is pinned back to the dropped name (or NULL
+    if the dropped side was unnamed), or faces/cluster.py's _apply_manual_pins
+    would keep re-pinning it onto the survivor forever. See merge_persons'
+    "Load-bearing, not cosmetic" comment -- this undoes exactly that.
+
+    Known limitation: _apply_links only blocks the automatic pass from
+    UNIONING two of its own clusters; it never SPLITS a cluster the automatic
+    pass forms on its own. If the clusterer's embeddings alone would already
+    place these faces in one cluster, this cannot-link can't pull them back
+    apart -- that's pre-existing clustering behaviour, not something undo
+    can fix.
+
+    Safe to call twice: a stale/missing merge_id returns a clean error
+    rather than raising. Returns {"ok": True, "recluster": True} on success
+    so the caller knows to kick off a re-cluster (nothing here moves faces
+    back itself -- that's the recluster's job, honouring the restored pins
+    and the new cannot-link)."""
+    if not merge_id:
+        return {"error": "missing merge_id"}
+    conn = db.connect(db_path)
+    try:
+        m = conn.execute(
+            "SELECT * FROM person_merges WHERE id=?", (merge_id,)).fetchone()
+        if not m:
+            return {"error": "merge not found"}
+        now = db.now_iso()
+        if m["link_a"] and m["link_b"]:
+            conn.execute(
+                "DELETE FROM face_links WHERE face_a=? AND face_b=?",
+                (m["link_a"], m["link_b"]))
+            conn.execute(
+                "INSERT OR REPLACE INTO face_links(face_a, face_b, kind, created_at) "
+                "VALUES(?,?,'different',?)", (m["link_a"], m["link_b"], now))
+        survivor_name = m["survivor_name"]
+        dropped_name = m["dropped_name"] or None
+        face_ids = json.loads(m["face_ids"])
+        if face_ids and survivor_name:
+            marks = ",".join("?" for _ in face_ids)
+            conn.execute(
+                f"UPDATE faces SET manual_person=? WHERE id IN ({marks}) "
+                f"AND manual_person=?", (dropped_name, *face_ids, survivor_name))
+        conn.execute("DELETE FROM person_merges WHERE id=?", (merge_id,))
+        conn.commit()
+        return {"ok": True, "recluster": True}
     finally:
         conn.close()
 
@@ -1294,13 +1736,17 @@ def merge_persons(db_path: str, id_a, id_b, name=None) -> dict:
 # side of this, and faces/cluster.py's `_apply_links` / `face_links` for the
 # original version of the same trick.
 
-def _record_pet_link(conn, det_a, det_b, now: str) -> None:
+def _record_pet_link(conn, det_a, det_b, now: str) -> tuple[int, int] | None:
+    """Write a durable 'same' pet_links constraint. Returns the (sorted) pair
+    it wrote, or None if there was nothing to link -- mirrors _record_link;
+    used by merge_pets to fill in pet_merges.link_a/link_b for undo."""
     if not det_a or not det_b or det_a == det_b:
-        return
+        return None
     a, b = sorted((det_a, det_b))
     conn.execute(
         "INSERT OR REPLACE INTO pet_links(det_a, det_b, kind, created_at) "
         "VALUES(?,?,'same',?)", (a, b, now))
+    return (a, b)
 
 
 def _refresh_pet_stats(conn, pet_id, name) -> None:
@@ -1372,8 +1818,12 @@ def merge_pets(db_path: str, id_a, id_b, name=None) -> dict:
         else:
             keep, drop = pb, pa
         now = db.now_iso()
-        _record_pet_link(conn, _rep_detection(conn, keep["id"], keep["cover_detection_id"]),
-                         _rep_detection(conn, drop["id"], drop["cover_detection_id"]), now)
+        # Captured before the UPDATE below moves them, mirroring merge_persons
+        # -- unmerge_pets needs to know which detections this merge folded in.
+        drop_det_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM animal_detections WHERE pet_id=?", (drop["id"],)).fetchall()]
+        link = _record_pet_link(conn, _rep_detection(conn, keep["id"], keep["cover_detection_id"]),
+                                _rep_detection(conn, drop["id"], drop["cover_detection_id"]), now)
         # foreign_keys=ON (see db.connect): animal_detections.pet_id is
         # ON DELETE SET NULL, so the UPDATE moving drop's detections MUST run
         # before DELETE FROM pets, or they'd be orphaned instead of merged.
@@ -1382,6 +1832,13 @@ def merge_pets(db_path: str, id_a, id_b, name=None) -> dict:
         conn.execute("DELETE FROM pets WHERE id=?", (drop["id"],))
         survivor_name = name or keep["name"] or drop["name"]
         _refresh_pet_stats(conn, keep["id"], survivor_name)
+        # Recorded so this merge can be undone later (see unmerge_pets).
+        conn.execute(
+            """INSERT INTO pet_merges(survivor_id, survivor_name, dropped_name,
+                                       det_ids, link_a, link_b, created_at)
+               VALUES(?,?,?,?,?,?,?)""",
+            (keep["id"], survivor_name, drop["name"], json.dumps(drop_det_ids),
+             link[0] if link else None, link[1] if link else None, now))
         conn.commit()
         r = conn.execute(
             "SELECT id,name,species,detection_count FROM pets WHERE id=?",
@@ -1389,6 +1846,45 @@ def merge_pets(db_path: str, id_a, id_b, name=None) -> dict:
         return {"ok": True, "pet": {
             "id": r["id"], "name": r["name"], "species": r["species"],
             "detections": r["detection_count"]}}
+    finally:
+        conn.close()
+
+
+def unmerge_pets(db_path: str, merge_id) -> dict:
+    """Undo a drag-merge recorded by merge_pets. Mirrors unmerge_persons: the
+    recorded 'same' pet_links row is deleted and replaced with a 'different'
+    (cannot-link) row over the same detection pair, so cluster_pets' next
+    rebuild can't silently re-form the merge (pets/cluster.py's _apply_links
+    now honours 'different' the same way faces/cluster.py's does).
+
+    Simpler than the person version: pet names aren't pinned per-detection
+    (animal_detections.manual_pet exists in the schema but nothing writes to
+    it yet), so there's no name pin to restore -- cluster_pets' own
+    name-carryover (best overlap with a still-named pet) sorts the dropped
+    name back out on the next rebuild by itself.
+
+    Safe to call twice: a stale/missing merge_id returns a clean error rather
+    than raising. Returns {"ok": True, "recluster": True} so the caller knows
+    to kick off cluster_pets."""
+    if not merge_id:
+        return {"error": "missing merge_id"}
+    conn = db.connect(db_path)
+    try:
+        m = conn.execute(
+            "SELECT * FROM pet_merges WHERE id=?", (merge_id,)).fetchone()
+        if not m:
+            return {"error": "merge not found"}
+        now = db.now_iso()
+        if m["link_a"] and m["link_b"]:
+            conn.execute(
+                "DELETE FROM pet_links WHERE det_a=? AND det_b=?",
+                (m["link_a"], m["link_b"]))
+            conn.execute(
+                "INSERT OR REPLACE INTO pet_links(det_a, det_b, kind, created_at) "
+                "VALUES(?,?,'different',?)", (m["link_a"], m["link_b"], now))
+        conn.execute("DELETE FROM pet_merges WHERE id=?", (merge_id,))
+        conn.commit()
+        return {"ok": True, "recluster": True}
     finally:
         conn.close()
 
@@ -1589,16 +2085,24 @@ def _recount_place(conn, cluster_id):
 
 
 def face_crop_source(db_path: str, face_id: int):
-    """(abs path, sha256, box, rotate_deg) for a face id, or None.
+    """(abs path, sha256, box, rotate_deg, frame_offset, media_type, file_id)
+    for a face id, or None. ``file_id`` is the underlying file's id, distinct
+    from ``face_id``, for keying a re-derived video frame the same way
+    regardless of which face on that frame asked for it.
 
     Path is DB-derived. ``rotate_deg`` is the turn the photo needs on top of its
     EXIF orientation — the box was detected in that rotated frame, so a crop has
-    to rotate before it cuts."""
+    to rotate before it cuts. ``frame_offset`` is the ffmpeg ``-ss`` offset of
+    the sampled video keyframe this face was detected in, or None for a photo
+    (in which case ``rotate_deg`` still applies and ``media_type`` is
+    'image'); a video detection's box is instead in that *extracted frame's*
+    own pixel coordinates and is already upright (ffmpeg applies container
+    rotation on extraction), so callers must not also rotate it."""
     conn = db.open_readonly(db_path)
     try:
         r = conn.execute(
-            """SELECT r.path AS root, f.rel_path, f.sha256,
-                      fa.box_x, fa.box_y, fa.box_w, fa.box_h,
+            """SELECT r.path AS root, f.rel_path, f.sha256, f.media_type, f.id AS file_id,
+                      fa.box_x, fa.box_y, fa.box_w, fa.box_h, fa.frame_offset,
                       COALESCE(o.rotate_deg, 0) AS rotate_deg
                FROM faces fa JOIN files f ON f.id=fa.file_id
                JOIN roots r ON r.id=f.root_id
@@ -1610,18 +2114,21 @@ def face_crop_source(db_path: str, face_id: int):
         if not p.is_file():
             return None
         return (p, r["sha256"],
-                (r["box_x"], r["box_y"], r["box_w"], r["box_h"]), r["rotate_deg"])
+                (r["box_x"], r["box_y"], r["box_w"], r["box_h"]), r["rotate_deg"],
+                r["frame_offset"], r["media_type"], r["file_id"])
     finally:
         conn.close()
 
 
 def animal_crop_source(db_path: str, detection_id: int):
-    """(abs path, sha256, box, rotate_deg) for an animal detection id."""
+    """(abs path, sha256, box, rotate_deg, frame_offset, media_type, file_id)
+    for an animal detection id. See ``face_crop_source`` for the video-frame
+    caveats and what ``file_id`` is for."""
     conn = db.open_readonly(db_path)
     try:
         row = conn.execute(
-            """SELECT r.path root,f.rel_path,f.sha256,
-                      a.box_x,a.box_y,a.box_w,a.box_h,
+            """SELECT r.path root,f.rel_path,f.sha256,f.media_type,f.id AS file_id,
+                      a.box_x,a.box_y,a.box_w,a.box_h,a.frame_offset,
                       COALESCE(o.rotate_deg, 0) AS rotate_deg
                FROM animal_detections a JOIN files f ON f.id=a.file_id
                JOIN roots r ON r.id=f.root_id
@@ -1633,8 +2140,9 @@ def animal_crop_source(db_path: str, detection_id: int):
         path = Path(row["root"]) / row["rel_path"]
         if not path.is_file():
             return None
-        return path, row["sha256"], (
-            row["box_x"], row["box_y"], row["box_w"], row["box_h"]), row["rotate_deg"]
+        return (path, row["sha256"], (
+            row["box_x"], row["box_y"], row["box_w"], row["box_h"]), row["rotate_deg"],
+            row["frame_offset"], row["media_type"], row["file_id"])
     finally:
         conn.close()
 
@@ -1685,6 +2193,28 @@ def item(db_path: str, fid: int, min_media: int = 10) -> dict | None:
         person_options = [{"id": r["id"], "name": r["name"]} for r in conn.execute(
             """SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''
                ORDER BY name COLLATE NOCASE""")]
+        pet_options = [{"id": r["id"], "name": r["name"]} for r in conn.execute(
+            """SELECT id, name FROM pets WHERE name IS NOT NULL AND name != ''
+               ORDER BY name COLLATE NOCASE""")]
+        # Manually tagged people/pets on this file (person_files/pet_files) --
+        # no face/detection exists for these, so there's no face_id/detection_id.
+        # Name resolves from the live persons/pets table; if the id has rotted
+        # (a re-cluster ran since and repair hasn't caught up yet) fall back to
+        # the name stored on the row itself.
+        manual_people = [{
+            "person_id": r["person_id"], "name": r["name"] or r["person_name"],
+        } for r in conn.execute(
+            """SELECT pf.person_id, pf.person_name, p.name
+               FROM person_files pf LEFT JOIN persons p ON p.id=pf.person_id
+               WHERE pf.file_id=?
+               ORDER BY COALESCE(p.name, pf.person_name) COLLATE NOCASE""", (fid,))]
+        manual_pets = [{
+            "pet_id": r["pet_id"], "name": r["name"] or r["pet_name"],
+        } for r in conn.execute(
+            """SELECT pf.pet_id, pf.pet_name, p.name
+               FROM pet_files pf LEFT JOIN pets p ON p.id=pf.pet_id
+               WHERE pf.file_id=?
+               ORDER BY COALESCE(p.name, pf.pet_name) COLLATE NOCASE""", (fid,))]
         return {
             "id": fid, "name": os.path.basename(f["rel_path"]),
             "rel_path": f["rel_path"], "type": f["media_type"], "size": f["size"],
@@ -1701,6 +2231,9 @@ def item(db_path: str, fid: int, min_media: int = 10) -> dict | None:
             "place": ({"id": place["id"], "name": place["name"]} if place else None),
             "place_options": place_options,
             "person_options": person_options,
+            "pet_options": pet_options,
+            "manual_people": manual_people,
+            "manual_pets": manual_pets,
         }
     finally:
         conn.close()

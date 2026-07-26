@@ -1,5 +1,5 @@
 appId: io.capsa.organize-archive
-productName: Archive
+productName: Trove
 directories:
   output: release
 files:

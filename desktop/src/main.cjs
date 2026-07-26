@@ -145,7 +145,7 @@ function diagnosticText() {
   const toolRoot = app.isPackaged ? path.join(process.resourcesPath, "backend", "tools") : process.env.ARCHIVE_TOOLS_DIR;
   const exe = name => path.join(toolRoot || "", `${name}${process.platform === "win32" ? ".exe" : ""}`);
   const tools = ["exiftool", "ffprobe", "ffmpeg"].map(name => `${name}: ${toolRoot ? (fs.existsSync(exe(name)) ? "bundled" : "missing") : "development PATH"}`);
-  return [`Archive ${app.getVersion()} (${process.env.ARCHIVE_BUILD_COMMIT || "dev"})`, `OS: ${process.platform} ${process.arch}`, `Data folder: ${app.getPath("userData")}`, ...tools, "Recent local errors:", ...stderrLines.slice(-20), ...mainLines.slice(-20)].join("\n");
+  return [`Trove ${app.getVersion()} (${process.env.ARCHIVE_BUILD_COMMIT || "dev"})`, `OS: ${process.platform} ${process.arch}`, `Data folder: ${app.getPath("userData")}`, ...tools, "Recent local errors:", ...stderrLines.slice(-20), ...mainLines.slice(-20)].join("\n");
 }
 
 ipcMain.handle("archive:about", async () => ({ version: app.getVersion(), commit: process.env.ARCHIVE_BUILD_COMMIT || "dev", backendVersion: backendPort === null ? "not running" : app.getVersion(), dataFolder: app.getPath("userData") }));
@@ -156,7 +156,7 @@ async function showStartupFailure(error) {
   appendMainDiagnostic(`startup failure: ${error.stack || error.message}`);
   const log = writeDiagnostics();
   const choice = await dialog.showMessageBox({ type: "error", buttons: ["Copy diagnostics", "Quit"], defaultId: 1,
-    message: "Archive could not start its local catalogue service.", detail: `${error.message}\n\nDiagnostics: ${log}` });
+    message: "Trove could not start its local catalogue service.", detail: `${error.message}\n\nDiagnostics: ${log}` });
   if (choice.response === 0) clipboard.writeText(diagnosticText());
 }
 
@@ -166,5 +166,5 @@ app.whenReady().then(async () => {
 });
 app.on("before-quit", event => { if (backend?.exitCode === null) { event.preventDefault(); stopBackend().finally(() => app.exit()); } });
 app.on("window-all-closed", () => app.quit());
-process.on("uncaughtException", error => { appendMainDiagnostic(`uncaught exception: ${error.stack || error.message}`); writeDiagnostics(); dialog.showErrorBox("Archive encountered an error", "A local diagnostic record was saved. Please restart Archive."); });
+process.on("uncaughtException", error => { appendMainDiagnostic(`uncaught exception: ${error.stack || error.message}`); writeDiagnostics(); dialog.showErrorBox("Trove encountered an error", "A local diagnostic record was saved. Please restart Trove."); });
 process.on("unhandledRejection", error => { appendMainDiagnostic(`unhandled rejection: ${error?.stack || error}`); writeDiagnostics(); });

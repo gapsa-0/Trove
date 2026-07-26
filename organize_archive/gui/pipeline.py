@@ -121,7 +121,8 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
         # set when scan/enrich change data and cleared on a successful rebuild.
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
-        DETECT: (queries.detect_pending(db_path, root_id, pet_scan_source(cfg))
+        DETECT: (queries.detect_pending(db_path, root_id, pet_scan_source(cfg),
+                                        cfg.detect_video_frames)
                  if avail[DETECT] else 0),
         SEMANTIC: (queries.semantic_pending(db_path, root_id)
                    if avail[SEMANTIC] else 0),
@@ -291,6 +292,35 @@ def _message(card_id: str, state: str, pending, blocker, error) -> str | None:
     return None
 
 
+# Jobs the scheduler never queues on its own: a user action kicks them (a
+# non-human review correction, undoing a merge). They aren't STAGES -- they have
+# no backlog to count and no place in the dependency order -- but they DO take
+# the single writer lock, so a user watching an unexplained pause deserves to
+# see them. Reported separately from the cards so the Overview's stage grid
+# keeps its fixed five-card shape.
+_EXTRA_JOB_LABEL = {
+    "face_cluster": "Updating people",
+    "pet_cluster": "Updating pets",
+}
+
+
+def _extra_jobs(jobs, root_id: int) -> list[dict]:
+    """Running jobs that belong to no stage card, in the cards' output shape."""
+    out, seen = [], set()
+    for j in jobs.list(root_id):
+        kind = j["kind"]
+        if (j["status"] != "running" or kind in _CARD_OF or kind in seen):
+            continue
+        seen.add(kind)
+        out.append({
+            "id": kind, "label": _EXTRA_JOB_LABEL.get(kind, kind),
+            "state": "running", "pending": None, "counted": False,
+            "progress": _progress(j), "next": False, "waiting_on": None,
+            "message": f"{_EXTRA_JOB_LABEL.get(kind, kind)}…",
+        })
+    return out
+
+
 def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
     """The `/api/pipeline` payload: resolved cards plus one overall verdict.
 
@@ -299,15 +329,21 @@ def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
     message is overridden to "Paused" (its `state` is left untouched -- the
     client and scheduler both key off that); and ``overall`` becomes "paused"
     once nothing is actually still running.
+
+    ``extra`` carries running non-stage jobs (see _extra_jobs). They count
+    toward ``overall`` -- reporting "idle" while a recluster holds the writer
+    would be a lie -- but stay out of ``stages`` so the Overview grid is
+    unaffected; only the ambient sidebar chip reads them.
     """
     states = stage_states(cfg, jobs, root_id, root_path)
     card_list = cards(states)
+    extra = _extra_jobs(jobs, root_id)
     paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
     if paused:
         for c in card_list:
             if c["state"] in ("queued", "error"):
                 c["message"] = "Paused"
-    if any(c["state"] == "running" for c in card_list):
+    if extra or any(c["state"] == "running" for c in card_list):
         overall = "running"
     elif paused:
         overall = "paused"
@@ -315,4 +351,5 @@ def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
         overall = "working"
     else:
         overall = "idle"
-    return {"root_id": root_id, "overall": overall, "stages": card_list, "paused": paused}
+    return {"root_id": root_id, "overall": overall, "stages": card_list,
+            "extra": extra, "paused": paused}

@@ -1,4 +1,4 @@
-"""Loopback-only backend entry point used by the Archive desktop shell."""
+"""Loopback-only backend entry point used by the Trove desktop shell."""
 
 from __future__ import annotations
 

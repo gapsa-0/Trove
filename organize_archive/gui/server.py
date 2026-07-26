@@ -196,12 +196,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/summary":
                 rid = one("root", int)
-                self._json(queries.face_summary(self._db(rid), rid))
+                self._json(queries.face_summary(
+                    self._db(rid), rid, self.cfg.detect_video_frames))
             elif path == "/api/pets/summary":
                 from ..pets.extract import scan_source as pet_scan_source
                 rid = one("root", int)
                 self._json(queries.pet_summary(
-                    self._db(rid), rid, pet_scan_source(self.cfg)))
+                    self._db(rid), rid, pet_scan_source(self.cfg),
+                    self.cfg.detect_video_frames))
             elif path == "/api/pets":
                 rid = one("root", int)
                 self._json(queries.pet_groups(
@@ -405,6 +407,17 @@ class Handler(BaseHTTPRequestHandler):
                     self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"),
                     body.get("name")))
                 self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/unmerge":
+                res = db.write_with_retry(lambda: queries.unmerge_persons(
+                    self._db(self.jobs.current_root_id()), body.get("merge_id")))
+                if res.get("recluster") and self.jobs.current_root_id():
+                    self.jobs.start("face_cluster", self.jobs.current_root_id())
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/faces/detach":
+                res = db.write_with_retry(lambda: queries.detach_file_from_person(
+                    self._db(self.jobs.current_root_id()),
+                    body.get("person_id"), body.get("file_id")))
+                self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/different":
                 res = db.write_with_retry(lambda: queries.set_persons_different(
                     self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")))
@@ -428,6 +441,12 @@ class Handler(BaseHTTPRequestHandler):
                     self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"),
                     body.get("name")))
                 self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/pets/unmerge":
+                res = db.write_with_retry(lambda: queries.unmerge_pets(
+                    self._db(self.jobs.current_root_id()), body.get("merge_id")))
+                if res.get("recluster") and self.jobs.current_root_id():
+                    self.jobs.start("pet_cluster", self.jobs.current_root_id())
+                self._json(res, 400 if "error" in res else 200)
             elif path == "/api/nonhuman/review":
                 res = db.write_with_retry(lambda: queries.review_nonhuman(
                     self._db(self.jobs.current_root_id()), body.get("detection_id"),
@@ -448,6 +467,26 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     res = db.write_with_retry(lambda: queries.set_place(
                         db_path, body.get("file_id"), body.get("place_id")))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/item/person/add":
+                res = db.write_with_retry(lambda: queries.add_person_to_file(
+                    self._db(self.jobs.current_root_id()),
+                    body.get("person_id"), body.get("file_id")))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/item/person/remove":
+                res = db.write_with_retry(lambda: queries.remove_person_from_file(
+                    self._db(self.jobs.current_root_id()),
+                    body.get("person_id"), body.get("file_id")))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/item/pet/add":
+                res = db.write_with_retry(lambda: queries.add_pet_to_file(
+                    self._db(self.jobs.current_root_id()),
+                    body.get("pet_id"), body.get("file_id")))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/item/pet/remove":
+                res = db.write_with_retry(lambda: queries.remove_pet_from_file(
+                    self._db(self.jobs.current_root_id()),
+                    body.get("pet_id"), body.get("file_id")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/places/create":
                 res = db.write_with_retry(lambda: queries.create_place(
@@ -500,7 +539,20 @@ class Handler(BaseHTTPRequestHandler):
         info = queries.face_crop_source(db_path, face_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256, box, rotate = info
+        src, sha256, box, rotate, frame_offset, media_type, file_id = info
+        if frame_offset is not None:
+            # A video detection's box was measured in the extracted keyframe,
+            # already upright (ffmpeg applies container rotation), so the
+            # crop is cut from that same re-derived frame, not the video file
+            # itself, and never rotated again.
+            frame = thumbs.detect_frame_for(
+                cache_dir, file_id, src, frame_offset,
+                self.cfg.detect_video_frame_px, sha256=sha256)
+            if frame is None:
+                return self._json({"error": "frame unavailable"}, 404)
+            tp = thumbs.face_thumb_for(cache_dir, face_id, frame, box, sha256=sha256,
+                                       rotate=0, variant=frame_offset)
+            return self._send_file(tp if tp else frame)
         tp = thumbs.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256,
                                    rotate=rotate)
         self._send_file(tp if tp else src)
@@ -510,7 +562,17 @@ class Handler(BaseHTTPRequestHandler):
         info = queries.animal_crop_source(db_path, detection_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256, box, rotate = info
+        src, sha256, box, rotate, frame_offset, media_type, file_id = info
+        if frame_offset is not None:
+            frame = thumbs.detect_frame_for(
+                cache_dir, file_id, src, frame_offset,
+                self.cfg.detect_video_frame_px, sha256=sha256)
+            if frame is None:
+                return self._json({"error": "frame unavailable"}, 404)
+            tp = thumbs.face_thumb_for(
+                cache_dir, detection_id, frame, box, sha256=sha256, rotate=0,
+                variant=frame_offset)
+            return self._send_file(tp if tp else frame)
         tp = thumbs.face_thumb_for(
             cache_dir, detection_id, src, box, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)

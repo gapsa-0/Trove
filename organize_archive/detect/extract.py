@@ -51,11 +51,14 @@ from ..db import database as db
 from ..faces import backend as face_backend
 from ..pets import backend as pet_backend
 from ..pets.extract import scan_source as pet_scan_source
+from ..gui import thumbs
 
 
 @dataclass
 class DetectStats:
-    processed: int = 0             # images examined this run
+    processed: int = 0             # files examined this run (images + videos)
+    videos: int = 0                # of which were videos
+    video_frames: int = 0          # sampled keyframes actually decoded
     faces_found: int = 0
     images_with_faces: int = 0
     animals: int = 0
@@ -74,27 +77,43 @@ class DetectStats:
 
 # hidden=0 skips non-canonical duplicate copies (dedup runs before detection);
 # re-detecting a duplicate is pure waste — the canonical copy is scanned instead.
-_PENDING_WHERE = """
-    f.present=1 AND f.media_type='image' AND f.hidden=0
-    AND (fs.file_id IS NULL
-         OR ps.file_id IS NULL
-         OR ps.source_sha256 IS NOT f.sha256
-         OR ps.model_source IS NOT :pet_src)
-"""
+#
+# Videos only join the pending population when detect_video_frames > 0 --
+# otherwise a video would sit "pending" forever with the feature turned off,
+# and the stage would never report itself as up to date.
+def _media_types(cfg: Config) -> str:
+    return "('image','video')" if cfg.detect_video_frames > 0 else "('image')"
 
 
-def image_count(conn, root_id: int | None = None) -> int:
-    """Total present, canonical (non-duplicate) images."""
+def _pending_where(cfg: Config) -> str:
+    return f"""
+        f.present=1 AND f.media_type IN {_media_types(cfg)} AND f.hidden=0
+        AND (fs.file_id IS NULL
+             OR ps.file_id IS NULL
+             OR ps.source_sha256 IS NOT f.sha256
+             OR ps.model_source IS NOT :pet_src)
+    """
+
+
+def image_count(conn, cfg: Config | None = None, root_id: int | None = None) -> int:
+    """Total present, canonical (non-duplicate) media the stage counts.
+
+    ``cfg`` is optional so old call sites keep working, but pass it: without
+    it this always counts images only, which under-counts the population
+    relative to ``pending_count`` while video detection is enabled and makes
+    "done / total" progress look wrong.
+    """
+    media_types = _media_types(cfg) if cfg is not None else "('image')"
     rc = " AND f.root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
     return conn.execute(
         f"""SELECT COUNT(*) FROM files f
-            WHERE f.present=1 AND f.media_type='image' AND f.hidden=0{rc}""",
+            WHERE f.present=1 AND f.media_type IN {media_types} AND f.hidden=0{rc}""",
         params).fetchone()[0]
 
 
 def pending_count(conn, cfg: Config, root_id: int | None = None) -> int:
-    """Present canonical images missing a current face OR pet scan."""
+    """Present canonical media missing a current face OR pet scan."""
     rc = " AND f.root_id=:root" if root_id is not None else ""
     p = {"pet_src": pet_scan_source(cfg)}
     if root_id is not None:
@@ -103,17 +122,18 @@ def pending_count(conn, cfg: Config, root_id: int | None = None) -> int:
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
-            WHERE {_PENDING_WHERE}{rc}""", p).fetchone()[0]
+            WHERE {_pending_where(cfg)}{rc}""", p).fetchone()[0]
 
 
 def _pending(conn, cfg: Config, batch_size: int):
     return conn.execute(
-        f"""SELECT f.id, f.rel_path, f.sha256, r.path AS root_path,
-                   (fs.file_id IS NULL) AS need_face
+        f"""SELECT f.id, f.rel_path, f.sha256, f.media_type, r.path AS root_path,
+                   mm.duration_s, (fs.file_id IS NULL) AS need_face
             FROM files f JOIN roots r ON r.id=f.root_id
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
-            WHERE {_PENDING_WHERE}
+            LEFT JOIN media_meta mm ON mm.file_id=f.id
+            WHERE {_pending_where(cfg)}
             ORDER BY f.id
             LIMIT :lim""",
         {"pet_src": pet_scan_source(cfg), "lim": batch_size}).fetchall()
@@ -439,15 +459,149 @@ def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float,
     return 0, 0.0, ""
 
 
-def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
-            limit: int | None = None, face_be=None, pet_be=None) -> DetectStats:
-    """Detect people + animals for pending images in one decode each.
+# -- video sampling ----------------------------------------------------------
+# Frames sampled per video and where in the clip: evenly spread but pulled in
+# from the very ends, where a title card or a black opening/closing frame sits
+# more often than a moment that actually represents the video. Same idea as
+# gui/semantic.py's _VIDEO_FRAME_FRACTIONS (0.15, 0.5, 0.85 for 3 frames),
+# generalized to any frame count with the same 0.15 margin on each end.
+_VIDEO_FRAME_MARGIN = 0.15
 
-    ``limit`` caps images this run (chunked runs / testing); None = until drained.
+
+def _video_frame_fractions(n: int, margin: float = _VIDEO_FRAME_MARGIN) -> tuple[float, ...]:
+    if n <= 0:
+        return ()
+    if n == 1:
+        return (0.5,)
+    step = (1 - 2 * margin) / (n - 1)
+    return tuple(margin + i * step for i in range(n))
+
+
+def _format_offset(secs: float) -> str:
+    secs = max(0.0, secs)
+    h, rem = divmod(secs, 3600)
+    m, s = divmod(rem, 60)
+    return f"{int(h):02d}:{int(m):02d}:{s:06.3f}"
+
+
+def _video_offsets(duration_s, n: int) -> list[str]:
+    """ffmpeg ``-ss`` offsets for up to ``n`` frames spread across a video.
+
+    Mirrors ``gui.semantic._video_frame_offsets``: falls back to one fixed
+    early offset when the duration is unknown (enrich hasn't run yet, or
+    ffprobe couldn't read this container) rather than refusing to detect the
+    video at all. Never returns a duplicate offset -- a very short clip whose
+    fractions round to the same timestamp yields fewer, not repeated, frames.
+    """
+    if n <= 0:
+        return []
+    try:
+        duration_s = float(duration_s)
+    except (TypeError, ValueError):
+        duration_s = 0.0
+    if duration_s <= 0:
+        return ["00:00:01"]
+    offsets, seen = [], set()
+    for frac in _video_frame_fractions(n):
+        text = _format_offset(min(duration_s * frac, max(0.0, duration_s - 0.05)))
+        if text not in seen:
+            seen.add(text)
+            offsets.append(text)
+    return offsets
+
+
+# -- per-video duplicate collapse ---------------------------------------------
+# The same person or animal can be detected in several of a video's sampled
+# frames. Left alone that would flood clustering with near-duplicate rows and
+# inflate every count (faces_found, animals, "N people in this video" ...), so
+# each surviving detection must be the ONE row for a given individual, kept
+# from whichever frame gave the best-quality read of them.
+
+
+def _best_face_quality(face) -> float:
+    # quality_score is the aligned-crop focus/exposure measure (0-1); det_score
+    # (`.score`) is the fallback when it isn't populated (defensive -- the real
+    # Face dataclass always sets it, but keeps this helper usable on stand-ins).
+    q = getattr(face, "quality_score", None)
+    return q if q else face.score
+
+
+def collapse_video_faces(entries: list[tuple], threshold: float) -> list[tuple]:
+    """Collapse near-duplicate faces across a video's sampled frames.
+
+    ``entries`` is ``[(Face, frame_offset), ...]`` in frame order. Each face is
+    compared against the ones already kept (not pairwise against every other
+    detection) by cosine similarity of their L2-normalized ArcFace embeddings
+    -- cheap and order-independent enough for the handful of frames a video
+    contributes; a video with hundreds of faces would want something smarter,
+    but ``detect_video_frames`` is small by design. A similarity at/above
+    ``threshold`` is the same person across frames; the one with the higher
+    quality_score (falling back to det_score) is kept, so the surviving row's
+    frame_offset is a frame the app can still re-derive a good crop from.
+    """
+    import numpy as np
+    kept: list[list] = []  # [Face, offset], mutated in place as better hits arrive
+    for face, offset in entries:
+        best_i, best_sim = -1, -1.0
+        for i, (kface, _koff) in enumerate(kept):
+            sim = float(np.dot(face.embedding, kface.embedding))
+            if sim > best_sim:
+                best_sim, best_i = sim, i
+        if best_i >= 0 and best_sim >= threshold:
+            kface, _koff = kept[best_i]
+            if _best_face_quality(face) > _best_face_quality(kface):
+                kept[best_i] = [face, offset]
+        else:
+            kept.append([face, offset])
+    return [(f, o) for f, o in kept]
+
+
+def collapse_video_animals(entries: list[tuple], threshold: float) -> list[tuple]:
+    """Same idea as ``collapse_video_faces``, for animal detections.
+
+    Two boxes only ever collapse when they are additionally the same
+    ``species`` -- a cat and a dog reading similarly on the DINOv2 embedding
+    (rare, but possible for a low-detail crop) must never merge. The better of
+    a pair is the higher ``det_score`` (animals have no separate quality
+    metric).
+    """
+    import numpy as np
+    kept: list[list] = []
+    for animal, offset in entries:
+        best_i, best_sim = -1, -1.0
+        for i, (kanimal, _koff) in enumerate(kept):
+            if kanimal.species != animal.species:
+                continue
+            sim = float(np.dot(animal.embedding, kanimal.embedding))
+            if sim > best_sim:
+                best_sim, best_i = sim, i
+        if best_i >= 0 and best_sim >= threshold:
+            kanimal, _koff = kept[best_i]
+            if animal.score > kanimal.score:
+                kept[best_i] = [animal, offset]
+        else:
+            kept.append([animal, offset])
+    return [(a, o) for a, o in kept]
+
+
+def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
+            limit: int | None = None, face_be=None, pet_be=None,
+            cache_dir: str | None = None) -> DetectStats:
+    """Detect people + animals for pending images/videos in one decode each.
+
+    ``limit`` caps files this run (chunked runs / testing); None = until drained.
     Pass already-loaded backends to reuse them across chunks. Either backend may be
     None (feature unavailable): the pass then does only the other, and with no pet
     backend there is simply no animal cross-check.
+
+    ``cache_dir`` is where sampled video keyframes are extracted to and cached
+    (see ``gui.thumbs.detect_frame_for``); it defaults to ``cfg.cache_dir`` for
+    the CLI's single shared catalog, but the GUI's per-archive isolation means
+    each archive has its OWN cache directory, so it must pass that archive's
+    (``cfg.archive_cache_dir(root_id)``) explicitly rather than relying on the
+    default.
     """
+    cache_dir = cache_dir if cache_dir is not None else cfg.cache_dir
     stats = DetectStats()
     if not available():
         raise RuntimeError("detect backend unavailable (needs faces and/or pets)")
@@ -483,36 +637,85 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
         for row in rows:
             fid = row["id"]
             path = Path(row["root_path"]) / row["rel_path"]
+            is_video = row["media_type"] == "video"
             n_faces = n_animals = 0
             rotate, conf, orient_src = 0, 0.0, ""
             face_report = face_backend.DetectionReport()
+            # [(Face|AnimalDetection, frame_offset|None), ...]; offset is
+            # always None for a photo, and for a video after collapsing.
+            face_hits: list[tuple] = []
+            animal_hits: list[tuple] = []
             try:
-                img, scale = _load_bgr(str(path), cfg.detect_max_side)
-                found = _detect_on(img, scale, cfg, face_be, pet_be)
-
-                # -- is this photo stored sideways? --------------------------
-                # Someone/something is here but no face resolved: that is the
-                # signature of a photo whose pixels are turned. Probing costs
-                # three score-only SCRFD passes and is skipped for the vast
-                # majority of images, which answer on the first pass.
-                # SCRFD finding nothing at all is the signal, not the
-                # cross-check's verdict: a face it did find and an animal then
-                # claimed says the photo was readable, so leave it be.
-                if (face_be is not None and not found.report.faces
-                        and (found.animals or found.humans)):
-                    rotate, conf, orient_src = _resolve_rotation(
-                        img, face_be, pet_be, cfg, found.max_subject_share,
-                        found.animal_score)
-                    if rotate:
-                        img = rotate_image(img, rotate)
+                if is_video:
+                    stats.videos += 1
+                    # ffmpeg already applies the container's rotation metadata
+                    # when it extracts a frame, so every sampled frame is
+                    # upright by construction: there is no rotation to resolve
+                    # and no `orientation` row to write for a video.
+                    offsets = _video_offsets(row["duration_s"], cfg.detect_video_frames)
+                    raw_faces, raw_animals = [], []
+                    for offset in offsets:
+                        frame_path = thumbs.detect_frame_for(
+                            cache_dir, fid, path, offset,
+                            cfg.detect_video_frame_px, sha256=row["sha256"])
+                        if frame_path is None:
+                            continue    # this offset alone failed; try the rest
+                        stats.video_frames += 1
+                        img, scale = _load_bgr(str(frame_path), cfg.detect_max_side)
                         found = _detect_on(img, scale, cfg, face_be, pet_be)
-                        stats.rotated += 1
+                        face_report.candidates += found.report.candidates
+                        for reason, n in found.report.rejected.items():
+                            face_report.rejected[reason] = (
+                                face_report.rejected.get(reason, 0) + n)
+                        stats.human_animals_dropped += found.human_animals
+                        stats.nonhuman_suppressed += found.suppressed_faces
+                        raw_faces.extend((fc, offset) for fc in found.faces)
+                        raw_animals.extend((a, offset) for a in found.animals)
+                        # A video costs one decode+detect PER sampled frame, so
+                        # the same time-budget relief used between files (below)
+                        # is also applied between frames here -- otherwise a
+                        # single multi-frame video could itself hold the writer
+                        # past other connections' busy_timeout.
+                        if (_time.monotonic() - _last_commit) >= 2:
+                            conn.commit()
+                            _last_commit = _time.monotonic()
+                    # Same person/animal across several frames must not become
+                    # several rows -- collapse before writing.
+                    face_hits = collapse_video_faces(
+                        raw_faces, cfg.detect_video_same_face)
+                    animal_hits = collapse_video_animals(
+                        raw_animals, cfg.detect_video_same_animal)
+                    # No frame at all (no ffmpeg, unreadable container) is a
+                    # clean permanent skip, not an error: the scan markers
+                    # below still get written with zero counts, so this video
+                    # is never retried forever.
+                else:
+                    img, scale = _load_bgr(str(path), cfg.detect_max_side)
+                    found = _detect_on(img, scale, cfg, face_be, pet_be)
 
-                face_report = found.report
-                human_faces = found.faces
-                animals, humans = found.animals, found.humans
-                stats.human_animals_dropped += found.human_animals
-                stats.nonhuman_suppressed += found.suppressed_faces
+                    # -- is this photo stored sideways? ----------------------
+                    # Someone/something is here but no face resolved: that is
+                    # the signature of a photo whose pixels are turned. Probing
+                    # costs three score-only SCRFD passes and is skipped for
+                    # the vast majority of images, which answer on the first
+                    # pass. SCRFD finding nothing at all is the signal, not the
+                    # cross-check's verdict: a face it did find and an animal
+                    # then claimed says the photo was readable, so leave it be.
+                    if (face_be is not None and not found.report.faces
+                            and (found.animals or found.humans)):
+                        rotate, conf, orient_src = _resolve_rotation(
+                            img, face_be, pet_be, cfg, found.max_subject_share,
+                            found.animal_score)
+                        if rotate:
+                            img = rotate_image(img, rotate)
+                            found = _detect_on(img, scale, cfg, face_be, pet_be)
+                            stats.rotated += 1
+
+                    face_report = found.report
+                    stats.human_animals_dropped += found.human_animals
+                    stats.nonhuman_suppressed += found.suppressed_faces
+                    face_hits = [(fc, None) for fc in found.faces]
+                    animal_hits = [(a, None) for a in found.animals]
 
                 # -- rewrite this file's detections as a unit ----------------
                 conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
@@ -525,35 +728,35 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                            (file_id, rotate_deg, source, confidence, created_at)
                            VALUES (?,?,?,?,?)""",
                         (fid, rotate, orient_src, conf, now))
-                for a in animals:
+                for a, offset in animal_hits:
                     conn.execute(
                         """INSERT INTO animal_detections
                            (file_id,species,box_x,box_y,box_w,box_h,det_score,
-                            embedding,model_source,created_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                            embedding,model_source,frame_offset,created_at)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
                         (fid, a.species, a.x, a.y, a.w, a.h, a.score,
-                         a.embedding.tobytes(), pet_src, now))
-                for fc in human_faces:
+                         a.embedding.tobytes(), pet_src, offset, now))
+                for fc, offset in face_hits:
                     conn.execute(
                         """INSERT INTO faces
                            (file_id, box_x, box_y, box_w, box_h, det_score,
                             focus_score, brightness, extreme_fraction,
                             clipped_fraction, quality_score, quality_source,
-                            embedding, created_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                            embedding, frame_offset, created_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (fid, fc.x, fc.y, fc.w, fc.h, fc.score,
                          fc.focus_score, fc.brightness, fc.extreme_fraction,
                          fc.clipped_fraction, fc.quality_score, fc.quality_source,
-                         fc.embedding.tobytes(), now))
+                         fc.embedding.tobytes(), offset, now))
 
-                n_faces = len(human_faces)
-                n_animals = len(animals)
+                n_faces = len(face_hits)
+                n_animals = len(animal_hits)
                 stats.candidates += face_report.candidates
                 stats.rejected_score += face_report.rejected.get("score", 0)
                 stats.rejected_size += face_report.rejected.get("size", 0)
                 stats.rejected_clipped += face_report.rejected.get("clipped", 0)
                 stats.rejected_nonhuman += face_report.rejected.get("nonhuman", 0)
-            except Exception as e:  # bad/corrupt image, unreadable, etc.
+            except Exception as e:  # bad/corrupt file, unreadable, etc.
                 stats.errors += 1
                 if len(stats.error_samples) < 5:
                     stats.error_samples.append(f"{path.name}: {e}")

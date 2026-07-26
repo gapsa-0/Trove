@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
@@ -141,6 +141,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         "TEXT NOT NULL DEFAULT 'pending'")
     _add_column_if_missing(conn, "nonhuman_detections", "restored_face_id", "INTEGER")
     _add_column_if_missing(conn, "pet_scan", "source_sha256", "TEXT")
+    # Detection now also runs on videos, via sampled keyframes. A box on a video
+    # is meaningless without the frame it was found in, so both detection tables
+    # record the ffmpeg offset to re-extract that frame for cropping.
+    _add_column_if_missing(conn, "faces", "frame_offset", "TEXT")
+    _add_column_if_missing(conn, "animal_detections", "frame_offset", "TEXT")
     _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
     if previous_version < 12:
         # One-time cleanup, gated to schema version 12 so it runs exactly once

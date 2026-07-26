@@ -121,29 +121,69 @@ def video_frames_for(cache_dir: str, fid: int, src: Path, offsets: list[str],
     return out
 
 
+# Frames the fused detect stage (detect/extract.py) samples from a video and
+# runs the face/pet detectors on. Unlike video_frames_for (keyed on a list
+# index, resolved once per indexing run), a detection's ``frame_offset`` is
+# stored in the DB and looked up months later purely from that string -- so
+# the cache key here is derived from the offset itself, not a position in a
+# list, and must be reproducible from the stored row alone. Bump when
+# extraction changes.
+DETECT_FRAME_VER = 1
+
+
+def _sanitize_offset(offset: str) -> str:
+    # ffmpeg -ss offsets look like "00:00:12.500" -- colons and dots are not
+    # portable in filenames on every filesystem, so fold them to underscores.
+    return offset.replace(":", "-").replace(".", "_")
+
+
+def detect_frame_for(cache_dir: str, fid: int, src: Path, offset: str,
+                     size: int, sha256: str | None = None) -> Path | None:
+    """Disk-cached keyframe extracted at ``offset``, for the fused detect stage.
+
+    Re-derivable from ``offset`` alone (plus fid/sha/size), so a crop served
+    long after detection can regenerate the exact frame a stored detection's
+    box was measured in. Returns None if ffmpeg fails or is missing --
+    callers treat that as a clean, permanent skip. Read-only over the
+    original.
+    """
+    base = sha256 if sha256 else f"fid{fid}"
+    tp = Path(cache_dir) / "detect_frames" / \
+        f"{base}_{_sanitize_offset(offset)}_v{DETECT_FRAME_VER}_{size}.jpg"
+    tp.parent.mkdir(parents=True, exist_ok=True)
+    if tp.exists():
+        return tp
+    return tp if _video_frame(tp, src, size, offset) else None
+
+
 # Bump when the face-crop framing changes so old crops are regenerated.
 FACE_THUMB_VER = 2
 
 
-def _face_key(fid: int, sha256: str | None, box, rotate: int = 0) -> str:
+def _face_key(fid: int, sha256: str | None, box, rotate: int = 0,
+             variant: str = "") -> str:
     x, y, w, h = box
     base = sha256 if sha256 else f"fid{fid}"
     return (f"{base}_{x}_{y}_{w}_{h}_fv{FACE_THUMB_VER}"
-            + (f"_r{rotate}" if rotate else ""))
+            + (f"_r{rotate}" if rotate else "")
+            + (f"_{variant}" if variant else ""))
 
 
 def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
                    sha256: str | None = None, size: int = 200,
-                   rotate: int = 0) -> Path | None:
+                   rotate: int = 0, variant: str = "") -> Path | None:
     """A padded square crop around one face box, disk-cached. Content-addressed
     (sha + box) so the same face in byte-identical duplicates shares one crop.
     Read-only over the original; returns None if Pillow is unavailable.
 
     ``rotate`` is applied before cropping: boxes are stored in the frame the
     detector actually looked at, which for a sideways-stored photo is the turned
-    one."""
+    one. ``variant`` distinguishes crops that would otherwise collide on the
+    same (sha, box) key -- namely two different frames of one video that
+    happen to produce identical boxes; callers pass the frame's offset string
+    for video detections, empty for photos."""
     tp = Path(cache_dir) / "faces" / \
-        f"{_face_key(face_id, sha256, box, rotate)}_{size}.jpg"
+        f"{_face_key(face_id, sha256, box, rotate, variant)}_{size}.jpg"
     if tp.exists():
         return tp
     pil = _try_pillow()

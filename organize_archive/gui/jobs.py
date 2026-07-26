@@ -21,7 +21,8 @@ from ..scan import walker
 @dataclass
 class Job:
     id: int
-    kind: str                 # "scan" | "enrich" | "dedup" | "places" | "faces" | "pets" | "semantic"
+    kind: str                 # "scan" | "enrich" | "dedup" | "places" | "detect" |
+                               # "face_cluster" | "pet_cluster" | "semantic"
     root_id: int | None
     root_path: str | None
     force: bool = False
@@ -453,6 +454,8 @@ class JobManager:
                             self._run_detect(conn, job, cancel)
                         elif job.kind == "face_cluster":
                             self._run_face_cluster(conn, job, cancel)
+                        elif job.kind == "pet_cluster":
+                            self._run_pet_cluster(conn, job, cancel)
                         else:
                             raise ValueError(f"unknown job kind: {job.kind}")
                     finally:
@@ -562,11 +565,13 @@ class JobManager:
         from ..detect import extract as dx
         from ..faces import cluster as fc
         from ..pets import cluster as pc
-        # Progress is cumulative over ALL canonical images, not just this run's
-        # backlog: total = every canonical image, done starts at how many are
-        # already detected. So the bar/% match the "Detected N / total" tile and
-        # survive resuming across restarts (no misleading per-run total).
-        total = dx.image_count(conn, job.root_id)
+        # Progress is cumulative over ALL canonical media, not just this run's
+        # backlog: total = every canonical image (+ video, once video detection
+        # is enabled), done starts at how many are already detected. So the
+        # bar/% match the "Detected N / total" tile and survive resuming across
+        # restarts (no misleading per-run total). cfg is passed so the
+        # population matches pending_count's (both honour detect_video_frames).
+        total = dx.image_count(conn, self.cfg, job.root_id)
         already = max(0, total - dx.pending_count(conn, self.cfg, job.root_id))
         job.total, job.done = total, already
         # Load both detector model sets once and reuse across every chunk.
@@ -579,7 +584,8 @@ class JobManager:
                 raise KeyboardInterrupt
             prog = _JobProgress(job, cancel, base=already + processed, fixed_total=True)
             st = dx.extract(conn, self.cfg, progress=prog, limit=self._DETECT_CHUNK,
-                            face_be=face_be, pet_be=pet_be)
+                            face_be=face_be, pet_be=pet_be,
+                            cache_dir=self.cfg.archive_cache_dir(job.root_id))
             if st.processed == 0:
                 break
             processed += st.processed
@@ -606,6 +612,16 @@ class JobManager:
         stats = cluster_faces(conn, self.cfg)
         job.done = job.total = 1
         job.message = f"{stats.people} people · {stats.clustered} faces clustered"
+
+    def _run_pet_cluster(self, conn, job: Job, cancel):
+        # Mirrors _run_face_cluster; started after unmerge_pets so an undone
+        # merge's fresh 'different' pet_links row takes effect immediately
+        # rather than waiting for the next full detect chunk.
+        from ..pets.cluster import cluster_pets
+        job.current = "reclustering pets after review…"
+        stats = cluster_pets(conn, self.cfg, root_id=job.root_id)
+        job.done = job.total = 1
+        job.message = f"{stats.pets} pets · {stats.clustered} detections clustered"
 
     def _run_semantic(self, job: Job, cancel):
         # Drain in passes so semantic indexing is ONE continuous job: each pass

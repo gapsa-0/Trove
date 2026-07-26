@@ -22,6 +22,18 @@ for (const [what, marker, fix] of [
   }
 }
 
+// desktop/build/ is gitignored (it matches the repo-wide `build/` rule), so the
+// app icons electron-builder needs are never in a fresh clone. Render them from
+// the one canonical mark instead of committing binaries that can drift from it.
+const icons = spawnSync(python, [path.join(root, "tools", "render_logo.py")],
+  { cwd: root, stdio: "inherit" });
+if (icons.status !== 0) {
+  console.error("error: could not render the app icons (tools/render_logo.py).\n"
+    + "  It needs Pillow, so point PYTHON at the virtualenv you build with:\n"
+    + "    PYTHON=.venv/bin/python npm run build:backend");
+  process.exit(icons.status ?? 1);
+}
+
 const result = spawnSync(python, ["-m", "PyInstaller", "--noconfirm", "--distpath", path.join(root, "desktop"), path.join(root, "packaging", "organize-archive.spec")], {
   cwd: root,
   stdio: "inherit",
