@@ -48,12 +48,10 @@ torch + transformers) and has no upstream URL, so a packaged build carries it
 
 `stage-models.py` takes it from a local `cache/models` directory (a developer
 machine that already has it) or from the manifest `url`. CI runners have no
-local copy, so they use the `url`, which is published as a release asset on
-**[capsa-0/gallery-curator-models](https://github.com/capsa-0/gallery-curator-models)**
-— a separate public repository that exists only to host these weights. The code
-repository is private, and `stage-models.py` downloads with no authentication,
-so the asset has to live somewhere publicly reachable; nothing about the
-application is exposed by publishing an export of an already-public checkpoint.
+local copy, so they use the `url`, which points at a release asset on this
+repository — the `models-v1` tag. `stage-models.py` downloads with no
+authentication, which is why the asset has to be publicly reachable; that is
+satisfied by this repository being public.
 
 **Those releases are permanent.** The manifest pins the exact bytes by SHA-256,
 so deleting or retagging an asset breaks reproducible builds of every version
@@ -64,10 +62,10 @@ that references it. Add a new tag (`models-v2`, …) instead of moving an old on
 1. Stage or export the file locally, and confirm its SHA-256 matches the entry
    in `packaging/models/manifest.json` (or update the manifest if the weights
    genuinely changed — that means a new tag).
-2. `gh release create <tag> <file> --repo capsa-0/gallery-curator-models
+2. `gh release create <tag> <file> --repo capsa-0/Trove
    --title "…" --notes "…provenance and sha256…"`.
 3. Read the asset URL back with `gh release view <tag> --repo
-   capsa-0/gallery-curator-models --json assets --jq '.assets[].url'` rather
+   capsa-0/Trove --json assets --jq '.assets[].url'` rather
    than assuming its shape, and record it as the manifest `url`.
 4. Verify the CI path by wiping any local copy and forcing the download:
    `rm -rf packaging/models/staged && ARCHIVE_MODEL_SOURCE=/nonexistent
