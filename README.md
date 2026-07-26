@@ -106,11 +106,23 @@ readable configuration. Embedding is resumable, does not process hidden duplicat
 and can run alongside the local pipeline. Remove the key and indexing simply stops;
 vectors already stored stay searchable.
 
-## Install and run the desktop app
+## Install
 
-Desktop builds produce Linux x64 AppImage and Debian/Ubuntu packages, plus an NSIS
-Windows installer. Build and test packages on their target operating system; see the
-release guide for the current publication and signing requirements.
+Download the package for your system from the
+[releases page](https://github.com/gapsa-0/Trove/releases). Trove is available for
+Windows x64 and Linux x64.
+
+### Windows
+
+Run the installer and follow the prompts. It installs for your user only, so it needs
+no administrator rights, and it creates a desktop and Start-menu shortcut.
+
+Uninstalling removes the application and its shortcuts. It never touches your media,
+and your catalogue is kept in `%LOCALAPPDATA%\organize_archive` in case you reinstall
+— delete that folder yourself if you want it gone.
+
+See [Windows installation notes](docs/install-windows.md) for signature verification
+and further detail.
 
 ### Linux
 
@@ -127,13 +139,12 @@ For Debian or Ubuntu:
 sudo apt install ./trove-desktop_<version>_amd64.deb
 ```
 
-Linux packages bundle FFmpeg and FFprobe. ExifTool is optional: without it, Trove
-still uses Takeout sidecars, filenames, and file timestamps, but cannot read the full
-range of embedded metadata.
+Linux packages bundle FFmpeg and FFprobe. ExifTool is not included on Linux: without
+it, Trove still uses Takeout sidecars, filenames, and file timestamps, but cannot read
+the full range of embedded metadata.
 
 See [Linux installation notes](docs/install-linux.md) for AppImage/FUSE and data-path
-details. See [Windows installation notes](docs/install-windows.md) for installer,
-signature, and uninstall behavior.
+details.
 
 ### First use
 
@@ -142,60 +153,15 @@ the automatic pipeline. You can add additional folders from the archive picker. 
 archive whose drive is disconnected remains registered and is shown as unavailable;
 mount it again to continue.
 
+The first time People and Pets detection runs, Trove downloads their model weights
+(about 220 MB) once. After that it works offline; all media processing is local from
+the start.
+
 Removing an archive from Trove removes its catalogue records and derived cache for
 that archive after background work has stopped. It does not remove the selected source
 folder or any file under it.
 
-## Command line and source setup
-
-Trove requires Python 3.13 or newer. Create a virtual environment and install the
-package with the extras appropriate to the features you want:
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -e '.[cli,media,faces,pets]'
-```
-
-`exiftool` and `ffmpeg`/`ffprobe` are recommended system tools. The core scanner works
-without them, with reduced embedded-metadata and video support.
-
-The CLI exposes the same durable catalogue operations:
-
-```bash
-oa config --add-root /path/to/archive
-oa config --set-timezone America/Argentina/Buenos_Aires
-oa init
-oa scan
-oa enrich
-oa dedup
-oa pets
-oa faces
-oa gui
-```
-
-Useful companion commands are `oa status`, `oa dates`, `oa config --show`, and
-`oa migrate-data` for copying an older project-local `data/` directory into the
-per-user data location. All long commands are designed to be re-run.
-
-Face extraction rejects low-confidence, tiny, blurry, severely over/underexposed,
-and substantially clipped candidates before they enter People. Inspect persisted
-decision counts and post-clustering unassigned noise with
-`oa faces --quality-report`, or test the configured thresholds against up to 100
-pending images without changing the catalog:
-
-```bash
-oa faces --calibrate 100
-```
-
-`oa gui` starts the local interface at `http://127.0.0.1:8756/`; it opens a standalone
-browser window when a supported Chromium-family browser is available. Use `--tab` to
-open a normal tab or `--no-open` when launching it remotely.
-
-The native "choose folder" dialog is provided by the desktop app; in a plain browser
-(`oa gui`) there is no OS picker, so **type the absolute folder path** into the box on
-the welcome screen (e.g. `/mnt/photos/Multimedia` or `D:\Photos`) and press *Choose media
-folder*. Use the packaged desktop app if you want to click through a folder dialog.
+If something goes wrong, see [troubleshooting](docs/troubleshooting.md).
 
 ## Data locations and backups
 
@@ -220,68 +186,11 @@ The directory is still named `organize_archive` rather than `Trove`. That is
 deliberate: the product name changed, but the package, CLI, application id and data
 path did not, so catalogues built by earlier versions keep working.
 
-## Build the desktop app
+## Building from source
 
-The Electron shell owns the native window and folder picker; the Python backend stays
-loopback-only. From `desktop/`:
-
-```bash
-npm install
-npm run dev
-npm run build:backend
-npm run package:linux
-npm run package:win
-```
-
-Packaging first needs its two staged inputs, which are downloaded and SHA-256
-verified against manifests in `packaging/` rather than committed:
-
-```bash
-python3 packaging/scripts/stage-tools.py --target linux-x64   # or win32-x64
-python3 packaging/scripts/stage-models.py
-```
-
-`npm run build:backend` refuses to run until both have been staged, so a build
-cannot silently ship without ffmpeg/ffprobe or without the bundled pet re-ID
-model. See [the release guide](docs/release.md#build-inputs) for what each input
-is and where it comes from.
-
-**`npm run dev` must reach the project virtualenv.** In development the shell launches
-the backend with plain `python3`. If that interpreter is the system Python rather than
-the project `.venv`, OpenCV and onnxruntime are missing and **Pets and People report
-"unavailable"** (the rest of the app still works). Activate the venv first, or point the
-shell at it explicitly:
-
-```bash
-# either activate the venv before launching
-. ../.venv/bin/activate && npm run dev
-# …or name the interpreter for this run
-PYTHON=../.venv/bin/python npm run dev   # Windows: set PYTHON=..\.venv\Scripts\python.exe
-```
-
-Packaged builds are unaffected — they bundle their own interpreter and models.
-
-Native-tool staging and packaging files are in `packaging/`. Release versioning and
-clean-machine checks are described in [the release guide](docs/release.md).
-
-## Current limitations
-
-- Visual duplicate matching applies to images; video near-duplicate matching is not
-  implemented.
-- People and pets are found in videos by sampling a few keyframes, so a face that
-  appears only briefly between those frames can be missed.
-- Detection models are downloaded once into the cache the first time they are needed,
-  so a new installation needs network access once. Everything after that is local.
-- Automatic people grouping is reliable on collections up to a few tens of thousands
-  of photos. Beyond that, noisy detections increasingly bridge distinct clusters, and
-  separate people can be merged into one group. Reviewing and naming people
-  constrains this, and the manual merge/unmerge tools let you correct it.
-- Embedded metadata quality depends on installed tools and the source formats.
-- Optional Voyage indexing accepts images and MP4 video only; it intentionally skips
-  audio, PDFs, documents, and unsupported video formats.
-- The bundled Linux release tools do not include ExifTool.
-
-For recovery and common failures, see [troubleshooting](docs/troubleshooting.md).
+Running Trove from a source checkout, using the `oa` command line, or building the
+desktop packages yourself is covered in
+[command line and development](docs/command-line.md).
 
 ## License
 
