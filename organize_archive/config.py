@@ -104,6 +104,19 @@ class Config:
     # Dedup (Phase 4)
     phash_hamming_threshold: int = 6
 
+    # Places (geo clustering). A one-off snapshot at some random spot (a shop,
+    # a stranger's house passed through once) shouldn't earn "place" status
+    # just because a photo happened to have GPS there. This is a READ-time
+    # filter, not a clustering-time one: place_clusters rows are never deleted
+    # for falling short (places are durable, and incremental assignment
+    # necessarily starts every new place at 1 member before it can ever grow),
+    # they simply stop being *reported* by queries.place_clusters() once below
+    # this floor. Below-threshold members show as having no location in the
+    # GUI — that's intended, not a bug ("orphan, no problem"). Named or pinned
+    # clusters are exempt (see queries.place_clusters): a user-named place, or
+    # one just created via create_place() with 0-1 members, is intentional.
+    place_min_media: int = 10
+
     # Faces (Phase 6). Detection + embedding run locally; nothing leaves the
     # machine. Detection is InsightFace SCRFD (det_10g); each face is aligned to
     # the 112x112 ArcFace template (5-point similarity transform) and embedded by

@@ -185,10 +185,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(queries.date_sources(self._db(rid), rid))
             elif path == "/api/map/clusters":
                 rid = one("root", int)
-                self._json(queries.place_clusters(self._db(rid), rid))
+                self._json(queries.place_clusters(
+                    self._db(rid), rid, self.cfg.place_min_media))
             elif path.startswith("/api/map/cluster/"):
                 rid = one("root", int)
-                c = queries.place_cluster_members(self._db(rid), int(path.rsplit("/", 1)[1]))
+                c = queries.place_cluster_members(
+                    self._db(rid), int(path.rsplit("/", 1)[1]),
+                    limit=min(one("limit", int, 120), 500),
+                    offset=one("offset", int, 0))
                 self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/summary":
                 rid = one("root", int)
@@ -293,7 +297,8 @@ class Handler(BaseHTTPRequestHandler):
                         alternate_vectors=[(vector, 0.01) for vector in vectors[1:]]))
             elif path.startswith("/api/item/"):
                 rid = self.jobs.current_root_id()
-                it = queries.item(self._db(rid), int(path.rsplit("/", 1)[1])) if rid else None
+                it = queries.item(self._db(rid), int(path.rsplit("/", 1)[1]),
+                                  self.cfg.place_min_media) if rid else None
                 self._json(it) if it else self._json({"error": "not found"}, 404)
             elif path == "/api/pipeline":
                 # Single source of truth for pipeline status: the same resolved
@@ -397,7 +402,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/merge":
                 res = db.write_with_retry(lambda: queries.merge_persons(
-                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")))
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"),
+                    body.get("name")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/different":
                 res = db.write_with_retry(lambda: queries.set_persons_different(
@@ -416,6 +422,11 @@ class Handler(BaseHTTPRequestHandler):
                 res = db.write_with_retry(lambda: queries.rename_pet(
                     self._db(self.jobs.current_root_id()), body.get("pet_id"),
                     (body.get("name") or "").strip()))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/pets/merge":
+                res = db.write_with_retry(lambda: queries.merge_pets(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"),
+                    body.get("name")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/nonhuman/review":
                 res = db.write_with_retry(lambda: queries.review_nonhuman(

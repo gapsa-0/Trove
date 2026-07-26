@@ -13,6 +13,7 @@ import os
 import math
 import struct
 import shutil
+from collections import Counter
 from pathlib import Path
 
 from ..db import database as db
@@ -47,7 +48,7 @@ def archives(cfg) -> list[dict]:
             "id": rid, "path": path,
             "name": os.path.basename(path.rstrip("/")) or path,
             "added_at": entry["added_at"],
-            "files": 0, "size": 0, "hashed": 0, "enriched": 0,
+            "files": 0, "size": 0, "hashed": 0,
             "exists": Path(path).is_dir(),
             "last_scan": None, "covers": [],
         }
@@ -59,9 +60,6 @@ def archives(cfg) -> list[dict]:
                                SUM(sha256 IS NOT NULL) hashed
                         FROM files f WHERE {_VISIBLE}"""
                 ).fetchone()
-                dated = conn.execute(
-                    "SELECT COUNT(*) FROM files f JOIN dates d ON d.file_id=f.id"
-                ).fetchone()[0]
                 last = conn.execute(
                     "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
                 ).fetchone()
@@ -74,7 +72,7 @@ def archives(cfg) -> list[dict]:
                         ORDER BY f.id DESC LIMIT 5""").fetchall()]
                 row.update(
                     files=stats["c"], size=stats["s"], hashed=stats["hashed"] or 0,
-                    enriched=dated, covers=covers,
+                    covers=covers,
                     last_scan=(last["finished_at"] or last["started_at"]) if last else None,
                 )
             finally:
@@ -226,7 +224,7 @@ def timeline(db_path: str, root_id=None, bucket="month", year=None, month=None,
         conn.close()
 
 
-def place_clusters(db_path: str, root_id: int) -> dict:
+def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict:
     """List of place clusters for a root, computing them the first time
     they're requested (subsequent calls just read the cached rows)."""
     conn = db.open_readonly(db_path)
@@ -238,17 +236,36 @@ def place_clusters(db_path: str, root_id: int) -> dict:
         conn.close()
     if not has_rows:
         recompute_place_clusters(db_path, root_id)
-    return _read_place_clusters(db_path, root_id)
+    return _read_place_clusters(db_path, root_id, min_media)
 
 
-def _read_place_clusters(db_path: str, root_id: int) -> dict:
+# A cluster is exempt from the min-media floor when it's named or pinned: a
+# user-named place is intentional regardless of size, and create_place()
+# inserts a pinned place with 0-1 members that must survive the read right
+# after it's created (see config.place_min_media for the full rationale).
+# Written against the `pc` alias so it can be dropped into a join (item()) as
+# safely as into a single-table read.
+_PLACE_EXEMPT = "(NULLIF(TRIM(pc.name), '') IS NOT NULL OR pc.pinned = 1)"
+
+
+def _read_place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict:
     conn = db.open_readonly(db_path)
     try:
         clusters = conn.execute(
-            """SELECT id, name, lat, lon, member_count
-               FROM place_clusters WHERE root_id=?
-               ORDER BY CASE WHEN NULLIF(TRIM(name), '') IS NULL THEN 1 ELSE 0 END,
-                        member_count DESC, id""", (root_id,)).fetchall()
+            f"""SELECT pc.id, pc.name, pc.lat, pc.lon, pc.member_count
+               FROM place_clusters pc
+               WHERE pc.root_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
+               ORDER BY CASE WHEN NULLIF(TRIM(pc.name), '') IS NULL THEN 1 ELSE 0 END,
+                        pc.member_count DESC, pc.id""",
+            (root_id, min_media)).fetchall()
+        # Honest footnote for the frontend: how many below-threshold clusters
+        # (and how many member files) were excluded above, so a "places" count
+        # never silently disagrees with what a curious user can add up by hand.
+        hidden = conn.execute(
+            f"""SELECT COUNT(*), COALESCE(SUM(pc.member_count), 0)
+               FROM place_clusters pc
+               WHERE pc.root_id=? AND pc.member_count < ? AND NOT {_PLACE_EXEMPT}""",
+            (root_id, min_media)).fetchone()
         members = conn.execute(
             """SELECT pcm.cluster_id, pcm.file_id
                FROM place_cluster_members pcm
@@ -263,7 +280,7 @@ def _read_place_clusters(db_path: str, root_id: int) -> dict:
         return {"clusters": [{
             "id": c["id"], "name": c["name"], "lat": c["lat"], "lon": c["lon"],
             "count": c["member_count"], "thumb_ids": thumbs.get(c["id"], []),
-        } for c in clusters]}
+        } for c in clusters], "hidden": {"places": hidden[0], "files": hidden[1]}}
     finally:
         conn.close()
 
@@ -278,11 +295,11 @@ def recompute_place_clusters(db_path: str, root_id: int) -> dict:
         conn.close()
 
 
-def place_cluster_members(db_path: str, cluster_id: int) -> dict | None:
+def place_cluster_members(db_path: str, cluster_id: int, limit=120, offset=0) -> dict | None:
     conn = db.open_readonly(db_path)
     try:
         c = conn.execute(
-            "SELECT id, name, lat, lon FROM place_clusters WHERE id=?",
+            "SELECT id, name, lat, lon, member_count FROM place_clusters WHERE id=?",
             (cluster_id,)).fetchone()
         if not c:
             return None
@@ -294,16 +311,19 @@ def place_cluster_members(db_path: str, cluster_id: int) -> dict | None:
                JOIN files f ON f.id=pcm.file_id
                LEFT JOIN dates d ON d.file_id=f.id
                WHERE pcm.cluster_id=?
-               ORDER BY (d.best_datetime IS NULL), d.best_datetime""",
-            (cluster_id,)).fetchall()
+               ORDER BY (d.best_datetime IS NULL), d.best_datetime
+               LIMIT ? OFFSET ?""",
+            (cluster_id, limit, offset)).fetchall()
         return {
             "id": c["id"], "name": c["name"], "lat": c["lat"], "lon": c["lon"],
+            "total": c["member_count"],
             "members": [{
                 "id": r["id"], "type": r["media_type"],
                 "name": os.path.basename(r["rel_path"]),
                 "date": r["dt"], "date_source": r["dsrc"],
                 "has_gps": bool(r["has_gps"]),
             } for r in rows],
+            "offset": offset, "count": len(rows),
         }
     finally:
         conn.close()
@@ -1169,6 +1189,19 @@ def _rep_face(conn, pid, cover) -> int | None:
     return r["id"] if r else None
 
 
+def _rep_detection(conn, pid, cover) -> int | None:
+    """A stable representative animal_detection id for a pet (its cover, or
+    its highest-scoring detection). Mirrors _rep_face; used to anchor a
+    durable pet_links constraint, which -- unlike a pet id -- survives
+    cluster_pets' per-chunk DELETE/rebuild of the `pets` table."""
+    if cover:
+        return cover
+    r = conn.execute(
+        "SELECT id FROM animal_detections WHERE pet_id=? ORDER BY det_score DESC LIMIT 1",
+        (pid,)).fetchone()
+    return r["id"] if r else None
+
+
 def _record_link(conn, fa, fb, kind: str, now: str) -> None:
     if not fa or not fb or fa == fb:
         return
@@ -1191,10 +1224,16 @@ def _update_person_centroid(conn, pid) -> None:
     conn.execute("UPDATE persons SET centroid=? WHERE id=?", (c.tobytes(), pid))
 
 
-def merge_persons(db_path: str, id_a, id_b) -> dict:
+def merge_persons(db_path: str, id_a, id_b, name=None) -> dict:
     """User confirmed two clusters are the same person. Merge immediately (move
     faces, keep the named/larger one) AND store a durable 'same' constraint so
-    the merge survives future re-clusters."""
+    the merge survives future re-clusters.
+
+    An explicit `name` picks the surviving NAME outright (it doesn't change
+    which person id survives -- that's still named/larger-cluster/id as
+    below). This is what lets two already-but-differently-named clusters
+    merge at all: normally that's refused because there's no automatic way to
+    choose between them."""
     if not id_a or not id_b or id_a == id_b:
         return {"error": "need two distinct persons"}
     conn = db.connect(db_path)
@@ -1205,8 +1244,9 @@ def merge_persons(db_path: str, id_a, id_b) -> dict:
                           (id_b,)).fetchone()
         if not pa or not pb:
             return {"error": "unknown person"}
-        if pa["name"] and pb["name"] and pa["name"] != pb["name"]:
-            return {"error": f"both named ({pa['name']} / {pb['name']}); rename first"}
+        name = (name or "").strip() or None
+        if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
+            return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
         # keep the named one, else the larger cluster
         if pa["name"] and not pb["name"]:
             keep, drop = pa, pb
@@ -1221,11 +1261,134 @@ def merge_persons(db_path: str, id_a, id_b) -> dict:
                      _rep_face(conn, drop["id"], drop["cover_face_id"]), "same", now)
         conn.execute("UPDATE faces SET person_id=? WHERE person_id=?", (keep["id"], drop["id"]))
         conn.execute("DELETE FROM persons WHERE id=?", (drop["id"],))
+        survivor_name = name or keep["name"]
+        if survivor_name:
+            conn.execute("UPDATE persons SET name=? WHERE id=?", (survivor_name, keep["id"]))
+            # Load-bearing, not cosmetic: faces/cluster.py's _apply_manual_pins
+            # recreates a person from any face still pinned (by NAME) to a
+            # name that person no longer carries. Without this, a face that
+            # was pinned to the LOSING name (e.g. the drop side of an
+            # explicit-name merge of two differently-named clusters) would
+            # still hold that stale manual_person and silently resurrect the
+            # just-merged-away person on the very next recluster.
+            conn.execute(
+                "UPDATE faces SET manual_person=? WHERE person_id=? "
+                "AND manual_person IS NOT NULL AND manual_person != ''",
+                (survivor_name, keep["id"]))
         _sync_person_stats(conn, keep["id"])
         _update_person_centroid(conn, keep["id"])
         conn.commit()
         r = conn.execute("SELECT id,name,face_count FROM persons WHERE id=?", (keep["id"],)).fetchone()
         return {"ok": True, "person": {"id": r["id"], "name": r["name"], "face_count": r["face_count"]}}
+    finally:
+        conn.close()
+
+
+# -- "same pet?" merges (durable) -------------------------------------------
+#
+# pets/cluster.py:cluster_pets DELETEs and rebuilds the whole `pets` table
+# after every detect chunk, so a naive merge (just moving detections between
+# pet ids) would be undone within a minute. `pet_links`, anchored to
+# animal_detections ids rather than pet ids, is the constraint that survives
+# that rebuild -- see pets/cluster.py's `_apply_links` for the clustering
+# side of this, and faces/cluster.py's `_apply_links` / `face_links` for the
+# original version of the same trick.
+
+def _record_pet_link(conn, det_a, det_b, now: str) -> None:
+    if not det_a or not det_b or det_a == det_b:
+        return
+    a, b = sorted((det_a, det_b))
+    conn.execute(
+        "INSERT OR REPLACE INTO pet_links(det_a, det_b, kind, created_at) "
+        "VALUES(?,?,'same',?)", (a, b, now))
+
+
+def _refresh_pet_stats(conn, pet_id, name) -> None:
+    """Recompute a pet's aggregate fields from its current detections and set
+    its name. Used right after merge_pets moves detections into the surviving
+    pet, so a merged pet ends up with the same shape cluster_pets would have
+    produced had it clustered this combined group directly."""
+    import numpy as np
+    rows = conn.execute(
+        "SELECT id, species, det_score, embedding FROM animal_detections WHERE pet_id=?",
+        (pet_id,)).fetchall()
+    cover = max(rows, key=lambda r: r["det_score"]) if rows else None
+    # Majority species among the merged detections, ties broken by the
+    # best-scoring detection among the tied species -- the same rule
+    # cluster_pets applies to a pet_links-merged group, so a merge and the
+    # rebuild that follows it agree (a dog once misdetected as a cat merges in).
+    species = None
+    if rows:
+        counts = Counter(r["species"] for r in rows)
+        top = max(counts.values())
+        tied = {sp for sp, c in counts.items() if c == top}
+        species = max((r for r in rows if r["species"] in tied),
+                      key=lambda r: r["det_score"])["species"]
+    emb_rows = [r for r in rows if r["embedding"]]
+    centroid = None
+    if emb_rows:
+        V = np.array([np.frombuffer(r["embedding"], "float32") for r in emb_rows],
+                     dtype="float32")
+        V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
+        c = V.mean(axis=0)
+        c = (c / (np.linalg.norm(c) + 1e-9)).astype("float32")
+        centroid = c.tobytes()
+    conn.execute(
+        """UPDATE pets SET name=?, species=?, cover_detection_id=?,
+                          detection_count=?, centroid=? WHERE id=?""",
+        (name, species, cover["id"] if cover else None, len(rows), centroid, pet_id))
+
+
+def merge_pets(db_path: str, id_a, id_b, name=None) -> dict:
+    """User confirmed two pet clusters are the same animal. Merge immediately
+    (move detections, keep the named/larger one) AND store a durable 'same'
+    pet_links constraint so the merge survives the next cluster_pets rebuild.
+    Mirrors merge_persons; see its docstring for the explicit-`name` override."""
+    if not id_a or not id_b or id_a == id_b:
+        return {"error": "need two distinct pets"}
+    conn = db.connect(db_path)
+    try:
+        pa = conn.execute(
+            "SELECT id,name,cover_detection_id,detection_count FROM pets WHERE id=?",
+            (id_a,)).fetchone()
+        pb = conn.execute(
+            "SELECT id,name,cover_detection_id,detection_count FROM pets WHERE id=?",
+            (id_b,)).fetchone()
+        if not pa or not pb:
+            return {"error": "unknown pet"}
+        name = (name or "").strip() or None
+        if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
+            return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
+        # Survivor: the named one, else the larger detection_count, else the
+        # lower id (deterministic tiebreak so repeated merges are stable).
+        if pa["name"] and not pb["name"]:
+            keep, drop = pa, pb
+        elif pb["name"] and not pa["name"]:
+            keep, drop = pb, pa
+        elif (pa["detection_count"] or 0) != (pb["detection_count"] or 0):
+            keep, drop = (pa, pb) if (pa["detection_count"] or 0) > (pb["detection_count"] or 0) else (pb, pa)
+        elif pa["id"] < pb["id"]:
+            keep, drop = pa, pb
+        else:
+            keep, drop = pb, pa
+        now = db.now_iso()
+        _record_pet_link(conn, _rep_detection(conn, keep["id"], keep["cover_detection_id"]),
+                         _rep_detection(conn, drop["id"], drop["cover_detection_id"]), now)
+        # foreign_keys=ON (see db.connect): animal_detections.pet_id is
+        # ON DELETE SET NULL, so the UPDATE moving drop's detections MUST run
+        # before DELETE FROM pets, or they'd be orphaned instead of merged.
+        conn.execute("UPDATE animal_detections SET pet_id=? WHERE pet_id=?",
+                     (keep["id"], drop["id"]))
+        conn.execute("DELETE FROM pets WHERE id=?", (drop["id"],))
+        survivor_name = name or keep["name"] or drop["name"]
+        _refresh_pet_stats(conn, keep["id"], survivor_name)
+        conn.commit()
+        r = conn.execute(
+            "SELECT id,name,species,detection_count FROM pets WHERE id=?",
+            (keep["id"],)).fetchone()
+        return {"ok": True, "pet": {
+            "id": r["id"], "name": r["name"], "species": r["species"],
+            "detections": r["detection_count"]}}
     finally:
         conn.close()
 
@@ -1476,7 +1639,7 @@ def animal_crop_source(db_path: str, detection_id: int):
         conn.close()
 
 
-def item(db_path: str, fid: int) -> dict | None:
+def item(db_path: str, fid: int, min_media: int = 10) -> dict | None:
     conn = db.open_readonly(db_path)
     try:
         f = conn.execute(
@@ -1505,10 +1668,14 @@ def item(db_path: str, fid: int) -> dict | None:
                WHERE a.file_id=? AND a.species!='teddy bear'
                ORDER BY a.det_score DESC""", (fid,))]
         # Current place membership (a file belongs to at most one place).
+        # A below-threshold, unnamed/unpinned cluster is not reported as a
+        # "place" here either (see place_min_media) — this file just has no
+        # location, matching what place_clusters() shows on the map.
         place = conn.execute(
-            """SELECT pc.id, pc.name FROM place_cluster_members pcm
+            f"""SELECT pc.id, pc.name FROM place_cluster_members pcm
                JOIN place_clusters pc ON pc.id=pcm.cluster_id
-               WHERE pcm.file_id=? LIMIT 1""", (fid,)).fetchone()
+               WHERE pcm.file_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
+               LIMIT 1""", (fid, min_media)).fetchone()
         # Pick-lists for in-panel editing: only *named* places (in this file's root)
         # and *named* persons are offered as targets.
         place_options = [{"id": r["id"], "name": r["name"]} for r in conn.execute(

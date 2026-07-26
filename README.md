@@ -23,9 +23,14 @@ application-data folder.
   be shown again.
 - Builds a timeline, media library, source-folder view, and item inspector.
 - Clusters GPS-tagged media into places. Places can be named, manually created from a
-  map pin, and manually assigned without altering the media's GPS metadata.
+  map pin, and manually assigned without altering the media's GPS metadata. A spot
+  needs at least 10 photos to count as a place (`place_min_media`), so a one-off
+  snapshot somewhere random stays unplaced instead of cluttering the map; places you
+  have named or pinned yourself always count, whatever their size.
 - Detects and clusters faces locally into people. You can name people, correct a face,
-  merge or separate suggested people, and dismiss non-person detections.
+  merge or separate suggested people, and dismiss non-person detections. Two people
+  (or two pets) can also be merged by dragging one card onto the other; if both carry
+  a name, the app asks which one should stay.
 - Detects cats, dogs, birds, and horses locally and groups conservative likely-pet
   identities. People and animals are found in the same pass and cross-check each
   other: an animal's own face is kept out of People, while a person who is not

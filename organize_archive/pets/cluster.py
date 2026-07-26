@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from ..config import Config
@@ -34,6 +35,56 @@ def _clusters(vectors, threshold):
     return groups
 
 
+def _apply_links(conn, groups, emb_rows):
+    """Fold durable "same pet?" answers (``pet_links``) into the automatic
+    groups, mirroring ``faces/cluster.py``'s ``_apply_links`` (read that one
+    first). Links are anchored to DETECTION ids rather than pet ids because
+    ``cluster_pets`` deletes and rebuilds every ``pets`` row after EVERY detect
+    chunk (see ``gui/jobs.py``'s ``cluster_pets`` call) -- a pet id from the run
+    a link was recorded in no longer exists by the time this runs again, but
+    its member detections do. Called on the flat, all-species group list
+    *before* ``pets_min_detections`` is applied, so a link can union two
+    groups that came from *different* per-species passes: a dog once
+    misdetected as a cat still needs to rejoin its real identity.
+
+    A link is ignored when either detection no longer exists (its file was
+    removed, or it was never embedded) or when both are already in the same
+    group. Returns ``groups`` unchanged when there are no links at all."""
+    links = conn.execute(
+        "SELECT det_a, det_b FROM pet_links WHERE kind='same'").fetchall()
+    if not links:
+        return groups
+    det_to_group: dict[int, int] = {}
+    for gi, idxs in enumerate(groups):
+        for i in idxs:
+            det_to_group[emb_rows[i]["id"]] = gi
+
+    # Small union-find local to this module (faces/cluster.py has its own
+    # _DSU, but importing across detector modules for one helper isn't worth
+    # the coupling).
+    parent = list(range(len(groups)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for link in links:
+        ga = det_to_group.get(link["det_a"])
+        gb = det_to_group.get(link["det_b"])
+        if ga is None or gb is None:
+            continue
+        ra, rb = find(ga), find(gb)
+        if ra != rb:
+            parent[ra] = rb
+
+    merged: dict[int, list[int]] = {}
+    for gi, idxs in enumerate(groups):
+        merged.setdefault(find(gi), []).extend(idxs)
+    return list(merged.values())
+
+
 def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     import numpy as np
     stats = PetClusterStats()
@@ -55,41 +106,71 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     conn.execute("UPDATE animal_detections SET pet_id=NULL WHERE manual_pet IS NULL")
     conn.execute("DELETE FROM pets")
     now = db.now_iso()
-    for species in sorted({row["species"] for row in rows}):
-        species_rows = [row for row in rows if row["species"] == species
-                        and row["embedding"]]
-        if not species_rows:
+
+    # One global embedding matrix (rather than per-species, as before) so a
+    # pet_links merge (below) can union two groups formed in different
+    # per-species passes -- a merge needs both sides addressable by the same
+    # position space. Detections without an embedding can't be grouped at all
+    # and fall straight into stats.unassigned.
+    emb_rows = [row for row in rows if row["embedding"]]
+    if not emb_rows:
+        stats.unassigned = stats.detections
+        conn.commit()
+        return stats
+    V = np.array(
+        [np.frombuffer(row["embedding"], "float32") for row in emb_rows],
+        dtype="float32")
+    V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
+
+    # -- per-species clustering, collected into one flat list of GROUPS -----
+    # Each group is a list of GLOBAL positions into emb_rows/V (not positions
+    # local to the species slice), so _apply_links below can compare and union
+    # groups from different species passes on equal footing.
+    groups: list[list[int]] = []
+    for species in sorted({row["species"] for row in emb_rows}):
+        positions = [i for i, row in enumerate(emb_rows) if row["species"] == species]
+        for local_group in _clusters(V[positions], cfg.pets_cluster_similarity):
+            groups.append([positions[i] for i in local_group])
+
+    # -- fold in the user's "same pet?" answers, THEN filter/finalize -------
+    groups = _apply_links(conn, groups, emb_rows)
+
+    for group in groups:
+        if len(group) < cfg.pets_min_detections:
             continue
-        vectors = np.array(
-            [np.frombuffer(row["embedding"], "float32") for row in species_rows],
-            dtype="float32")
-        vectors /= np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-9
-        for group in _clusters(vectors, cfg.pets_cluster_similarity):
-            if len(group) < cfg.pets_min_detections:
-                continue
-            ids = {species_rows[index]["id"] for index in group}
-            best_name, best_overlap = None, 0
-            for old in old_members.values():
-                overlap = len(ids & old["ids"])
-                if overlap > best_overlap:
-                    best_name, best_overlap = old["name"], overlap
-            centroid = vectors[group].mean(axis=0)
-            centroid /= np.linalg.norm(centroid) + 1e-9
-            cover = max((species_rows[index] for index in group),
-                        key=lambda row: row["det_score"])
-            cursor = conn.execute(
-                """INSERT INTO pets
-                   (name,species,cover_detection_id,detection_count,centroid,created_at)
-                   VALUES(?,?,?,?,?,?)""",
-                (best_name, species, cover["id"], len(group),
-                 centroid.astype("float32").tobytes(), now))
-            marks = ",".join("?" for _ in ids)
-            conn.execute(
-                f"UPDATE animal_detections SET pet_id=? WHERE id IN ({marks})",
-                (cursor.lastrowid, *ids))
-            stats.pets += 1
-            stats.clustered += len(group)
-            stats.names_preserved += int(best_name is not None)
+        ids = {emb_rows[i]["id"] for i in group}
+        best_name, best_overlap = None, 0
+        for old in old_members.values():
+            overlap = len(ids & old["ids"])
+            if overlap > best_overlap:
+                best_name, best_overlap = old["name"], overlap
+        centroid = V[group].mean(axis=0)
+        centroid /= np.linalg.norm(centroid) + 1e-9
+        cover = max((emb_rows[i] for i in group), key=lambda row: row["det_score"])
+        # Species is now the MAJORITY among the merged group's members, not a
+        # single per-species pass's label: a pet_links merge can pull in a
+        # detection the detector mis-typed (e.g. a dog once read as a cat).
+        # Ties go to the best-scoring detection *among the tied species* --
+        # not to `cover`, which may itself be the lone high-scoring outlier
+        # of a minority species that lost the vote.
+        counts = Counter(emb_rows[i]["species"] for i in group)
+        top = max(counts.values())
+        tied = {sp for sp, c in counts.items() if c == top}
+        species = max((emb_rows[i] for i in group if emb_rows[i]["species"] in tied),
+                      key=lambda row: row["det_score"])["species"]
+        cursor = conn.execute(
+            """INSERT INTO pets
+               (name,species,cover_detection_id,detection_count,centroid,created_at)
+               VALUES(?,?,?,?,?,?)""",
+            (best_name, species, cover["id"], len(group),
+             centroid.astype("float32").tobytes(), now))
+        marks = ",".join("?" for _ in ids)
+        conn.execute(
+            f"UPDATE animal_detections SET pet_id=? WHERE id IN ({marks})",
+            (cursor.lastrowid, *ids))
+        stats.pets += 1
+        stats.clustered += len(group)
+        stats.names_preserved += int(best_name is not None)
     stats.unassigned = stats.detections - stats.clustered
     conn.commit()
     return stats

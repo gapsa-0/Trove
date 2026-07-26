@@ -4553,6 +4553,119 @@
         grid-template-columns: 1fr
       }
     }
+
+    /* Drag-to-merge (People & Pets grids only -- see attachMergeDrag). .pcard
+       is shared with place cards, but they never get the classes below. */
+    .pcard.dragging {
+      opacity: .5
+    }
+
+    .pcard.drop-target {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px
+    }
+
+    /* Small centered confirm dialog asking which of two differently-named
+       groups should survive a drag-merge. Deliberately separate markup from
+       #modal (the media viewer) -- unrelated concerns. */
+    .mergeask-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(0, 0, 0, .32);
+      opacity: 0;
+      visibility: hidden;
+      /* visibility flips instantly on open (see .mergeask below) and only after
+         the fade on close, so the dialog is focusable the moment it opens. */
+      transition: opacity .18s, visibility 0s linear .18s;
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px)
+    }
+
+    .mergeask-backdrop.open {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .18s, visibility 0s
+    }
+
+    .mergeask {
+      position: fixed;
+      z-index: 61;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, calc(-50% + 8px));
+      width: min(360px, calc(100% - 40px));
+      padding: 22px;
+      border-radius: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-md);
+      opacity: 0;
+      visibility: hidden;
+      /* `visibility 0s linear .18s` (not `visibility .18s`): a transitioned
+         visibility is still computed `hidden` on the frame .open lands, and the
+         browser silently refuses to focus an element it considers hidden — the
+         radio never got focus, so Esc/Enter were dead. Delaying only the
+         hide keeps the close fade while making the open instant. */
+      transition: opacity .18s, transform .18s, visibility 0s linear .18s
+    }
+
+    .mergeask.open {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, -50%);
+      transition: opacity .18s, transform .18s, visibility 0s
+    }
+
+    .mergeask-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      margin: 0 0 6px
+    }
+
+    .mergeask-body {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0 0 14px;
+      line-height: 1.4
+    }
+
+    .mergeask-options {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .mergeask-opt {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px
+    }
+
+    .mergeask-opt:hover {
+      border-color: var(--accent)
+    }
+
+    .mergeask-opt span:first-of-type {
+      flex: 1;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .mergeask-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px
+    }
   </style>
 </head>
 
@@ -4627,6 +4740,19 @@
     <div class="viewer">
       <div class="media" id="mmedia"></div>
       <div class="info" id="minfo"></div>
+    </div>
+  </div>
+
+  <!-- MERGE CONFIRM (drag-to-merge People/Pets: only shown when the two
+       dragged groups are named differently and the survivor needs picking) -->
+  <div class="mergeask-backdrop" id="mergeask-backdrop" onclick="mergeAskCancel()"></div>
+  <div class="mergeask" id="mergeask" role="dialog" aria-modal="true" aria-labelledby="mergeask-title">
+    <h3 class="mergeask-title" id="mergeask-title"></h3>
+    <p class="mergeask-body" id="mergeask-body"></p>
+    <div class="mergeask-options" id="mergeask-options"></div>
+    <div class="mergeask-actions">
+      <button type="button" class="btn sec" id="mergeask-cancel">Cancel</button>
+      <button type="button" class="btn" id="mergeask-merge">Merge</button>
     </div>
   </div>
 
@@ -4922,12 +5048,11 @@
         c.onclick = () => openArchive(a);
         c.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArchive(a); } };
         const warn = a.exists ? "" : ` · <span class="warn">not mounted</span>`;
-        const enr = (a.enriched < a.files) ? ` · <span class="warn">${(a.files - a.enriched).toLocaleString()} to enrich</span>` : "";
         c.innerHTML = pickerCover(a) +
           `<div class="p-meta">
              <button class="p-remove" type="button" aria-label="Remove archive">Remove</button>
              <div class="nm">${esc(a.name)}</div>
-             <div class="st">${a.files.toLocaleString()} files${warn}${enr}</div>
+             <div class="st">${a.files.toLocaleString()} files${warn}</div>
            </div>`;
         c.querySelector(".p-remove").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
         el.appendChild(c);
@@ -5116,6 +5241,10 @@
       if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; MAP_TILES = null; }
       if (S.grid && S.grid.observer) S.grid.observer.disconnect();
       S.grid = null; S.gallery = [];
+      INFINITE_LIST_KEYS.forEach(key => {
+        if (S[key] && S[key].observer) S[key].observer.disconnect();
+        S[key] = null;
+      });
       SECTION_VIEWS.clear(); SECTION_READY.clear(); ACTIVE_SECTION = null;
       if (main) main.replaceChildren();
     }
@@ -5662,13 +5791,13 @@
       if (MAP) MAP_TILES = replaceMapTiles(MAP, MAP_TILES);
       if (MPICK) MPICK_TILES = replaceMapTiles(MPICK, MPICK_TILES);
     }
-    let MAP = null, MAP_LAYER = null, MAP_TILES = null, MAP_CLUSTERS = [];
+    let MAP = null, MAP_LAYER = null, MAP_TILES = null, MAP_CLUSTERS = [], MAP_HIDDEN = {};
     async function renderMap(m) {
       const gen = NAV, root = S.arch.id;
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Places</h2>
       <p>Explore geolocated media and give meaningful names to the places you return to.</p></div></div>
     <div class="statrow map-stats">
-      <div class="stat"><div><div class="k">Photos with location</div><div class="v" id="map-photo-count">-</div></div></div>
+      <div class="stat"><div><div class="k">Photos in places</div><div class="v" id="map-photo-count">-</div></div></div>
       <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">-</div></div></div>
       <div class="stat"><div><div class="k">Named places</div><div class="v" id="map-named-count">-</div></div></div>
     </div>
@@ -5677,12 +5806,14 @@
       <div id="mapside"></div>
     </div>
     <div class="map-footnote">Nearby photos are grouped into places. Street map tiles are fetched online using coordinates only; your media stays on this computer.</div>
+    <div class="map-footnote" id="map-hidden-note" hidden></div>
     <div id="placegallery"></div>`;
       if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; }
       S.mapSel = null;
-      const { clusters } = await jget("/api/map/clusters?root=" + root);
+      const { clusters, hidden } = await jget("/api/map/clusters?root=" + root);
       if (gen !== NAV) return;
       MAP_CLUSTERS = clusters;
+      MAP_HIDDEN = hidden || {};
       updateMapStats();
       renderPlaceGallery();
       MAP = L.map("lmap", {
@@ -5708,6 +5839,21 @@
       const named = MAP_CLUSTERS.filter(cluster => cluster.name && cluster.name.trim()).length;
       const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value.toLocaleString(); };
       set("map-photo-count", total); set("map-place-count", MAP_CLUSTERS.length); set("map-named-count", named);
+      // The backend hides tiny one-off clusters (< 10 files, unless named/pinned) so
+      // "Places" isn't dominated by single stray photos. Say so, only when it applies.
+      const note = document.getElementById("map-hidden-note");
+      if (note) {
+        const hiddenPlaces = (MAP_HIDDEN && MAP_HIDDEN.places) || 0;
+        if (hiddenPlaces > 0) {
+          note.hidden = false;
+          note.textContent = hiddenPlaces === 1
+            ? "1 one-off spot with fewer than 10 photos isn’t shown as a place."
+            : `${hiddenPlaces.toLocaleString()} one-off spots with fewer than 10 photos aren’t shown as places.`;
+        } else {
+          note.hidden = true;
+          note.textContent = "";
+        }
+      }
     }
     function collageHTML(ids) {
       if (!ids.length) return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:20px">📍</div>`;
@@ -5783,6 +5929,7 @@
       drawClusters();
       if (S.mapSel === place.id) selectPlaceCluster(place.id);
     }
+    const PLACE_PAGE_SIZE = 120;
     async function selectPlaceCluster(id) {
       S.mapSel = id;
       const side = document.getElementById("mapside");
@@ -5790,19 +5937,35 @@
       if (wrap) wrap.classList.add("has-selection");
       setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawClusters(); } }, 0);
       side.innerHTML = `<div class="muted">Loading…</div>`;
-      const c = await jget("/api/map/cluster/" + id);
+      // root was missing here before -- the endpoint requires it and silently
+      // failed the request without it (caught, swallowed, no response sent).
+      const c = await jget(`/api/map/cluster/${id}?root=${S.arch.id}&limit=${PLACE_PAGE_SIZE}`);
       if (S.mapSel !== id) return; // superseded by a newer click
+      if (!c || c.error) { side.innerHTML = `<div class="muted">Place not found.</div>`; return; }
       const safeName = (c.name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;");
       const displayName = c.name ? esc(c.name) : "Name this place";
       side.innerHTML = `
     <div class="mapside-name" id="mapsidename">
       <div class="mapside-title"><button class="person-name-button ${c.name ? "" : "un"}" onclick="editClusterName(${id},'${safeName}')">${displayName}</button>
-        <span class="muted">${c.members.length.toLocaleString()} item${c.members.length === 1 ? "" : "s"}</span></div>
+        <span class="muted">${c.total.toLocaleString()} item${c.total === 1 ? "" : "s"}</span></div>
       <div class="mapside-actions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place">×</button></div>
     </div>
-    <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>`;
-      const grid = document.getElementById("mapsidegrid");
-      c.members.forEach(it => grid.appendChild(tile(it)));
+    <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>
+    <div class="infinite-status" id="mapside-sentinel" aria-live="polite"></div>`;
+      let firstPage = c.members;
+      startInfiniteList("placeList", {
+        sentinelId: "mapside-sentinel", pageSize: PLACE_PAGE_SIZE, root: side,
+        fetchPage: async offset => {
+          if (firstPage) { const page = firstPage; firstPage = null; return page; }
+          const res = await jget(`/api/map/cluster/${id}?root=${S.arch.id}&offset=${offset}&limit=${PLACE_PAGE_SIZE}`);
+          return (res && res.members) || [];
+        },
+        onPage: (items, { first }) => {
+          const grid = document.getElementById("mapsidegrid");
+          if (first) grid.replaceChildren();
+          items.forEach(it => grid.appendChild(tile(it)));
+        },
+      });
     }
     function editClusterName(id, current) {
       const box = document.getElementById("mapsidename");
@@ -5952,6 +6115,72 @@
       const sr = sentinel.getBoundingClientRect(), mr = main.getBoundingClientRect();
       return direction === "prepend" ? sr.bottom >= mr.top - 600 : sr.top <= mr.bottom + 600;
     }
+
+    /* ---------- generic forward-only infinite scroll ----------
+       Every catalog list outside the Library (Duplicates, People, Pets, and
+       their detail grids) is always entered at offset 0 and only grows
+       downward -- unlike the Library grid's filtered/date-jump entry points,
+       so a single bottom sentinel is enough; no prepend, no anchor restore.
+       Mirrors loadGrid()'s auto-refill-while-visible behavior above.
+       `stateKey` names an S.<key> slot: starting a new list for the same key
+       disconnects the previous observer and makes any of its still-in-flight
+       fetch a no-op once it lands (the same staleness guard the Library grid
+       gets from `S.grid !== g`), so a merge/reload can't paint stale cards
+       into a grid that has since been reset. */
+    function startInfiniteList(stateKey, { sentinelId, pageSize, fetchPage, onPage, root }) {
+      if (S[stateKey] && S[stateKey].observer) S[stateKey].observer.disconnect();
+      const scrollRoot = root || document.getElementById("main");
+      const sentinelEl = () => document.getElementById(sentinelId);
+      function isNear() {
+        const s = sentinelEl();
+        if (!s || !scrollRoot || !s.isConnected) return false;
+        const sr = s.getBoundingClientRect(), rr = scrollRoot.getBoundingClientRect();
+        return sr.top <= rr.bottom + 600;
+      }
+      const state = { offset: 0, done: false, loading: false, observer: null };
+      async function loadMore() {
+        if (S[stateKey] !== state || state.done || state.loading) return;
+        const first = state.offset === 0;
+        state.loading = true;
+        let s = sentinelEl(); if (s) s.innerHTML = '<span class="spin"></span>Loading…';
+        let failed = false;
+        try {
+          const items = await fetchPage(state.offset, pageSize);
+          if (S[stateKey] !== state) return;
+          state.offset += items.length;
+          state.done = items.length < pageSize;
+          onPage(items, { first, done: state.done });
+          s = sentinelEl(); if (s) s.textContent = "";
+        } catch (error) {
+          failed = true;
+          s = sentinelEl();
+          if (S[stateKey] === state && s) s.textContent = "Couldn’t load more. Scroll away and back to retry.";
+        } finally {
+          state.loading = false;
+          requestAnimationFrame(() => {
+            if (!failed && S[stateKey] === state && !state.done && isNear()) loadMore();
+          });
+        }
+      }
+      const sentinel = sentinelEl();
+      if (sentinel) {
+        state.observer = new IntersectionObserver(entries => {
+          if (S[stateKey] !== state || state.done) return;
+          if (entries.some(entry => entry.isIntersecting)) loadMore();
+        }, { root: scrollRoot, rootMargin: "600px 0px" });
+        state.observer.observe(sentinel);
+      }
+      S[stateKey] = state;
+      loadMore();
+      return state;
+    }
+    // Every S.<key> a startInfiniteList() call site uses; swept on archive
+    // switch (resetSectionViews) so no orphaned observer keeps a detached
+    // sentinel from a closed archive alive.
+    const INFINITE_LIST_KEYS = [
+      "dupList", "peopleList", "personDetailList",
+      "petListState", "loosePetState", "nonhumanState", "petDetailList", "placeList",
+    ];
     // Natural singular/plural label for a media type, so the reach line reads
     // "1 video" / "12 videos" rather than a bare type slug.
     function reachTypeLabel(type, n) {
@@ -5988,15 +6217,20 @@
         const chips = by.map(t =>
           `<span class="reach-item"><span class="reach-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span><b>${t.count.toLocaleString()}</b> ${reachTypeLabel(t.type, t.count)}</span>`
         ).join("");
-        html = `${chips}<span class="reach-div" aria-hidden="true"></span><span class="reach-note">searchable by description</span>`;
+        // Some of the archive is already searchable; if more is still queued, say
+        // so in the same breath rather than a separate alarming line.
+        const note = pending ? `searchable by description · ${pending.toLocaleString()} more queued for indexing`
+          : "searchable by description";
+        html = `${chips}<span class="reach-div" aria-hidden="true"></span><span class="reach-note">${note}</span>`;
       } else if (!s.configured) {
         html = `<span class="reach-note">Search by description needs a Voyage API key: <button type="button" class="linkbtn" style="padding:0;font-size:inherit" onclick="openSettings()">add one in Settings</button>.</span>`;
+      } else if (pending) {
+        // Nothing indexed yet, but work is queued: promise it, with no "0 files"
+        // chip — a colour-keyed count of zero has nothing to key.
+        html = `<span class="reach-note">No files searchable by description yet · ${pending.toLocaleString()} queued for indexing</span>`;
       } else {
-        // Nothing indexed yet: say so as a count, and only promise indexing when
-        // there is actually work queued (an empty archive never gets any).
-        const note = pending ? "searchable by description. Wait for semantic indexing to run."
-          : "searchable by description.";
-        html = `<span class="reach-item"><b>0</b> files</span><span class="reach-div" aria-hidden="true"></span><span class="reach-note">${note}</span>`;
+        // Nothing indexed and nothing queued (e.g. an empty archive): no promise to make.
+        html = `<span class="reach-note">No files searchable by description yet.</span>`;
       }
       cur.hidden = false;
       cur.innerHTML = html;
@@ -6428,6 +6662,7 @@
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Folders</h2><p>See where the original files in this archive live. Nothing here changes them.</p></div></div><div class="panel"><div class="folder-list">${folders.length ? folders.map(f => `<div class="taskcard"><span class="ico">□</span><div class="body"><div class="t">${esc(f.path)}</div></div><div class="num">${f.count.toLocaleString()}</div></div>`).join("") : '<div class="muted">No catalogued files yet.</div>'}</div></div>`;
     }
     /* ---------- duplicates ---------- */
+    const DUP_PAGE_SIZE = 40;
     async function renderDedup(m) {
       const gen = NAV, root = S.arch.id;
       const ds = await jget("/api/dups/summary?root=" + root);
@@ -6447,33 +6682,37 @@
     </div>
     <div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>
     <div id="dupgroups"></div>
-    <div class="more" id="dupmore" style="display:none"><button class="btn sec" onclick="loadDupGroups()">Load more</button></div>`;
-      S.dupoff = 0; document.getElementById("dupgroups").innerHTML = ""; loadDupGroups();
+    <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
+      startInfiniteList("dupList", {
+        sentinelId: "dup-sentinel", pageSize: DUP_PAGE_SIZE,
+        fetchPage: async offset => {
+          const res = await jget(`/api/dups?root=${S.arch.id}&offset=${offset}&limit=${DUP_PAGE_SIZE}`);
+          return res.groups;
+        },
+        onPage: (groups, { first }) => {
+          const wrap = document.getElementById("dupgroups");
+          if (first) wrap.innerHTML = "";
+          groups.forEach(g => wrap.appendChild(dupGroupRow(g)));
+        },
+      });
     }
-    async function loadDupGroups() {
-      const wrap = document.getElementById("dupgroups"), more = document.getElementById("dupmore");
-      if (!wrap) return;
-      const res = await jget(`/api/dups?root=${S.arch.id}&offset=${S.dupoff}&limit=40`);
-      res.groups.forEach(g => {
-        const row = document.createElement("div"); row.className = "dupgroup";
-        const head = `<div class="dghead"><b>${g.count}×</b> · ${fmtBytes(g.size_each)} each ·
+    function dupGroupRow(g) {
+      const row = document.createElement("div"); row.className = "dupgroup";
+      const head = `<div class="dghead"><b>${g.count}×</b> · ${fmtBytes(g.size_each)} each ·
       <span class="muted">${fmtBytes(g.reclaimable)} reclaimable</span></div>`;
-        const tiles = g.members.map(mm => {
-          const kept = mm.role === "canonical";
-          const tag = kept ? '<span class="keep">✓ kept</span>'
-            : mm.match_type === "identical" ? '<span class="duptag exact">Identical copy</span>'
-              : '<span class="duptag visual">Visual match</span>';
-          const thumb = (mm.type === "image" || mm.type === "video") ? `<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type] || "📦"}'}))">`
-            : `<div class="ph">${TYPE_ICON[mm.type] || "📦"}</div>`;
-          return `<div class="duptile ${kept ? 'kept' : ''}" title="${mm.folder}" onclick="openItem(${mm.id})">
+      const tiles = g.members.map(mm => {
+        const kept = mm.role === "canonical";
+        const tag = kept ? '<span class="keep">✓ kept</span>'
+          : mm.match_type === "identical" ? '<span class="duptag exact">Identical copy</span>'
+            : '<span class="duptag visual">Visual match</span>';
+        const thumb = (mm.type === "image" || mm.type === "video") ? `<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type] || "📦"}'}))">`
+          : `<div class="ph">${TYPE_ICON[mm.type] || "📦"}</div>`;
+        return `<div class="duptile ${kept ? 'kept' : ''}" title="${mm.folder}" onclick="openItem(${mm.id})">
         ${thumb}<div class="dtcap">${tag}</div>
         <div class="dtpath">${mm.folder || '/'}</div></div>`;
-        }).join("");
-        row.innerHTML = head + `<div class="duprow">${tiles}</div>`;
-        wrap.appendChild(row);
-      });
-      S.dupoff += res.count;
-      if (more) more.style.display = res.count >= 40 ? "block" : "none";
+      }).join("");
+      row.innerHTML = head + `<div class="duprow">${tiles}</div>`;
+      return row;
     }
     /* ---------- faces / people ---------- */
     function esc(s) {
@@ -6558,23 +6797,34 @@
         renderPeople();   // final pass finished → refresh grid
       }
     }
+    const PEOPLE_PAGE_SIZE = 120;
+    async function fetchPeoplePage(offset) {
+      const res = await jget(`/api/faces/persons?root=${S.arch.id}&offset=${offset}&limit=${PEOPLE_PAGE_SIZE}`);
+      return res.people;
+    }
     async function renderPeople() {
       const wrap = document.getElementById("peoplewrap"); if (!wrap) return;
-      const { people } = await jget("/api/faces/persons?root=" + S.arch.id + "&limit=300");
-      if (!people.length) {
-        const s = S.faceSum;
-        wrap.innerHTML = `<div class="muted" style="padding:20px">` + (
-          s.faces > 0
-            ? `No recurring people found yet. ${s.faces.toLocaleString()} face${s.faces === 1 ? "" : "s"} detected, but none repeat often enough to group into a person. People appear automatically as more photos are scanned.`
-            : (s.scanned > 0
-              ? `No faces detected in the scanned photos.`
-              : `No faces yet; detection runs automatically in the background.`)) + `</div>`;
-        return;
-      }
-      wrap.innerHTML = `<div id="suggestwrap"></div><div class="people" id="peoplegrid"></div>`;
-      const grid = document.getElementById("peoplegrid");
-      people.forEach(p => grid.appendChild(personCard(p)));
-      loadSuggestions();
+      wrap.innerHTML = `<div id="suggestwrap"></div><div class="people" id="peoplegrid"></div>
+    <div class="infinite-status" id="people-sentinel" aria-live="polite"></div>`;
+      startInfiniteList("peopleList", {
+        sentinelId: "people-sentinel", pageSize: PEOPLE_PAGE_SIZE,
+        fetchPage: fetchPeoplePage,
+        onPage: (people, { first, done }) => {
+          if (first && done && !people.length) {
+            const s = S.faceSum;
+            wrap.innerHTML = `<div class="muted" style="padding:20px">` + (
+              s.faces > 0
+                ? `No recurring people found yet. ${s.faces.toLocaleString()} face${s.faces === 1 ? "" : "s"} detected, but none repeat often enough to group into a person. People appear automatically as more photos are scanned.`
+                : (s.scanned > 0
+                  ? `No faces detected in the scanned photos.`
+                  : `No faces yet; detection runs automatically in the background.`)) + `</div>`;
+            return;
+          }
+          const grid = document.getElementById("peoplegrid");
+          if (first) { grid.innerHTML = ""; loadSuggestions(); }
+          people.forEach(p => grid.appendChild(personCard(p)));
+        },
+      });
     }
     async function loadSuggestions() {
       const sug = await jget("/api/faces/suggestions?root=" + S.arch.id + "&limit=60").catch(() => null);
@@ -6625,9 +6875,16 @@
       renderSuggest();
     }
     async function renderPeopleGrid() {
-      const grid = document.getElementById("peoplegrid"); if (!grid) return;
-      const { people } = await jget("/api/faces/persons?root=" + S.arch.id + "&limit=300");
-      grid.innerHTML = ""; people.forEach(p => grid.appendChild(personCard(p)));
+      if (!document.getElementById("peoplegrid")) return;
+      startInfiniteList("peopleList", {
+        sentinelId: "people-sentinel", pageSize: PEOPLE_PAGE_SIZE,
+        fetchPage: fetchPeoplePage,
+        onPage: (people, { first }) => {
+          const grid = document.getElementById("peoplegrid");
+          if (first) grid.innerHTML = "";
+          people.forEach(p => grid.appendChild(personCard(p)));
+        },
+      });
     }
     async function hidePerson(id) {
       if (!confirm('Not a person? Its faces get marked as a doll/animal/cartoon and are left out of clustering. It disappears from People.')) return;
@@ -6644,33 +6901,168 @@
       }
       return value;
     }
+    /* ---------- drag-to-merge (People & Pets grids only) ----------
+       Dragging one group card onto another folds the dragged ("source") group
+       into the one it was dropped on ("target") -- the drop target surviving
+       matches the "drop THIS onto THAT" mental model. Scoped to #peoplegrid
+       and #petgrid only via their call sites below: .pcard is shared with
+       place cards, which are not mergeable groups and must stay undraggable. */
+    let DRAG_MERGE = null;        // { kind, id, name, photos } of the card mid-drag
+    let MERGE_DROP_GUARD = false; // true for one tick after a drop/dragend, so the
+    // native click that a completed drag can still fire on the source card
+    // (Safari has done this) doesn't also open the person/pet it came from.
+    function guardCardClick(fn) {
+      return (...args) => { if (!MERGE_DROP_GUARD) fn(...args); };
+    }
+    function attachMergeDrag(card, info, onMerged) {
+      card.draggable = true;
+      card.dataset.mergeId = String(info.id);
+      let depth = 0;   // nested dragenter/dragleave counter -- entering a child
+      // element (thumbnail, name button) fires enter/leave on it too, which
+      // would flicker the ring off and on if we tracked plain booleans instead.
+      const release = () => {
+        card.classList.remove("dragging"); DRAG_MERGE = null;
+        // A drag abandoned with Esc while hovering a target fires no dragleave
+        // there, so sweep every ring rather than trusting each card to clear its
+        // own. (Their counters self-heal on the next dragenter, below.)
+        document.querySelectorAll(".pcard.drop-target")
+          .forEach(el => el.classList.remove("drop-target"));
+        MERGE_DROP_GUARD = true; setTimeout(() => { MERGE_DROP_GUARD = false; }, 0);
+      };
+      const isValidTarget = () => DRAG_MERGE && DRAG_MERGE.kind === info.kind && DRAG_MERGE.id !== info.id;
+      card.addEventListener("dragstart", e => {
+        if (!card.draggable) { e.preventDefault(); return; }
+        DRAG_MERGE = info;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(info.id));
+        card.classList.add("dragging");
+      });
+      card.addEventListener("dragend", release);
+      card.addEventListener("dragenter", () => {
+        if (!isValidTarget()) return;
+        if (!card.classList.contains("drop-target")) depth = 0;   // self-heal a counter
+        depth++; card.classList.add("drop-target");               // left stale by a swept ring
+      });
+      card.addEventListener("dragleave", () => { if (depth > 0 && --depth === 0) card.classList.remove("drop-target"); });
+      card.addEventListener("dragover", e => { if (isValidTarget()) e.preventDefault(); });   // preventDefault = allow the drop
+      card.addEventListener("drop", async e => {
+        e.preventDefault();
+        depth = 0; card.classList.remove("drop-target");
+        const source = DRAG_MERGE;
+        release();
+        if (!source || source.kind !== info.kind || source.id === info.id) return;  // same card, or a stale/foreign drag
+        await runMerge(source, info, onMerged);
+      });
+    }
+    async function runMerge(source, target, onMerged) {
+      const sourceName = (source.name || "").trim(), targetName = (target.name || "").trim();
+      let name;
+      if (sourceName && targetName && sourceName !== targetName) {
+        const noun = target.kind === "pet" ? "pets" : "people";
+        name = await askMergeName({
+          title: `Merge these two ${noun}?`,
+          body: "They have different names. Which one should stay?",
+          preselect: targetName,   // the drop target is the one that stays
+          options: [
+            { value: targetName, label: targetName, count: target.photos },
+            { value: sourceName, label: sourceName, count: source.photos },
+          ],
+        });
+        if (name === null) return;   // cancelled: no change
+      } else {
+        name = targetName || sourceName || "";   // at most one is named -- backend already prefers it
+      }
+      const url = target.kind === "pet" ? "/api/pets/merge" : "/api/faces/merge";
+      const body = { a: target.id, b: source.id };
+      if (name) body.name = name;
+      const res = await jpost(url, body);
+      if (res && res.error) { toast(res.error, true); return; }
+      const merged = target.kind === "pet" ? res.pet : res.person;
+      const count = (merged && (target.kind === "pet" ? merged.detections : merged.face_count)) || 0;
+      toast(merged && merged.name ? `Merged · “${merged.name}” now has ${count.toLocaleString()} photos`
+        : `Merged · ${count.toLocaleString()} photos`);
+      onMerged();
+    }
+    // Small centered confirm dialog for the both-named drag-merge case. Resolves
+    // to the chosen name, or null if the user backed out via Cancel/Esc/backdrop.
+    // Separate markup from #modal (the media viewer) -- unrelated concerns.
+    let _mergeAskResolve = null;
+    function mergeAskCancel() { if (_mergeAskResolve) _mergeAskResolve(null); }
+    function askMergeName({ title, body, options, preselect }) {
+      return new Promise(resolve => {
+        const backdrop = document.getElementById("mergeask-backdrop");
+        const dlg = document.getElementById("mergeask");
+        const optsEl = document.getElementById("mergeask-options");
+        const mergeBtn = document.getElementById("mergeask-merge");
+        const cancelBtn = document.getElementById("mergeask-cancel");
+        const previouslyFocused = document.activeElement;
+        document.getElementById("mergeask-title").textContent = title;
+        document.getElementById("mergeask-body").textContent = body;
+        optsEl.innerHTML = options.map(o => `<label class="mergeask-opt">
+        <input type="radio" name="mergeask-name" value="${esc(o.value)}" ${o.value === preselect ? "checked" : ""}>
+        <span>${esc(o.label)}</span><span class="muted">${o.count.toLocaleString()} photo${o.count === 1 ? "" : "s"}</span>
+      </label>`).join("");
+        const chosen = () => (optsEl.querySelector("input[name=mergeask-name]:checked") || {}).value || preselect;
+        const onKey = e => {
+          // Bound to the document, not the dialog: a keydown only reaches the
+          // dialog while focus is inside it, and focus can legitimately sit
+          // elsewhere (a backdrop click, a re-render). Capture + stopPropagation
+          // so the page's global Escape handler (#modal / the settings drawer)
+          // doesn't also react to the same keypress.
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(null); }
+          else if (e.key === "Enter" && document.activeElement !== cancelBtn) { e.preventDefault(); e.stopPropagation(); finish(chosen()); }
+        };
+        function finish(value) {
+          backdrop.classList.remove("open"); dlg.classList.remove("open");
+          document.removeEventListener("keydown", onKey, true);
+          mergeBtn.onclick = cancelBtn.onclick = null;
+          _mergeAskResolve = null;
+          if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
+          resolve(value);
+        }
+        _mergeAskResolve = finish;
+        mergeBtn.onclick = () => finish(chosen());
+        cancelBtn.onclick = () => finish(null);
+        backdrop.classList.add("open"); dlg.classList.add("open");
+        document.addEventListener("keydown", onKey, true);
+        // Flush the style change before focusing: the dialog is visibility:hidden
+        // until .open lands, and an element the browser still considers hidden
+        // silently refuses focus (measured: activeElement stayed on <body>).
+        void dlg.offsetWidth;
+        (optsEl.querySelector("input[name=mergeask-name]:checked") || mergeBtn).focus();
+      });
+    }
     // Up to 4 faces as a 2x2 collage (a single face fills the square). `ids` is the
     // person's faces_preview, with cover_face_id as fallback for old payloads.
     function faceCollage(ids) {
       ids = (ids || []).filter(Boolean).slice(0, 4);
       if (ids.length <= 1) {
         const id = ids[0];
-        return id ? `<img class="face" src="/faceThumb/${id}" loading="lazy" onerror="this.style.visibility='hidden'">`
+        // draggable=false: these images sit inside merge-draggable person cards
+        // and would otherwise hijack the card drag with their own payload.
+        return id ? `<img class="face" src="/faceThumb/${id}" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'">`
           : `<div class="face"></div>`;
       }
       let cells = "";
       for (let i = 0; i < 4; i++) cells += ids[i]
-        ? `<img src="/faceThumb/${ids[i]}" loading="lazy" onerror="this.style.visibility='hidden'">`
+        ? `<img src="/faceThumb/${ids[i]}" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'">`
         : `<div class="cempty"></div>`;
       return `<div class="facecollage">${cells}</div>`;
     }
     function personCard(p) {
-      const d = document.createElement("div"); d.className = "pcard"; d.onclick = () => showPerson(p.id);
+      const d = document.createElement("div"); d.className = "pcard"; d.onclick = guardCardClick(() => showPerson(p.id));
       const cover = faceCollage(p.faces_preview && p.faces_preview.length ? p.faces_preview : [p.cover_face_id]);
       const nm = p.name ? esc(p.name) : "Name this person";
       d.innerHTML = cover + `<div class="pmeta"><button class="pname ${p.name ? "" : "un"}" type="button">${nm}</button>
     <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div></div>`;
       d.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(d, p); };
+      attachMergeDrag(d, { kind: "person", id: p.id, name: p.name, photos: p.photos }, renderPeopleGrid);
       return d;
     }
     function editPersonCardName(card, p) {
       const meta = card.querySelector(".pmeta"); if (!meta) return;
       card.onclick = null;
+      card.draggable = false;   // don't let an in-progress rename start a merge-drag
       meta.className = "pmeta pmeta-editing";
       meta.innerHTML = `<input value="${esc(p.name || "")}" placeholder="Person’s name" aria-label="Person’s name">
     <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"} · Enter or click away to save</div>`;
@@ -6696,15 +7088,15 @@
       }
       await renderPeopleGrid();
     }
+    const PERSON_PAGE_SIZE = 120;
     async function showPerson(id) {
       stopPoll();
-      S.section = "people"; renderNav(); S.facePerson = id; S.faceGrid = { offset: 0 };
+      S.section = "people"; renderNav(); S.facePerson = id;
       if (S.arch) location.hash = `/archive/${S.arch.id}/people`;
       const m = document.getElementById("main");
       m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
-      const r = await jget("/api/faces/person/" + id + "?root=" + S.arch.id + "&limit=120");
+      const r = await jget(`/api/faces/person/${id}?root=${S.arch.id}&limit=${PERSON_PAGE_SIZE}`);
       if (!r || r.error) { m.innerHTML = '<div class="soonbox">Person not found.</div>'; return; }
-      S.faceGrid.offset = r.count;
       const nm = r.name ? esc(r.name) : "Name this person";
       const nmCls = r.name ? "nm" : "nm un";
       const safe = (r.name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -6733,17 +7125,21 @@
       </button>
     </div>
     <div class="grid" id="grid"></div>
-    <div class="more" id="gmore" style="display:none"><button class="btn sec" onclick="loadPersonMore()">Load more</button></div>`;
-      const grid = document.getElementById("grid");
-      r.items.forEach(it => grid.appendChild(tile(it)));
-      document.getElementById("gmore").style.display = r.count >= 120 ? "block" : "none";
-    }
-    async function loadPersonMore() {
-      const r = await jget("/api/faces/person/" + S.facePerson + "?root=" + S.arch.id + "&offset=" + S.faceGrid.offset + "&limit=120");
-      const grid = document.getElementById("grid");
-      r.items.forEach(it => grid.appendChild(tile(it)));
-      S.faceGrid.offset += r.count;
-      document.getElementById("gmore").style.display = r.count >= 120 ? "block" : "none";
+    <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
+      let firstPage = r.items;
+      startInfiniteList("personDetailList", {
+        sentinelId: "person-grid-sentinel", pageSize: PERSON_PAGE_SIZE,
+        fetchPage: async offset => {
+          if (firstPage) { const page = firstPage; firstPage = null; return page; }
+          const res = await jget(`/api/faces/person/${id}?root=${S.arch.id}&offset=${offset}&limit=${PERSON_PAGE_SIZE}`);
+          return res.items;
+        },
+        onPage: (items, { first }) => {
+          const grid = document.getElementById("grid");
+          if (first) grid.replaceChildren();
+          items.forEach(it => grid.appendChild(tile(it)));
+        },
+      });
     }
     function backToPeople() { renderFaces(document.getElementById("main")); }
     function editPersonName(id, current) {
@@ -6782,13 +7178,10 @@
     }
 
     /* ---------- pets / non-human review ---------- */
+    const PET_LIST_PAGE_SIZE = 120, LOOSE_PET_PAGE_SIZE = 120, NONHUMAN_PAGE_SIZE = 60;
     async function renderPets(m) {
       const gen = NAV, root = S.arch.id;
-      const [sum, groups, loose, review] = await Promise.all([
-        jget("/api/pets/summary?root=" + root),
-        jget("/api/pets?root=" + root + "&limit=300"),
-        jget("/api/pet/detections?root=" + root + "&unassigned=1&limit=120"),
-        jget("/api/nonhuman?root=" + root + "&limit=60")]);
+      const sum = await jget("/api/pets/summary?root=" + root);
       if (gen !== NAV) return;
       S.petJobRunning = false;
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Pets</h2>
@@ -6804,44 +7197,90 @@
           : `<div class="d ok"><span class="dot ok"></span>All unique photos pet-scanned.</div>`}</div>
     <div class="place-gallery-head"><h3>Likely pet identities</h3><span class="muted">Conservative visual grouping</span></div>
     <div class="people" id="petgrid"></div>
+    <div class="infinite-status" id="pet-list-sentinel" aria-live="polite"></div>
     <div class="place-gallery-head"><h3>Unassigned animals</h3><span class="muted">Single or uncertain sightings</span></div>
     <div class="people" id="loosepetgrid"></div>
+    <div class="infinite-status" id="loose-pet-sentinel" aria-live="polite"></div>
     <div class="place-gallery-head"><h3>Non-human face review</h3><span class="muted">Animal/toy overlaps filtered out of People</span></div>
-    <div class="nonhuman-grid" id="nonhumangrid"></div>`;
-      const petgrid = document.getElementById("petgrid");
-      if (!groups.pets.length) petgrid.innerHTML = '<div class="muted">No repeated pets grouped yet.</div>';
-      groups.pets.forEach(p => {
-        const card = document.createElement("div"); card.className = "pcard"; card.onclick = () => showPet(p.id);
-        card.innerHTML = `<img class="face" src="/animalThumb/${p.cover_detection_id}" loading="lazy">
+    <div class="nonhuman-grid" id="nonhumangrid"></div>
+    <div class="infinite-status" id="nonhuman-sentinel" aria-live="polite"></div>`;
+
+      startInfiniteList("petListState", {
+        sentinelId: "pet-list-sentinel", pageSize: PET_LIST_PAGE_SIZE,
+        fetchPage: async offset => {
+          const res = await jget(`/api/pets?root=${root}&offset=${offset}&limit=${PET_LIST_PAGE_SIZE}`);
+          return res.pets;
+        },
+        onPage: (pets, { first, done }) => {
+          const petgrid = document.getElementById("petgrid");
+          if (first) petgrid.innerHTML = done && !pets.length ? '<div class="muted">No repeated pets grouped yet.</div>' : "";
+          pets.forEach(p => petgrid.appendChild(petCard(p)));
+        },
+      });
+
+      startInfiniteList("loosePetState", {
+        sentinelId: "loose-pet-sentinel", pageSize: LOOSE_PET_PAGE_SIZE,
+        fetchPage: async offset => {
+          const res = await jget(`/api/pet/detections?root=${root}&unassigned=1&offset=${offset}&limit=${LOOSE_PET_PAGE_SIZE}`);
+          return res.items;
+        },
+        onPage: (items, { first, done }) => {
+          const loosegrid = document.getElementById("loosepetgrid");
+          if (first) loosegrid.innerHTML = done && !items.length ? '<div class="muted">No unassigned sightings.</div>' : "";
+          items.forEach(a => loosegrid.appendChild(looseAnimalCard(a)));
+        },
+      });
+
+      let nonhumanShown = 0;
+      startInfiniteList("nonhumanState", {
+        sentinelId: "nonhuman-sentinel", pageSize: NONHUMAN_PAGE_SIZE,
+        fetchPage: async offset => {
+          const res = await jget(`/api/nonhuman?root=${root}&offset=${offset}&limit=${NONHUMAN_PAGE_SIZE}`);
+          return res.items;
+        },
+        // Pending is a client-side filter over a confidence-ordered page, so a
+        // page can add zero visible cards without the list being done -- the
+        // "nothing to review" message only holds once every page is in and
+        // still nothing pending turned up.
+        onPage: (items, { first, done }) => {
+          const reviewgrid = document.getElementById("nonhumangrid");
+          if (first) { reviewgrid.innerHTML = ""; nonhumanShown = 0; }
+          const pending = items.filter(item => item.review_status === "pending");
+          pending.forEach(item => { reviewgrid.appendChild(nonhumanCard(item)); nonhumanShown++; });
+          if (done && !nonhumanShown) reviewgrid.innerHTML = '<div class="muted">No pending non-human decisions.</div>';
+        },
+      });
+
+      startPetPoll();
+    }
+    function petCard(p) {
+      const card = document.createElement("div"); card.className = "pcard"; card.onclick = guardCardClick(() => showPet(p.id));
+      card.innerHTML = `<img class="face" src="/animalThumb/${p.cover_detection_id}" loading="lazy" draggable="false">
       <div class="pmeta"><div class="pname ${p.name ? "" : "un"}">${esc(p.name || "Name this pet")}</div>
       <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
       <span class="pet-species">${esc(p.species)}</span></div>`;
-        petgrid.appendChild(card);
-      });
-      const loosegrid = document.getElementById("loosepetgrid");
-      if (!loose.items.length) loosegrid.innerHTML = '<div class="muted">No unassigned sightings.</div>';
-      loose.items.forEach(a => {
-        const card = document.createElement("div"); card.className = "pcard"; card.onclick = () => openItem(a.id);
-        card.innerHTML = `<img class="face" src="/animalThumb/${a.detection_id}" loading="lazy">
+      // Pet cards have no inline rename in this grid (rename is a prompt() on
+      // the pet detail page), so there's no editing state to guard here.
+      attachMergeDrag(card, { kind: "pet", id: p.id, name: p.name, photos: p.photos }, () => showSection("pets", true));
+      return card;
+    }
+    function looseAnimalCard(a) {
+      const card = document.createElement("div"); card.className = "pcard"; card.onclick = () => openItem(a.id);
+      card.innerHTML = `<img class="face" src="/animalThumb/${a.detection_id}" loading="lazy">
       <div class="pmeta"><div class="pname un">Unnamed animal</div>
       <div class="pcount">${Math.round(a.score * 100)}% detector confidence</div>
       <span class="pet-species">${esc(a.species)}</span></div>`;
-        loosegrid.appendChild(card);
-      });
-      const reviewgrid = document.getElementById("nonhumangrid");
-      const pending = review.items.filter(item => item.review_status === "pending");
-      if (!pending.length) reviewgrid.innerHTML = '<div class="muted">No pending non-human decisions.</div>';
-      pending.forEach(item => {
-        const card = document.createElement("div"); card.className = "nonhuman-card";
-        card.innerHTML = `<img src="/thumb/${item.file_id}" loading="lazy">
+      return card;
+    }
+    function nonhumanCard(item) {
+      const card = document.createElement("div"); card.className = "nonhuman-card";
+      card.innerHTML = `<img src="/thumb/${item.file_id}" loading="lazy">
       <div class="pcount">${esc(item.kind)} · ${Math.round(item.confidence * 100)}% confidence</div>
       <div class="nonhuman-actions"><button class="btn sec">Confirm non-human</button><button class="btn sec">Actually human</button></div>`;
-        const buttons = card.querySelectorAll("button");
-        buttons[0].onclick = () => reviewNonhuman(item.id, "confirmed", card);
-        buttons[1].onclick = () => reviewNonhuman(item.id, "human", card);
-        reviewgrid.appendChild(card);
-      });
-      startPetPoll();
+      const buttons = card.querySelectorAll("button");
+      buttons[0].onclick = () => reviewNonhuman(item.id, "confirmed", card);
+      buttons[1].onclick = () => reviewNonhuman(item.id, "human", card);
+      return card;
     }
     function startPetPoll() { stopPoll(); S.poll = setInterval(petTick, 1800); petTick(); }
     async function petTick() {
@@ -6857,10 +7296,11 @@
       card.remove();
       toast(verdict === "human" ? "Restored to People for the next clustering pass." : "Confirmed as non-human.");
     }
+    const PET_DETAIL_PAGE_SIZE = 120;
     async function showPet(id) {
       stopPoll(); const m = document.getElementById("main");
       m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
-      const pet = await jget("/api/pet/" + id + "?root=" + S.arch.id + "&limit=300");
+      const pet = await jget(`/api/pet/${id}?root=${S.arch.id}&limit=${PET_DETAIL_PAGE_SIZE}`);
       if (!pet || pet.error) { m.innerHTML = '<div class="soonbox">Pet not found.</div>'; return; }
       S.currentPet = pet;
       const name = pet.name || "Name this pet";
@@ -6868,8 +7308,22 @@
     <img class="person-header-avatar" src="/animalThumb/${pet.items[0] && pet.items[0].detection_id || 0}" alt="">
     <div class="ftb-identity"><div class="ftb-name"><button class="person-name-button" onclick="renamePet(${pet.id})"><span>${esc(name)}</span></button></div>
     <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div></div>
-    <div class="grid" id="grid"></div>`;
-      const grid = document.getElementById("grid"); pet.items.forEach(item => grid.appendChild(tile(item)));
+    <div class="grid" id="grid"></div>
+    <div class="infinite-status" id="pet-grid-sentinel" aria-live="polite"></div>`;
+      let firstPage = pet.items;
+      startInfiniteList("petDetailList", {
+        sentinelId: "pet-grid-sentinel", pageSize: PET_DETAIL_PAGE_SIZE,
+        fetchPage: async offset => {
+          if (firstPage) { const page = firstPage; firstPage = null; return page; }
+          const res = await jget(`/api/pet/${id}?root=${S.arch.id}&offset=${offset}&limit=${PET_DETAIL_PAGE_SIZE}`);
+          return res.items;
+        },
+        onPage: (items, { first }) => {
+          const grid = document.getElementById("grid");
+          if (first) grid.replaceChildren();
+          items.forEach(item => grid.appendChild(tile(item)));
+        },
+      });
     }
     async function renamePet(id) {
       const name = prompt("Pet name", (S.currentPet && S.currentPet.name) || ""); if (name === null) return;

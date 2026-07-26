@@ -309,6 +309,20 @@ CREATE TABLE IF NOT EXISTS face_links (
     PRIMARY KEY (face_a, face_b)
 );
 
+-- User answers to "are these two pets the same animal?" — durable constraints
+-- that steer cluster_pets, mirroring face_links above. Anchored to DETECTION
+-- ids (not pet ids): cluster_pets DELETEs and rebuilds `pets` from scratch on
+-- every detect chunk (see pets/cluster.py), so a pet id is ephemeral within a
+-- run while its member detections survive across rebuilds. 'same' is the only
+-- kind needed so far (no "different" review queue exists for pets yet).
+CREATE TABLE IF NOT EXISTS pet_links (
+    det_a      INTEGER NOT NULL REFERENCES animal_detections(id) ON DELETE CASCADE,
+    det_b      INTEGER NOT NULL REFERENCES animal_detections(id) ON DELETE CASCADE, -- det_a < det_b
+    kind       TEXT NOT NULL,          -- 'same' (must-link)
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (det_a, det_b)
+);
+
 -- Matched Google Takeout sidecar, with the fields we consume.
 CREATE TABLE IF NOT EXISTS takeout_sidecar (
     file_id           INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
