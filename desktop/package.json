@@ -2,7 +2,7 @@
   "name": "trove-desktop",
   "version": "0.1.0",
   "description": "Local, read-only media archive catalogue",
-  "homepage": "https://github.com/capsa-0/Trove",
+  "homepage": "https://github.com/gapsa-0/Trove",
   "author": "capsa-0 <capsa-0@users.noreply.github.com>",
   "private": true,
   "main": "src/main.cjs",

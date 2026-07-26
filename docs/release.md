@@ -62,10 +62,10 @@ that references it. Add a new tag (`models-v2`, …) instead of moving an old on
 1. Stage or export the file locally, and confirm its SHA-256 matches the entry
    in `packaging/models/manifest.json` (or update the manifest if the weights
    genuinely changed — that means a new tag).
-2. `gh release create <tag> <file> --repo capsa-0/Trove
+2. `gh release create <tag> <file> --repo gapsa-0/Trove
    --title "…" --notes "…provenance and sha256…"`.
 3. Read the asset URL back with `gh release view <tag> --repo
-   capsa-0/Trove --json assets --jq '.assets[].url'` rather
+   gapsa-0/Trove --json assets --jq '.assets[].url'` rather
    than assuming its shape, and record it as the manifest `url`.
 4. Verify the CI path by wiping any local copy and forcing the download:
    `rm -rf packaging/models/staged && ARCHIVE_MODEL_SOURCE=/nonexistent
