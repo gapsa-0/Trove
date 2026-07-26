@@ -39,11 +39,38 @@ jobs:
       - run: python packaging/scripts/stage-models.py
       - run: npm ci && npm run package:${{ matrix.package }}
         working-directory: desktop
-      - run: Get-FileHash release/* -Algorithm SHA256 | Format-List
+      # Hash only the distributable files. `release/*` also matches
+      # electron-builder's intermediate *-unpacked directory, which neither
+      # sha256sum nor Get-FileHash can hash: both fail the step, and a failed
+      # step here means the installers that were just built are never uploaded.
+      # The SHA256SUMS.txt produced here is the file the install docs tell
+      # users to verify their download against.
+      - name: Checksums (Windows)
         working-directory: desktop
         if: runner.os == 'Windows'
-      - run: sha256sum release/*
-        working-directory: desktop
+        run: |
+          Get-ChildItem release -File -Exclude SHA256SUMS.txt |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content release/SHA256SUMS.txt
+          Get-Content release/SHA256SUMS.txt
+      - name: Checksums (Linux)
+        working-directory: desktop/release
         if: runner.os != 'Windows'
+        # The output file is excluded from its own listing: the shell creates it
+        # as the pipeline starts, so an unfiltered find hashes it mid-write.
+        run: |
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%P\n' |
+            sort | xargs sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
-        with: { name: 'archive-${{ matrix.target }}', path: desktop/release, retention-days: 14 }
+        with:
+          name: 'archive-${{ matrix.target }}'
+          retention-days: 14
+          # The installers and their checksums, not the unpacked staging tree
+          # that sits beside them and roughly doubles the artifact for nothing.
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/SHA256SUMS.txt
