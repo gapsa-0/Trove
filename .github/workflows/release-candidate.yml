@@ -48,11 +48,16 @@ jobs:
       - name: Checksums (Windows)
         working-directory: desktop
         if: runner.os == 'Windows'
+        # Filter with Where-Object rather than -Exclude: against a directory
+        # path that does not end in \*, -Exclude is matched on the path itself,
+        # so Get-ChildItem silently yields nothing and no file is written.
         run: |
-          Get-ChildItem release -File -Exclude SHA256SUMS.txt |
-            Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
-            Set-Content release/SHA256SUMS.txt
+          $files = Get-ChildItem -Path release -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
+          if (-not $files) { throw "no files in desktop/release to hash" }
+          $files | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), $_.Path.Split('\')[-1] } |
+            Set-Content -Path release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt
       - name: Checksums (Linux)
         working-directory: desktop/release
