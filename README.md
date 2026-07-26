@@ -108,9 +108,16 @@ vectors already stored stay searchable.
 
 ## Install
 
-Download the package for your system from the
-[releases page](https://github.com/gapsa-0/Trove/releases). Trove is available for
-Windows x64 and Linux x64.
+| Platform | Download |
+| --- | --- |
+| Windows 10/11 (64-bit) | [Trove.Setup.0.1.0.exe](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/Trove.Setup.0.1.0.exe) |
+| Linux, any distribution | [Trove-0.1.0.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/Trove-0.1.0.AppImage) |
+| Debian / Ubuntu | [trove-desktop_0.1.0_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/trove-desktop_0.1.0_amd64.deb) |
+
+Checksums for all three are in
+[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/SHA256SUMS.txt).
+Newer versions, when they exist, are on the
+[releases page](https://github.com/gapsa-0/Trove/releases).
 
 ### Windows
 
