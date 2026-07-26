@@ -28,14 +28,26 @@ application-data folder.
   snapshot somewhere random stays unplaced instead of cluttering the map; places you
   have named or pinned yourself always count, whatever their size.
 - Detects and clusters faces locally into people. You can name people, correct a face,
-  merge or separate suggested people, and dismiss non-person detections. Two people
-  (or two pets) can also be merged by dragging one card onto the other; if both carry
-  a name, the app asks which one should stay.
+  merge or separate suggested people, and dismiss non-person detections.
 - Detects cats, dogs, birds, and horses locally and groups conservative likely-pet
   identities. People and animals are found in the same pass and cross-check each
   other: an animal's own face is kept out of People, while a person who is not
   upright in the frame — lying down, or a photo stored sideways — is kept out of
   Pets rather than being catalogued as a dog.
+- Looks inside videos too. Several keyframes are sampled per clip and both detectors
+  run on each; the detections then collapse per video, so one person appearing across
+  five frames is one result rather than five.
+- Merges and unmerges people or pets. Drag one card onto another to merge them; the
+  hovered card says what the drop will do and the merge is confirmed before it
+  happens. A merge can be undone afterwards, and a single wrongly attached photo can
+  be detached from a person on its own. One limit worth knowing: undo restores a merge
+  *you* made, but cannot split a group the automatic pass formed by itself.
+- Lets you attach a person or pet to a file by hand, for media where nothing was
+  detected — a back-of-the-head shot, a photo too dark to detect, a scanned print.
+  Manual tags reference people and pets by name, so they survive the automatic
+  re-clustering that runs as the catalogue grows.
+- Searches the library by description when optional semantic indexing is enabled
+  (see below).
 - Shows photos the right way up. EXIF orientation is always honoured, and a photo
   whose pixels are stored turned while its EXIF says otherwise (common among
   re-exports of the same shot) is recognised by the detectors and displayed
@@ -45,15 +57,23 @@ application-data folder.
   are shown exactly as stored.
 - Generates cached thumbnails and serves the interface only on `127.0.0.1`.
 
-When an archive is open in the app, its pipeline runs automatically:
+When an archive is open in the app, its pipeline runs automatically. Scanning and
+metadata extraction overlap, and once duplicates are grouped the three remaining
+stages no longer depend on each other:
 
 ```text
-scan → metadata and date extraction → duplicate grouping → pets → faces → places
+scan ┐
+     ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
+metadata ┘                   ├─→ places
+                             └─→ semantic indexing (optional)
 ```
 
 Long stages commit progress in batches. Closing or switching archives asks current
-work to stop at a safe checkpoint; reopening resumes it. The interface shows the
-active stage and progress.
+work to stop at a safe checkpoint; reopening resumes it rather than restarting. The
+whole pipeline can be paused and resumed from the library health panel — running
+jobs stop at their next checkpoint, and the pause survives a restart, which is
+useful when the machine is needed for something else. The sidebar lists every stage
+currently running, not just one.
 
 ## Privacy and optional embeddings
 
@@ -72,14 +92,19 @@ formats, and non-MP4 video are recorded as skipped. Text queries sent to the sem
 endpoint also leave the machine. Do not set this key unless that data transfer is
 appropriate for the archive.
 
-Put the key in a project-root `.env` file or in the environment of the app process:
+In the desktop app, paste the key into **Settings**. It is written to a
+`secrets.json` in the application-data folder with owner-only permissions and loaded
+into the app process at startup. From a source checkout you can instead put it in a
+project-root `.env` file, or set it in the environment before launching:
 
 ```text
 VOYAGE_API_KEY=...
 ```
 
-The key is deliberately not stored in Trove's `config.json`. Embedding is resumable,
-does not process hidden duplicates, and can run alongside the local pipeline.
+The key is deliberately kept out of Trove's `config.json`, which is otherwise
+readable configuration. Embedding is resumable, does not process hidden duplicates,
+and can run alongside the local pipeline. Remove the key and indexing simply stops;
+vectors already stored stay searchable.
 
 ## Install and run the desktop app
 
@@ -99,7 +124,7 @@ chmod +x Trove-<version>.AppImage
 For Debian or Ubuntu:
 
 ```bash
-sudo apt install ./organize-archive-desktop_<version>_amd64.deb
+sudo apt install ./trove-desktop_<version>_amd64.deb
 ```
 
 Linux packages bundle FFmpeg and FFprobe. ExifTool is optional: without it, Trove
@@ -182,9 +207,18 @@ Trove keeps mutable data outside both the source archive and the installed app:
 | Windows | `%LOCALAPPDATA%\organize_archive` |
 | macOS | `~/Library/Application Support/organize_archive` |
 
-This directory contains `archive.db`, `config.json`, cached thumbnails, face/model
-assets, and logs. It is valuable derived data: back it up by copying the directory
-while Trove is closed. Restoring it does not change the original media.
+Inside it, each archive you add is fully isolated in `archives/<id>/`, with its own
+`archive.db` and its own thumbnail and face-crop cache, so one archive can be removed
+without touching another. Shared across all of them are `config.json`, `secrets.json`
+(the optional API key, owner-readable only), and the downloaded machine-learning
+models, which are large and worth keeping.
+
+The whole directory is valuable derived data: back it up by copying it while Trove is
+closed. Restoring it does not change the original media — at worst you re-scan.
+
+The directory is still named `organize_archive` rather than `Trove`. That is
+deliberate: the product name changed, but the package, CLI, application id and data
+path did not, so catalogues built by earlier versions keep working.
 
 ## Build the desktop app
 
@@ -234,8 +268,14 @@ clean-machine checks are described in [the release guide](docs/release.md).
 
 - Visual duplicate matching applies to images; video near-duplicate matching is not
   implemented.
-- Face detection applies to images, not video frames. Its local model is downloaded
-  once into the cache when needed.
+- People and pets are found in videos by sampling a few keyframes, so a face that
+  appears only briefly between those frames can be missed.
+- Detection models are downloaded once into the cache the first time they are needed,
+  so a new installation needs network access once. Everything after that is local.
+- Automatic people grouping is reliable on collections up to a few tens of thousands
+  of photos. Beyond that, noisy detections increasingly bridge distinct clusters, and
+  separate people can be merged into one group. Reviewing and naming people
+  constrains this, and the manual merge/unmerge tools let you correct it.
 - Embedded metadata quality depends on installed tools and the source formats.
 - Optional Voyage indexing accepts images and MP4 video only; it intentionally skips
   audio, PDFs, documents, and unsupported video formats.
