@@ -68,6 +68,17 @@ def validate_target(target: str) -> tuple[list[dict], list[dict]]:
             raise ValueError(f"invalid or duplicate tool name for {target}: {item['name']!r}")
         if len(item["sha256"]) != 64 or any(c not in "0123456789abcdefABCDEF" for c in item["sha256"]):
             raise ValueError(f"invalid SHA-256 for {target}: {item['name']}")
+        # Optional: stage the archive member under a different name, and copy a
+        # sibling runtime directory along with it (ExifTool's Windows build is
+        # ``exiftool(-k).exe`` plus a required ``exiftool_files/`` tree).
+        for key in ("install_as", "support_dir"):
+            value = item.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"invalid {key} for {target}: {item['name']}")
+            if Path(value).is_absolute() or len(Path(value).parts) != 1 or value in (".", ".."):
+                raise ValueError(f"{key} must be a plain file name for {target}: {item['name']}")
         names.add(item["name"])
     unavailable_names: set[str] = set()
     for item in unavailable:
@@ -121,6 +132,32 @@ def executable_for(item: dict, target: str) -> str:
     return executable
 
 
+def staged_name_for(item: dict, target: str) -> str:
+    """The file name the tool is staged (and looked up at runtime) under.
+
+    ``organize_archive.runtime.tool`` looks for a bare ``<name>``/``<name>.exe``,
+    so an archive member with a decorated name must be renamed on the way in.
+    """
+    name = item.get("install_as") or executable_for(item, target)
+    if target.startswith("win32-") and not name.endswith(".exe"):
+        raise ValueError(f"Windows install_as must end in .exe: {item['name']}")
+    if not target.startswith("win32-") and name.endswith(".exe"):
+        raise ValueError(f"Linux install_as must not end in .exe: {item['name']}")
+    return name
+
+
+def can_probe(target: str) -> bool:
+    """True when staged binaries can actually run on this host.
+
+    Release CI stages each target natively, so the version probe runs there. A
+    cross-target stage (inspecting the Windows payload from a Linux checkout) is
+    still useful for verifying download, hash and layout, and simply records the
+    probe as skipped.
+    """
+    host_win = sys.platform.startswith("win")
+    return target.startswith("win32-") == host_win
+
+
 def version_args(name: str) -> list[str]:
     return ["-ver"] if name == "exiftool" else ["-version"]
 
@@ -150,15 +187,30 @@ def stage_target(target: str) -> Path:
             hits = [path for path in extracted.rglob(executable) if path.is_file()]
             if len(hits) != 1:
                 raise ValueError(f"expected one {executable} in {item['name']} archive, found {len(hits)}")
-            staged = stage_tmp / executable
+            staged = stage_tmp / staged_name_for(item, target)
             shutil.copy2(hits[0], staged)
             if target.startswith("linux-"):
                 staged.chmod(staged.stat().st_mode | 0o111)
-            probe = subprocess.run([str(staged), *version_args(item["name"])], check=True, text=True, capture_output=True)
+            support = item.get("support_dir")
+            if support:
+                # The runtime tree ships beside the executable inside the archive
+                # and must keep that relative position once staged.
+                source_dir = hits[0].parent / support
+                if not source_dir.is_dir():
+                    raise ValueError(f"missing support_dir {support!r} for {item['name']}")
+                destination_dir = stage_tmp / support
+                if not destination_dir.exists():
+                    shutil.copytree(source_dir, destination_dir)
+            if can_probe(target):
+                probe = subprocess.run([str(staged), *version_args(item["name"])], check=True, text=True, capture_output=True)
+                runtime_version = (probe.stdout or probe.stderr).splitlines()[0]
+            else:
+                runtime_version = f"not probed (staged for {target} on {sys.platform})"
+                print(f"warning: {item['name']} staged without a version probe ({runtime_version})", file=sys.stderr)
             build_info.append({
                 "name": item["name"], "version": item["version"], "url": item["url"],
                 "sha256": item["sha256"].lower(), "license": item["license"],
-                "runtime_version": (probe.stdout or probe.stderr).splitlines()[0],
+                "runtime_version": runtime_version,
             })
         info = {"target": target, "tools": build_info, "unavailable": unavailable}
         (stage_tmp / "tools-build-info.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")

@@ -6,6 +6,54 @@ value to agree. After intentionally changing the canonical value, run
 `npm run sync:version` from `desktop/`, review its three generated updates, and
 commit them together. Candidate builds are native CI artifacts, never developer uploads.
 
+## Build inputs
+
+A build has three staged inputs, each verified against a manifest so that the
+same tag produces the same bytes:
+
+| Input | Manifest | Staged by |
+| --- | --- | --- |
+| Python runtime | `packaging/requirements-desktop.txt` | `pip install -r` |
+| Native tools (ffmpeg, ffprobe, ExifTool) | `packaging/tools/manifest.json` | `packaging/scripts/stage-tools.py --target <t>` |
+| Bundled model weights | `packaging/models/manifest.json` | `packaging/scripts/stage-models.py` |
+
+`npm run build:backend` refuses to run until the first two have produced their
+`*-build-info.json` markers, so a build can never silently omit them.
+
+The spec also carries an explicit `excludes` list. The app runs every model on
+onnxruntime and never imports torch or transformers, but scikit-learn and SciPy
+reach for torch through their `array_api_compat` shims — so on a machine that has
+torch installed (any developer who has run `tools/dinov2_pet_export.py`),
+PyInstaller would happily bundle ~700 MB of it. The exclusions keep the artifact
+the same size whoever builds it.
+
+Targets are `linux-x64` and `win32-x64`. ExifTool ships on Windows (a
+self-contained executable plus its `exiftool_files/` runtime) but not on Linux,
+where upstream distributes only a Perl source package; the Linux build therefore
+declares it `unavailable` and metadata resolution falls back to Takeout sidecars,
+filenames and filesystem timestamps.
+
+### Model weights
+
+Most weights are downloaded once at first run from a stable upstream URL and are
+not packaged: the OpenCV Zoo YOLOX detector (~35 MB) and the InsightFace
+`buffalo_l` pack (~184 MB). **A new installation therefore needs network access
+once**, after which everything is local and offline. No media ever leaves the
+machine — only the model downloads are network traffic.
+
+The DINOv2 pet re-identification model is the exception: it is exported from a
+Hugging Face checkpoint by `tools/dinov2_pet_export.py` (a dev-only tool needing
+torch + transformers) and has no upstream URL, so a packaged build carries it
+(~85 MB) and `organize_archive.runtime.bundled_model` prefers that copy.
+
+`stage-models.py` takes it from a local `cache/models` directory (a developer
+machine that already has it) or from the manifest `url`. **CI runners have no
+local copy, so `url` must be filled in before a release build can succeed.**
+Publish `dinov2_pet.onnx` as a release asset, record its https URL in
+`packaging/models/manifest.json` — the SHA-256 there already pins the exact
+bytes — and CI will fetch and verify it. Until then, release builds fail with an
+explicit message rather than shipping a build whose Pets grouping cannot start.
+
 ## Required decisions before public beta
 
 - Publisher identity: **not yet recorded**.

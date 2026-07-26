@@ -17,6 +17,7 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - run: pytest -q
       - run: python packaging/scripts/stage-tools.py --validate
+      - run: python packaging/scripts/stage-models.py --validate
   electron:
     runs-on: ubuntu-latest
     steps:

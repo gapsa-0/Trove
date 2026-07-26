@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "name": "dinov2_pet",
+      "file": "dinov2_pet/dinov2_pet.onnx",
+      "sha256": "fd1080a37fc3ae1d03b0b238cfdb8a42db344f7cb439214085ea303d59e9250e",
+      "size": 88415712,
+      "source": "tools/dinov2_pet_export.py — fp32 ONNX export of AvitoTech/DINO-v2-small-for-animal-identification (Hugging Face), CLS-token re-ID head",
+      "license": "See the AvitoTech/DINO-v2-small-for-animal-identification model card; DINOv2 upstream is Apache-2.0",
+      "url": null,
+      "reason": "Unlike the OpenCV Zoo YOLOX detector and the InsightFace buffalo_l pack, this ONNX has no upstream download URL — it is produced by a dev-only tool that needs torch + transformers. A packaged build must therefore carry it, or Pets identity grouping is unavailable to installed users."
+    }
+  ]
+}

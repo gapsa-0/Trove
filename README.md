@@ -199,6 +199,19 @@ npm run package:linux
 npm run package:win
 ```
 
+Packaging first needs its two staged inputs, which are downloaded and SHA-256
+verified against manifests in `packaging/` rather than committed:
+
+```bash
+python3 packaging/scripts/stage-tools.py --target linux-x64   # or win32-x64
+python3 packaging/scripts/stage-models.py
+```
+
+`npm run build:backend` refuses to run until both have been staged, so a build
+cannot silently ship without ffmpeg/ffprobe or without the bundled pet re-ID
+model. See [the release guide](docs/release.md#build-inputs) for what each input
+is and where it comes from.
+
 **`npm run dev` must reach the project virtualenv.** In development the shell launches
 the backend with plain `python3`. If that interpreter is the system Python rather than
 the project `.venv`, OpenCV and onnxruntime are missing and **Pets and People report

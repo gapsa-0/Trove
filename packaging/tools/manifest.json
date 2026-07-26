@@ -26,6 +26,37 @@
           "reason": "Private Linux beta fallback: upstream distributes a Perl source package, not a self-contained Linux executable. Do not depend on a host Perl/runtime; metadata extraction falls back to Takeout sidecars, filenames and filesystem timestamps."
         }
       ]
+    },
+    "win32-x64": {
+      "tools": [
+        {
+          "name": "ffmpeg",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-win64-gpl-7.1.zip",
+          "sha256": "1534687eb3ca223664b384bcd943ffe21e3f14a1fab1adcf239faecb54e006e5",
+          "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
+          "executable": "ffmpeg.exe"
+        },
+        {
+          "name": "ffprobe",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-win64-gpl-7.1.zip",
+          "sha256": "1534687eb3ca223664b384bcd943ffe21e3f14a1fab1adcf239faecb54e006e5",
+          "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
+          "executable": "ffprobe.exe"
+        },
+        {
+          "name": "exiftool",
+          "version": "13.59 (Windows self-contained build)",
+          "url": "https://downloads.sourceforge.net/project/exiftool/exiftool-13.59_64.zip",
+          "sha256": "44b512b25af500724ba579d0a53c8fc5851628b692dd5e5d94ae4a15c2cba9ec",
+          "license": "Perl Artistic License / GPL-1.0-or-later; https://exiftool.org/#license",
+          "executable": "exiftool(-k).exe",
+          "install_as": "exiftool.exe",
+          "support_dir": "exiftool_files"
+        }
+      ],
+      "unavailable": []
     }
   }
 }

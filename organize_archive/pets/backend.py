@@ -20,6 +20,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import runtime
+
 try:
     import cv2
     import numpy as np
@@ -48,6 +50,15 @@ _IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def dinov2_model_path(cache_dir: str) -> Path:
+    """Where the re-ID ONNX lives: the frozen build's copy first, else the cache.
+
+    A packaged build carries this model (it has no upstream URL to fetch it from),
+    so the bundled copy wins; a source checkout falls back to the exported file in
+    the cache directory.
+    """
+    bundled = runtime.bundled_model(f"{DINOV2_SUBDIR}/{DINOV2_MODEL}")
+    if bundled is not None:
+        return bundled
     return Path(cache_dir) / "models" / DINOV2_SUBDIR / DINOV2_MODEL
 
 

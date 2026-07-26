@@ -132,19 +132,29 @@ def make_backends(cfg: Config, log=None):
     instead of failing the whole pass."""
     face_be = pet_be = None
     if face_backend.available():
-        face_be = face_backend.FaceBackend(
-            cfg.cache_dir, min_score=cfg.faces_min_score, min_px=cfg.faces_min_px,
-            max_side=cfg.faces_max_side, det_size=cfg.faces_det_size,
-            max_clipped_fraction=cfg.faces_max_clipped_fraction,
-            min_focus=cfg.faces_min_focus,
-            max_extreme_fraction=cfg.faces_max_extreme_fraction,
-            quality_version=cfg.faces_quality_version, log=log)
+        try:
+            face_be = face_backend.FaceBackend(
+                cfg.cache_dir, min_score=cfg.faces_min_score, min_px=cfg.faces_min_px,
+                max_side=cfg.faces_max_side, det_size=cfg.faces_det_size,
+                max_clipped_fraction=cfg.faces_max_clipped_fraction,
+                min_focus=cfg.faces_min_focus,
+                max_extreme_fraction=cfg.faces_max_extreme_fraction,
+                quality_version=cfg.faces_quality_version, log=log)
+        except Exception as e:
+            # Weights that could not be fetched or loaded must not take the other
+            # detector down with them: report and carry on pets-only.
+            if log:
+                log(f"people detection unavailable: {e}")
     if pet_backend.available():
-        pet_be = pet_backend.PetBackend(
-            cfg.cache_dir, min_score=cfg.pets_min_score, min_px=cfg.pets_min_px,
-            max_side=cfg.pets_max_side, species=cfg.pets_species,
-            human_min_score=cfg.pets_human_min_score,
-            model_source=pet_scan_source(cfg), log=log)
+        try:
+            pet_be = pet_backend.PetBackend(
+                cfg.cache_dir, min_score=cfg.pets_min_score, min_px=cfg.pets_min_px,
+                max_side=cfg.pets_max_side, species=cfg.pets_species,
+                human_min_score=cfg.pets_human_min_score,
+                model_source=pet_scan_source(cfg), log=log)
+        except Exception as e:
+            if log:
+                log(f"pet detection unavailable: {e}")
     return face_be, pet_be
 
 
@@ -444,6 +454,12 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
     if face_be is None and pet_be is None:
         face_be, pet_be = make_backends(
             cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None)
+        if face_be is None and pet_be is None:
+            # Both sets of weights failed to load. Stop here rather than walk the
+            # pending images and mark them scanned with nothing detected.
+            raise RuntimeError(
+                "detect backend unavailable: neither the face nor the pet models "
+                "could be loaded (see the messages above)")
 
     total = pending_count(conn, cfg)
     if limit is not None:

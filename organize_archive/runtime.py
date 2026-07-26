@@ -1,4 +1,4 @@
-"""Locate optional executables bundled with a desktop backend."""
+"""Locate optional executables and model weights bundled with a desktop backend."""
 
 from __future__ import annotations
 
@@ -21,3 +21,22 @@ def tool(name: str) -> str | None:
             if candidate.is_file():
                 return str(candidate)
     return shutil.which(name)
+
+
+def bundled_model(relative_path: str) -> Path | None:
+    """Return a model shipped inside the frozen build, if there is one.
+
+    Only weights with no upstream download URL travel this way (see
+    ``packaging/models/manifest.json``); everything else is fetched once into the
+    cache at first run. Returns None in a source checkout.
+    """
+    roots = [os.environ.get("ARCHIVE_MODELS_DIR")]
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        roots.append(str(Path(frozen_root) / "models"))
+    for root in roots:
+        if root:
+            candidate = Path(root) / relative_path
+            if candidate.is_file():
+                return candidate
+    return None

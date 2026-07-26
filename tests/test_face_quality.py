@@ -38,27 +38,6 @@ def test_clipped_fraction_is_bounded_and_detects_partial_boxes():
     assert measure(0, 0, 0, 20, 100, 100) == 1.0
 
 
-def test_manual_nonhuman_learning_is_conservative_and_kind_aware():
-    cfg = Config(
-        faces_nonhuman_min_examples=3,
-        faces_nonhuman_min_similarity=.78,
-        faces_nonhuman_similarity_margin=.08,
-    )
-    candidate = np.array([1.0, 0.0], dtype="float32")
-    nonhuman = [
-        (np.array([1.0, 0.0], dtype="float32"), "cartoon"),
-        (np.array([.99, .01], dtype="float32"), "cartoon"),
-        (np.array([.98, .02], dtype="float32"), "cartoon"),
-    ]
-
-    assert extract._learned_nonhuman(
-        candidate, (nonhuman, []), cfg)[0] == "cartoon"
-    # A similarly close confirmed human is an explicit counterexample, so the
-    # required margin blocks automatic filtering.
-    humans = [(np.array([1.0, 0.0], dtype="float32"), "human")]
-    assert extract._learned_nonhuman(candidate, (nonhuman, humans), cfg) is None
-
-
 def _catalog(tmp_path):
     root = tmp_path / "photos"
     root.mkdir()

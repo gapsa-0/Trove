@@ -16,14 +16,40 @@ target = os.environ.get("ARCHIVE_TOOL_TARGET", "")
 tools = root / "packaging" / "tools" / "staged" / target
 if tools.is_dir():
     datas.append((str(tools), "tools"))
+# Model weights with no upstream download URL travel inside the build; the rest
+# are fetched once into the cache at first run.  See packaging/models/manifest.json
+# and organize_archive.runtime.bundled_model.
+models = root / "packaging" / "models" / "staged"
+if models.is_dir():
+    datas.append((str(models), "models"))
 binaries = []
 hiddenimports = []
 for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklearn", "numpy"):
     hiddenimports += collect_submodules(package)
     binaries += collect_dynamic_libs(package)
+# insightface supplies the buffalo_l model-zoo loader and the face_align helpers.
+# Its subpackages are reached through a registry rather than direct imports, so
+# PyInstaller cannot see them; its data files carry the model-zoo definitions.
+hiddenimports += collect_submodules("insightface.model_zoo")
+hiddenimports += collect_submodules("insightface.utils")
+datas += collect_data_files("insightface")
+
+# Dev-only weight: torch and transformers exist in a full developer environment
+# for tools/dinov2_pet_export.py, and sklearn/scipy reach for torch through their
+# array_api_compat shims. The app runs every model on onnxruntime and never
+# imports them, but without this the bundle silently grows by ~700 MB whenever
+# the build machine happens to have them installed.
+#
+# Keep this list to packages nothing on the runtime path imports. In particular
+# `onnx` and `skimage` look dev-only but are NOT: insightface imports both, and
+# excluding them silently disables face detection in the packaged app.
+excludes = [
+    "torch", "torchvision", "torchaudio", "transformers", "sentence_transformers",
+    "matplotlib", "tkinter", "IPython", "pytest",
+]
 
 a = Analysis([str(root / "packaging" / "desktop_entry.py")], pathex=[str(root)], binaries=binaries,
-             datas=datas, hiddenimports=hiddenimports, noarchive=False)
+             datas=datas, hiddenimports=hiddenimports, excludes=excludes, noarchive=False)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="organize-archive-backend", console=not sys.platform.startswith("win"))
 COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="backend")

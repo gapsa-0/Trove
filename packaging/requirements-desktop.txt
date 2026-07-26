@@ -1,12 +1,22 @@
 # Reproducible desktop runtime profile. Build on the target OS.
-Pillow==11.3.0
-pillow-heif==1.1.0
+#
+# These pins mirror the versions the application is developed and run against,
+# so a frozen build behaves like a source checkout. Every pin below publishes
+# cp313 wheels for win_amd64 and manylinux x86_64 — the desktop build must never
+# need a compiler on the release runners.
+Pillow==12.3.0
+pillow-heif==1.5.0
 ImageHash==4.3.2
 pyexiftool==0.5.6
-# OpenCV 4.12 requires NumPy >=2,<2.3 on Python 3.9+.
-numpy==2.2.6
-opencv-python==4.12.0.88
-onnxruntime==1.22.1
-scikit-learn==1.7.1
-PyInstaller==6.15.0
-# ffmpeg/ffprobe and ExifTool are bundled separately as platform resources.
+numpy==2.5.1
+opencv-python==5.0.0.93
+onnxruntime==1.27.0
+scikit-learn==1.9.0
+# Face detection/recognition backend (SCRFD det_10g + ArcFace w600k_r50 from the
+# buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
+# zoo loader and face_align helpers, inference itself runs on onnxruntime.
+insightface==1.0.1
+PyInstaller==6.21.0
+# ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
+# (packaging/tools/manifest.json). ML model weights are staged separately too
+# (packaging/models/manifest.json).

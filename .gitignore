@@ -24,6 +24,7 @@ desktop/release/
 desktop/backend/
 desktop/dist/
 packaging/tools/staged/
+packaging/models/staged/
 
 # Plan folder
 
