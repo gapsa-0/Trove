@@ -8,8 +8,8 @@
       "size": 88415712,
       "source": "tools/dinov2_pet_export.py — fp32 ONNX export of AvitoTech/DINO-v2-small-for-animal-identification (Hugging Face), CLS-token re-ID head",
       "license": "See the AvitoTech/DINO-v2-small-for-animal-identification model card; DINOv2 upstream is Apache-2.0",
-      "url": null,
-      "reason": "Unlike the OpenCV Zoo YOLOX detector and the InsightFace buffalo_l pack, this ONNX has no upstream download URL — it is produced by a dev-only tool that needs torch + transformers. A packaged build must therefore carry it, or Pets identity grouping is unavailable to installed users."
+      "url": "https://github.com/capsa-0/gallery-curator-models/releases/download/models-v1/dinov2_pet.onnx",
+      "reason": "Unlike the OpenCV Zoo YOLOX detector and the InsightFace buffalo_l pack, this ONNX has no upstream download URL — it is produced by a dev-only tool that needs torch + transformers. A packaged build must therefore carry it, or Pets identity grouping is unavailable to installed users. The `url` above is our own re-publication as a release asset, so CI runners (which have no local cache) can fetch it; it is a permanent release, since removing or retagging it would break reproducible builds of every version referencing this hash."
     }
   ]
 }

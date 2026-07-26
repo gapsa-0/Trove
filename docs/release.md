@@ -47,11 +47,35 @@ torch + transformers) and has no upstream URL, so a packaged build carries it
 (~85 MB) and `organize_archive.runtime.bundled_model` prefers that copy.
 
 `stage-models.py` takes it from a local `cache/models` directory (a developer
-machine that already has it) or from the manifest `url`. **CI runners have no
-local copy, so `url` must be filled in before a release build can succeed.**
-Publish `dinov2_pet.onnx` as a release asset, record its https URL in
-`packaging/models/manifest.json` — the SHA-256 there already pins the exact
-bytes — and CI will fetch and verify it. Until then, release builds fail with an
+machine that already has it) or from the manifest `url`. CI runners have no
+local copy, so they use the `url`, which is published as a release asset on
+**[capsa-0/gallery-curator-models](https://github.com/capsa-0/gallery-curator-models)**
+— a separate public repository that exists only to host these weights. The code
+repository is private, and `stage-models.py` downloads with no authentication,
+so the asset has to live somewhere publicly reachable; nothing about the
+application is exposed by publishing an export of an already-public checkpoint.
+
+**Those releases are permanent.** The manifest pins the exact bytes by SHA-256,
+so deleting or retagging an asset breaks reproducible builds of every version
+that references it. Add a new tag (`models-v2`, …) instead of moving an old one.
+
+### Publishing a new model asset
+
+1. Stage or export the file locally, and confirm its SHA-256 matches the entry
+   in `packaging/models/manifest.json` (or update the manifest if the weights
+   genuinely changed — that means a new tag).
+2. `gh release create <tag> <file> --repo capsa-0/gallery-curator-models
+   --title "…" --notes "…provenance and sha256…"`.
+3. Read the asset URL back with `gh release view <tag> --repo
+   capsa-0/gallery-curator-models --json assets --jq '.assets[].url'` rather
+   than assuming its shape, and record it as the manifest `url`.
+4. Verify the CI path by wiping any local copy and forcing the download:
+   `rm -rf packaging/models/staged && ARCHIVE_MODEL_SOURCE=/nonexistent
+   HOME=/nonexistent python3 packaging/scripts/stage-models.py`. It must report
+   `staged <name> from https://…`; the script re-verifies the hash after
+   downloading and fails loudly on a mismatch.
+
+A model with no local copy and no reachable `url` fails the build with an
 explicit message rather than shipping a build whose Pets grouping cannot start.
 
 ## Required decisions before public beta
