@@ -114,8 +114,21 @@ Windows x64 and Linux x64.
 
 ### Windows
 
-Run the installer and follow the prompts. It installs for your user only, so it needs
-no administrator rights, and it creates a desktop and Start-menu shortcut.
+**Windows will warn you the first time.** Trove is not code-signed, so SmartScreen
+shows a blue *"Windows protected your PC"* panel with only a *Don't run* button in
+sight. This is what Windows does for any application from an independent developer
+without a paid signing certificate; it is not a report that anything is wrong with
+the file. Click **More info**, then **Run anyway**. If you want to satisfy yourself
+first, check the download against `SHA256SUMS.txt` on the release page — in
+PowerShell, or with `certutil -hashfile "Trove.Setup.0.1.0.exe" SHA256` in Command
+Prompt:
+
+```powershell
+Get-FileHash 'Trove.Setup.0.1.0.exe' -Algorithm SHA256
+```
+
+Then run the installer and follow the prompts. It installs for your user only, so it
+needs no administrator rights, and it creates a desktop and Start-menu shortcut.
 
 Uninstalling removes the application and its shortcuts. It never touches your media,
 and your catalogue is kept in `%LOCALAPPDATA%\organize_archive` in case you reinstall
