@@ -169,7 +169,7 @@ open a normal tab or `--no-open` when launching it remotely.
 
 The native "choose folder" dialog is provided by the desktop app; in a plain browser
 (`oa gui`) there is no OS picker, so **type the absolute folder path** into the box on
-the welcome screen (e.g. `/media/capsa/Residuos/Multimedia`) and press *Choose media
+the welcome screen (e.g. `/mnt/photos/Multimedia` or `D:\Photos`) and press *Choose media
 folder*. Use the packaged desktop app if you want to click through a folder dialog.
 
 ## Data locations and backups
@@ -242,3 +242,12 @@ clean-machine checks are described in [the release guide](docs/release.md).
 - The bundled Linux release tools do not include ExifTool.
 
 For recovery and common failures, see [troubleshooting](docs/troubleshooting.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Trove bundles or downloads third-party components (ffmpeg, ExifTool, Leaflet,
+Bergamot, and several machine-learning models) under their own licenses. These
+are listed in
+[packaging/THIRD_PARTY_NOTICES.md](packaging/THIRD_PARTY_NOTICES.md).
