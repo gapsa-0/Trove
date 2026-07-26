@@ -8,9 +8,12 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
-    env:
-      XDG_DATA_HOME: ${{ runner.temp }}/archive-data
     steps:
+      # Keep the app's data directory on the runner's scratch disk. This has to
+      # be set from a step: the `runner` context does not exist in a job-level
+      # `env:` block, and referencing it there makes GitHub reject the whole
+      # workflow before any job starts (a 0s run with no jobs and no logs).
+      - run: echo "XDG_DATA_HOME=$RUNNER_TEMP/archive-data" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.13', cache: pip }
