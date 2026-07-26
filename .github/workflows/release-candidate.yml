@@ -39,12 +39,14 @@ jobs:
       - run: python packaging/scripts/stage-models.py
       - run: npm ci && npm run package:${{ matrix.package }}
         working-directory: desktop
-      # Hash only the distributable files. `release/*` also matches
-      # electron-builder's intermediate *-unpacked directory, which neither
-      # sha256sum nor Get-FileHash can hash: both fail the step, and a failed
-      # step here means the installers that were just built are never uploaded.
-      # The SHA256SUMS.txt produced here is the file the install docs tell
-      # users to verify their download against.
+      # Hash exactly the installers that get uploaded, and nothing else.
+      # `release/*` also matches electron-builder's intermediate *-unpacked
+      # directory, which neither sha256sum nor Get-FileHash can hash: both fail
+      # the step, and a failed step here means the installers that were just
+      # built are never uploaded. Listing build by-products such as
+      # builder-debug.yml is just as wrong in the other direction -- they are
+      # not shipped, so `sha256sum -c` against the published SHA256SUMS.txt
+      # would report a missing file to every user who checks their download.
       - name: Checksums (Windows)
         working-directory: desktop
         if: runner.os == 'Windows'
@@ -53,8 +55,8 @@ jobs:
         # so Get-ChildItem silently yields nothing and no file is written.
         run: |
           $files = Get-ChildItem -Path release -File |
-            Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
-          if (-not $files) { throw "no files in desktop/release to hash" }
+            Where-Object { $_.Extension -eq '.exe' }
+          if (-not $files) { throw "no installer in desktop/release to hash" }
           $files | Get-FileHash -Algorithm SHA256 |
             ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), $_.Path.Split('\')[-1] } |
             Set-Content -Path release/SHA256SUMS.txt
@@ -62,11 +64,10 @@ jobs:
       - name: Checksums (Linux)
         working-directory: desktop/release
         if: runner.os != 'Windows'
-        # The output file is excluded from its own listing: the shell creates it
-        # as the pipeline starts, so an unfiltered find hashes it mid-write.
         run: |
-          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%P\n' |
-            sort | xargs sha256sum > SHA256SUMS.txt
+          find . -maxdepth 1 -type f \( -name '*.AppImage' -o -name '*.deb' \) \
+            -printf '%P\n' | sort | xargs -r sha256sum > SHA256SUMS.txt
+          test -s SHA256SUMS.txt || { echo "no installer in desktop/release" >&2; exit 1; }
           cat SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
