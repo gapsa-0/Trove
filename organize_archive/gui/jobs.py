@@ -111,6 +111,8 @@ class JobManager:
         # part of freshness, so the status endpoint (polled ~1/s) reads a cached
         # count instead of walking ~150k files every time. (monotonic_ts, count)
         self._walk_cache: dict[int, tuple[float, int]] = {}
+        # Roots with a background refresh walk in flight (see disk_count).
+        self._walking: set[int] = set()
         # When a stage's job errors, hold off auto-restarting that kind for a
         # cooldown so a hard failure can't hot-loop through the nudge path.
         self._error_at: dict[tuple[int, str], float] = {}
@@ -157,10 +159,21 @@ class JobManager:
                    for j in self._jobs.values())
 
     def disk_count(self, root_id: int, root_path: str,
-                   max_age: float | None = None) -> int | None:
+                   max_age: float | None = None,
+                   allow_walk: bool = True) -> int | None:
         """Files on disk under this root, cached so the polled status endpoint
         never triggers a fresh ~150k-file walk. Returns None if the folder is
-        gone."""
+        gone.
+
+        ``allow_walk=False`` additionally refuses to *wait* for a refresh walk,
+        which is what the status endpoint passes. Counting 150k files on a busy
+        external drive can take longer than the client's poll interval, and a
+        walk on the request thread then stacks requests up against the browser's
+        handful of connections until the whole UI stops updating. The stale
+        count is served instead and a refresh runs in the background. The very
+        first walk still blocks: there is nothing to serve yet, and answering
+        "no idea" would show every stage as up to date on the first paint.
+        """
         from pathlib import Path
         from ..scan.walker import count_files
         ttl = self._WALK_TTL if max_age is None else max_age
@@ -168,12 +181,33 @@ class JobManager:
         now = time.monotonic()
         if hit and now - hit[0] < ttl:
             return hit[1]
+        if hit and not allow_walk:
+            self._refresh_disk_count(root_id, root_path)
+            return hit[1]
         if not Path(root_path).is_dir():
             self._walk_cache.pop(root_id, None)
             return None
         count = count_files(Path(root_path))
         self._walk_cache[root_id] = (now, count)
         return count
+
+    def _refresh_disk_count(self, root_id: int, root_path: str) -> None:
+        """Re-walk this root off the caller's thread, one walk at a time."""
+        with self._lock:
+            if root_id in self._walking or self._stopping.is_set():
+                return
+            self._walking.add(root_id)
+
+        def run():
+            try:
+                self.disk_count(root_id, root_path, max_age=0)
+            except OSError:
+                pass
+            finally:
+                with self._lock:
+                    self._walking.discard(root_id)
+
+        threading.Thread(target=run, daemon=True).start()
 
     def dedup_needed(self, root_id: int) -> bool:
         """Whether a duplicate rebuild is outstanding for this root.
@@ -408,7 +442,8 @@ class JobManager:
         if not archive:
             return False
 
-        states = pipeline.stage_states(self.cfg, self, open_root_id, archive["path"])
+        states = pipeline.stage_states(self.cfg, self, open_root_id, archive["path"],
+                                       allow_walk=True)
         lock_running = any(s["kind"] in pipeline.LOCK_KINDS and s["state"] == "running"
                            for s in states)
         acted = False
@@ -506,22 +541,29 @@ class JobManager:
         # An archive database has exactly one root; job.root_path is always
         # supplied by the scheduler, this is just a defensive fallback.
         roots = [job.root_path] if job.root_path else [self.cfg.archive_path(job.root_id)]
-        prog.total = sum(
-            walker.count_files(__import__("pathlib").Path(r))
-            for r in roots if __import__("pathlib").Path(r).is_dir()
-        )
-        base = 0
+        on_disk = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
+        prog.total = on_disk
+        run_id = db.scan_run_start(conn, job.root_id, roots)
+        totals = walker.ScanStats()
         for r in roots:
             stats = walker.scan_root(conn, self.cfg, r, run_started,
-                                     progress=prog, base_done=base,
+                                     progress=prog, base_done=totals.seen,
                                      # Small batches so the parallel enrich job
                                      # can begin reading committed rows quickly.
                                      commit_every=80,
                                      # This archive's root id, not a path lookup:
                                      # the rows must land where the GUI reads.
                                      root_id=job.root_id)
-            base += stats.seen
-        job.message = f"{base} files scanned"
+            totals.seen += stats.seen
+            totals.new += stats.new
+            totals.updated += stats.updated
+            totals.errors += stats.errors
+            totals.bytes_hashed += stats.bytes_hashed
+        # Reached only when every root was walked end to end: cancellation and
+        # errors both leave the run open, so neither can pass for full coverage.
+        db.scan_run_finish(conn, run_id, totals, on_disk)
+        job.message = (f"{totals.seen} files scanned"
+                       + (f" · {totals.errors} unreadable" if totals.errors else ""))
 
     def _run_enrich(self, conn, job: Job, cancel):
         from ..metadata import enrich as enrich_mod

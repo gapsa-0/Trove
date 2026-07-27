@@ -6,6 +6,7 @@ mode and a schema version tracked via ``PRAGMA user_version``.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -99,6 +100,11 @@ def init_db(conn: sqlite3.Connection) -> None:
     #    pin (never recomputed from members).
     #  - faces.manual_person pins a face to a person *by name* (the only identity stable
     #    across the DELETE/rebuild in faces/cluster.py), re-applied after every recluster.
+    # scan_runs gains the two things that let a *finished* scan be recognised as
+    # finished: which root it covered, and how many files were on disk when it
+    # completed (see scan_settled).
+    _add_column_if_missing(conn, "scan_runs", "root_id", "INTEGER")
+    _add_column_if_missing(conn, "scan_runs", "files_on_disk", "INTEGER")
     _add_column_if_missing(conn, "place_cluster_members", "source", "TEXT DEFAULT 'auto'")
     conn.execute("UPDATE place_cluster_members SET source='auto' WHERE source IS NULL")
     _add_column_if_missing(conn, "place_clusters", "pinned", "INTEGER NOT NULL DEFAULT 0")
@@ -248,6 +254,58 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
         conn.rollback()
         raise
     return True
+
+
+# ---- Scan completion ("has this root been walked as it stands") ------------
+#
+# The scan stage sizes its backlog as "files on disk minus rows for this root",
+# which is a fine progress estimate and a terrible completion test: a file the
+# scanner cannot stat or hash is counted on disk and never becomes a row, so
+# the difference stays positive no matter how many times the archive is walked
+# — and the scheduler starts another scan the moment the last one ends, forever,
+# resetting the progress bar each time. What actually settles the question is
+# that a scan ran to completion and nothing has changed on disk since, which is
+# what these record and answer.
+
+
+def scan_run_start(conn: sqlite3.Connection, root_id: int, roots) -> int:
+    cur = conn.execute(
+        "INSERT INTO scan_runs(started_at, roots, root_id) VALUES(?,?,?)",
+        (now_iso(), json.dumps(list(roots)), root_id),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def scan_run_finish(conn: sqlite3.Connection, run_id: int, stats,
+                    files_on_disk: int | None) -> None:
+    """Close out a scan that walked the whole root. Only ever called on the
+    normal path — an interrupted scan leaves ``finished_at`` NULL so it is not
+    mistaken for full coverage."""
+    conn.execute(
+        """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
+           files_updated=?, bytes_hashed=?, files_on_disk=? WHERE id=?""",
+        (now_iso(), stats.seen, stats.new, stats.updated, stats.bytes_hashed,
+         files_on_disk, run_id),
+    )
+    conn.commit()
+
+
+def scan_settled(conn: sqlite3.Connection, root_id: int,
+                 files_on_disk: int | None) -> bool:
+    """True when a completed scan already covers exactly what is on disk now.
+
+    ``files_on_disk`` is the current count; comparing it with the one the last
+    completed scan saw also catches deletions, which a backlog subtraction
+    silently floors at zero.
+    """
+    if files_on_disk is None:
+        return False
+    row = conn.execute(
+        """SELECT files_on_disk FROM scan_runs
+           WHERE root_id=? AND finished_at IS NOT NULL AND files_on_disk IS NOT NULL
+           ORDER BY id DESC LIMIT 1""", (root_id,)).fetchone()
+    return row is not None and row["files_on_disk"] == files_on_disk
 
 
 # ---- Dedup rebuild coverage (catalog-derived "is a rebuild owed") ----------

@@ -23,7 +23,12 @@ def _job_manager(tmp_path, monkeypatch):
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))
-    return jobs_mod.JobManager(Config())
+    jm = jobs_mod.JobManager(Config())
+    # These tests drive _auto_tick() by hand. Park the scheduler thread so it
+    # cannot also fire on its own timer after the test has torn its stubs down.
+    jm._stopping.set()
+    jm._wake.set()
+    return jm
 
 
 _QUEUED_SCAN_STAGE = {
@@ -39,7 +44,8 @@ def _rig_auto_tick(jm, monkeypatch, started):
     monkeypatch.setattr(queries_mod, "archives",
                         lambda cfg: [{"id": 1, "path": "/fake", "exists": True}])
     monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path: [dict(_QUEUED_SCAN_STAGE)])
+                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
+                        [dict(_QUEUED_SCAN_STAGE)])
     monkeypatch.setattr(jm, "start", lambda kind, root_id=None, root_path=None, force=False:
                         started.append(kind) or {"id": 1})
 
@@ -174,7 +180,7 @@ class _FakeJobs:
     def list(self, root_id=None):
         return []
 
-    def disk_count(self, root_id, root_path, max_age=None):
+    def disk_count(self, root_id, root_path, max_age=None, allow_walk=True):
         return 0
 
     def dedup_needed(self, root_id):
@@ -187,6 +193,11 @@ def test_snapshot_reports_unpaused_by_default(tmp_path, monkeypatch):
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
     conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/x','now')")
+    # An archive is only idle once a completed scan accounts for what is on
+    # disk (db.scan_settled); without one there is always a scan owed.
+    run = db.scan_run_start(conn, 1, ["/x"])
+    conn.execute("UPDATE scan_runs SET finished_at='now', files_on_disk=0 WHERE id=?",
+                 (run,))
     conn.commit()
     conn.close()
 
@@ -196,7 +207,7 @@ def test_snapshot_reports_unpaused_by_default(tmp_path, monkeypatch):
 
 
 def test_snapshot_marks_queued_cards_paused_without_changing_state(tmp_path, monkeypatch):
-    monkeypatch.setattr(pipeline_mod, "stage_states", lambda cfg, jobs, root_id, root_path: [
+    monkeypatch.setattr(pipeline_mod, "stage_states", lambda cfg, jobs, root_id, root_path, allow_walk=False: [
         dict(_QUEUED_SCAN_STAGE)])
 
     snap = pipeline_mod.snapshot(Config(), _FakeJobs(paused=True), 1, str(tmp_path))
@@ -216,6 +227,11 @@ def test_snapshot_defensive_when_jobs_has_no_paused_method(tmp_path, monkeypatch
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
     conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/x','now')")
+    # An archive is only idle once a completed scan accounts for what is on
+    # disk (db.scan_settled); without one there is always a scan owed.
+    run = db.scan_run_start(conn, 1, ["/x"])
+    conn.execute("UPDATE scan_runs SET finished_at='now', files_on_disk=0 WHERE id=?",
+                 (run,))
     conn.commit()
     conn.close()
 
@@ -223,7 +239,7 @@ def test_snapshot_defensive_when_jobs_has_no_paused_method(tmp_path, monkeypatch
         def list(self, root_id=None):
             return []
 
-        def disk_count(self, root_id, root_path, max_age=None):
+        def disk_count(self, root_id, root_path, max_age=None, allow_walk=True):
             return 0
 
         def dedup_needed(self, root_id):

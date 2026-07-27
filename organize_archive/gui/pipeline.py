@@ -86,15 +86,19 @@ def _availability(cfg: Config) -> dict[str, bool]:
 
 
 def _pending(cfg: Config, jobs, root_id: int, root_path: str,
-             avail: dict[str, bool]) -> dict[str, int]:
+             avail: dict[str, bool], allow_walk: bool) -> dict[str, int]:
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
     from . import queries, semantic
     from ..pets.extract import scan_source as pet_scan_source
 
     db_path = cfg.archive_db_path(root_id)
+    # The disk walk is the expensive half and must happen outside the read
+    # connection, so a slow drive never holds one open across the whole query.
+    on_disk = jobs.disk_count(root_id, root_path, allow_walk=allow_walk)
     conn = db.open_readonly(db_path)
     try:
+        settled = db.scan_settled(conn, root_id, on_disk)
         indexed = conn.execute(
             "SELECT COUNT(*) FROM files f WHERE f.present=1 AND f.root_id=?",
             (root_id,)).fetchone()[0]
@@ -111,8 +115,16 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
     finally:
         conn.close()
 
-    on_disk = jobs.disk_count(root_id, root_path)
-    new_files = max(0, on_disk - indexed) if on_disk is not None else 0
+    # What is left to scan is the difference between disk and catalog — except
+    # that difference never quite closes if any file cannot be read, so it is
+    # only consulted while the last completed scan does *not* already account
+    # for what is on disk now (db.scan_settled). Without that the scheduler
+    # relaunches the scan the instant it finishes, forever. The floor of 1 keeps
+    # a deletion-only change (fewer files on disk than rows) visible as work.
+    if settled or on_disk is None:
+        new_files = 0
+    else:
+        new_files = max(0, on_disk - indexed) or 1
 
     return {
         SCAN: new_files,
@@ -129,14 +141,19 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
     }
 
 
-def stage_states(cfg: Config, jobs, root_id: int, root_path: str) -> list[dict]:
+def stage_states(cfg: Config, jobs, root_id: int, root_path: str,
+                 allow_walk: bool = False) -> list[dict]:
     """Resolve every stage to one state, used by BOTH the scheduler and the API.
 
     Returns one dict per stage (not per card) so the scheduler can act on the
     fine-grained scan/enrich split; ``cards()`` rolls them up for display.
+
+    ``allow_walk`` is for the scheduler, which runs on its own thread and can
+    afford to wait for a fresh disk count; the polled API path must not (see
+    JobManager.disk_count).
     """
     avail = _availability(cfg)
-    pending = _pending(cfg, jobs, root_id, root_path, avail)
+    pending = _pending(cfg, jobs, root_id, root_path, avail, allow_walk)
 
     running: dict[str, dict] = {}
     last: dict[str, dict] = {}
