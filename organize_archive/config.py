@@ -18,7 +18,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 from .paths import (app_data_dir, config_file, default_cache_dir,
                     default_db_path, ensure_app_data_dirs,
-                    archive_dir, archive_db_path, archive_cache_dir)
+                    archives_dir, archive_dir, archive_db_path, archive_cache_dir)
 
 
 def _now_iso() -> str:
@@ -298,7 +298,22 @@ class Config:
     # the app icon — see db_path/cache_dir above) are shared between archives.
 
     def _next_archive_id(self) -> int:
-        return max((a["id"] for a in self.archives), default=0) + 1
+        """The next never-used archive id.
+
+        Deliberately counts the directories under ``archives/`` as well as the
+        registry, so an id is not handed out again just because its entry was
+        removed. A removal whose ``rmtree`` did not fully land (it is best
+        effort) would otherwise point a brand-new archive at the *previous*
+        archive's database, whose root row still names the old folder — the
+        exact mismatch db.reconcile_root exists to clean up.
+        """
+        used = {a["id"] for a in self.archives}
+        try:
+            used |= {int(d.name) for d in archives_dir().iterdir()
+                     if d.is_dir() and d.name.isdigit()}
+        except OSError:
+            pass
+        return max(used, default=0) + 1
 
     def archive_path(self, archive_id: int) -> str | None:
         return next((a["path"] for a in self.archives if a["id"] == archive_id), None)
@@ -309,11 +324,22 @@ class Config:
     def archive_cache_dir(self, archive_id: int) -> str:
         return str(archive_cache_dir(archive_id))
 
-    def add_archive_entry(self, path: str) -> dict:
-        """Register a new isolated archive and create its private directory."""
+    def allocate_archive_id(self) -> int:
+        """Claim an id and create its private directory, registering nothing yet.
+
+        Adding an archive is two writes — this directory tree and the registry
+        entry — and the registry one goes last (register_archive), so a failure
+        while building the database cannot leave config.json advertising an
+        archive that was never set up. That ordering is why the picker no longer
+        needs a full page reload to agree with what actually exists.
+        """
         aid = self._next_archive_id()
         archive_dir(aid).mkdir(parents=True, exist_ok=True)
-        entry = {"id": aid, "path": path, "added_at": _now_iso()}
+        return aid
+
+    def register_archive(self, archive_id: int, path: str) -> dict:
+        """Record a fully prepared archive in the registry."""
+        entry = {"id": archive_id, "path": path, "added_at": _now_iso()}
         self.archives.append(entry)
         self.save()
         return entry
@@ -354,8 +380,7 @@ class Config:
                 roots = []
             if len(roots) == 1:
                 _legacy_root_id, root_path = roots[0]
-                aid = self._next_archive_id()
-                archive_dir(aid).mkdir(parents=True, exist_ok=True)
+                aid = self.allocate_archive_id()
                 # A plain file copy could miss pages the legacy database hasn't
                 # checkpointed out of its WAL yet if it's open elsewhere (e.g. a
                 # running GUI). Back it up through SQLite instead, so the copy is
@@ -363,6 +388,14 @@ class Config:
                 dst = sqlite3.connect(str(archive_db_path(aid)))
                 try:
                     src.backup(dst)
+                    # The copy keeps the *legacy* root id, which has no reason to
+                    # match the archive id this store is now filed under. Left
+                    # alone that silently hides the whole catalogue from a GUI
+                    # that only ever asks for `aid`.
+                    from .db import database as _db
+                    dst.row_factory = sqlite3.Row
+                    dst.execute("PRAGMA foreign_keys=ON")
+                    _db.reconcile_root(dst, aid, root_path)
                 finally:
                     dst.close()
                 legacy_cache = Path(self.cache_dir)

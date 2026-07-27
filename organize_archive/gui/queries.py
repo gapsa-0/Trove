@@ -89,13 +89,21 @@ def add_archive(cfg, path: str) -> dict:
     resolved = str(p.resolve())
     if any(a["path"] == resolved for a in cfg.archives):
         return {"error": "That folder is already an archive."}
-    entry = cfg.add_archive_entry(resolved)
-    conn = db.connect(cfg.archive_db_path(entry["id"]))
+    # Build the private store first and register it only once it is usable, so a
+    # failure here cannot leave a half-added archive in config.json that appears
+    # out of nowhere on the next page load.
+    aid = cfg.allocate_archive_id()
     try:
-        db.init_db(conn)
-        db.create_root(conn, entry["id"], resolved)
-    finally:
-        conn.close()
+        conn = db.connect(cfg.archive_db_path(aid))
+        try:
+            db.init_db(conn)
+            db.reconcile_root(conn, aid, resolved)
+        finally:
+            conn.close()
+    except Exception as exc:
+        shutil.rmtree(archive_dir_path(aid), ignore_errors=True)
+        return {"error": f"Could not prepare a catalog for that folder: {exc}"}
+    entry = cfg.register_archive(aid, resolved)
     return {"id": entry["id"], "path": resolved}
 
 

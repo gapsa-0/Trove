@@ -292,16 +292,33 @@ class JobManager:
     # pipeline (scan → enrich → dedup → pets → faces) for it. Closing or switching the
     # archive requests cancellation; long jobs commit in batches and resume the
     # next time that archive is opened.
-    def open_archive(self, root_id: int):
-        """Allow automatic work for this archive while it is being viewed."""
-        # Bring the schema up to date before anything can read: the read-only
-        # query paths (thumbnails, the viewer) join tables this version expects,
-        # and an archive catalogued by an older one would not have them yet.
+    def _open_db(self, root_id: int):
+        """Connect to an archive, bringing schema and root identity up to date.
+
+        The schema part matters because the read-only query paths (thumbnails,
+        the viewer) join tables this version expects, and an archive catalogued
+        by an older one would not have them yet. The root part matters because
+        every query, job and URL in the GUI addresses this archive by its
+        registry id, so the database's single root has to *be* that id — see
+        db.reconcile_root for what goes wrong when it isn't.
+        """
         conn = db.connect(self.cfg.archive_db_path(root_id))
         try:
             db.init_db(conn)
-        finally:
+            path = self.cfg.archive_path(root_id)
+            if path and db.reconcile_root(conn, root_id, path):
+                # The file set just changed shape; whatever dedup last covered
+                # no longer describes it.
+                db.dedup_invalidate(conn, root_id)
+                conn.commit()
+        except Exception:
             conn.close()
+            raise
+        return conn
+
+    def open_archive(self, root_id: int):
+        """Allow automatic work for this archive while it is being viewed."""
+        self._open_db(root_id).close()
         with self._lock:
             previous = self._open_root_id
             self._open_root_id = root_id
@@ -432,8 +449,7 @@ class JobManager:
                 # Scan and enrich each use their own connection and bypass the
                 # write lock so they can run in parallel. SQLite WAL mode
                 # serializes their brief commits safely.
-                conn = db.connect(self.cfg.archive_db_path(job.root_id))
-                db.init_db(conn)
+                conn = self._open_db(job.root_id)
                 try:
                     if job.kind == "scan":
                         self._run_scan(conn, job, cancel)
@@ -443,8 +459,7 @@ class JobManager:
                     conn.close()
             else:
                 with self._write_lock:
-                    conn = db.connect(self.cfg.archive_db_path(job.root_id))
-                    db.init_db(conn)
+                    conn = self._open_db(job.root_id)
                     try:
                         if job.kind == "dedup":
                             self._run_dedup(conn, job, cancel)
@@ -501,7 +516,10 @@ class JobManager:
                                      progress=prog, base_done=base,
                                      # Small batches so the parallel enrich job
                                      # can begin reading committed rows quickly.
-                                     commit_every=80)
+                                     commit_every=80,
+                                     # This archive's root id, not a path lookup:
+                                     # the rows must land where the GUI reads.
+                                     root_id=job.root_id)
             base += stats.seen
         job.message = f"{base} files scanned"
 

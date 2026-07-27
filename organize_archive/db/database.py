@@ -175,19 +175,79 @@ def get_or_create_root(conn: sqlite3.Connection, path: str) -> int:
     return cur.lastrowid
 
 
-def create_root(conn: sqlite3.Connection, root_id: int, path: str) -> None:
-    """Insert the single root of a per-archive database with an explicit id.
+# Tables that key rows to a root directly, so a renumbered root takes them
+# along. Deleting a root is different: only `files` needs clearing by hand,
+# since the other two cascade and everything else hangs off a file id.
+_ROOT_SCOPED_TABLES = ("files", "dedup_runs", "place_clusters")
+
+
+def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
+    """Make ``root_id`` the one and only root of this per-archive database.
 
     Each isolated archive database has exactly one root, and its id is kept
     equal to the archive's id in the app registry — every place that already
     threads a ``root_id`` through (jobs, queries, URLs) keeps meaning the same
     thing without change; only *which database file* it points at changes.
+
+    Nothing enforced that before, and once the two disagree the app goes quiet
+    rather than loud: the scanner resolves its root *by path* and happily
+    creates a second one, so every scanned file lands under an id no query ever
+    asks for. The archive then reads as almost empty, and — because the scan
+    stage measures its backlog as "files on disk minus rows for this root" —
+    the pipeline rescans the whole archive forever, restarting its progress
+    each time. Two ways in, both reachable from a normal install: an archive id
+    is reused after a removal that left the old directory behind, and the
+    legacy migration copies a pre-isolation database keeping *its* root id.
+
+    So this is called on the way in to every archive, and it repairs rather
+    than reports: rows under a second root for the same folder are adopted
+    (they describe this archive's files and were expensive to build), and rows
+    belonging to some *other* folder are dropped, since a per-archive database
+    has no business holding them. Returns True when it changed anything, so
+    callers can invalidate work derived from the old shape.
     """
-    conn.execute(
-        "INSERT INTO roots(id, path, added_at) VALUES(?, ?, ?)",
-        (root_id, path, now_iso()),
-    )
-    conn.commit()
+    rows = {r["id"]: (r["path"], r["added_at"])
+            for r in conn.execute("SELECT id, path, added_at FROM roots")}
+    if {rid: p for rid, (p, _) in rows.items()} == {root_id: path}:
+        return False
+
+    # The row that already describes this folder, whatever id it ended up with.
+    owner = next((rid for rid, (p, _) in rows.items() if p == path), None)
+    keep = {root_id, owner} - {None}
+    placeholder = f"{path}\x00reconciling"
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        # 1. Roots for other folders (and their catalog rows) do not belong here.
+        stale = [rid for rid in rows if rid not in keep]
+        for rid in stale:
+            conn.execute("DELETE FROM files WHERE root_id=?", (rid,))
+            conn.execute("DELETE FROM roots WHERE id=?", (rid,))
+        if owner is None:
+            # A row may still be sitting on the target id under a stale path.
+            conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
+            conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
+            conn.execute("INSERT INTO roots(id, path, added_at) VALUES(?,?,?)",
+                         (root_id, path, now_iso()))
+        elif owner != root_id:
+            # Renumber the owning root onto the archive's id, taking its files
+            # with it. The placeholder keeps `roots.path` unique for the moment
+            # both rows exist, which is what lets the whole move happen without
+            # ever leaving a file row pointing at a root that isn't there —
+            # no deferred foreign keys needed.
+            conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
+            conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
+            conn.execute("UPDATE roots SET path=? WHERE id=?", (placeholder, owner))
+            conn.execute("INSERT INTO roots(id, path, added_at) VALUES(?,?,?)",
+                         (root_id, path, rows[owner][1]))
+            for table in _ROOT_SCOPED_TABLES:
+                conn.execute(f"UPDATE {table} SET root_id=? WHERE root_id=?",
+                             (root_id, owner))
+            conn.execute("DELETE FROM roots WHERE id=?", (owner,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return True
 
 
 # ---- Dedup rebuild coverage (catalog-derived "is a rebuild owed") ----------

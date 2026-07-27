@@ -77,12 +77,19 @@ def count_files(root: Path) -> int:
 
 def scan_root(conn, cfg: Config, root_path: str, run_started: str,
               progress=None, commit_every: int = 500,
-              base_done: int = 0, base_bytes: int = 0) -> ScanStats:
+              base_done: int = 0, base_bytes: int = 0,
+              root_id: int | None = None) -> ScanStats:
     root = Path(root_path)
     if not root.is_dir():
         raise FileNotFoundError(f"Root not found or not a directory: {root_path}")
 
-    root_id = db.get_or_create_root(conn, str(root))
+    # A caller that already knows which root it is scanning (the GUI, where the
+    # root id *is* the archive id) says so, rather than having it looked up by
+    # path. Resolving by path is what let a mismatched database grow a second
+    # root nobody queries — see db.reconcile_root. The shared CLI catalog, which
+    # holds several roots and identifies them only by path, keeps the lookup.
+    if root_id is None:
+        root_id = db.get_or_create_root(conn, str(root))
     stats = ScanStats()
     now = db.now_iso()
     batch = 0

@@ -5216,8 +5216,12 @@
       }
       if (!p) { highlightAddArchiveField(); return false; }
       const r = await jpost("/api/archives", { path: p });
-      if (r.error) { toast(r.error, true); return false; }
+      // Re-read the list either way. A rejected add used to return early, so if
+      // the server had already recorded anything the start page kept showing the
+      // stale set until a full page reload made it look like the folder appeared
+      // out of nowhere.
       field.value = ""; await loadPicker();
+      if (r.error) { toast(r.error, true); return false; }
       const a = ARCHIVES.find(x => x.id === r.id) || { id: r.id, path: r.path, name: r.path.split("/").filter(Boolean).pop(), files: 0, size: 0, exists: true };
       openArchive(a, "overview"); return false;
     }
