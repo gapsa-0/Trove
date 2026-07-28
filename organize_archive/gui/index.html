@@ -7282,12 +7282,39 @@
         },
       });
     }
-    /* Patch the people grid to match the server, without tearing it down.
-       Cards are keyed by person id: ones that survive are reordered/updated in
-       place, new people are inserted at their position, and people that merged
-       away are dropped. The server clamps the endpoint to 500, so a grid
-       scrolled past that syncs only its first 500 cards; the rest stay as they
-       were until the next full renderPeople(). */
+    /* Patch a card grid to match a freshly fetched head of its list, instead of
+       tearing the grid down and rebuilding it -- scroll position, the pages the
+       infinite list has already loaded and any half-finished review all
+       survive. Cards carry their identity in dataset.syncKey, set by whichever
+       factory built them (the initial render appends cards directly, so the key
+       can't be assigned here): survivors are updated in place and moved to
+       their new position, newcomers are inserted at theirs, and cards whose
+       item is gone are dropped -- but only when `complete` says the fetch
+       covered the whole list, since a full page says nothing about the items
+       sitting past it. `update` returns false to leave a card alone (mid-edit).
+       Returns the number of cards now in the grid. */
+    function syncCardGrid(grid, items, { keyOf, make, update, complete, empty }) {
+      // Placeholders ("nothing here yet") aren't cards; drop them so the
+      // positional insert below lines up with the item list.
+      for (const el of [...grid.children]) if (!el.dataset.syncKey) el.remove();
+      const existing = new Map();
+      for (const el of grid.children) existing.set(el.dataset.syncKey, el);
+      items.forEach((item, i) => {
+        const key = String(keyOf(item));
+        let el = existing.get(key);
+        if (el) { existing.delete(key); if (update && !update(el, item)) return; }
+        else el = make(item);
+        const at = grid.children[i];
+        if (at !== el) grid.insertBefore(el, at || null);
+      });
+      if (complete) existing.forEach(el => el.remove());
+      const cards = grid.children.length;
+      if (!cards && complete && empty) grid.innerHTML = empty;
+      return cards;
+    }
+    /* Patch the people grid to match the server. The server clamps the endpoint
+       to 500, so a grid scrolled past that syncs only its first 500 cards; the
+       rest stay as they were until the next full renderPeople(). */
     const PEOPLE_SYNC_LIMIT = 500;
     async function syncPeopleGrid() {
       if (S.section !== "people" || S.facePerson != null) return;
@@ -7307,23 +7334,12 @@
       finally { S.peopleSyncing = false; }
       const grid = document.getElementById("peoplegrid");
       if (!grid || S.peopleList !== st) return;          // navigated away mid-fetch
-      const existing = new Map();
-      for (const el of grid.children) existing.set(el.dataset.pid, el);
-      people.forEach((p, i) => {
-        const key = String(p.id);
-        let el = existing.get(key);
-        if (el) { existing.delete(key); if (!updatePersonCard(el, p)) return; }   // mid-rename: leave put
-        else el = personCard(p);
-        const at = grid.children[i];
-        if (at !== el) grid.insertBefore(el, at || null);
-      });
-      // Only prune when this response was the complete list; a truncated one
-      // says nothing about people who merely sit past the synced range.
-      if (people.length < limit) existing.forEach(el => el.remove());
+      const complete = people.length < limit;
       // Keep the infinite list's cursor equal to what's on screen, so the next
       // page picks up right after the last card however many were added/pruned.
-      st.offset = grid.children.length;
-      if (people.length < limit) st.done = (st.offset === people.length);
+      st.offset = syncCardGrid(grid, people, {
+        keyOf: p => p.id, make: personCard, update: updatePersonCard, complete });
+      if (complete) st.done = (st.offset === people.length);
       // A review queue the user has worked through can be refilled silently;
       // one still in progress is never disturbed. Keyed on the people count so
       // this fires per clustering pass, not on every 1.5s poll.
@@ -7661,7 +7677,7 @@
     }
     function personCard(p) {
       const d = document.createElement("div"); d.className = "pcard"; d.onclick = guardCardClick(() => showPerson(p.id));
-      d.dataset.pid = String(p.id);
+      d.dataset.syncKey = String(p.id);
       // Mutable so syncPeopleGrid can refresh a renamed/re-counted person without
       // re-running attachMergeDrag (which would stack a second set of listeners).
       d._merge = { kind: "person", id: p.id, name: p.name, photos: p.photos };
@@ -7809,11 +7825,17 @@
 
     /* ---------- pets / non-human review ---------- */
     const PET_LIST_PAGE_SIZE = 120, LOOSE_PET_PAGE_SIZE = 120, NONHUMAN_PAGE_SIZE = 60;
+    // Shared by the first render and by syncPetGrids, so an emptied grid says
+    // the same thing however it got there.
+    const PET_EMPTY = '<div class="muted">No repeated pets grouped yet.</div>',
+          LOOSE_PET_EMPTY = '<div class="muted">No unassigned sightings.</div>',
+          NONHUMAN_EMPTY = '<div class="muted">No pending non-human decisions.</div>';
+    const petStamp = sum => [sum.pets, sum.detections, sum.nonhuman_faces].join("/");
     async function renderPets(m) {
       const gen = NAV, root = S.arch.id;
       const sum = await jget("/api/pets/summary?root=" + root);
       if (gen !== NAV) return;
-      S.petJobRunning = false;
+      S.petJobRunning = false; S.petStamp = petStamp(sum);
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Pets</h2>
       <p>Locally detected animals, likely identities, and non-human face review.</p></div></div>
     <div class="statrow">
@@ -7841,7 +7863,7 @@
         },
         onPage: (pets, { first, done }) => {
           const petgrid = document.getElementById("petgrid");
-          if (first) petgrid.innerHTML = done && !pets.length ? '<div class="muted">No repeated pets grouped yet.</div>' : "";
+          if (first) petgrid.innerHTML = done && !pets.length ? PET_EMPTY : "";
           pets.forEach(p => petgrid.appendChild(petCard(p)));
         },
       });
@@ -7854,12 +7876,11 @@
         },
         onPage: (items, { first, done }) => {
           const loosegrid = document.getElementById("loosepetgrid");
-          if (first) loosegrid.innerHTML = done && !items.length ? '<div class="muted">No unassigned sightings.</div>' : "";
+          if (first) loosegrid.innerHTML = done && !items.length ? LOOSE_PET_EMPTY : "";
           items.forEach(a => loosegrid.appendChild(looseAnimalCard(a)));
         },
       });
 
-      let nonhumanShown = 0;
       startInfiniteList("nonhumanState", {
         sentinelId: "nonhuman-sentinel", pageSize: NONHUMAN_PAGE_SIZE,
         fetchPage: async offset => {
@@ -7869,31 +7890,60 @@
         // Pending is a client-side filter over a confidence-ordered page, so a
         // page can add zero visible cards without the list being done -- the
         // "nothing to review" message only holds once every page is in and
-        // still nothing pending turned up.
+        // still nothing pending turned up. Cards are counted off the grid
+        // rather than a running tally, since syncPetGrids also adds and removes
+        // them between pages; that also lets a page that overlaps the synced
+        // head skip the cards already standing there.
         onPage: (items, { first, done }) => {
           const reviewgrid = document.getElementById("nonhumangrid");
-          if (first) { reviewgrid.innerHTML = ""; nonhumanShown = 0; }
-          const pending = items.filter(item => item.review_status === "pending");
-          pending.forEach(item => { reviewgrid.appendChild(nonhumanCard(item)); nonhumanShown++; });
-          if (done && !nonhumanShown) reviewgrid.innerHTML = '<div class="muted">No pending non-human decisions.</div>';
+          if (first) reviewgrid.innerHTML = "";
+          for (const item of items) {
+            if (item.review_status !== "pending") continue;
+            if (!reviewgrid.querySelector(`[data-sync-key="${item.id}"]`))
+              reviewgrid.appendChild(nonhumanCard(item));
+          }
+          if (done && !reviewgrid.querySelector(".nonhuman-card"))
+            reviewgrid.innerHTML = NONHUMAN_EMPTY;
         },
       });
 
       startPetPoll();
     }
+    function petMetaInner(p) {
+      return `<div class="pname ${p.name ? "" : "un"}">${esc(p.name || "Name this pet")}</div>
+      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
+      <span class="pet-species">${esc(p.species)}</span>`;
+    }
     function petCard(p) {
       const card = document.createElement("div"); card.className = "pcard"; card.onclick = guardCardClick(() => showPet(p.id));
-      card.innerHTML = `<img class="face" src="/animalThumb/${p.cover_detection_id}" loading="lazy" draggable="false">
-      <div class="pmeta"><div class="pname ${p.name ? "" : "un"}">${esc(p.name || "Name this pet")}</div>
-      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
-      <span class="pet-species">${esc(p.species)}</span></div>`;
+      card.dataset.syncKey = String(p.id);
+      card.innerHTML = `<img class="face" src="/animalThumb/${p.cover_detection_id}" data-det="${p.cover_detection_id}" loading="lazy" draggable="false">
+      <div class="pmeta">${petMetaInner(p)}</div>`;
       // Pet cards have no inline rename in this grid (rename is a prompt() on
       // the pet detail page), so there's no editing state to guard here.
-      attachMergeDrag(card, { kind: "pet", id: p.id, name: p.name, photos: p.photos }, () => showSection("pets", true));
+      // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
+      // re-running attachMergeDrag (which would stack a second set of listeners).
+      card._merge = { kind: "pet", id: p.id, name: p.name, photos: p.photos };
+      attachMergeDrag(card, card._merge, () => showSection("pets", true));
       return card;
+    }
+    // In-place refresh of one already-rendered pet card. The cover <img> is
+    // only reswapped when the cover detection actually changes, so a pet whose
+    // photo count ticked up mid-run doesn't visibly blink its thumbnail.
+    function updatePetCard(card, p) {
+      const img = card.querySelector("img.face");
+      if (img && img.dataset.det !== String(p.cover_detection_id)) {
+        img.dataset.det = String(p.cover_detection_id);
+        img.src = `/animalThumb/${p.cover_detection_id}`;
+      }
+      const meta = card.querySelector(".pmeta");
+      if (meta) meta.innerHTML = petMetaInner(p);
+      Object.assign(card._merge, { name: p.name, photos: p.photos });
+      return true;
     }
     function looseAnimalCard(a) {
       const card = document.createElement("div"); card.className = "pcard"; card.onclick = () => openItem(a.id);
+      card.dataset.syncKey = String(a.detection_id);
       card.innerHTML = `<img class="face" src="/animalThumb/${a.detection_id}" loading="lazy">
       <div class="pmeta"><div class="pname un">Unnamed animal</div>
       <div class="pcount">${Math.round(a.score * 100)}% detector confidence</div>
@@ -7902,6 +7952,7 @@
     }
     function nonhumanCard(item) {
       const card = document.createElement("div"); card.className = "nonhuman-card";
+      card.dataset.syncKey = String(item.id);
       card.innerHTML = `<img src="/thumb/${item.file_id}" loading="lazy">
       <div class="pcount">${esc(item.kind)} · ${Math.round(item.confidence * 100)}% confidence</div>
       <div class="nonhuman-actions"><button class="btn sec">Confirm non-human</button><button class="btn sec">Actually human</button></div>`;
@@ -7910,9 +7961,69 @@
       buttons[1].onclick = () => reviewNonhuman(item.id, "human", card);
       return card;
     }
+    /* Patch the three pet grids to match the server, without tearing the
+       section down. Same reconcile as the people grid (syncCardGrid), keyed by
+       pet id / detection id, and with the same 500-row clamp on each endpoint:
+       a grid scrolled past that syncs only its first 500 cards, the rest stay
+       as they were until the next full render. */
+    const PET_SYNC_LIMIT = 500;
+    async function syncPetGrids() {
+      if (ACTIVE_SECTION !== "pets" || S.petSyncing) return;   // one in flight at a time
+      const st = { pets: S.petListState, loose: S.loosePetState, nonhuman: S.nonhumanState };
+      if (!st.pets || !st.loose || !st.nonhuman) return;       // first render still in flight
+      const root = S.arch.id;
+      const cap = (state, page) => Math.min(PET_SYNC_LIMIT, Math.max(page, state.offset));
+      const lim = { pets: cap(st.pets, PET_LIST_PAGE_SIZE),
+                    loose: cap(st.loose, LOOSE_PET_PAGE_SIZE),
+                    nonhuman: cap(st.nonhuman, NONHUMAN_PAGE_SIZE) };
+      S.petSyncing = true;
+      let pets, loose, nonhuman;
+      try {
+        [pets, loose, nonhuman] = await Promise.all([
+          jget(`/api/pets?root=${root}&offset=0&limit=${lim.pets}`).then(r => r.pets),
+          jget(`/api/pet/detections?root=${root}&unassigned=1&offset=0&limit=${lim.loose}`).then(r => r.items),
+          jget(`/api/nonhuman?root=${root}&offset=0&limit=${lim.nonhuman}`).then(r => r.items),
+        ]);
+      } catch (e) { return; }
+      finally { S.petSyncing = false; }
+      const petgrid = document.getElementById("petgrid"),
+            loosegrid = document.getElementById("loosepetgrid"),
+            reviewgrid = document.getElementById("nonhumangrid");
+      // Navigated away, or the section re-rendered, while the fetches were out.
+      if (!petgrid || !loosegrid || !reviewgrid) return;
+      if (S.petListState !== st.pets || S.loosePetState !== st.loose
+          || S.nonhumanState !== st.nonhuman) return;
+
+      // Keep each infinite list's cursor equal to what's on screen, so its next
+      // page picks up right after the last card however many were added/pruned.
+      let complete = pets.length < lim.pets;
+      st.pets.offset = syncCardGrid(petgrid, pets, {
+        keyOf: p => p.id, make: petCard, update: updatePetCard, complete, empty: PET_EMPTY });
+      if (complete) st.pets.done = (st.pets.offset === pets.length);
+
+      // A detection row never changes once written, so a surviving loose card
+      // only ever needs moving -- no updater.
+      complete = loose.length < lim.loose;
+      st.loose.offset = syncCardGrid(loosegrid, loose, {
+        keyOf: a => a.detection_id, make: looseAnimalCard, complete, empty: LOOSE_PET_EMPTY });
+      if (complete) st.loose.done = (st.loose.offset === loose.length);
+
+      // The review grid shows only the pending subset of what was fetched, so
+      // it reconciles against the filtered list but takes its cursor from the
+      // raw page, which is what the infinite list counts. A truncated page
+      // leaves that cursor alone: it still points past a tail this sync didn't
+      // look at, and onPage skips any card already standing.
+      complete = nonhuman.length < lim.nonhuman;
+      syncCardGrid(reviewgrid, nonhuman.filter(item => item.review_status === "pending"), {
+        keyOf: item => item.id, make: nonhumanCard, complete, empty: NONHUMAN_EMPTY });
+      if (complete) { st.nonhuman.offset = nonhuman.length; st.nonhuman.done = true; }
+    }
     function startPetPoll() { stopPoll(); S.poll = setInterval(petTick, 1800); petTick(); }
-    // Mirrors faceTick: live stat + status refresh every poll, full grid
-    // refresh only when a run finishes (thumbnails shouldn't flicker mid-run).
+    // Mirrors faceTick: the stat tiles and status row tick every poll, and the
+    // grids are *patched* (syncPetGrids) rather than rebuilt, so the page never
+    // resets under the user -- scroll position, the pages the infinite lists
+    // have already loaded and any half-finished non-human review all survive,
+    // and only cards whose data actually changed are touched.
     async function petTick() {
       if (ACTIVE_SECTION !== "pets") { stopPoll(); return; }
       const area = document.getElementById("petjob"); if (!area) { stopPoll(); return; }
@@ -7927,7 +8038,11 @@
       const sc = document.getElementById("ps-scanned");
       if (sc) sc.innerHTML = `${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
       area.innerHTML = detectStatusRow(sum, null);
-      if (was && !running) showSection("pets", true);
+      // Three list endpoints are worth refetching only when something actually
+      // moved; the run's finishing edge always gets one last pass.
+      const stamp = petStamp(sum);
+      if (running ? stamp !== S.petStamp : was) syncPetGrids();
+      S.petStamp = stamp;
     }
     async function reviewNonhuman(id, verdict, card) {
       const result = await jpost("/api/nonhuman/review", { detection_id: id, verdict });
