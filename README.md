@@ -113,16 +113,16 @@ vectors already stored stay searchable.
 
 | Platform | Download | Size |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | [Trove.Setup.0.1.0.exe](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/Trove.Setup.0.1.0.exe) | 374 MB |
-| Linux, any distribution | [Trove-0.1.0.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/Trove-0.1.0.AppImage) | 512 MB |
-| Debian / Ubuntu | [trove-desktop_0.1.0_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/trove-desktop_0.1.0_amd64.deb) | 384 MB |
+| Windows 10/11 (64-bit) | [Trove.Setup.0.1.1.exe](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/Trove.Setup.0.1.1.exe) | 374 MB |
+| Linux, any distribution | [Trove-0.1.1.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/Trove-0.1.1.AppImage) | 512 MB |
+| Debian / Ubuntu | [trove-desktop_0.1.1_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/trove-desktop_0.1.1_amd64.deb) | 384 MB |
 
 The downloads are large because each one bundles its own Python runtime, FFmpeg,
 and the local detection models — nothing is fetched from a package manager at
 install time.
 
 Checksums for all three are in
-[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.1.0/SHA256SUMS.txt).
+[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/SHA256SUMS.txt).
 Newer versions, when they exist, are on the
 [releases page](https://github.com/gapsa-0/Trove/releases).
 
@@ -134,11 +134,11 @@ sight. This is what Windows does for any application from an independent develop
 without a paid signing certificate; it is not a report that anything is wrong with
 the file. Click **More info**, then **Run anyway**. If you want to satisfy yourself
 first, check the download against `SHA256SUMS.txt` on the release page — in
-PowerShell, or with `certutil -hashfile "Trove.Setup.0.1.0.exe" SHA256` in Command
+PowerShell, or with `certutil -hashfile "Trove.Setup.0.1.1.exe" SHA256` in Command
 Prompt:
 
 ```powershell
-Get-FileHash 'Trove.Setup.0.1.0.exe' -Algorithm SHA256
+Get-FileHash 'Trove.Setup.0.1.1.exe' -Algorithm SHA256
 ```
 
 Then run the installer and follow the prompts. It installs for your user only, so it

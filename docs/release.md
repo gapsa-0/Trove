@@ -83,7 +83,21 @@ explicit message rather than shipping a build whose Pets grouping cannot start.
 - Release host and supported Ubuntu/Debian versions: **not yet recorded**.
 - Public-beta audience and feedback channel: **not yet recorded**.
 
-The public Windows workflow fails closed when signing credentials are unavailable.
+Windows builds are published **unsigned**. The workflow used to demand a valid
+Authenticode signature and abort without one, which meant no release could be cut at
+all while signing was unconfigured; it now builds and ships the unsigned installer
+that was being distributed anyway, and the README tells users how to get past the
+SmartScreen warning that results.
+
+Signing is still worth doing before a wider beta, with one caveat worth recording: an
+ordinary OV certificate does not remove the SmartScreen warning, because reputation
+accrues per publisher over download volume. Only EV-class signing earns immediate
+trust. When a signing identity exists, set the `CSC_LINK` and `CSC_KEY_PASSWORD`
+secrets and restore the two pieces removed from `.github/workflows/release.yml`: the
+env entries on the `windows` job, and `--config.win.forceCodeSigning=true` plus an
+`Get-AuthenticodeSignature` check after the build, so an unsigned artifact can never
+be published as though it were signed.
+
 Record the actual signing identity and supported platforms here before enabling the
 protected `public-release` environment. To roll back, withdraw the affected release,
 publish the prior known-good artifacts and checksums, and notify beta users. Send

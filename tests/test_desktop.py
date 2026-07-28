@@ -6,6 +6,8 @@ import sys
 import time
 from urllib.request import urlopen
 
+import organize_archive
+
 
 def _read_ready(process: subprocess.Popen) -> dict:
     deadline = time.monotonic() + 10
@@ -26,7 +28,11 @@ def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
         ready = _read_ready(process)
         assert ready["port"] > 0
         with urlopen(f"http://127.0.0.1:{ready['port']}/api/health") as response:
-            assert json.load(response) == {"ok": True, "version": "0.1.0", "commit": "dev"}
+            # Read the version rather than repeating it: the release process bumps
+            # it in several files at once, and a copy here just breaks on release.
+            assert json.load(response) == {
+                "ok": True, "version": organize_archive.__version__, "commit": "dev",
+            }
         process.send_signal(signal.SIGTERM)
         assert process.wait(timeout=10) == 0
     finally:
