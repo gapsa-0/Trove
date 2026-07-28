@@ -17,9 +17,9 @@
       "sha256": "8fa1b85446a2af744f039953ea6761db27a8419cb035eed23032f397aa6bd8ef",
       "size": 260699084,
       "source": "tools/adaface_export.py — fp32 ONNX export of marcelo-victor/adaface_ir101_webface12m (Hugging Face), AdaFace IR-101 trained on WebFace12M; exports both the 512-d L2-normalized embedding and the feature norm",
-      "license": "MIT — AdaFace (https://github.com/mk-minchul/AdaFace), (c) 2022 Minchul Kim et al.",
+      "license": "AdaFace code is MIT — (c) 2022 Minchul Kim et al., https://github.com/mk-minchul/AdaFace — but these weights are trained on WebFace12M (a WebFace260M subset) and carry its non-commercial academic research terms. See packaging/THIRD_PARTY_NOTICES.md.",
       "url": "https://github.com/gapsa-0/Trove/releases/download/models-v1/adaface_ir101_w12m.onnx",
-      "reason": "Same situation as dinov2_pet: no upstream ONNX exists, only a torch checkpoint, so a packaged build must carry this file or face recognition is unavailable to installed users. It is doubly load-bearing here because its second output — the feature norm — is the quality signal the FIQA gate (organize_archive/faces/fiqa.py) tiers every face with; without it faces are all BORDERLINE and nothing can seed a cluster core. NOTE: this asset still has to be uploaded to the models-v1 release before a packaged build can fetch it."
+      "reason": "Same situation as dinov2_pet: no upstream ONNX exists, only a torch checkpoint, so a packaged build must carry this file or face recognition is unavailable to installed users. It is doubly load-bearing here because its second output — the feature norm — is the quality signal the FIQA gate (organize_archive/faces/fiqa.py) tiers every face with; without it faces are all BORDERLINE and nothing can seed a cluster core."
     }
   ]
 }

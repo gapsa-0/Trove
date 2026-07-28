@@ -18,5 +18,14 @@ Do not publish a release while any entry is incomplete.
 - DINOv2 pet re-identification model — bundled; exported from
   AvitoTech/DINO-v2-small-for-animal-identification, DINOv2 upstream Apache-2.0 —
   https://huggingface.co/AvitoTech/DINO-v2-small-for-animal-identification
+- AdaFace IR-101 face embedding model — bundled; exported from
+  marcelo-victor/adaface_ir101_webface12m, itself a copy of the AdaFace authors'
+  WebFace12M checkpoint. The AdaFace *code* is MIT — (c) 2022 Minchul Kim et al.,
+  https://github.com/mk-minchul/AdaFace — but these are *weights*, trained on
+  WebFace12M (a subset of WebFace260M), which is released for non-commercial
+  academic research. Treat the weights as non-commercial research use, as with
+  buffalo_l above. Unlike buffalo_l this file is bundled and re-hosted by this
+  project as a release asset, which is redistribution rather than a first-run
+  download; confirm the terms still permit that before any commercial use.
 - Bundled Python packages — [generated package/version/licence inventory from
   packaging/requirements-desktop.txt]
