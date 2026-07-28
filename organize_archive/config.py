@@ -117,6 +117,17 @@ class Config:
     # one just created via create_place() with 0-1 members, is intentional.
     place_min_media: int = 10
 
+    # Drag-to-merge confirmation threshold. The clustering radius above is
+    # 300 m, so a genuine "one location got split into adjacent clusters"
+    # merge is almost always sub-kilometre -- this is the point past which a
+    # proposed merge is spread out enough that the GUI should make the user
+    # confirm before committing to it. It is NOT a limit: nothing is ever
+    # refused for exceeding it, merge_place_clusters will still merge two
+    # places on opposite sides of the country if asked. Like place_min_media,
+    # config.json persists this field, so retuning it on an existing install
+    # means editing config.json, not just this default.
+    place_merge_warn_km: float = 20.0
+
     # Faces (Phase 6). Detection + embedding run locally; nothing leaves the
     # machine. Detection is InsightFace SCRFD (det_10g) from the buffalo_l pack,
     # fetched once into cache/models/insightface/; each face is aligned to the

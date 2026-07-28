@@ -4843,6 +4843,23 @@
       line-height: 1.4
     }
 
+    /* Places-only "wide area" caution (see runMerge / askMergeName's `warning`
+       param). Deliberately not styled like an error -- .bad/--bad is for
+       failures, this is advisory and the merge proceeds either way -- so it
+       borrows --warning (already themed light/dark, see health-task.pending)
+       tinted at low opacity behind a solid left border, same
+       color-mix(..., transparent) recipe used elsewhere in this file. */
+    .mergeask-warning {
+      font-size: 12px;
+      color: var(--warning);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+      border-left: 3px solid var(--warning);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin: -4px 0 14px;
+      line-height: 1.4
+    }
+
     .mergeask-options {
       display: flex;
       flex-direction: column;
@@ -4992,12 +5009,17 @@
     </div>
   </div>
 
-  <!-- MERGE CONFIRM (drag-to-merge People/Pets: only shown when the two
-       dragged groups are named differently and the survivor needs picking) -->
+  <!-- MERGE CONFIRM (drag-to-merge People/Pets/Places: every drag-merge is
+       confirmed here now, not just the named-differently case; the options
+       list is simply empty when there's nothing to choose between. The
+       warning line is Places-only (see runMerge) -- a wide-spread merge-preview
+       notice -- and is hidden/cleared whenever it doesn't apply, since this
+       dialog is reused across all three kinds. -->
   <div class="mergeask-backdrop" id="mergeask-backdrop" onclick="mergeAskCancel()"></div>
   <div class="mergeask" id="mergeask" role="dialog" aria-modal="true" aria-labelledby="mergeask-title">
     <h3 class="mergeask-title" id="mergeask-title"></h3>
     <p class="mergeask-body" id="mergeask-body"></p>
+    <p class="mergeask-warning" id="mergeask-warning" hidden></p>
     <div class="mergeask-options" id="mergeask-options"></div>
     <div class="mergeask-actions">
       <button type="button" class="btn sec" id="mergeask-cancel">Cancel</button>
@@ -6137,7 +6159,10 @@
     function collageHTML(ids) {
       if (!ids.length) return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:20px">📍</div>`;
       const n = Math.min(ids.length, 4);
-      const imgs = ids.slice(0, 4).map(id => `<img src="/thumb/${id}" loading="lazy" onerror="this.remove()">`).join("");
+      // draggable=false: these sit inside merge-draggable place cards and would
+      // otherwise hijack the card drag with their own image payload (faceCollage
+      // does the same for person cards).
+      const imgs = ids.slice(0, 4).map(id => `<img src="/thumb/${id}" loading="lazy" draggable="false" onerror="this.remove()">`).join("");
       return `<div class="cgrid n${n}">${imgs}</div>`;
     }
     function placeCollage(ids) {
@@ -6159,7 +6184,7 @@
     }
     function placeCard(place) {
       const card = document.createElement("div"); card.className = "pcard";
-      card.onclick = () => showPlaceFromGallery(place.id);
+      card.onclick = guardCardClick(() => showPlaceFromGallery(place.id));
       const name = place.name ? esc(place.name) : "Name this place";
       card.innerHTML = placeCollage(place.thumb_ids) + `<div class="pmeta">
     <button class="pname ${place.name ? "" : "un"}" type="button">${name}</button>
@@ -6168,6 +6193,7 @@
         event.stopPropagation();
         editPlaceCardName(card, place);
       };
+      attachMergeDrag(card, { kind: "place", id: place.id, name: place.name, photos: place.count }, refreshPlacesAfterMerge);
       return card;
     }
     function showPlaceFromGallery(id) {
@@ -6179,6 +6205,7 @@
     function editPlaceCardName(card, place) {
       const meta = card.querySelector(".pmeta"); if (!meta) return;
       card.onclick = null;
+      card.draggable = false;   // don't let an in-progress rename start a merge-drag
       meta.className = "pmeta pmeta-editing";
       meta.innerHTML = `<input value="${esc(place.name || "")}" placeholder="Place name" aria-label="Place name">
     <div class="pcount">${place.count.toLocaleString()} photo${place.count === 1 ? "" : "s"} · Enter or click away to save</div>`;
@@ -6229,6 +6256,7 @@
         <span class="muted">${c.total.toLocaleString()} item${c.total === 1 ? "" : "s"}</span></div>
       <div class="mapside-actions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place">×</button></div>
     </div>
+    ${mergesPanel(c.merges, "place")}
     <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>
     <div class="infinite-status" id="mapside-sentinel" aria-live="polite"></div>`;
       let firstPage = c.members;
@@ -6272,6 +6300,27 @@
       const wrap = document.querySelector(".mapwrap"); if (wrap) wrap.classList.remove("has-selection");
       const side = document.getElementById("mapside"); if (side) side.innerHTML = "";
       setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawClusters(); } }, 0);
+    }
+    // Re-pull the whole cluster list after a place merge (or its undo) rather than
+    // patching MAP_CLUSTERS in place: a merge can change member_count, the survivor's
+    // centroid (weighted mean, unless pinned), and which clusters exist at all, and
+    // the /api/map/clusters?root= floor on "hidden one-off spots" (map-hidden-note)
+    // needs to be recomputed the same way too. `survivor` is the merged place object
+    // the backend returned ({id, name, count}); pass it so the side panel can follow
+    // the merge to wherever the dragged/dropped place actually landed -- the backend
+    // picks the surviving id by its own named/pinned/count/id chain, which does not
+    // always match the drop TARGET card runMerge sent as `a`.
+    async function refreshPlacesAfterMerge(survivor) {
+      const { clusters, hidden } = await jget("/api/map/clusters?root=" + S.arch.id);
+      MAP_CLUSTERS = clusters;
+      MAP_HIDDEN = hidden || {};
+      updateMapStats();
+      renderPlaceGallery();
+      drawClusters();
+      if (S.mapSel == null) return;
+      const stillOpen = MAP_CLUSTERS.some(c => c.id === S.mapSel);
+      if (stillOpen) selectPlaceCluster(S.mapSel);
+      else if (survivor) selectPlaceCluster(survivor.id);   // the open place was absorbed -- follow it
     }
     function drawClusters() {
       if (!MAP) return;
@@ -7306,12 +7355,15 @@
       }
       return value;
     }
-    /* ---------- drag-to-merge (People & Pets grids only) ----------
+    /* ---------- drag-to-merge (People, Pets & Places grids) ----------
        Dragging one group card onto another folds the dragged ("source") group
        into the one it was dropped on ("target") -- the drop target surviving
-       matches the "drop THIS onto THAT" mental model. Scoped to #peoplegrid
-       and #petgrid only via their call sites below: .pcard is shared with
-       place cards, which are not mergeable groups and must stay undraggable. */
+       matches the "drop THIS onto THAT" mental model. Place cards share the
+       same .pcard styling and the same drag machinery below (attachMergeDrag
+       is called from placeCard too) -- geo/clusters.py's 300m grid-union
+       routinely splits one real location into adjacent clusters, and this is
+       how a person folds them back into one. */
+    const MERGE_LABELS = { pet: "Merge pets", person: "Merge people", place: "Merge places" };
     let DRAG_MERGE = null;        // { kind, id, name, photos } of the card mid-drag
     let MERGE_DROP_GUARD = false; // true for one tick after a drop/dragend, so the
     // native click that a completed drag can still fire on the source card
@@ -7323,7 +7375,7 @@
       card.draggable = true;
       card.dataset.mergeId = String(info.id);
       // Fed to the .drop-target::after pill via CSS attr() -- see its rule.
-      card.dataset.mergeLabel = info.kind === "pet" ? "Merge pets" : "Merge people";
+      card.dataset.mergeLabel = MERGE_LABELS[info.kind] || "Merge";
       let depth = 0;   // nested dragenter/dragleave counter -- entering a child
       // element (thumbnail, name button) fires enter/leave on it too, which
       // would flicker the ring off and on if we tracked plain booleans instead.
@@ -7363,7 +7415,7 @@
     }
     async function runMerge(source, target, onMerged) {
       const sourceName = (source.name || "").trim(), targetName = (target.name || "").trim();
-      const noun = target.kind === "pet" ? "pets" : "people";
+      const noun = target.kind === "pet" ? "pets" : target.kind === "place" ? "places" : "people";
       const title = `Merge these two ${noun}?`;
       let body, options, preselect;
       if (sourceName && targetName && sourceName !== targetName) {
@@ -7389,25 +7441,46 @@
         preselect = "";
         options = [];
       }
-      const name = await askMergeName({ title, body, options, preselect });
+      // Places-only: a merge here can fold in a group that's nowhere near the
+      // survivor (two clusters that only look close on the map at low zoom),
+      // so ask the backend how wide the merged spread would actually be and
+      // surface it as a caution -- never as a block. Preview is advisory UX,
+      // not a gate: any failure (network, 4xx, a response with no `warn`)
+      // just means no warning shown, and the merge proceeds exactly as it
+      // would have with no preview at all.
+      let warning;
+      if (target.kind === "place") {
+        const preview = await jget(`/api/map/cluster/merge-preview?root=${S.arch.id}&a=${target.id}&b=${source.id}`)
+          .catch(() => null);
+        if (preview && !preview.error && preview.warn) {
+          // Sub-10km spans keep one decimal (the difference between 3km and
+          // 9km still matters at that scale); above that, round to a whole
+          // number like every other distance/count in this dialog.
+          const dist = preview.span_km < 10 ? preview.span_km.toFixed(1) : Math.round(preview.span_km).toLocaleString();
+          warning = `These photos span a wide area — some sit ${dist} km from the centre of the merged place.`;
+        }
+      }
+      const name = await askMergeName({ title, body, options, preselect, warning });
       if (name === null) return;   // cancelled: no change
-      const url = target.kind === "pet" ? "/api/pets/merge" : "/api/faces/merge";
+      const url = target.kind === "pet" ? "/api/pets/merge"
+        : target.kind === "place" ? "/api/map/cluster/merge" : "/api/faces/merge";
       const reqBody = { a: target.id, b: source.id };
       if (name) reqBody.name = name;
       const res = await jpost(url, reqBody);
       if (res && res.error) { toast(res.error, true); return; }
-      const merged = target.kind === "pet" ? res.pet : res.person;
-      const count = (merged && (target.kind === "pet" ? merged.detections : merged.face_count)) || 0;
+      const merged = target.kind === "pet" ? res.pet : target.kind === "place" ? res.place : res.person;
+      const count = (merged && (target.kind === "pet" ? merged.detections
+        : target.kind === "place" ? merged.count : merged.face_count)) || 0;
       toast(merged && merged.name ? `Merged · “${merged.name}” now has ${count.toLocaleString()} photos`
         : `Merged · ${count.toLocaleString()} photos`);
-      onMerged();
+      onMerged(merged);   // places' onMerged (refreshPlacesAfterMerge) uses this to follow the survivor; others ignore it
     }
     // Small centered confirm dialog for the both-named drag-merge case. Resolves
     // to the chosen name, or null if the user backed out via Cancel/Esc/backdrop.
     // Separate markup from #modal (the media viewer) -- unrelated concerns.
     let _mergeAskResolve = null;
     function mergeAskCancel() { if (_mergeAskResolve) _mergeAskResolve(null); }
-    function askMergeName({ title, body, options, preselect }) {
+    function askMergeName({ title, body, options, preselect, warning }) {
       return new Promise(resolve => {
         const backdrop = document.getElementById("mergeask-backdrop");
         const dlg = document.getElementById("mergeask");
@@ -7417,6 +7490,17 @@
         const previouslyFocused = document.activeElement;
         document.getElementById("mergeask-title").textContent = title;
         document.getElementById("mergeask-body").textContent = body;
+        // Places-only wide-area caution (runMerge builds this string from the
+        // merge-preview endpoint). The dialog element is reused for every
+        // drag-merge -- People/Pets never pass `warning` -- so this must be
+        // reset on every call, or a stale Places warning would linger onto
+        // the next, unrelated merge.
+        const warnEl = document.getElementById("mergeask-warning");
+        // The leading "⚠ " is a visual cue only -- the sentence itself
+        // (built in runMerge) carries the actual meaning for anyone/anything
+        // that can't render or announce the glyph.
+        warnEl.textContent = warning ? `⚠ ${warning}` : "";
+        warnEl.hidden = !warning;
         const opts = options || [];
         // No radios for the (now much more common) case where there's
         // nothing to choose between -- confirming every drag-merge (not just
@@ -7483,11 +7567,16 @@
       return `<div class="panel merges-panel"><h3>Merges</h3>${rows}</div>`;
     }
     async function undoMerge(mergeId, kind) {
-      const url = kind === "pet" ? "/api/pets/unmerge" : "/api/faces/unmerge";
+      const url = kind === "pet" ? "/api/pets/unmerge"
+        : kind === "place" ? "/api/map/cluster/unmerge" : "/api/faces/unmerge";
       const res = await jpost(url, { merge_id: mergeId });
       if (!res || res.error) { toast((res && res.error) || "Couldn’t undo that merge.", true); return; }
-      toast("Undone — regrouping in the background…");
+      // People/pets requeue a background recluster, so their toast says so; a place
+      // merge is a direct row move/restore (queries.py's unmerge_place_clusters),
+      // nothing gets queued, so "Undone" alone is accurate here.
+      toast(kind === "place" ? "Undone" : "Undone — regrouping in the background…");
       if (kind === "pet") { if (S.currentPet) showPet(S.currentPet.id); }
+      else if (kind === "place") { refreshPlacesAfterMerge(); }
       else if (S.facePerson != null) showPerson(S.facePerson);
     }
     // Up to 4 faces as a 2x2 collage (a single face fills the square). `ids` is the

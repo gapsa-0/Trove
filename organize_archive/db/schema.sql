@@ -155,6 +155,30 @@ CREATE TABLE IF NOT EXISTS place_cluster_members (
 );
 CREATE INDEX IF NOT EXISTS idx_placeclustermembers_file ON place_cluster_members(file_id);
 
+-- One drag-to-merge of two places, recorded so it can be undone. Unlike
+-- person_merges/pet_merges, this needs no durable must-link constraint:
+-- place_clusters rows are never rebuilt wholesale (cluster_places is a
+-- one-time bootstrap and assign_unplaced only ever adds), so a merge is a
+-- permanent move-and-delete and undo is a true restore of the dropped row --
+-- everything it takes to recreate that row byte-for-byte is captured here.
+CREATE TABLE IF NOT EXISTS place_merges (
+    id             INTEGER PRIMARY KEY,
+    survivor_id    INTEGER NOT NULL,       -- place_clusters.id kept by the merge
+    survivor_name  TEXT,                   -- survivor's name at merge time (post-merge)
+    survivor_name_before TEXT,             -- ...and the name it carried BEFORE, which an
+                                           -- explicit-name merge of two differently-named
+                                           -- places overwrites; undo puts it back
+    dropped_name   TEXT,                   -- name the losing place carried, restored on undo
+    dropped_lat    REAL NOT NULL,          -- the losing place's row, in full, so undo
+    dropped_lon    REAL NOT NULL,          -- can re-INSERT it exactly as it was
+    dropped_pinned INTEGER NOT NULL DEFAULT 0,
+    survivor_lat   REAL NOT NULL,          -- survivor's centroid BEFORE the merge
+    survivor_lon   REAL NOT NULL,          -- (undo restores these verbatim)
+    file_ids       TEXT NOT NULL,          -- JSON [[file_id, source], ...] the merge moved
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_place_merges_survivor ON place_merges(survivor_id);
+
 -- ---- Phase 6: faces --------------------------------------------------------
 
 -- A person is an auto-discovered cluster of face embeddings the user can name.

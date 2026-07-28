@@ -187,6 +187,15 @@ class Handler(BaseHTTPRequestHandler):
                 rid = one("root", int)
                 self._json(queries.place_clusters(
                     self._db(rid), rid, self.cfg.place_min_media))
+            elif path == "/api/map/cluster/merge-preview":
+                # GET, not POST: this mutates nothing, it only answers "how
+                # spread out would this merge be" so the GUI can decide
+                # whether to warn before the user confirms the drag-merge.
+                rid = one("root", int)
+                res = queries.place_merge_preview(
+                    self._db(rid), one("a", int), one("b", int),
+                    self.cfg.place_merge_warn_km)
+                self._json(res, 400 if "error" in res else 200)
             elif path.startswith("/api/map/cluster/"):
                 rid = one("root", int)
                 c = queries.place_cluster_members(
@@ -394,6 +403,20 @@ class Handler(BaseHTTPRequestHandler):
                 res = db.write_with_retry(lambda: queries.rename_place_cluster(
                     self._db(self.jobs.current_root_id()),
                     body.get("cluster_id"), (body.get("name") or "").strip()))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/map/cluster/merge":
+                res = db.write_with_retry(lambda: queries.merge_place_clusters(
+                    self._db(self.jobs.current_root_id()), body.get("a"), body.get("b"),
+                    body.get("name")))
+                self._json(res, 400 if "error" in res else 200)
+            elif path == "/api/map/cluster/unmerge":
+                # Unlike /api/faces/unmerge and /api/pets/unmerge, no job is
+                # started here: places are durable (see place_merges' schema
+                # comment), so unmerge_place_clusters is already a complete
+                # restore, not a "delete a constraint and recluster" that
+                # needs a background pass to finish the job.
+                res = db.write_with_retry(lambda: queries.unmerge_place_clusters(
+                    self._db(self.jobs.current_root_id()), body.get("merge_id")))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/person/rename":
                 res = db.write_with_retry(lambda: queries.rename_person(
