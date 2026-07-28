@@ -113,9 +113,9 @@ vectors already stored stay searchable.
 
 | Platform | Download | Size |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | [Trove.Setup.0.1.1.exe](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/Trove.Setup.0.1.1.exe) | 374 MB |
-| Linux, any distribution | [Trove-0.1.1.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/Trove-0.1.1.AppImage) | 512 MB |
-| Debian / Ubuntu | [trove-desktop_0.1.1_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/trove-desktop_0.1.1_amd64.deb) | 384 MB |
+| Windows 10/11 (64-bit) | [Trove.Setup.0.1.1.exe](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/Trove.Setup.0.1.1.exe) | 604 MB |
+| Linux, any distribution | [Trove-0.1.1.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/Trove-0.1.1.AppImage) | 744 MB |
+| Debian / Ubuntu | [trove-desktop_0.1.1_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.1/trove-desktop_0.1.1_amd64.deb) | 614 MB |
 
 The downloads are large because each one bundles its own Python runtime, FFmpeg,
 and the local detection models — nothing is fetched from a package manager at
