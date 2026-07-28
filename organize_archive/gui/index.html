@@ -7222,9 +7222,11 @@
     }
     function setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
     function startFacePoll() { stopPoll(); S.poll = setInterval(faceTick, 1500); faceTick(); }
-    // Live refresh while a faces job runs: the stat tiles and progress bar tick
-    // every poll; the people grid re-renders only when a new clustering pass has
-    // landed (people/faces counts changed), so thumbnails don't flicker in between.
+    // Live refresh while a faces job runs: the stat tiles tick every poll, and
+    // the people grid is *patched* (syncPeopleGrid) rather than rebuilt, so the
+    // page never resets under the user -- scroll position, the pages the
+    // infinite list has already loaded and the "Same person?" review queue all
+    // survive, and only cards whose data actually changed are touched.
     async function faceTick() {
       const area = document.getElementById("facejob"); if (!area) { stopPoll(); return; }
       const [snap, sum] = await Promise.all([
@@ -7246,9 +7248,9 @@
         ? (failedFace.message || "The face worker stopped before reporting progress.") : null;
       renderFaceControls(failed);
       if (fj) {
-        if (sum.people !== prev.people || sum.faces !== prev.faces) renderPeople();
+        if (sum.people !== prev.people || sum.faces !== prev.faces) syncPeopleGrid();
       } else if (wasRunning) {
-        renderPeople();   // final pass finished → refresh grid
+        syncPeopleGrid();   // final pass finished → reconcile once more
       }
     }
     const PEOPLE_PAGE_SIZE = 120;
@@ -7280,7 +7282,57 @@
         },
       });
     }
+    /* Patch the people grid to match the server, without tearing it down.
+       Cards are keyed by person id: ones that survive are reordered/updated in
+       place, new people are inserted at their position, and people that merged
+       away are dropped. The server clamps the endpoint to 500, so a grid
+       scrolled past that syncs only its first 500 cards; the rest stay as they
+       were until the next full renderPeople(). */
+    const PEOPLE_SYNC_LIMIT = 500;
+    async function syncPeopleGrid() {
+      if (S.section !== "people" || S.facePerson != null) return;
+      if (S.peopleSyncing) return;                       // one in flight at a time
+      // Empty state (no #peoplegrid, just the "no people yet" message): the
+      // first cluster to land needs the full render to build the grid at all.
+      if (!document.getElementById("peoplegrid")) {
+        if (S.faceSum && S.faceSum.people > 0) renderPeople();
+        return;
+      }
+      const st = S.peopleList; if (!st) return;
+      const limit = Math.min(PEOPLE_SYNC_LIMIT, Math.max(PEOPLE_PAGE_SIZE, st.offset));
+      S.peopleSyncing = true;
+      let people;
+      try { people = (await jget(`/api/faces/persons?root=${S.arch.id}&offset=0&limit=${limit}`)).people; }
+      catch (e) { return; }
+      finally { S.peopleSyncing = false; }
+      const grid = document.getElementById("peoplegrid");
+      if (!grid || S.peopleList !== st) return;          // navigated away mid-fetch
+      const existing = new Map();
+      for (const el of grid.children) existing.set(el.dataset.pid, el);
+      people.forEach((p, i) => {
+        const key = String(p.id);
+        let el = existing.get(key);
+        if (el) { existing.delete(key); if (!updatePersonCard(el, p)) return; }   // mid-rename: leave put
+        else el = personCard(p);
+        const at = grid.children[i];
+        if (at !== el) grid.insertBefore(el, at || null);
+      });
+      // Only prune when this response was the complete list; a truncated one
+      // says nothing about people who merely sit past the synced range.
+      if (people.length < limit) existing.forEach(el => el.remove());
+      // Keep the infinite list's cursor equal to what's on screen, so the next
+      // page picks up right after the last card however many were added/pruned.
+      st.offset = grid.children.length;
+      if (people.length < limit) st.done = (st.offset === people.length);
+      // A review queue the user has worked through can be refilled silently;
+      // one still in progress is never disturbed. Keyed on the people count so
+      // this fires per clustering pass, not on every 1.5s poll.
+      const stamp = S.faceSum ? S.faceSum.people : 0;
+      const q = S.suggest;
+      if ((!q || q.idx >= q.list.length) && S.suggestStamp !== stamp) loadSuggestions();
+    }
     async function loadSuggestions() {
+      S.suggestStamp = S.faceSum ? S.faceSum.people : 0;
       const sug = await jget("/api/faces/suggestions?root=" + S.arch.id + "&limit=60").catch(() => null);
       S.suggest = { list: (sug && sug.suggestions) || [], idx: 0, total: (sug && sug.total) || 0 };
       renderSuggest();
@@ -7596,15 +7648,45 @@
         : `<div class="cempty"></div>`;
       return `<div class="facecollage">${cells}</div>`;
     }
+    // The preview face ids a card's collage is built from, as a string, so
+    // syncPeopleGrid can tell "same faces, new count" from "new faces".
+    function personCoverIds(p) {
+      return (p.faces_preview && p.faces_preview.length ? p.faces_preview : [p.cover_face_id])
+        .filter(Boolean).slice(0, 4);
+    }
+    function personMetaInner(p) {
+      const nm = p.name ? esc(p.name) : "Name this person";
+      return `<button class="pname ${p.name ? "" : "un"}" type="button">${nm}</button>
+    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>`;
+    }
     function personCard(p) {
       const d = document.createElement("div"); d.className = "pcard"; d.onclick = guardCardClick(() => showPerson(p.id));
-      const cover = faceCollage(p.faces_preview && p.faces_preview.length ? p.faces_preview : [p.cover_face_id]);
-      const nm = p.name ? esc(p.name) : "Name this person";
-      d.innerHTML = cover + `<div class="pmeta"><button class="pname ${p.name ? "" : "un"}" type="button">${nm}</button>
-    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div></div>`;
+      d.dataset.pid = String(p.id);
+      // Mutable so syncPeopleGrid can refresh a renamed/re-counted person without
+      // re-running attachMergeDrag (which would stack a second set of listeners).
+      d._merge = { kind: "person", id: p.id, name: p.name, photos: p.photos };
+      d.dataset.cover = personCoverIds(p).join(",");
+      d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">${personMetaInner(p)}</div>`;
       d.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(d, p); };
-      attachMergeDrag(d, { kind: "person", id: p.id, name: p.name, photos: p.photos }, renderPeopleGrid);
+      attachMergeDrag(d, d._merge, renderPeopleGrid);
       return d;
+    }
+    // In-place refresh of one already-rendered card. Only the parts that actually
+    // changed are touched -- an unchanged collage keeps its <img> nodes, so a
+    // person whose photo count ticked up doesn't reload (and visibly blink) its
+    // thumbnails. Returns false if the card is mid-rename and must be left alone.
+    function updatePersonCard(card, p) {
+      const meta = card.querySelector(".pmeta");
+      if (!meta || meta.classList.contains("pmeta-editing")) return false;
+      const cover = personCoverIds(p).join(",");
+      if (card.dataset.cover !== cover) {
+        card.dataset.cover = cover;
+        card.firstElementChild.outerHTML = faceCollage(personCoverIds(p));
+      }
+      meta.innerHTML = personMetaInner(p);
+      meta.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(card, p); };
+      Object.assign(card._merge, { name: p.name, photos: p.photos });
+      return true;
     }
     function editPersonCardName(card, p) {
       const meta = card.querySelector(".pmeta"); if (!meta) return;
