@@ -58,5 +58,27 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: { path: release-assets }
-      - run: gh release create "$GITHUB_REF_NAME" release-assets/**/* --draft --title "$GITHUB_REF_NAME" --generate-notes
+      # This job has no checkout, so gh cannot infer the repository from a git
+      # remote and needs --repo. The installers sit exactly one level down, inside
+      # each build job's artifact folder; matching a single level is deliberate,
+      # since electron-builder leaves its *-unpacked/ staging directories in the
+      # same folder and gh would choke on being handed a directory.
+      - run: |
+          shopt -s nullglob
+          installers=(release-assets/*/*.exe release-assets/*/*.AppImage release-assets/*/*.deb)
+          if [ ${#installers[@]} -ne 3 ]; then
+            echo "expected 3 installers, found ${#installers[@]}: ${installers[*]}" >&2
+            exit 1
+          fi
+          # Checksums have to name the files as GitHub serves them: it rewrites
+          # spaces to dots, so "Trove Setup 1.2.3.exe" downloads as
+          # "Trove.Setup.1.2.3.exe" and a checksum under the on-disk name would
+          # send anyone verifying a download looking for a file that isn't there.
+          : > SHA256SUMS.txt
+          for file in "${installers[@]}"; do
+            echo "$(sha256sum "$file" | cut -d' ' -f1)  $(basename "$file" | tr ' ' '.')" >> SHA256SUMS.txt
+          done
+          cat SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" "${installers[@]}" SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --draft --title "$GITHUB_REF_NAME" --generate-notes
         env: { GH_TOKEN: '${{ github.token }}' }
