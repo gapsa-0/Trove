@@ -3266,6 +3266,11 @@
       white-space: nowrap
     }
 
+    .library-toolbar .sort-sel {
+      padding: 5px 8px;
+      font-size: 12.5px
+    }
+
     /* Search reach: how much of the library the description search can currently
        find, broken down by media type. Colored keys match the Overview's
        "Storage by type" legend so a hue means the same type everywhere. */
@@ -6273,7 +6278,7 @@
       const restored = !!(S.grid && Array.isArray(S.grid.pages));
       const g = restored ? S.grid : {
         offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
-        place: "", rawQuery: "", query: "", expandedQuery: "", expandedEmbeddingQuery: "",
+        place: "", rawQuery: "", query: "", expandedQuery: "", expandedEmbeddingQuery: "", sort: "",
         total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
         anchor: null, savedScrollTop: 0,
       };
@@ -6295,6 +6300,7 @@
       <div class="library-toolbar">
         <div class="filterbar" id="filterbar"></div>
         <div class="chips">
+          <select class="fsel sort-sel" id="f-sort" aria-label="Sort media" onchange="applySort()"></select>
           <span class="muted" id="gridcount"></span>
         </div>
       </div>
@@ -6304,10 +6310,11 @@
     <div class="infinite-status" id="grid-sentinel" aria-live="polite"></div>`;
       const composer = document.getElementById("semantic-q");
       composer.addEventListener("compositionstart", () => S.composerComposing = true);
-      composer.addEventListener("compositionend", () => { S.composerComposing = false; renderSemanticComposer(false); });
+      composer.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
       await buildFilterBar();
       if (gen !== NAV) return;
       renderSearchReach();
+      renderSortOptions(g);
       if (restored) {
         restoreLibraryControls(g);
         renderGridPages(g);
@@ -6609,7 +6616,13 @@
         setSemanticComposerCaret(caret);
       }
     }
-    function onSemanticComposerInput() { renderSemanticComposer(false); }
+    function onSemanticComposerInput() {
+      renderSemanticComposer(false);
+      // Keep the composer's text in grid state on every keystroke, not just on
+      // submit, so leaving the Library and coming back returns a half-typed
+      // search instead of an empty box.
+      if (S.grid) S.grid.rawQuery = semanticComposerText();
+    }
     function onSemanticComposerKeydown(event) {
       if (event.key === "Enter") { event.preventDefault(); event.currentTarget.closest("form").requestSubmit(); }
     }
@@ -6646,6 +6659,7 @@
       // through translation and semantic embedding.
       g.query = semanticTextWithoutPeople(rawQuery, mentions).toLocaleLowerCase();
       renderSemanticComposer(true);
+      renderSortOptions(g);
       if (submit) { submit.disabled = true; submit.textContent = "Searching…"; }
       const expandedQuery = await localEnglishTranslation(g.query);
       if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;
@@ -6698,6 +6712,27 @@
           msel.value = selected;
         }
       }
+    }
+    /* Sort: date only for now. "" means the list's natural order -- best match
+       while a description search is active, newest first when just browsing --
+       so the option only needs spelling out as "Newest first" when there is no
+       search to rank against. */
+    function renderSortOptions(g) {
+      const sel = document.getElementById("f-sort"); if (!sel) return;
+      const opts = g.query
+        ? [["", "Best match"], ["newest", "Newest first"], ["oldest", "Oldest first"]]
+        : [["", "Newest first"], ["oldest", "Oldest first"]];
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+      // Leaving a search collapses "newest" onto the default, which now means
+      // the same thing, so the grid keeps the order the user was looking at.
+      if (!opts.some(([v]) => v === g.sort)) g.sort = "";
+      sel.value = g.sort;
+    }
+    function applySort() {
+      const g = S.grid;
+      g.sort = selVal("f-sort");
+      resetGridResults(g);
+      loadGrid();
     }
     function restoreLibraryControls(g) {
       const year = document.getElementById("f-year"); if (year) year.value = g.year || "";
@@ -6782,7 +6817,8 @@
       grid.replaceChildren();
       let lastHeading = null;
       g.pages.forEach(page => page.items.forEach((item, itemOffset) => {
-        if (!g.query) {
+        // Month headings only make sense while the grid is in date order.
+        if (!g.query || g.sort) {
           const heading = item.date ? (item.date.slice(0, 7) || "Unknown date") : "Unknown date";
           if (lastHeading !== heading) {
             const h = document.createElement("div"); h.className = "date-heading";
@@ -6817,6 +6853,7 @@
         if (g.type) p.set("type", g.type); if (g.year) p.set("year", g.year);
         if (g.month) p.set("month", g.month);
         g.people.forEach(id => p.append("person", id)); if (g.place) p.set("place", g.place);
+        if (g.sort) p.set("sort", g.sort);
         if (g.query) {
           // When local translation succeeds it replaces, rather than supplements,
           // the Spanish semantic query. This avoids admitting weak matches unique to

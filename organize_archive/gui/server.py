@@ -259,6 +259,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._db(rid), root_id=rid,
                     year=one("year"), month=one("month"), mtype=one("type"),
                     person_ids=many("person"), cluster_id=one("place", int),
+                    sort="oldest" if one("sort") == "oldest" else "newest",
                     limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
             elif path == "/api/browse/filters":
                 rid = one("root", int)
@@ -295,6 +296,8 @@ class Handler(BaseHTTPRequestHandler):
                         person_ids=many("person"), cluster_id=one("place", int),
                         min_similarity=max(-1.0, min(1.0, float(
                             self.cfg.semantic_search_min_similarity))),
+                        sort=(one("sort") if one("sort") in ("newest", "oldest")
+                              else "relevance"),
                         limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0),
                         alternate_vectors=[(vector, 0.01) for vector in vectors[1:]]))
             elif path.startswith("/api/item/"):

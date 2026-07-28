@@ -382,7 +382,8 @@ def rename_place_cluster(db_path: str, cluster_id, name: str) -> dict:
 # -- media grid + detail ----------------------------------------------------
 
 def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
-          person_id=None, person_ids=None, cluster_id=None, limit=120, offset=0) -> dict:
+          person_id=None, person_ids=None, cluster_id=None, sort="newest",
+          limit=120, offset=0) -> dict:
     conn = db.open_readonly(db_path)
     try:
         where = [_NOT_HIDDEN]
@@ -437,7 +438,8 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
                        EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps
                 FROM files f LEFT JOIN dates d ON d.file_id=f.id
                 WHERE {clause}
-                ORDER BY (d.best_datetime IS NULL), d.best_datetime DESC, f.id
+                ORDER BY (d.best_datetime IS NULL),
+                         d.best_datetime {'ASC' if sort == 'oldest' else 'DESC'}, f.id
                 LIMIT ? OFFSET ?""", (*params, limit, offset)).fetchall()
         items = [{
             "id": r["id"], "type": r["media_type"],
@@ -571,8 +573,8 @@ def semantic_pending(db_path: str, root_id=None) -> int:
 
 def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
                     year=None, month=None, mtype=None, person_id=None, person_ids=None,
-                    cluster_id=None, min_similarity=-1.0, limit=120, offset=0,
-                    alternate_vectors=None) -> dict:
+                    cluster_id=None, min_similarity=-1.0, sort="relevance",
+                    limit=120, offset=0, alternate_vectors=None) -> dict:
     """Rank locally stored vectors against the original and optional expansions.
 
     Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score
@@ -642,7 +644,16 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
             )
             if score >= min_similarity:
                 ranked.append((score, row))
-        ranked.sort(key=lambda x: x[0], reverse=True)
+        # Which matched is decided by similarity; how they are ordered is the
+        # caller's choice.  A date sort still shows only what cleared
+        # min_similarity -- it reorders the same result set, never widens it.
+        # Undated files sort last either way, as in media().
+        if sort == "oldest":
+            ranked.sort(key=lambda x: (x[1]["dt"] is None, x[1]["dt"] or "", x[1]["id"]))
+        elif sort == "newest":
+            ranked.sort(key=lambda x: (x[1]["dt"] or "", -x[1]["id"]), reverse=True)
+        else:
+            ranked.sort(key=lambda x: x[0], reverse=True)
         page = ranked[offset:offset + limit]
         items = [{
             "id": row["id"], "type": row["media_type"],
