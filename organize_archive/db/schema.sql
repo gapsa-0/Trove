@@ -169,9 +169,9 @@ CREATE TABLE IF NOT EXISTS persons (
     created_at    TEXT NOT NULL
 );
 
--- One detected face. Embedding is a 128-d float32 vector, L2-normalized, so
--- cosine similarity is a dot product. Box is in ORIGINAL-image pixel coords
--- (detection may run on a downscaled copy) so face crops stay sharp.
+-- One detected face. Embedding is a 512-d float32 vector (AdaFace ir101),
+-- L2-normalized, so cosine similarity is a dot product. Box is in ORIGINAL-image
+-- pixel coords (detection may run on a downscaled copy) so face crops stay sharp.
 CREATE TABLE IF NOT EXISTS faces (
     id         INTEGER PRIMARY KEY,
     file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
@@ -186,6 +186,15 @@ CREATE TABLE IF NOT EXISTS faces (
     clipped_fraction REAL,          -- bbox area outside decoded image
     quality_score REAL,             -- normalized composite, 0..1
     quality_source TEXT,            -- metric algorithm/version provenance
+    -- FIQA (faces/fiqa.py). fiqa_norm is the RAW AdaFace feature norm, kept so
+    -- the archive can be re-tiered under new thresholds without re-embedding.
+    -- quality_tier routes the face: HIGH seeds cluster cores, BORDERLINE may only
+    -- attach to an existing core, LOW_QUALITY is excluded from clustering and
+    -- hidden everywhere in the GUI (never deleted, so the call stays reviewable).
+    fiqa_norm  REAL,
+    fiqa_score REAL,                -- fiqa_norm mapped to 0..1 vs fiqa_calibration
+    fiqa_source TEXT,               -- scorer algorithm/version provenance
+    quality_tier TEXT,              -- HIGH | BORDERLINE | LOW_QUALITY
     embedding  BLOB NOT NULL,
     person_id  INTEGER REFERENCES persons(id) ON DELETE SET NULL,
     manual_person TEXT,               -- pinned person NAME (survives recluster); NULL = auto
@@ -201,6 +210,34 @@ CREATE TABLE IF NOT EXISTS faces (
 );
 CREATE INDEX IF NOT EXISTS idx_faces_file   ON faces(file_id);
 CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(person_id);
+-- idx_faces_tier is created in db/database.py instead, right after the migration
+-- that adds faces.quality_tier: on an existing database the CREATE TABLE above
+-- is a no-op, so an index over a column this file cannot add would fail here.
+
+-- The FIQA score is a raw feature norm mapped through population statistics, so
+-- those statistics must be FIXED and shared by every face -- otherwise a face's
+-- tier would depend on which incremental batch it happened to be extracted in,
+-- and re-running extraction would silently re-tier the archive. One row per
+-- scorer model holds the calibration, written once from the first sample of
+-- faces and thereafter only by an explicit recalibrate.
+-- Small key/value store for facts about the archive itself rather than its
+-- files. Currently one key: `faces_embedder`, the id of the model whose vectors
+-- the `faces` table holds. Embeddings from two different models share no vector
+-- space, so when that id stops matching the running code the archive must be
+-- re-extracted — see faces/migrate_adaface.py, which reads this to decide.
+CREATE TABLE IF NOT EXISTS app_state (
+    key        TEXT PRIMARY KEY,
+    value      TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fiqa_calibration (
+    model      TEXT PRIMARY KEY,   -- scorer id, e.g. 'adaface-norm-v1'
+    mean       REAL NOT NULL,      -- mean of the raw norm over the sample
+    std        REAL NOT NULL,      -- stddev of the raw norm over the sample
+    n_faces    INTEGER NOT NULL,   -- how many faces the statistics came from
+    updated_at TEXT NOT NULL
+);
 
 -- Which files have been face-scanned. Presence means "scanned" even when
 -- n_faces = 0, so extraction is resumable and a photo with no faces is not

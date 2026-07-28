@@ -118,20 +118,29 @@ class Config:
     place_min_media: int = 10
 
     # Faces (Phase 6). Detection + embedding run locally; nothing leaves the
-    # machine. Detection is InsightFace SCRFD (det_10g); each face is aligned to
-    # the 112x112 ArcFace template (5-point similarity transform) and embedded by
-    # ArcFace (w600k_r50), a 512-d vector run via onnxruntime. Both ONNX files are
-    # the buffalo_l pack, fetched once into cache/models/insightface/ (see
-    # faces/backend). SCRFD replaced YuNet (fewer sky/wall false positives, better
-    # small-face recall + landmarks); ArcFace replaced AdaFace/SFace. Changing the
-    # embedder changes the vectors, so it requires a full re-extract.
+    # machine. Detection is InsightFace SCRFD (det_10g) from the buffalo_l pack,
+    # fetched once into cache/models/insightface/; each face is aligned to the
+    # 112x112 ArcFace template (5-point similarity transform) and embedded by
+    # AdaFace ir101/WebFace12M, a 512-d vector run via onnxruntime from the
+    # self-exported ONNX in cache/models/adaface/ (see faces/backend).
+    # SCRFD replaced YuNet (fewer sky/wall false positives, better small-face
+    # recall + landmarks) and stays. The embedder moved back to AdaFace from
+    # ArcFace because AdaFace's feature norm doubles as the face-image-quality
+    # score the Phase-1 gate needs (faces/fiqa.py) — one model, two signals.
+    # Changing the embedder changes the vectors, so it requires a full re-extract
+    # (see faces/migrate_adaface.py, which carries names and pins across it).
     faces_det_size: int = 640        # SCRFD detector input square (bigger = better
                                      # small-face recall, slower)
     faces_min_score: float = 0.50    # accept faces at/above this SCRFD confidence
                                      # (SCRFD's own floor is ~0.5; real frontal
                                      # faces score ~0.8+). Animal faces are handled
                                      # by the pet cross-check, not this threshold.
-    faces_min_px: int = 36           # drop faces smaller than this (box side, px)
+    faces_min_px: int = 50           # drop faces smaller than this (box side, px,
+                                     # measured in ORIGINAL pixels). The Phase-1
+                                     # base filter: below ~50px there is too little
+                                     # detail for a trustworthy embedding, and such
+                                     # faces are exactly the weak "bridge" vectors
+                                     # that used to chain distinct people together.
     faces_max_side: int = 960        # standalone backend decode cap (the fused
                                      # detect stage decodes once at detect_max_side)
     faces_max_clipped_fraction: float = 0.18  # reject a box mostly outside the frame
@@ -141,6 +150,37 @@ class Config:
     faces_min_focus: float = 35.0             # grayscale Laplacian variance (advisory)
     faces_max_extreme_fraction: float = 0.80  # near-black/near-white pixels (advisory)
     faces_quality_version: str = "opencv-laplacian-v1"
+
+    # FIQA quality gate (Phase 1, faces/fiqa.py). Every embedded face gets a 0..1
+    # score and is routed to a tier: HIGH may seed a cluster core, BORDERLINE may
+    # only attach to a core someone else formed, LOW_QUALITY is excluded from
+    # clustering altogether and hidden from the GUI. This is the gate that stops
+    # blurry / extreme-profile / false-positive faces from bridging identities.
+    #
+    # The score is AdaFace's own feature norm, which the AdaFace paper establishes
+    # as a proxy for image quality (it is what the model uses to set its adaptive
+    # margin). Using it costs nothing: the embedder already computes it. The raw
+    # norm is a model-specific magnitude, not a probability, so it is mapped to
+    # 0..1 against the archive's own norm distribution — mean/std persisted in the
+    # `fiqa_calibration` table, NOT recomputed per batch (per-batch statistics
+    # would make a face's tier depend on when it was scanned).
+    faces_fiqa_model: str = "adaface-norm-v1"
+    # Squash half-width, in standard deviations: the score saturates at 0 below
+    # mean - h*std and at 1 above mean + h*std. NOT the AdaFace paper's h=0.33 —
+    # that value is tuned for a training-time margin over per-batch statistics,
+    # and reusing it here squeezes the whole 0..1 range into +-0.9 norm units, so
+    # measured on this archive 42% of faces pinned to exactly 0.0 and only 7%
+    # landed between the tiers. h=2.0 spreads the score across the distribution
+    # that actually exists (measured: mean 21.9, std 2.85 over 705 faces), giving
+    # ~10% LOW_QUALITY / ~40% BORDERLINE / ~50% HIGH — a real borderline band for
+    # pass 2 to work on, and a discard tier that is only the genuinely unusable.
+    faces_fiqa_h: float = 2.0
+    faces_fiqa_high: float = 0.55    # >= this is HIGH (core-eligible); ~the median
+                                     # face, so about half the archive seeds cores
+    faces_fiqa_low: float = 0.18     # < this is LOW_QUALITY (excluded from
+                                     # clustering and hidden in the GUI); ~the
+                                     # bottom decile. In between is BORDERLINE.
+    faces_fiqa_calib_sample: int = 2000   # faces used to fix mean/std, once
 
     # Fused detection (Phase 6/9). People (SCRFD) and animals (YOLOX) are found in
     # ONE pass: each image is decoded a single time at this resolution and both
@@ -257,6 +297,26 @@ class Config:
     faces_merge_sim: float = 0.40     # stage-2 avg-linkage merge (mean cosine sim)
     faces_centroid_merge_sim: float = 0.55  # stage-3 centroid-direction merge (cosine)
     faces_min_faces: int = 3          # min faces for a cluster to become a person
+
+    # Core-expansion clustering (Phase 3). The stages above no longer run over the
+    # whole population: they run over HIGH-quality faces only, building "cores"
+    # that are pure by construction, and BORDERLINE faces are then attached to
+    # those cores in a second pass. A borderline face can join a core but can
+    # never create one and can never merge two — which is precisely the move that
+    # cannot happen for a bridge face, so bridges stop mattering.
+    #
+    # faces_core_link_sim is deliberately much stricter than faces_link_sim: the
+    # core pass wants small, unambiguous fragments, and stages 2-3 (average- and
+    # centroid-linkage) are what put a person's fragments back together
+    # afterwards, so strictness here costs recall only if those merges fail.
+    faces_core_link_sim: float = 0.75    # pass-1 mutual-kNN floor within cores
+    faces_border_assign_sim: float = 0.55  # pass-2: attach a borderline face to a
+                                     # core at/above this cosine, else leave it as
+                                     # noise. Lenient by design — the purity is
+                                     # already guaranteed by who built the core.
+    faces_border_votes: int = 3       # compare against a core's top-N members, not
+                                     # just its centroid: a spread-out core's mean
+                                     # understates similarity to its own members.
 
     # Date resolution priority (Phase 3). Tunable; first available wins.
     date_priority: list[str] = field(

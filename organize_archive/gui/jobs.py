@@ -345,6 +345,14 @@ class JobManager:
                 # no longer describes it.
                 db.dedup_invalidate(conn, root_id)
                 conn.commit()
+            # If this archive's face vectors came from a different embedder they
+            # are unusable, so clear them and the scan markers here: the DETECT
+            # backlog is derived from `face_scan`, so the ordinary pipeline picks
+            # the work up on its own and refills from zero. Cheap no-op (one
+            # primary-key lookup) once the archive is on the current embedder.
+            from ..faces import migrate_adaface
+            migrate_adaface.run_if_needed(
+                conn, self.cfg, db_path=self.cfg.archive_db_path(root_id))
         except Exception:
             conn.close()
             raise
@@ -657,6 +665,20 @@ class JobManager:
             job.current = "grouping people & pets…"
             fc.cluster_faces(conn, self.cfg)
             pc.cluster_pets(conn, self.cfg, root_id=job.root_id)
+
+        # The backlog is empty, so an embedder migration staged earlier now has
+        # every re-extracted face it needs: give the names, pins and review
+        # answers back to the faces they belong to, then cluster once more so
+        # those restored pins actually take effect. Only here, never mid-run: a
+        # partially re-extracted archive would strand identities on faces that
+        # have not been detected yet.
+        from ..faces import migrate_adaface
+        restored = 0
+        if migrate_adaface.pending(conn):
+            job.current = "restoring names and corrections…"
+            restored = migrate_adaface.reattach(conn, self.cfg).faces_reattached
+            fc.cluster_faces(conn, self.cfg)
+
         people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
         groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
         job.message = (
@@ -664,7 +686,8 @@ class JobManager:
             f"{groups} pet groups"
             + (f" · {suppressed} animal-face FPs dropped" if suppressed else "")
             + (f" · {human_pets} people misread as pets" if human_pets else "")
-            + (f" · {turned} photos turned upright" if turned else ""))
+            + (f" · {turned} photos turned upright" if turned else "")
+            + (f" · {restored} identities restored" if restored else ""))
 
     def _run_face_cluster(self, conn, job: Job, cancel):
         from ..faces.cluster import cluster_faces

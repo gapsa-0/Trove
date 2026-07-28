@@ -20,11 +20,14 @@ cli = ["rich>=13"]
 # Metadata + perceptual dedup (Phase 3/4).
 media = ["pyexiftool>=0.5", "Pillow>=10", "pillow-heif>=0.16", "ImageHash>=4.3"]
 # Face detection + clustering (Phase 6). Fully local: InsightFace's buffalo_l
-# pack (SCRFD det_10g detector + ArcFace w600k_r50 embedder, weights fetched once
-# into the cache dir) run on onnxruntime, and scikit-learn's DBSCAN. insightface
-# itself is a pure-Python wheel — it supplies the model-zoo loader and the face
-# alignment helpers, not the inference engine. No model server, no cloud.
-faces = ["insightface>=1.0", "onnxruntime>=1.20", "opencv-python>=4.8", "scikit-learn>=1.3", "numpy>=1.24"]
+# SCRFD det_10g detector (weights fetched once into the cache dir) plus the
+# self-exported AdaFace ir101 embedder, both on onnxruntime, scikit-learn's
+# agglomerative merge stages, and faiss for the k-NN searches that build and
+# expand cluster cores. insightface itself is a pure-Python wheel — it supplies
+# the model-zoo loader and the face alignment helpers, not the inference engine.
+# faiss-cpu ships cp313 wheels for manylinux x86_64/aarch64, macOS and Windows.
+# No model server, no cloud.
+faces = ["insightface>=1.0", "onnxruntime>=1.20", "opencv-python>=4.8", "scikit-learn>=1.3", "numpy>=1.24", "faiss-cpu>=1.13"]
 # Local YOLOX animal detection plus DINOv2 pet re-identification. Kept separate so
 # a catalogue that does not need Pets avoids another model download. The DINOv2
 # ONNX has no upstream URL: packaged builds bundle it, and a source checkout

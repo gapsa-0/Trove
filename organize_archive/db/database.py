@@ -126,6 +126,16 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "faces", "clipped_fraction", "REAL")
     _add_column_if_missing(conn, "faces", "quality_score", "REAL")
     _add_column_if_missing(conn, "faces", "quality_source", "TEXT")
+    # FIQA gate (faces/fiqa.py). Pre-existing rows have no norm to score, so they
+    # are left with a NULL tier, which every consumer reads as BORDERLINE: still
+    # clustered and still visible, never used to seed a core. That is the safe
+    # reading for a face whose quality is simply unknown, and it keeps an
+    # un-migrated database working until the AdaFace re-extract fills the column.
+    _add_column_if_missing(conn, "faces", "fiqa_norm", "REAL")
+    _add_column_if_missing(conn, "faces", "fiqa_score", "REAL")
+    _add_column_if_missing(conn, "faces", "fiqa_source", "TEXT")
+    _add_column_if_missing(conn, "faces", "quality_tier", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_faces_tier ON faces(quality_tier)")
     _add_column_if_missing(conn, "face_scan", "n_candidates", "INTEGER NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "face_scan", "rejected_score", "INTEGER NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "face_scan", "rejected_size", "INTEGER NOT NULL DEFAULT 0")

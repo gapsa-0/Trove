@@ -28,7 +28,10 @@ application-data folder.
   snapshot somewhere random stays unplaced instead of cluttering the map; places you
   have named or pinned yourself always count, whatever their size.
 - Detects and clusters faces locally into people. You can name people, correct a face,
-  merge or separate suggested people, and dismiss non-person detections.
+  merge or separate suggested people, and dismiss non-person detections. Faces are
+  quality-checked before they are ever grouped: blurry, tiny, and badly-framed
+  detections are set aside instead of being allowed to blur two people together,
+  so a person's photos stay one person and stray detections stay out of the way.
 - Detects cats, dogs, birds, and horses locally and groups conservative likely-pet
   identities. People and animals are found in the same pass and cross-check each
   other: an animal's own face is kept out of People, while a person who is not

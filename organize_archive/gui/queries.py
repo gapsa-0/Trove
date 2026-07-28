@@ -26,6 +26,24 @@ _VISIBLE = "f.present = 1"
 _NOT_HIDDEN = "f.present = 1 AND f.hidden = 0"
 
 
+def _quality_ok(alias: str = "fa") -> str:
+    """SQL predicate excluding faces the FIQA gate rejected (faces/fiqa.py).
+
+    LOW_QUALITY faces are kept in the database — never deleted, so the call stays
+    auditable and re-tierable — but they must not appear anywhere in the UI: not
+    in a photo's detected faces, not in a person's photo list, not in any count.
+    This predicate is that rule, in one place.
+
+    NULL-safe on purpose: a face extracted before the gate existed has no tier,
+    and an unknown quality must not make a face vanish. It reads as BORDERLINE,
+    which is exactly how faces/cluster.py treats it too.
+    """
+    return f"COALESCE({alias}.quality_tier, 'BORDERLINE') != 'LOW_QUALITY'"
+
+
+_QUALITY_OK = _quality_ok()
+
+
 def _root_clause(root_id):
     if root_id is None:
         return "", []
@@ -213,7 +231,8 @@ def timeline(db_path: str, root_id=None, bucket="month", year=None, month=None,
             # person_files so manually tagged files count too, without a
             # correlated EXISTS.
             where.append(
-                "f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
+                f"f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
+                f"AND {_QUALITY_OK} "
                 "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)")
             params.append(selected_person)
             params.append(selected_person)
@@ -397,7 +416,8 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
             # face) match the filter too, without reshaping this into the
             # correlated-EXISTS shape the comment above warns off.
             where.append(
-                "f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
+                f"f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
+                f"AND {_QUALITY_OK} "
                 "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)")
             params.append(selected_person)
             params.append(selected_person)
@@ -456,7 +476,7 @@ def browse_filters(db_path: str, root_id=None) -> dict:
                 FROM persons p
                 JOIN faces fa ON fa.person_id=p.id
                 JOIN files f ON f.id=fa.file_id
-                WHERE p.name IS NOT NULL AND {_NOT_HIDDEN}{rc}
+                WHERE p.name IS NOT NULL AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc}
                 GROUP BY p.id ORDER BY p.name COLLATE NOCASE""", rp)]
         if root_id is None:
             place_rows = conn.execute(
@@ -580,7 +600,8 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
             # Mirrors media()'s person filter: union in person_files so
             # manually tagged files (no detected face) match too.
             where.append(
-                "f.id IN (SELECT file_id FROM faces WHERE person_id=? "
+                f"f.id IN (SELECT file_id FROM faces WHERE person_id=? "
+                f"AND {_quality_ok('faces')} "
                 "UNION SELECT file_id FROM person_files WHERE person_id=?)")
             params.append(selected_person)
             params.append(selected_person)
@@ -1072,15 +1093,15 @@ def face_summary(db_path: str, root_id=None, detect_video_frames: int = 0) -> di
                 WHERE {_NOT_HIDDEN} AND f.media_type IN {media_types}{rc}""", rp).fetchone()[0]
         faces = conn.execute(
             f"""SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id
-                WHERE {_NOT_HIDDEN} AND fa.not_person=0{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND fa.not_person=0 AND {_QUALITY_OK}{rc}""", rp).fetchone()[0]
         people = conn.execute(
             f"""SELECT COUNT(DISTINCT fa.person_id) FROM faces fa
                 JOIN files f ON f.id=fa.file_id
-                WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL AND {_QUALITY_OK}{rc}""", rp).fetchone()[0]
         photos_with_faces = conn.execute(
             f"""SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
                 JOIN files f ON f.id=fa.file_id
-                WHERE {_NOT_HIDDEN} AND fa.not_person=0{rc}""", rp).fetchone()[0]
+                WHERE {_NOT_HIDDEN} AND fa.not_person=0 AND {_QUALITY_OK}{rc}""", rp).fetchone()[0]
         return {
             "total_images": total_images, "scanned": scanned,
             "unscanned": max(0, total_images - scanned),
@@ -1105,7 +1126,7 @@ def _preview_faces(conn, pids, k=4) -> dict:
                        ROW_NUMBER() OVER (PARTITION BY fa.person_id
                                           ORDER BY fa.det_score DESC, fa.id) rn
                 FROM faces fa JOIN files f ON f.id=fa.file_id
-                WHERE fa.person_id IN ({marks}) AND f.hidden=0
+                WHERE fa.person_id IN ({marks}) AND f.hidden=0 AND {_QUALITY_OK}
             ) WHERE rn <= ?""", (*pids, k)).fetchall()
     out: dict = {}
     for r in rows:
@@ -1124,7 +1145,7 @@ def face_persons(db_path: str, root_id=None, limit=120, offset=0) -> dict:
                        COUNT(DISTINCT fa.file_id) photos, COUNT(*) faces
                 FROM faces fa JOIN files f ON f.id=fa.file_id
                 JOIN persons p ON p.id=fa.person_id
-                WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL{rc}
+                WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL AND {_QUALITY_OK}{rc}
                 GROUP BY fa.person_id
                 ORDER BY CASE WHEN NULLIF(TRIM(p.name), '') IS NULL THEN 1 ELSE 0 END,
                          faces DESC, pid
@@ -1184,10 +1205,11 @@ def face_person(db_path: str, person_id: int, root_id=None,
                            EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
                            (SELECT fa2.id FROM faces fa2
                             WHERE fa2.file_id=f.id AND fa2.person_id=?
+                              AND {_quality_ok("fa2")}
                             ORDER BY fa2.det_score DESC LIMIT 1) AS face_id
                     FROM faces fa JOIN files f ON f.id=fa.file_id
                     LEFT JOIN dates d ON d.file_id=f.id
-                    WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc}
+                    WHERE fa.person_id=? AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc}
                     GROUP BY f.id
                     UNION ALL
                     SELECT f.id AS id, f.media_type, f.rel_path,
@@ -1208,7 +1230,7 @@ def face_person(db_path: str, person_id: int, root_id=None,
             f"""SELECT
                     (SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
                      JOIN files f ON f.id=fa.file_id
-                     WHERE fa.person_id=? AND {_NOT_HIDDEN}{rc})
+                     WHERE fa.person_id=? AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc})
                   + (SELECT COUNT(*) FROM person_files pf
                      JOIN files f ON f.id=pf.file_id
                      WHERE pf.person_id=? AND {_NOT_HIDDEN}{rc}
@@ -1319,15 +1341,16 @@ def _sync_person_stats(conn, pid):
     if pid is None:
         return
     left = conn.execute(
-        "SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id "
-        "WHERE fa.person_id=? AND f.hidden=0", (pid,)).fetchone()[0]
+        f"SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id "
+        f"WHERE fa.person_id=? AND f.hidden=0 AND {_QUALITY_OK}", (pid,)).fetchone()[0]
     if left == 0 and not conn.execute(
             "SELECT 1 FROM faces WHERE person_id=?", (pid,)).fetchone():
         conn.execute("DELETE FROM persons WHERE id=?", (pid,))
         return
     cover = conn.execute(
-        "SELECT fa.id FROM faces fa JOIN files f ON f.id=fa.file_id "
-        "WHERE fa.person_id=? AND f.hidden=0 ORDER BY fa.det_score DESC LIMIT 1",
+        f"SELECT fa.id FROM faces fa JOIN files f ON f.id=fa.file_id "
+        f"WHERE fa.person_id=? AND f.hidden=0 AND {_QUALITY_OK} "
+        f"ORDER BY fa.det_score DESC LIMIT 1",
         (pid,)).fetchone()
     conn.execute("UPDATE persons SET face_count=?, cover_face_id=? WHERE id=?",
                  (left, cover["id"] if cover else None, pid))
@@ -1556,8 +1579,9 @@ def _rep_face(conn, pid, cover) -> int | None:
     face). Used to anchor a durable face_links constraint."""
     if cover:
         return cover
-    r = conn.execute("SELECT id FROM faces WHERE person_id=? ORDER BY det_score DESC LIMIT 1",
-                     (pid,)).fetchone()
+    r = conn.execute(
+        f"SELECT id FROM faces WHERE person_id=? AND {_quality_ok('faces')} "
+        f"ORDER BY det_score DESC LIMIT 1", (pid,)).fetchone()
     return r["id"] if r else None
 
 
@@ -1590,8 +1614,8 @@ def _record_link(conn, fa, fb, kind: str, now: str) -> tuple[int, int] | None:
 def _update_person_centroid(conn, pid) -> None:
     import numpy as np
     rows = conn.execute(
-        "SELECT fa.embedding e FROM faces fa JOIN files f ON f.id=fa.file_id "
-        "WHERE fa.person_id=? AND f.hidden=0", (pid,)).fetchall()
+        f"SELECT fa.embedding e FROM faces fa JOIN files f ON f.id=fa.file_id "
+        f"WHERE fa.person_id=? AND f.hidden=0 AND {_QUALITY_OK}", (pid,)).fetchall()
     if not rows:
         return
     X = np.array([np.frombuffer(r["e"], "float32") for r in rows], dtype="float32")
@@ -2170,9 +2194,9 @@ def item(db_path: str, fid: int, min_media: int = 10) -> dict | None:
         people = [{
             "person_id": r["person_id"], "name": r["name"], "face_id": r["face_id"],
         } for r in conn.execute(
-            """SELECT fa.id AS face_id, fa.person_id, p.name
+            f"""SELECT fa.id AS face_id, fa.person_id, p.name
                FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id
-               WHERE fa.file_id=? AND fa.not_person=0
+               WHERE fa.file_id=? AND fa.not_person=0 AND {_QUALITY_OK}
                ORDER BY fa.det_score DESC""", (fid,))]
         animals = [{
             "detection_id": row["detection_id"], "species": row["species"],

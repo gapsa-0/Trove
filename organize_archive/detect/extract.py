@@ -49,6 +49,7 @@ from pathlib import Path
 from ..config import Config
 from ..db import database as db
 from ..faces import backend as face_backend
+from ..faces import fiqa
 from ..pets import backend as pet_backend
 from ..pets.extract import scan_source as pet_scan_source
 from ..gui import thumbs
@@ -623,6 +624,11 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
 
     now = db.now_iso()
     pet_src = pet_scan_source(cfg)
+    # The FIQA assessor is attached per run rather than baked into the backend:
+    # it depends on the calibration row, which this very run may create (see the
+    # bootstrap below), and the backend is often reused across chunked runs.
+    if face_be is not None:
+        face_be.assessor = fiqa.make_assessor(conn, cfg)
     import time as _time
     _last_commit = _time.monotonic()
     while True:
@@ -742,11 +748,20 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                            (file_id, box_x, box_y, box_w, box_h, det_score,
                             focus_score, brightness, extreme_fraction,
                             clipped_fraction, quality_score, quality_source,
+                            fiqa_norm, fiqa_score, fiqa_source, quality_tier,
                             embedding, frame_offset, created_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (fid, fc.x, fc.y, fc.w, fc.h, fc.score,
                          fc.focus_score, fc.brightness, fc.extreme_fraction,
                          fc.clipped_fraction, fc.quality_score, fc.quality_source,
+                         # getattr, like _best_face_quality above: lightweight
+                         # stand-in backends (tests, third-party) yield objects
+                         # without the FIQA fields, and an un-tiered face is a
+                         # supported state (NULL reads as BORDERLINE downstream).
+                         getattr(fc, "fiqa_norm", None),
+                         getattr(fc, "fiqa_score", None),
+                         getattr(getattr(face_be, "assessor", None), "model", None),
+                         getattr(fc, "quality_tier", None),
                          fc.embedding.tobytes(), offset, now))
 
                 n_faces = len(face_hits)
@@ -803,5 +818,18 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
 
         conn.commit()
         _last_commit = _time.monotonic()
+
+        # Once enough feature norms exist, fix the FIQA calibration and tier the
+        # backlog that was extracted before it. A no-op on every later batch
+        # (one indexed lookup), so the archive is calibrated exactly once and a
+        # face's tier never depends on which batch it happened to land in.
+        if face_be is not None:
+            before = fiqa.load_calibration(conn, cfg.faces_fiqa_model)
+            if before is None and fiqa.bootstrap_calibration(
+                    conn, cfg,
+                    log=(lambda m: progress.update(stats.processed, 0, m))
+                    if progress else None) is not None:
+                conn.commit()
+                face_be.assessor = fiqa.make_assessor(conn, cfg)
 
     return stats

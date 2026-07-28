@@ -16,6 +16,7 @@ from pathlib import Path
 from ..config import Config
 from ..db import database as db
 from . import backend
+from . import fiqa
 
 
 @dataclass
@@ -86,6 +87,8 @@ def make_backend(cfg: Config, log=None) -> "backend.FaceBackend":
         max_extreme_fraction=cfg.faces_max_extreme_fraction,
         max_clipped_fraction=cfg.faces_max_clipped_fraction,
         quality_version=cfg.faces_quality_version, log=log)
+    # The caller attaches the FIQA assessor (it needs a DB connection); until it
+    # does, the backend tiers every face BORDERLINE, which is the safe default.
 
 
 def _add_rejections(stats: ExtractStats, report) -> None:
@@ -114,11 +117,22 @@ def quality_summary(conn, root_id: int | None = None) -> dict:
         f"""SELECT AVG(fc.focus_score) avg_focus,
                    AVG(fc.brightness) avg_brightness,
                    AVG(fc.quality_score) avg_quality,
+                   AVG(fc.fiqa_score) avg_fiqa,
+                   AVG(fc.fiqa_norm) avg_fiqa_norm,
                    SUM(fc.person_id IS NULL AND fc.not_person=0) cluster_noise
             FROM faces fc JOIN files f ON f.id=fc.file_id
             WHERE 1=1{rc}""", params).fetchone()
     out = dict(scan)
     out.update(dict(accepted))
+    # Per-tier counts make the FIQA gate auditable: LOW_QUALITY faces are hidden
+    # from the GUI, so this summary is the place they remain visible at all.
+    out["tiers"] = {t: 0 for t in fiqa.TIERS}
+    out["tiers"]["UNTIERED"] = 0
+    for r in conn.execute(
+            f"""SELECT COALESCE(fc.quality_tier, 'UNTIERED') tier, COUNT(*) n
+                FROM faces fc JOIN files f ON f.id=fc.file_id
+                WHERE 1=1{rc} GROUP BY 1""", params):
+        out["tiers"][r["tier"]] = r["n"]
     return out
 
 
@@ -182,6 +196,11 @@ def extract(conn, cfg: Config, progress=None, batch_size: int = 64,
     if progress is not None:
         progress.total = total
 
+    # Attached per run, not baked into the backend: the calibration row this
+    # depends on may be created by this very run (see the bootstrap below).
+    if hasattr(be, "assessor"):
+        be.assessor = fiqa.make_assessor(conn, cfg)
+
     now = db.now_iso()
     while True:
         remaining = None if limit is None else max(0, limit - stats.processed)
@@ -214,8 +233,9 @@ def extract(conn, cfg: Config, progress=None, batch_size: int = 64,
                            (file_id, box_x, box_y, box_w, box_h, det_score,
                             focus_score, brightness, extreme_fraction,
                             clipped_fraction, quality_score, quality_source,
+                            fiqa_norm, fiqa_score, fiqa_source, quality_tier,
                             embedding, created_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         (fid, fc.x, fc.y, fc.w, fc.h, fc.score,
                          getattr(fc, "focus_score", None),
                          getattr(fc, "brightness", None),
@@ -223,6 +243,10 @@ def extract(conn, cfg: Config, progress=None, batch_size: int = 64,
                          getattr(fc, "clipped_fraction", None),
                          getattr(fc, "quality_score", None),
                          getattr(fc, "quality_source", None),
+                         getattr(fc, "fiqa_norm", None),
+                         getattr(fc, "fiqa_score", None),
+                         getattr(getattr(be, "assessor", None), "model", None),
+                         getattr(fc, "quality_tier", None),
                          fc.embedding.tobytes(), now))
                 n_faces = len(faces)
                 _add_rejections(stats, report)
@@ -252,5 +276,13 @@ def extract(conn, cfg: Config, progress=None, batch_size: int = 64,
                 progress.update(stats.processed, 0, path.name)
 
         conn.commit()
+
+        # Fix the FIQA calibration once enough norms exist, then tier the
+        # backlog extracted before it (see faces/fiqa.py). A no-op thereafter.
+        if hasattr(be, "assessor"):
+            if fiqa.load_calibration(conn, cfg.faces_fiqa_model) is None and \
+                    fiqa.bootstrap_calibration(conn, cfg) is not None:
+                conn.commit()
+                be.assessor = fiqa.make_assessor(conn, cfg)
 
     return stats

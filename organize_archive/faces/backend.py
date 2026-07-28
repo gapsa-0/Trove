@@ -1,19 +1,26 @@
-"""Local face detector + embedder, built on InsightFace (buffalo_l).
+"""Local face detector + quality-aware embedder (SCRFD + AdaFace).
 
 Self-contained and offline after a one-time model-weights download. Detection is
 InsightFace **SCRFD** (``det_10g``): bounding box + five landmarks + a confidence
-per face. Each face is aligned to the standard 112x112 ArcFace template (the
-5-point similarity transform, ``insightface.utils.face_align.norm_crop``) and
-embedded by **ArcFace** (``w600k_r50``) into a 512-d vector. Both ONNX files come
-from the buffalo_l pack, fetched once into ``cache/models/insightface/``.
+per face, fetched once from the buffalo_l pack into ``cache/models/insightface/``.
+Each face is aligned to the standard 112x112 ArcFace template (the 5-point
+similarity transform, ``insightface.utils.face_align.norm_crop``) and embedded by
+**AdaFace ir101 / WebFace12M** into a 512-d vector — a self-exported ONNX in
+``cache/models/adaface/`` (see tools/adaface_export.py).
 
 SCRFD replaced the old YuNet detector (far fewer sky/wall false positives, better
-small-face recall and landmarks); ArcFace replaced the self-exported AdaFace /
-OpenCV SFace embedders. Everything runs on onnxruntime's CPU provider — no torch
-at runtime, nothing leaves the machine.
+small-face recall and landmarks) and is kept. The *embedder* moved back to AdaFace
+from buffalo_l's ArcFace for one reason: AdaFace's feature norm is a usable
+face-image-quality signal. AdaFace's whole premise (CVPR 2022) is that ‖z‖ of a
+margin-softmax model tracks image quality — it is what the model itself uses to
+set its adaptive margin. That gives the quality gate in faces/fiqa.py a real
+per-face score for free, with no second model and no extra forward pass, which is
+what keeps blurry / extreme-profile / false-positive faces out of clustering.
 
-Embeddings are L2-normalized on the way out so cosine similarity is a plain dot
-product (which lets clustering use a tree index — see faces/cluster.py).
+So ``_embed`` returns **both** halves: the L2-normalized vector (cosine similarity
+is then a plain dot product — see faces/cluster.py) and the raw pre-normalization
+norm, which is the quality signal. Everything runs on onnxruntime's CPU provider —
+no torch at runtime, nothing leaves the machine.
 
 Graceful optional dependency, exactly like exiftool/Pillow elsewhere: if OpenCV,
 onnxruntime or insightface are unavailable, ``available()`` is False and the faces
@@ -30,6 +37,8 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import runtime
+
 try:
     import cv2
     import numpy as np
@@ -37,17 +46,31 @@ except Exception:  # pragma: no cover - optional dep
     cv2 = None
     np = None
 
-# buffalo_l bundles five ONNX models in one zip; we only need the detector and
-# the recognition (embedding) model. Fetched once from the insightface release,
+# buffalo_l bundles five ONNX models in one zip; we only need the DETECTOR now
+# (embedding is AdaFace, below). Fetched once from the insightface release,
 # extracted into cache/models/insightface/. Sizes are checked after extraction to
 # catch a truncated download.
 INSIGHTFACE_SUBDIR = "insightface"
 DET_MODEL = "det_10g.onnx"
-REC_MODEL = "w600k_r50.onnx"
 BUFFALO_URL = (
     "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
 )
-_MIN_SIZES = {DET_MODEL: 10_000_000, REC_MODEL: 100_000_000}
+_MIN_SIZES = {DET_MODEL: 10_000_000}
+
+# AdaFace embedder: a self-exported ONNX (from the WebFace12M checkpoint),
+# consumed by onnxruntime. Unlike buffalo_l it has no upstream download URL —
+# regenerate it with tools/adaface_export.py, or let a packaged build ship it
+# (packaging/models/manifest.json), exactly like the DINOv2 pet model.
+ADAFACE_SUBDIR = "adaface"
+ADAFACE_MODEL = "adaface_ir101_w12m.onnx"
+_ADAFACE_MIN_SIZE = 100_000_000
+
+# Identity of the vector space the `faces` table holds. Stored per archive in
+# app_state; when it stops matching, every embedding on disk was produced by a
+# different model and is unusable, so the archive re-extracts itself (see
+# faces/migrate_adaface.py). BUMP THIS whenever the embedder or its
+# preprocessing changes — that is what makes the re-extract automatic.
+EMBEDDER_VERSION = "adaface-ir101-w12m-v1"
 
 
 def available() -> bool:
@@ -70,25 +93,56 @@ def det_model_path(cache_dir: str) -> Path:
     return _models_dir(cache_dir) / DET_MODEL
 
 
-def rec_model_path(cache_dir: str) -> Path:
-    return _models_dir(cache_dir) / REC_MODEL
+def adaface_model_path(cache_dir: str) -> Path:
+    """Where the AdaFace ONNX lives: the frozen build's copy first, else the cache.
+
+    A packaged build carries this model (it has no upstream URL to fetch it from),
+    so the bundled copy wins; a source checkout falls back to the exported file in
+    the cache directory. Sibling of the insightface dir, not inside it — it does
+    not come from the buffalo_l pack. Mirrors pets.backend.dinov2_model_path.
+    """
+    bundled = runtime.bundled_model(f"{ADAFACE_SUBDIR}/{ADAFACE_MODEL}")
+    if bundled is not None:
+        return bundled
+    return Path(cache_dir) / "models" / ADAFACE_SUBDIR / ADAFACE_MODEL
+
+
+def adaface_ready(cache_dir: str) -> bool:
+    p = adaface_model_path(cache_dir)
+    return p.is_file() and p.stat().st_size >= _ADAFACE_MIN_SIZE
 
 
 def models_ready(cache_dir: str) -> bool:
+    """True when BOTH the SCRFD detector and the AdaFace embedder are present.
+
+    The detector self-heals (ensure_models downloads it); AdaFace does not, so a
+    missing AdaFace ONNX is a hard, actionable error rather than a silent
+    fallback — falling back to a different embedder would put two incompatible
+    vector spaces in one `faces` table.
+    """
+    d = _models_dir(cache_dir)
+    return adaface_ready(cache_dir) and all(
+        (d / name).is_file() and (d / name).stat().st_size >= min_size
+        for name, min_size in _MIN_SIZES.items())
+
+
+def _detector_ready(cache_dir: str) -> bool:
     d = _models_dir(cache_dir)
     return all((d / name).is_file() and (d / name).stat().st_size >= min_size
                for name, min_size in _MIN_SIZES.items())
 
 
 def ensure_models(cache_dir: str, log=None) -> Path:
-    """Download the buffalo_l pack once and extract the two ONNX files we use.
+    """Download the buffalo_l pack once and extract the detector ONNX we use.
 
     Atomic per file (temp + rename) so an interrupted extract never leaves a
     half-written model that would fail silently later. Returns the models dir.
+    Only the SCRFD detector is fetchable here; the AdaFace embedder has no
+    upstream URL and is checked separately by the backend constructor.
     """
     d = _models_dir(cache_dir)
     d.mkdir(parents=True, exist_ok=True)
-    if models_ready(cache_dir):
+    if _detector_ready(cache_dir):
         return d
     if log:
         log("downloading face models (buffalo_l) …")
@@ -117,8 +171,8 @@ def ensure_models(cache_dir: str, log=None) -> Path:
     finally:
         if os.path.exists(tmp_zip):
             os.remove(tmp_zip)
-    if not models_ready(cache_dir):
-        raise OSError("buffalo_l did not yield det_10g.onnx / w600k_r50.onnx")
+    if not _detector_ready(cache_dir):
+        raise OSError("buffalo_l did not yield det_10g.onnx")
     return d
 
 
@@ -129,27 +183,50 @@ class Face:
     w: int
     h: int
     score: float
-    embedding: "np.ndarray"   # float32, L2-normalized, 512-d (ArcFace w600k_r50)
+    embedding: "np.ndarray"   # float32, L2-normalized, 512-d (AdaFace ir101)
     focus_score: float
     brightness: float
     extreme_fraction: float
     clipped_fraction: float
     quality_score: float
     quality_source: str
+    # -- FIQA (faces/fiqa.py) --------------------------------------------
+    # fiqa_norm is the RAW pre-normalization AdaFace feature norm; it is stored
+    # per face so the archive can be re-tiered later (new thresholds, new
+    # calibration) without re-embedding a single image. fiqa_score is that norm
+    # mapped to 0..1 against the persisted calibration, and quality_tier is the
+    # routing decision: HIGH -> cluster cores, BORDERLINE -> border assignment,
+    # LOW_QUALITY -> excluded from clustering and hidden from the GUI.
+    fiqa_norm: float = 0.0
+    fiqa_score: float = 0.0
+    quality_tier: str = "BORDERLINE"
 
 
 _REJECTION_REASONS = (
     "score", "size", "focus", "exposure", "clipped", "nonhuman")
 
+# FIQA routing tiers, ordered best-first. Mirrored by faces/fiqa.py and by the
+# faces.quality_tier column; kept here so the Face dataclass and the detection
+# report can name them without importing the fiqa module (which imports config).
+_QUALITY_TIERS = ("HIGH", "BORDERLINE", "LOW_QUALITY")
+
 
 @dataclass
 class DetectionReport:
-    """Accepted faces plus auditable counts for each quality-gate decision."""
+    """Accepted faces plus auditable counts for each quality-gate decision.
+
+    ``tiers`` counts the FIQA routing outcome over the accepted faces. LOW_QUALITY
+    is a *tier*, not a rejection: those faces are still returned and stored (so the
+    decision stays reviewable and re-tierable), they are merely kept out of
+    clustering and out of the GUI.
+    """
 
     faces: list[Face] = field(default_factory=list)
     candidates: int = 0
     rejected: dict[str, int] = field(
         default_factory=lambda: {reason: 0 for reason in _REJECTION_REASONS})
+    tiers: dict[str, int] = field(
+        default_factory=lambda: {t: 0 for t in _QUALITY_TIERS})
 
 
 @dataclass(frozen=True)
@@ -183,11 +260,17 @@ def measure_face_quality(aligned_bgr, min_focus: float) -> FaceQuality:
 
 
 class FaceBackend:
-    """SCRFD detector + ArcFace embedder pair, holding the loaded ONNX models.
+    """SCRFD detector + AdaFace embedder pair, holding the loaded ONNX models.
 
     Not thread-safe (the underlying onnxruntime sessions aren't shared safely
     across face jobs); the app runs at most one detection job at a time, so a
     single instance per job is enough.
+
+    ``assessor`` is an optional faces/fiqa.py QualityAssessor. When given, every
+    accepted face is scored and tiered here, so the caller only ever sees faces
+    that already carry their routing decision. When absent (calibration probes,
+    tests, the standalone tools) faces come back tiered BORDERLINE, which is the
+    safe default: clustered, but never used to seed a core.
     """
 
     # Internal detector floor: keep it below ``min_score`` so weak detections are
@@ -196,11 +279,11 @@ class FaceBackend:
     _DET_THRESH = 0.30
 
     def __init__(self, cache_dir: str, *, min_score: float = 0.50,
-                 min_px: int = 36, max_side: int = 960, det_size: int = 640,
+                 min_px: int = 50, max_side: int = 960, det_size: int = 640,
                  max_clipped_fraction: float = 0.18,
                  min_focus: float = 35.0, max_extreme_fraction: float = 0.80,
                  quality_version: str = "opencv-laplacian-v1",
-                 log=None, **_ignored):
+                 assessor=None, log=None, **_ignored):
         if not available():
             raise RuntimeError(
                 "face backend unavailable; install the 'ai' extra "
@@ -215,18 +298,54 @@ class FaceBackend:
         self.min_focus = min_focus
         self.max_extreme_fraction = max_extreme_fraction
         self.quality_version = quality_version
+        self.assessor = assessor
         providers = ["CPUExecutionProvider"]
         self._det = get_model(str(d / DET_MODEL), providers=providers)
         self._det.prepare(ctx_id=-1, input_size=self.det_size,
                           det_thresh=min(self._DET_THRESH, min_score))
-        self._rec = get_model(str(d / REC_MODEL), providers=providers)
-        self._rec.prepare(ctx_id=-1)
+        self._ada = self._load_adaface(cache_dir)
+
+    def _load_adaface(self, cache_dir: str):
+        """Open the self-exported AdaFace ONNX session.
+
+        Deliberately fails loudly rather than falling back to another embedder:
+        a `faces` table holding vectors from two different models is silently
+        broken (cosine between them is meaningless), and the damage only shows up
+        much later as nonsense clusters.
+        """
+        import onnxruntime as ort
+        mp = adaface_model_path(cache_dir)
+        if not adaface_ready(cache_dir):
+            raise RuntimeError(
+                f"AdaFace model missing or truncated at {mp}. Regenerate it with "
+                "`python3 tools/adaface_export.py` (needs torch + huggingface_hub, "
+                "dev-only), or install a packaged build that ships it.")
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = os.cpu_count() or 4
+        return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])
 
     def _embed(self, aligned_bgr):
-        """112x112 aligned BGR crop -> L2-normalized float32 embedding (512-d)."""
-        feat = self._rec.get_feat(aligned_bgr).reshape(-1).astype("float32")
+        """112x112 aligned BGR crop -> (unit vector, raw norm), or None.
+
+        The raw pre-normalization norm is returned alongside the unit vector
+        because it is AdaFace's image-quality signal (see the module docstring):
+        clustering wants the direction, the quality gate wants the magnitude.
+
+        The exported graph has TWO outputs — ``embedding`` (already L2-normalized,
+        AdaFace divides by the norm internally) and ``norm``. Take the norm from
+        that second output; recomputing it from the first would return 1.0 for
+        every face and silently flatten the quality signal to a constant.
+        """
+        # AdaFace preprocessing: BGR, /255, then (x-0.5)/0.5 -> [-1,1], NCHW.
+        x = ((aligned_bgr.astype("float32") / 255.0) - 0.5) / 0.5
+        x = x.transpose(2, 0, 1)[None]
+        feat_out, norm_out = self._ada.run(None, {"input": x})
+        feat = feat_out.reshape(-1).astype("float32")
+        norm = float(np.asarray(norm_out).reshape(-1)[0])
+        # Re-normalize defensively: the graph already returns a unit vector, but
+        # clustering's dot-product-as-cosine assumption must not depend on that.
         n = float(np.linalg.norm(feat))
-        return None if n == 0.0 else feat / n
+        return None if n == 0.0 else (feat / n, norm)
 
     # -- image loading ----------------------------------------------------
     def load_bgr(self, path: str):
@@ -322,10 +441,11 @@ class FaceBackend:
                 continue
             aligned = face_align.norm_crop(img_bgr, kps, image_size=112)
             quality = measure_face_quality(aligned, self.min_focus)
-            feat = self._embed(aligned)
-            if feat is None:
+            embedded = self._embed(aligned)
+            if embedded is None:
                 continue
-            report.faces.append(Face(
+            feat, norm = embedded
+            face = Face(
                 x=max(0, round(x1 * inv)), y=max(0, round(y1 * inv)),
                 w=round(bw * inv), h=round(bh * inv),
                 score=score, embedding=feat,
@@ -334,7 +454,19 @@ class FaceBackend:
                 extreme_fraction=quality.extreme_fraction,
                 clipped_fraction=clipped,
                 quality_score=quality.quality_score,
-                quality_source=self.quality_version))
+                quality_source=self.quality_version,
+                fiqa_norm=norm)
+            # Phase 1 routing. The base filters above (score/size/clipping) run
+            # BEFORE embedding so cheap rejections stay cheap; the FIQA score is
+            # a by-product of the embedding itself, so its gate necessarily runs
+            # here. Same effect on cluster purity, less compute than a separate
+            # quality model would cost.
+            if self.assessor is not None:
+                face.fiqa_score = self.assessor.score(face)
+                face.quality_tier = self.assessor.tier(face.fiqa_score)
+            report.tiers[face.quality_tier] = \
+                report.tiers.get(face.quality_tier, 0) + 1
+            report.faces.append(face)
         return report
 
     def detect(self, img_bgr, scale: float = 1.0) -> list[Face]:
