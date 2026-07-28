@@ -1954,6 +1954,8 @@
     }
 
     .date-heading {
+      /* A month heading is a row of its own, not a tile-sized cell. */
+      grid-column: 1/-1;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 22px;
       font-weight: 650;
@@ -3269,6 +3271,46 @@
     .library-toolbar .sort-sel {
       padding: 5px 8px;
       font-size: 12.5px
+    }
+
+    /* Active query: the search the grid is currently answering, kept visible
+       under the box because the box itself is only a draft. */
+    .active-query {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 7px;
+      padding: 12px 4px 0 10px;
+      font-size: 13.5px
+    }
+
+    .active-query .aq-label {
+      color: var(--muted);
+      font-size: 12px
+    }
+
+    .active-query .aq-phrase {
+      color: var(--text);
+      font-weight: 600;
+      min-width: 0;
+      overflow-wrap: anywhere
+    }
+
+    .active-query .aq-phrase:before,
+    .active-query .aq-phrase:after {
+      content: "\201C";
+      color: var(--muted);
+      font-weight: 400
+    }
+
+    .active-query .aq-phrase:after {
+      content: "\201D"
+    }
+
+    .active-query .aq-clear {
+      margin-left: auto;
+      padding: 0;
+      white-space: nowrap
     }
 
     /* Search reach: how much of the library the description search can currently
@@ -6278,7 +6320,8 @@
       const restored = !!(S.grid && Array.isArray(S.grid.pages));
       const g = restored ? S.grid : {
         offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
-        place: "", rawQuery: "", query: "", expandedQuery: "", expandedEmbeddingQuery: "", sort: "",
+        place: "", rawQuery: "", searchedQuery: "", query: "", expandedQuery: "",
+        expandedEmbeddingQuery: "", sort: "",
         total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
         anchor: null, savedScrollTop: 0,
       };
@@ -6296,6 +6339,7 @@
           onpaste="onSemanticComposerPaste(event)"></div>
         <button class="btn" type="submit">Search</button>
       </form>
+      <div class="active-query" id="active-query" aria-live="polite" hidden></div>
       <div class="search-reach" id="search-reach" aria-live="polite" hidden></div>
       <div class="library-toolbar">
         <div class="filterbar" id="filterbar"></div>
@@ -6315,11 +6359,12 @@
       if (gen !== NAV) return;
       renderSearchReach();
       renderSortOptions(g);
+      renderActiveQuery(g);
       if (restored) {
         restoreLibraryControls(g);
         renderGridPages(g);
         const count = document.getElementById("gridcount");
-        if (count && g.total != null) count.textContent = `${g.total.toLocaleString()} files`;
+        if (count && g.total != null) count.textContent = gridCountLabel(g);
       }
       setupGridInfiniteScroll(g);
       if (restored && g.pages.length) {
@@ -6654,17 +6699,20 @@
       // The visible sentence stays intact, but recognized names are represented by
       // structured filters and removed from the text embedded by Voyage.
       g.rawQuery = rawQuery;
+      g.searchedQuery = rawQuery;
       // Natural-language image retrieval should not depend on how Caps Lock was
       // used. Keep rawQuery intact for the composer, but normalize the text sent
       // through translation and semantic embedding.
       g.query = semanticTextWithoutPeople(rawQuery, mentions).toLocaleLowerCase();
       renderSemanticComposer(true);
       renderSortOptions(g);
+      renderActiveQuery(g);
       if (submit) { submit.disabled = true; submit.textContent = "Searching…"; }
       const expandedQuery = await localEnglishTranslation(g.query);
       if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;
       g.expandedQuery = expandedQuery;
       g.expandedEmbeddingQuery = visualSearchExpansion(expandedQuery);
+      renderActiveQuery(g);
       if (submit) { submit.disabled = false; submit.textContent = oldLabel; }
       resetGridResults(g);
       updateClearBtn();
@@ -6713,6 +6761,51 @@
         }
       }
     }
+    /* The line under the search box states which search the grid below is
+       answering. It is not a copy of the box: the box is a draft the user can
+       keep editing, and recognized names are shown as the person filters they
+       actually became, so what ran is never in doubt. */
+    function renderActiveQuery(g) {
+      const el = document.getElementById("active-query"); if (!el) return;
+      const searched = (g.searchedQuery || "").trim();
+      el.hidden = !searched;
+      if (!searched) { el.replaceChildren(); return; }
+      const label = document.createElement("span");
+      label.className = "aq-label"; label.textContent = "Results for";
+      const phrase = document.createElement("span");
+      phrase.className = "aq-phrase";
+      const mentions = extractPeopleMentions(
+        searched, (S.filterOpts && S.filterOpts.people) || [], true)
+        .filter(mention => mention.committed);
+      let cursor = 0;
+      mentions.forEach(mention => {
+        if (mention.start > cursor)
+          phrase.append(document.createTextNode(searched.slice(cursor, mention.start)));
+        const token = document.createElement("span");
+        token.className = "person-token";
+        token.dataset.tooltip = `Filtered to media containing ${mention.person.name}`;
+        token.tabIndex = 0;
+        token.setAttribute("aria-label", `${mention.person.name}, person filter`);
+        token.textContent = mention.source;
+        phrase.append(token); cursor = mention.end;
+      });
+      if (cursor < searched.length) phrase.append(document.createTextNode(searched.slice(cursor)));
+      // The vector search runs on an English rendering of the sentence. Say so
+      // on hover when it differs, so an unexpected match has an explanation.
+      if (g.expandedQuery && g.query && g.expandedQuery !== g.query)
+        phrase.title = `Searched in English as “${g.expandedQuery}”`;
+      const clear = document.createElement("button");
+      clear.type = "button"; clear.className = "linkbtn aq-clear";
+      clear.textContent = "Clear search";
+      clear.onclick = clearSearch;
+      el.replaceChildren(label, phrase, clear);
+    }
+    function clearSearch() {
+      const composer = document.getElementById("semantic-q");
+      if (!composer) return;
+      composer.replaceChildren();
+      composer.closest("form").requestSubmit();
+    }
     /* Sort: date only for now. "" means the list's natural order -- best match
        while a description search is active, newest first when just browsing --
        so the option only needs spelling out as "Newest first" when there is no
@@ -6727,6 +6820,10 @@
       // the same thing, so the grid keeps the order the user was looking at.
       if (!opts.some(([v]) => v === g.sort)) g.sort = "";
       sel.value = g.sort;
+    }
+    function gridCountLabel(g) {
+      const n = (g.total || 0).toLocaleString();
+      return g.query ? `${n} match${g.total === 1 ? "" : "es"}` : `${n} files`;
     }
     function applySort() {
       const g = S.grid;
@@ -6885,7 +6982,7 @@
         if (!g.loaded)
           grid.innerHTML = `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${res && res.error ? esc(res.error) : "No media matches these filters."}</div>`;
         const gc = document.getElementById("gridcount");
-        if (gc) gc.textContent = `${g.total.toLocaleString()} files`;
+        if (gc) gc.textContent = gridCountLabel(g);
         const bottom = document.getElementById("grid-sentinel");
         if (bottom) bottom.textContent = g.doneDown ? "" : "Scroll to load more";
       } catch (error) {
