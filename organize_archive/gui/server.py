@@ -187,6 +187,11 @@ class Handler(BaseHTTPRequestHandler):
                 rid = one("root", int)
                 self._json(queries.place_clusters(
                     self._db(rid), rid, self.cfg.place_min_media))
+            elif path == "/api/map/points":
+                # The un-clustered map view: one point per geotagged file.
+                rid = one("root", int)
+                self._json(queries.place_points(
+                    self._db(rid), rid, self.cfg.place_min_media))
             elif path == "/api/map/cluster/merge-preview":
                 # GET, not POST: this mutates nothing, it only answers "how
                 # spread out would this merge be" so the GUI can decide

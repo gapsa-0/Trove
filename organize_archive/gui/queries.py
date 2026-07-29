@@ -340,6 +340,43 @@ def _read_place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dic
         conn.close()
 
 
+def place_points(db_path: str, root_id: int, min_media: int = 10) -> dict:
+    """Every geotagged file as its own point, for the map's un-clustered view.
+
+    The clustered view answers "where do we keep going back to"; this one
+    answers "where was each photo actually taken", which a centroid hides --
+    a place spanning a whole town looks identical to one spanning a doorway.
+
+    Rows are compact ``[lat, lon, cluster_id, file_id]`` arrays rather than
+    objects: an archive can hold tens of thousands of geotagged files, and the
+    key names would be most of the payload. ``cluster_id`` is 0 for a file that
+    belongs to no *shown* place (no cluster at all, or one below the min-media
+    floor), which the client draws in neutral grey -- the raw view is the whole
+    truth about what is geotagged, including the strays the places view omits.
+    Coordinates are rounded to 5 decimals (~1 m), far finer than a screen pixel
+    at any zoom and a third off the payload.
+    """
+    conn = db.open_readonly(db_path)
+    try:
+        rows = conn.execute(
+            f"""SELECT g.lat, g.lon, f.id,
+                       CASE WHEN pc.id IS NOT NULL
+                                 AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
+                            THEN pc.id ELSE 0 END AS cluster_id
+                FROM files f
+                JOIN geo g ON g.file_id=f.id
+                LEFT JOIN place_cluster_members pcm ON pcm.file_id=f.id
+                LEFT JOIN place_clusters pc ON pc.id=pcm.cluster_id
+                WHERE f.present=1 AND f.root_id=? AND g.lat IS NOT NULL""",
+            (min_media, root_id)).fetchall()
+        points = [[round(r["lat"], 5), round(r["lon"], 5), r["cluster_id"], r["id"]]
+                  for r in rows]
+        unplaced = sum(1 for p in points if not p[2])
+        return {"points": points, "unplaced": unplaced}
+    finally:
+        conn.close()
+
+
 def recompute_place_clusters(db_path: str, root_id: int) -> dict:
     from ..geo.clusters import cluster_places
     conn = db.connect(db_path)

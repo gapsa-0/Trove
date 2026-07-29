@@ -54,6 +54,17 @@ def _catalog_with_places(tmp_path):
             "INSERT INTO place_cluster_members(cluster_id,file_id,source) "
             "VALUES(4,?,'auto')", (fid,))
 
+    # File 8 is geotagged but belongs to no cluster at all -- the stray the
+    # un-clustered map view must still show, in grey.
+    conn.execute(
+        """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
+                             first_seen,last_seen)
+           VALUES(8,1,'8.jpg',1,0,'image','2026-01-01','2026-01-01')""")
+    # Distinct latitudes so a returned point can be traced back to its file.
+    for fid in range(1, 9):
+        conn.execute("INSERT INTO geo(file_id,lat,lon,alt,geo_source) "
+                     "VALUES(?,?,?,NULL,'exif')", (fid, -34.6 - fid / 1000, -58.4))
+
     conn.commit()
     conn.close()
     return db_path
@@ -85,3 +96,53 @@ def test_item_still_reports_a_named_place_below_threshold(tmp_path):
     it = queries.item(str(db_path), 4, min_media=10)
 
     assert it["place"] == {"id": 2, "name": "Home"}
+
+
+# ---------------------------------------------------------------------------
+# The un-clustered map view (things_to_fix #33) reads the same floor, but must
+# still show the files it hides places for -- one dot per geotagged file, and
+# the ones with no *shown* place identified as such so they can be greyed out.
+# ---------------------------------------------------------------------------
+
+def test_place_points_returns_every_geotagged_file(tmp_path):
+    db_path = _catalog_with_places(tmp_path)
+
+    result = queries.place_points(str(db_path), root_id=1, min_media=10)
+
+    assert len(result["points"]) == 8            # every file with a geo row
+    assert all(len(p) == 4 for p in result["points"])
+
+
+def test_place_points_flags_files_with_no_shown_place(tmp_path):
+    db_path = _catalog_with_places(tmp_path)
+
+    result = queries.place_points(str(db_path), root_id=1, min_media=10)
+    by_file = {p[3]: p[2] for p in result["points"]}
+
+    # Files 1-3 sit in the below-threshold, unnamed cluster 1, and file 8 is in
+    # no cluster: all four have no place to be coloured by.
+    assert by_file[1] == by_file[2] == by_file[3] == 0
+    assert by_file[8] == 0
+    assert result["unplaced"] == 4
+    # The exempt (named / pinned) and above-threshold clusters keep their ids,
+    # so a point is coloured by exactly the place the map shows.
+    assert by_file[4] == by_file[5] == 2
+    assert by_file[6] == by_file[7] == 4
+
+
+def test_place_points_ignores_files_from_another_root(tmp_path):
+    db_path = _catalog_with_places(tmp_path)
+    conn = db.connect(db_path)
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(2,'/other','2026-01-01')")
+    conn.execute(
+        """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
+                             first_seen,last_seen)
+           VALUES(99,2,'99.jpg',1,0,'image','2026-01-01','2026-01-01')""")
+    conn.execute("INSERT INTO geo(file_id,lat,lon,alt,geo_source) "
+                 "VALUES(99,10.0,10.0,NULL,'exif')")
+    conn.commit()
+    conn.close()
+
+    result = queries.place_points(str(db_path), root_id=1, min_media=10)
+
+    assert 99 not in {p[3] for p in result["points"]}

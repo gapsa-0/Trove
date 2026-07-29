@@ -702,7 +702,11 @@
       text-overflow: ellipsis;
     }
 
-    canvas {
+    /* The timeline chart, by id rather than by element: Leaflet's un-clustered
+       photo view renders into its own <canvas>, and a blanket `canvas` rule
+       gave that one a panel background and a max-width that collapsed it to a
+       couple of pixels -- the dots were drawn, just nowhere visible. */
+    #tlc2 {
       max-width: 100%;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -3792,6 +3796,60 @@
       font-size: 11.5px
     }
 
+    /* Places / Photos switch. Mounted as a Leaflet control (top right), so
+       placement, stacking above the marker panes and pointer events are all
+       handled by Leaflet; this is only the pill styling. */
+    .map-viewtoggle {
+      display: flex;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(14px)
+    }
+
+    .map-viewtoggle button {
+      padding: 5px 13px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 11.5px;
+      font-weight: 620;
+      cursor: pointer
+    }
+
+    .map-viewtoggle button.on {
+      background: var(--accent-soft);
+      color: var(--accent)
+    }
+
+    .map-viewtoggle button:disabled {
+      cursor: progress;
+      opacity: .6
+    }
+
+    /* Legend for the un-clustered view: one swatch per shown place is useless
+       at 271 places, so it explains the encoding instead of enumerating it. */
+    .map-pointkey {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 4px
+    }
+
+    .map-pointkey i {
+      width: 10px;
+      height: 10px;
+      flex: none;
+      border-radius: 50%;
+      background: var(--muted);
+      opacity: .75
+    }
+
     .mapside-name .close-side {
       width: 28px;
       height: 28px;
@@ -3859,7 +3917,7 @@
       color: var(--accent)
     }
 
-    canvas {
+    #tlc2 {
       border-color: var(--line);
       border-radius: var(--radius);
       background: var(--panel);
@@ -5609,7 +5667,7 @@
       else if (id === "library") renderSearchReach();
       else if (id === "people" && document.getElementById("facejob")) startFacePoll();
       else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
-      else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawClusters(); }, 0);
+      else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
     }
     function showSection(id, reload = false) {
       if (!RENDERERS[id]) id = "overview";
@@ -6138,6 +6196,13 @@
       if (MPICK) MPICK_TILES = replaceMapTiles(MPICK, MPICK_TILES);
     }
     let MAP = null, MAP_LAYER = null, MAP_TILES = null, MAP_CLUSTERS = [], MAP_HIDDEN = {};
+    // Un-clustered view (things_to_fix #33): every geotagged file as its own
+    // point. Fetched once, lazily, the first time the user asks for it -- it is
+    // a much bigger payload than the ~hundreds of place centroids, and most
+    // visits never leave the clustered view.
+    let MAP_POINTS = null, MAP_POINTS_UNPLACED = 0, MAP_POINT_CANVAS = null;
+    // The built point layer and what it was built from (see showPhotoPoints).
+    let MAP_POINT_LAYER = null, MAP_POINT_BUILT = null;
     async function renderMap(m) {
       const gen = NAV, root = S.arch.id;
       m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Places</h2>
@@ -6151,11 +6216,16 @@
       <div id="lmap"></div>
       <div id="mapside"></div>
     </div>
-    <div class="map-footnote">Nearby photos are grouped into places. Street map tiles are fetched online using coordinates only; your media stays on this computer.</div>
+    <div class="map-footnote" id="map-view-note"></div>
     <div class="map-footnote" id="map-hidden-note" hidden></div>
     <div id="placegallery"></div>`;
       if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; }
+      MAP_POINT_CANVAS = null; MAP_POINT_LAYER = null; MAP_POINT_BUILT = null;
       S.mapSel = null;
+      // The view choice is a preference and survives; the points themselves are
+      // this archive's data and are re-fetched on demand (see setMapView).
+      S.mapView = S.mapView || "places";
+      MAP_POINTS = null; MAP_POINTS_UNPLACED = 0;
       const { clusters, hidden } = await jget("/api/map/clusters?root=" + root);
       if (gen !== NAV) return;
       MAP_CLUSTERS = clusters;
@@ -6170,15 +6240,90 @@
       MAP_TILES = themedTileLayer().addTo(MAP);
       if (!clusters.length) {
         MAP.setView([0, 0], 2);
+        renderMapViewNote();
         document.querySelector(".mapwrap").insertAdjacentHTML("beforeend", `<div class="map-empty">
       <div class="big">⌖</div><h3>No locations yet</h3>
       <p>Places will appear here automatically when Archive finds GPS information in EXIF or Takeout metadata.</p></div>`);
         return;
       }
+      addMapViewToggle(MAP);
       const b = L.latLngBounds(clusters.map(c => [c.lat, c.lon]));
       MAP.fitBounds(b, { padding: [40, 40], maxZoom: 14 });
-      MAP.on("moveend zoomend", drawClusters);
-      drawClusters();
+      MAP.on("moveend zoomend", drawMap);
+      drawMap();
+      renderMapViewNote();
+    }
+
+    /* -- Places / Photos switch -------------------------------------------
+       Two honest answers to different questions: the clustered view says where
+       this family keeps going back to (one marker per place, however far its
+       members are spread); the un-clustered one says where each photo was
+       actually taken, which a centroid necessarily hides. */
+    function addMapViewToggle(map) {
+      const Toggle = L.Control.extend({
+        options: { position: "topright" },
+        onAdd() {
+          const box = L.DomUtil.create("div", "map-viewtoggle");
+          box.id = "map-viewtoggle";
+          // Without this a click on the switch also reaches the map underneath
+          // (and a double click zooms it).
+          L.DomEvent.disableClickPropagation(box);
+          return box;
+        }
+      });
+      map.addControl(new Toggle());
+      renderMapViewToggle();
+    }
+    function renderMapViewToggle(loading) {
+      const box = document.getElementById("map-viewtoggle"); if (!box) return;
+      const btn = (view, label) =>
+        `<button type="button" class="${S.mapView === view ? "on" : ""}"
+        ${loading ? "disabled" : ""} onclick="setMapView('${view}')">${label}</button>`;
+      box.innerHTML = btn("places", "Places") + btn("photos", "Photos");
+    }
+    async function setMapView(view) {
+      if (!MAP || S.mapView === view) return;
+      S.mapView = view;
+      renderMapViewToggle(view === "photos" && !MAP_POINTS);
+      if (view === "photos" && !MAP_POINTS) {
+        try {
+          await loadMapPoints();
+        } catch {
+          toast("Couldn’t load the individual photo locations.", true);
+          S.mapView = "places";
+        }
+        if (S.section !== "places" || !MAP) return;   // user navigated away meanwhile
+      }
+      renderMapViewToggle();
+      drawMap();
+      renderMapViewNote();
+    }
+    async function loadMapPoints() {
+      const r = await jget("/api/map/points?root=" + S.arch.id);
+      MAP_POINTS = r.points || [];
+      MAP_POINTS_UNPLACED = r.unplaced || 0;
+    }
+    // Anything that changes which places exist or which files they hold also
+    // changes a point's colour (naming a one-off spot promotes it out of grey,
+    // merging moves files between hues), so the cache is dropped and only
+    // re-pulled when that view is actually on screen.
+    async function invalidateMapPoints() {
+      MAP_POINTS = null;
+      if (S.mapView === "photos") { try { await loadMapPoints(); } catch { } }
+    }
+    function renderMapViewNote() {
+      const el = document.getElementById("map-view-note"); if (!el) return;
+      const tiles = "Street map tiles are fetched online using coordinates only; your media stays on this computer.";
+      if (S.mapView !== "photos") {
+        el.innerHTML = `Nearby photos are grouped into places. ${tiles}`;
+        return;
+      }
+      // One swatch per place would be a legend of hundreds; say what the colours
+      // mean instead, and name the grey exception explicitly.
+      const strays = MAP_POINTS_UNPLACED
+        ? ` <span class="map-pointkey"><i></i>Grey: ${MAP_POINTS_UNPLACED.toLocaleString()} photo${MAP_POINTS_UNPLACED === 1 ? "" : "s"} that belong to no place.</span>`
+        : "";
+      el.innerHTML = `One dot per geotagged photo, coloured by the place it belongs to. ${tiles}${strays}`;
     }
     function updateMapStats() {
       const total = MAP_CLUSTERS.reduce((sum, cluster) => sum + cluster.count, 0);
@@ -6275,9 +6420,10 @@
         toast("Couldn’t save the place name.", true); card.replaceWith(placeCard(place)); return;
       }
       place.name = name || null;
+      await invalidateMapPoints();   // naming can promote a hidden spot to a real place
       updateMapStats();
       renderPlaceGallery();
-      drawClusters();
+      drawMap();
       if (S.mapSel === place.id) selectPlaceCluster(place.id);
     }
     const PLACE_PAGE_SIZE = 120;
@@ -6286,7 +6432,7 @@
       const side = document.getElementById("mapside");
       const wrap = side && side.closest(".mapwrap");
       if (wrap) wrap.classList.add("has-selection");
-      setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawClusters(); } }, 0);
+      setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawMap(); } }, 0);
       side.innerHTML = `<div class="muted">Loading…</div>`;
       // root was missing here before -- the endpoint requires it and silently
       // failed the request without it (caught, swallowed, no response sent).
@@ -6335,16 +6481,17 @@
       const result = await jpost("/api/map/cluster/rename", { cluster_id: id, name });
       if (!result || result.error) { toast("Couldn’t save the place name.", true); selectPlaceCluster(id); return; }
       const mc = MAP_CLUSTERS.find(c => c.id === id); if (mc) mc.name = name || null;
+      await invalidateMapPoints();   // naming can promote a hidden spot to a real place
       updateMapStats();
       renderPlaceGallery();
-      drawClusters();
+      drawMap();
       selectPlaceCluster(id);
     }
     function closePlaceCluster() {
       S.mapSel = null;
       const wrap = document.querySelector(".mapwrap"); if (wrap) wrap.classList.remove("has-selection");
       const side = document.getElementById("mapside"); if (side) side.innerHTML = "";
-      setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawClusters(); } }, 0);
+      setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawMap(); } }, 0);
     }
     // Re-pull the whole cluster list after a place merge (or its undo) rather than
     // patching MAP_CLUSTERS in place: a merge can change member_count, the survivor's
@@ -6359,17 +6506,21 @@
       const { clusters, hidden } = await jget("/api/map/clusters?root=" + S.arch.id);
       MAP_CLUSTERS = clusters;
       MAP_HIDDEN = hidden || {};
+      await invalidateMapPoints();
       updateMapStats();
       renderPlaceGallery();
-      drawClusters();
+      drawMap();
+      renderMapViewNote();
       if (S.mapSel == null) return;
       const stillOpen = MAP_CLUSTERS.some(c => c.id === S.mapSel);
       if (stillOpen) selectPlaceCluster(S.mapSel);
       else if (survivor) selectPlaceCluster(survivor.id);   // the open place was absorbed -- follow it
     }
-    function drawClusters() {
+    function drawMap() {
       if (!MAP) return;
-      if (MAP_LAYER) MAP.removeLayer(MAP_LAYER);
+      if (MAP_LAYER) { MAP.removeLayer(MAP_LAYER); MAP_LAYER = null; }
+      if (S.mapView === "photos" && MAP_POINTS) { showPhotoPoints(); return; }
+      hidePhotoPoints();
       MAP_LAYER = L.layerGroup().addTo(MAP);
       const R = 54; // px screen-bucket radius -- groups nearby PLACES at low zoom
       const bounds = MAP.getBounds(), buckets = {};
@@ -6403,6 +6554,58 @@
           });
         }
       });
+    }
+
+    // One hue per place, from its id: no palette to run out of, and a place
+    // keeps its colour between redraws and sessions. The golden-angle step is
+    // what keeps consecutive ids visibly different instead of a slow gradient.
+    function pointColour(clusterId) {
+      if (!clusterId) return "#98a1ae";      // belongs to no shown place
+      return `hsl(${(clusterId * 137.508) % 360}, 68%, 55%)`;
+    }
+    // Every photo as its own translucent dot, so the true spread of a place is
+    // visible (and overlapping shots pile up into a denser blob). Drawn on ONE
+    // canvas rather than as DOM markers: tens of thousands of divs would lock
+    // the page up.
+    //
+    // Unlike the clustered path this does NOT rebuild on every pan. Building
+    // ~16k Leaflet layers costs ~0.5s, while the canvas renderer redraws the
+    // same 16k circles on a move in ~80ms all by itself -- so the layer is
+    // built once and only thrown away when something it actually depends on
+    // changes (the points, the open place, or the zoom-derived dot size).
+    function showPhotoPoints() {
+      const zoom = MAP.getZoom();
+      // A little bigger as you zoom in: dense at world view (where a city is a
+      // few pixels), individually clickable once you're over a street. Bucketed
+      // so ordinary zooming doesn't trigger a rebuild.
+      const radius = zoom >= 15 ? 6 : zoom >= 11 ? 4.5 : 3.5;
+      // With a place open, its photos stay solid and the rest recede, so
+      // clicking a place card means the same thing in both views.
+      const sel = S.mapSel || 0;
+      const built = MAP_POINT_BUILT;
+      if (MAP_POINT_LAYER && built && built.points === MAP_POINTS
+          && built.sel === sel && built.radius === radius) {
+        if (!MAP.hasLayer(MAP_POINT_LAYER)) MAP_POINT_LAYER.addTo(MAP);
+        return;
+      }
+      hidePhotoPoints();
+      if (!MAP_POINT_CANVAS) MAP_POINT_CANVAS = L.canvas({ padding: 0.2 });
+      const layer = L.layerGroup();
+      MAP_POINTS.forEach(([lat, lon, cid, fileId]) => {
+        L.circleMarker([lat, lon], {
+          renderer: MAP_POINT_CANVAS, radius, weight: 0,
+          fillColor: pointColour(cid),
+          fillOpacity: !sel ? 0.55 : (cid === sel ? 0.85 : 0.15),
+        }).addTo(layer).on("click", () => openItem(fileId));
+      });
+      layer.addTo(MAP);
+      MAP_POINT_LAYER = layer;
+      MAP_POINT_BUILT = { points: MAP_POINTS, sel, radius };
+    }
+    function hidePhotoPoints() {
+      if (MAP_POINT_LAYER && MAP) MAP.removeLayer(MAP_POINT_LAYER);
+      MAP_POINT_LAYER = null;
+      MAP_POINT_BUILT = null;
     }
 
     /* ---------- browse ---------- */

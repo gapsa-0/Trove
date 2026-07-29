@@ -26,7 +26,9 @@ application-data folder.
   map pin, and manually assigned without altering the media's GPS metadata. A spot
   needs at least 10 photos to count as a place (`place_min_media`), so a one-off
   snapshot somewhere random stays unplaced instead of cluttering the map; places you
-  have named or pinned yourself always count, whatever their size.
+  have named or pinned yourself always count, whatever their size. The map switches
+  between that grouped view and one dot per photo, coloured by place, for when the
+  question is where each shot was actually taken rather than where you keep going back.
 - Detects and clusters faces locally into people. You can name people, correct a face,
   merge or separate suggested people, and dismiss non-person detections. Faces are
   quality-checked before they are ever grouped: blurry, tiny, and badly-framed
