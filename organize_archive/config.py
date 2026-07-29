@@ -11,7 +11,7 @@ import os
 import shutil
 import sqlite3
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Project layout ------------------------------------------------------------
@@ -63,7 +63,7 @@ def discard_superseded_secrets() -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _load_dotenv() -> None:
@@ -434,7 +434,7 @@ class Config:
     )
 
     @classmethod
-    def load(cls) -> "Config":
+    def load(cls) -> Config:
         cfg = cls()
         path = config_file()
         if path.exists():

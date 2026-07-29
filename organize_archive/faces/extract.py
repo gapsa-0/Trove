@@ -78,7 +78,7 @@ def _pending(conn, batch_size: int):
     ).fetchall()
 
 
-def make_backend(cfg: Config, log=None) -> "backend.FaceBackend":
+def make_backend(cfg: Config, log=None) -> backend.FaceBackend:
     """Build the detector+embedder from config (loads the ONNX models once).
     Callers that extract in chunks pass the result back in to avoid reloading
     the models every chunk."""

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 from ..config import (
     IGNORE_EXTENSIONS,

@@ -193,7 +193,7 @@ class AnimalDetection:
     w: int
     h: int
     score: float
-    embedding: "np.ndarray"
+    embedding: np.ndarray
 
 
 @dataclass
@@ -421,7 +421,7 @@ class PetBackend:
             )
         return out
 
-    def _embed_crop(self, crop_bgr) -> "np.ndarray":
+    def _embed_crop(self, crop_bgr) -> np.ndarray:
         """384-d L2-normalized DINOv2 re-ID embedding of an animal crop.
 
         Cosine similarity between two crops of the same individual is high; the

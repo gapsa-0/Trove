@@ -185,7 +185,7 @@ class Face:
     w: int
     h: int
     score: float
-    embedding: "np.ndarray"  # float32, L2-normalized, 512-d (AdaFace ir101)
+    embedding: np.ndarray  # float32, L2-normalized, 512-d (AdaFace ir101)
     focus_score: float
     brightness: float
     extreme_fraction: float

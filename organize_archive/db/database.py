@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA_VERSION = 13
@@ -17,7 +17,7 @@ _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:

@@ -331,7 +331,7 @@ class SiglipBackend:
 
     # -- preprocessing -----------------------------------------------------
     @staticmethod
-    def _pixels(image) -> "np.ndarray":
+    def _pixels(image) -> np.ndarray:
         """One PIL image -> ``(3, 256, 256)`` float32 in ``[-1, 1]``."""
         from PIL import Image
 
@@ -343,7 +343,7 @@ class SiglipBackend:
         x = (x - 0.5) / 0.5
         return np.ascontiguousarray(x.transpose(2, 0, 1))
 
-    def _open(self, item) -> "np.ndarray":
+    def _open(self, item) -> np.ndarray:
         from PIL import Image
 
         if isinstance(item, (str, Path)):
@@ -357,18 +357,18 @@ class SiglipBackend:
             return self._pixels(Image.fromarray(item))
         return self._pixels(item)  # already a PIL image
 
-    def _tokenize(self, texts: list[str]) -> "np.ndarray":
+    def _tokenize(self, texts: list[str]) -> np.ndarray:
         self.load_text()
         encoded = self._tokenizer.encode_batch([t.lower() for t in texts])
         return np.asarray([e.ids for e in encoded], dtype=np.int64)
 
     # -- embedding ---------------------------------------------------------
     @staticmethod
-    def _normalize(vectors: "np.ndarray") -> "np.ndarray":
+    def _normalize(vectors: np.ndarray) -> np.ndarray:
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
         return np.divide(vectors, norms, out=np.zeros_like(vectors), where=norms > 0)
 
-    def embed_images(self, items) -> "np.ndarray":
+    def embed_images(self, items) -> np.ndarray:
         """Paths / PIL images / HWC uint8 arrays -> ``(N, 768)`` unit vectors.
 
         Batching buys nothing measurable on this CPU (a batch of 4 costs 4x a
@@ -383,7 +383,7 @@ class SiglipBackend:
         out = session.run(None, {self._vision_in: batch})[self._vision_out]
         return self._normalize(np.asarray(out, dtype=np.float32))
 
-    def embed_texts(self, texts) -> "np.ndarray":
+    def embed_texts(self, texts) -> np.ndarray:
         """Query strings -> ``(N, 768)`` unit vectors in the image space."""
         texts = list(texts)
         if not texts:
@@ -393,7 +393,7 @@ class SiglipBackend:
         out = session.run(None, {self._text_in: ids})[self._text_out]
         return self._normalize(np.asarray(out, dtype=np.float32))
 
-    def embed_frames_mean(self, items) -> "np.ndarray | None":
+    def embed_frames_mean(self, items) -> np.ndarray | None:
         """One vector for a video: the mean of its sampled frames, renormalised.
 
         Averaging unit vectors and normalising again is the standard way to pool

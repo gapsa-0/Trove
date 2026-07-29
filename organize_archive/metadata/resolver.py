@@ -7,7 +7,7 @@ which source won so the choice stays auditable and tunable.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 _EXIF_FMTS = ("%Y:%m:%d %H:%M:%S", "%Y:%m:%d %H:%M:%S%z")
@@ -30,7 +30,7 @@ def epoch_to_wall(epoch: int, tzname: str | None) -> datetime:
     """Convert a UTC epoch to naive local wall-clock time in the given zone
     (or UTC when no zone configured)."""
     tz = _tz(tzname)
-    dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    dt = datetime.fromtimestamp(epoch, tz=UTC)
     if tz is not None:
         dt = dt.astimezone(tz)
     return dt.replace(tzinfo=None)

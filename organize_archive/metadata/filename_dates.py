@@ -10,7 +10,7 @@ more trustworthy than a date alone or a recovered epoch.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 _MIN_YEAR = 1990
 _MAX_YEAR = 2035
@@ -41,7 +41,7 @@ def _from_ms(ms) -> datetime | None:
     if not (_MS_MIN <= v <= _MS_MAX):
         return None
     try:
-        return _valid(datetime.fromtimestamp(v / 1000, tz=timezone.utc).replace(tzinfo=None))
+        return _valid(datetime.fromtimestamp(v / 1000, tz=UTC).replace(tzinfo=None))
     except (ValueError, OSError, OverflowError):
         return None
 
@@ -84,7 +84,7 @@ def _dt_two_number_date(a, b, y, day_first, h=0, mi=0, s=0, base_conf=0.55):
 
 # (regex, builder, confidence). Tried in order; first successful build wins.
 # Higher-confidence / more-specific patterns come first.
-_PATTERNS: list[tuple[re.Pattern, "callable", float]] = [
+_PATTERNS: list[tuple[re.Pattern, callable, float]] = [
     # WhatsApp desktop: "... 2022-05-14 at 09.09.57.jpeg"
     (
         re.compile(

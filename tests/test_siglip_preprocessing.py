@@ -142,7 +142,7 @@ def test_pixel_values_are_in_the_trained_range():
     for image in _fixture_images():
         x = eb.SiglipBackend._pixels(image)
         assert x.shape == (3, 256, 256)
-        assert -1.0 <= float(x.min()) and float(x.max()) <= 1.0
+        assert float(x.min()) >= -1.0 and float(x.max()) <= 1.0
     # A mid-grey image maps to exactly 0 under (x/255 - 0.5) / 0.5.
     from PIL import Image
 
