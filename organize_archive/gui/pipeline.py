@@ -143,7 +143,10 @@ def _pending(
     # for what is on disk now (db.scan_settled). Without that the scheduler
     # relaunches the scan the instant it finishes, forever. The floor of 1 keeps
     # a deletion-only change (fewer files on disk than rows) visible as work.
-    if settled or on_disk is None:
+    # Kept as a block rather than the ternary ruff suggests: as one line it ends
+    # in `... or 1`, where `or` is a default and the `or` in the condition is a
+    # boolean, and the floor stops looking deliberate.
+    if settled or on_disk is None:  # noqa: SIM108
         new_files = 0
     else:
         new_files = max(0, on_disk - indexed) or 1

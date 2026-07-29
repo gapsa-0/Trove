@@ -494,7 +494,9 @@ class BorderAssigner:
         out: dict[int, int] = {}
         for qi, global_i in enumerate(border_idx):
             per_core: dict[int, list[float]] = {}
-            for hit, sim in zip(idx[qi], sims[qi]):
+            # strict: both come from the same FAISS search, so the row of hits
+            # and the row of similarities are the same width by construction.
+            for hit, sim in zip(idx[qi], sims[qi], strict=True):
                 if hit < 0:
                     continue
                 per_core.setdefault(int(owner[hit]), []).append(float(sim))

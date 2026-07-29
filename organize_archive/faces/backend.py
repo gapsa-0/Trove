@@ -443,7 +443,9 @@ class FaceBackend:
         if bboxes is None or len(bboxes) == 0:
             return report
         inv = 1.0 / scale if scale else 1.0
-        for box, kps in zip(bboxes, kpss):
+        # strict: the detector returns one keypoint set per box, so a length
+        # mismatch would silently pair keypoints with the wrong face.
+        for box, kps in zip(bboxes, kpss, strict=True):
             report.candidates += 1
             x1, y1, x2, y2 = (float(v) for v in box[:4])
             score = float(box[4])

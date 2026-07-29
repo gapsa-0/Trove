@@ -310,7 +310,10 @@ def extract(
 
         # Fix the FIQA calibration once enough norms exist, then tier the
         # backlog extracted before it (see faces/fiqa.py). A no-op thereafter.
-        if hasattr(be, "assessor"):
+        # Left nested on purpose: the outer test asks whether this backend does
+        # FIQA at all, the inner one whether calibration is still owed. Merging
+        # them into one condition reads as a single question when it is two.
+        if hasattr(be, "assessor"):  # noqa: SIM102
             if (
                 fiqa.load_calibration(conn, cfg.faces_fiqa_model) is None
                 and fiqa.bootstrap_calibration(conn, cfg) is not None

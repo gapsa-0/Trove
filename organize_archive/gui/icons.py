@@ -58,7 +58,9 @@ def _render(Image, ImageDraw, size: int):
     grad = Image.new("RGB", (1, px))
     for y in range(px):
         t = y / max(1, px - 1)
-        grad.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(_TOP, _BOTTOM)))
+        grad.putpixel(
+            (0, y), tuple(round(a + (b - a) * t) for a, b in zip(_TOP, _BOTTOM, strict=True))
+        )
     im = grad.resize((px, px)).convert("RGBA")
 
     mask = Image.new("L", (px, px), 0)
