@@ -67,7 +67,15 @@ target-version = "py313"
 # adaface_net.py is vendored verbatim from upstream AdaFace and carries exactly
 # one documented deviation; formatting or "fixing" it would make that claim
 # impossible to verify with a diff against upstream.
-extend-exclude = ["desktop/", "build/", ".venv/", "tools/build/adaface_net.py"]
+#
+# The leading slashes matter. These patterns are gitignore-style, so a bare
+# "build/" matches *any* directory named build at any depth -- which silently
+# swallowed all of tools/build/ and left four scripts unlinted and unformatted.
+extend-exclude = ["/desktop/", "/build/", "/.venv/", "tools/build/adaface_net.py"]
+# Honour the excludes even when a path is passed explicitly. Without this,
+# pre-commit -- which always names the changed files -- reformats the vendored
+# AdaFace net that the exclude above exists to protect.
+force-exclude = true
 
 [tool.ruff.lint]
 select = [
