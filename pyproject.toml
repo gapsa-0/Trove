@@ -83,7 +83,15 @@ select = [
 ignore = [
   "E501",     # line length: the formatter owns this; a long SQL string is not a bug
   "B008",     # function call in default arg — used deliberately in a few places
+  # `try: ... except X: pass` sites are not `contextlib.suppress` candidates: they
+  # are the silent-failure population that the logging work converts into handlers
+  # that actually record what went wrong. Suppress() would only re-hide them more
+  # tidily. Left as-is deliberately, not overlooked.
+  "SIM105",
 ]
+# `×` is the multiplication sign in dimension strings ("1920×1080"), not a typo'd
+# letter x. It is the only confusable this codebase uses on purpose.
+allowed-confusables = ["×"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*"  = ["B011"]          # bare assert is the point of a test
