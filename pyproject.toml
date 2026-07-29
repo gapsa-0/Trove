@@ -40,7 +40,7 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # transformers or torch — a 64-token tokenizer does not justify reversing the
 # torch exclusion in packaging/organize-archive.spec.
 semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "pre-commit>=3"]
 
 [project.scripts]
 oa = "organize_archive.cli:main"

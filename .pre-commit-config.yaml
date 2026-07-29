@@ -1,0 +1,40 @@
+# Checks that run before a commit is created, so broken code never enters history.
+# Install once per clone:  pre-commit install
+#
+# The ruff hook rev is pinned to the same version as the `ruff` pin in
+# pyproject.toml's dev extra. If they drift, the hook and a local `ruff format`
+# disagree about the same file and you get a commit you cannot make.
+
+# Vendored third-party code. Its value is that it can be diffed against upstream,
+# which trailing-whitespace and end-of-file-fixer would quietly destroy -- and the
+# .js here is minified library output that nothing should be rewriting at all.
+exclude: |
+  (?x)^(
+    organize_archive/gui/vendor/.*|
+    tools/build/adaface_net\.py
+  )$
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check    # lint  (plain `ruff` is a deprecated alias for this)
+        args: [--fix]
+      - id: ruff-format   # format
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Markdown uses two trailing spaces as a hard line break.
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        # gui/vendor/ already holds committed .wasm and translation models. Those
+        # are existing files, which the hook ignores; this only stops a *new*
+        # multi-MB blob arriving by accident.
+        args: [--maxkb=2048]
+      - id: check-merge-conflict
+      - id: mixed-line-ending
