@@ -11,7 +11,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from ..runtime import tool
+from ..runtime import no_window, tool
 
 _HEIF_REGISTERED = False
 
@@ -71,6 +71,7 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
              "-vf", f"scale={size}:-1:force_original_aspect_ratio=decrease",
              "-q:v", "4", str(tp)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20,
+            **no_window(),
         )
     except Exception:
         return False

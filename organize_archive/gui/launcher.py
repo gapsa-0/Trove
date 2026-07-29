@@ -13,6 +13,8 @@ import subprocess
 import sys
 import webbrowser
 
+from ..runtime import no_window
+
 # Names to try on PATH (Linux/macOS, and Windows where present).
 _NAMES = [
     "chromium", "chromium-browser", "google-chrome", "google-chrome-stable",
@@ -52,9 +54,13 @@ def open_app_window(url: str) -> bool:
     if not browser:
         return False
     try:
+        # A no-op for a GUI-subsystem browser, which never gets a console
+        # allocated anyway -- passed so the "every spawn suppresses a console"
+        # rule holds with no exceptions to remember (see tests/test_no_console_windows.py).
         subprocess.Popen(
             [browser, f"--app={url}", "--new-window"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            **no_window(),
         )
         return True
     except Exception:

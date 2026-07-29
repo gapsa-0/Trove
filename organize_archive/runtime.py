@@ -4,8 +4,26 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+
+def no_window() -> dict:
+    """subprocess kwargs that keep a console tool from flashing a window.
+
+    The Windows desktop build is a GUI-subsystem exe (see the ``console=``
+    argument in ``packaging/organize-archive.spec``), so it has no console of
+    its own. Windows then allocates a *fresh* console window for every
+    console-subsystem child — exiftool, ffmpeg — which pops up and vanishes.
+    Over a pipeline run that is tens of thousands of flashes, and it makes the
+    app look like something running commands behind the user's back.
+
+    Empty on every other platform, where a child just inherits stdio.
+    """
+    if sys.platform.startswith("win"):
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {}
 
 
 def tool(name: str) -> str | None:

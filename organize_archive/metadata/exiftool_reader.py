@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ..runtime import tool
+from ..runtime import no_window, tool
 
 # Only these tags are requested (order-insensitive). -n forces numeric output
 # (decimal GPS, numeric orientation, duration in seconds).
@@ -60,7 +60,8 @@ class ExifReader:
                 "-@", argfile,
             ]
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, errors="replace"
+                cmd, capture_output=True, text=True, errors="replace",
+                **no_window(),
             )
         finally:
             Path(argfile).unlink(missing_ok=True)
