@@ -14,10 +14,13 @@
     "build:backend": "npm run check:version && node scripts/build-backend.cjs",
     "package:win": "npm run build:backend && electron-builder --win nsis",
     "package:linux": "npm run build:backend && electron-builder --linux AppImage deb",
-    "smoke:package": "node scripts/smoke-test.cjs"
+    "smoke:package": "node scripts/smoke-test.cjs",
+    "lint": "eslint --config ../eslint.config.js src scripts"
   },
   "devDependencies": {
+    "@eslint/js": "^9",
     "electron": "37.2.6",
-    "electron-builder": "26.0.12"
+    "electron-builder": "26.0.12",
+    "eslint": "^9"
   }
 }

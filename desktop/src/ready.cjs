@@ -5,7 +5,7 @@ function validReady(line) {
   try {
     const record = JSON.parse(line.slice(6));
     return Number.isInteger(record.port) && record.port > 0 && record.port <= 65535 ? record : null;
-  } catch (_) { return null; }
+  } catch { return null; }
 }
 
 module.exports = { validReady };

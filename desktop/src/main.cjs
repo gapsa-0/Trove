@@ -28,7 +28,14 @@ function writeRotatingLog(name, lines) {
   const directory = app.getPath("logs");
   fs.mkdirSync(directory, { recursive: true });
   const current = path.join(directory, name);
-  try { if (fs.existsSync(current) && fs.statSync(current).size > 256 * 1024) fs.renameSync(current, `${current}.1`); } catch (_) {}
+  try {
+    if (fs.existsSync(current) && fs.statSync(current).size > 256 * 1024) {
+      fs.renameSync(current, `${current}.1`);
+    }
+  } catch {
+    // Best effort. A rotate that fails leaves the log growing, which is never a
+    // good enough reason to stop recording diagnostics.
+  }
   fs.appendFileSync(current, `${lines.join("\n")}\n`);
   return current;
 }
