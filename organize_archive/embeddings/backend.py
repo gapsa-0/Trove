@@ -56,8 +56,9 @@ TOKENIZER = "tokenizer.json"
 # than "main" so a repo update can never silently swap the vector space under an
 # already-indexed archive.
 _HF_REVISION = "d1114256522a37ffa257a0a58017348ab0058db2"
-_HF_BASE = ("https://huggingface.co/onnx-community/siglip2-base-patch16-256-ONNX"
-            f"/resolve/{_HF_REVISION}/")
+_HF_BASE = (
+    f"https://huggingface.co/onnx-community/siglip2-base-patch16-256-ONNX/resolve/{_HF_REVISION}/"
+)
 # Deliberately the only origin. A release-asset mirror was written here first,
 # for the CI-reproducibility reason packaging/models/manifest.json gives, but the
 # assets were never uploaded — so the fallback only ever turned a clear "Hugging
@@ -67,14 +68,20 @@ _HF_BASE = ("https://huggingface.co/onnx-community/siglip2-base-patch16-256-ONNX
 # name on disk -> (path within the HF repo, exact size, sha256)
 _FILES: dict[str, tuple[str, int, str]] = {
     VISION_MODEL: (
-        "onnx/vision_model.onnx", 371_992_072,
-        "f5cb16728a704703f05516ded628397e11dbca4de2eb5db04b0c0bcee988aa7a"),
+        "onnx/vision_model.onnx",
+        371_992_072,
+        "f5cb16728a704703f05516ded628397e11dbca4de2eb5db04b0c0bcee988aa7a",
+    ),
     TEXT_MODEL: (
-        "onnx/text_model_int8.onnx", 283_438_275,
-        "6f59b39d880c413042314b79302b74d0dd93b273caf8fbfdb1eb2df61a7fefd4"),
+        "onnx/text_model_int8.onnx",
+        283_438_275,
+        "6f59b39d880c413042314b79302b74d0dd93b273caf8fbfdb1eb2df61a7fefd4",
+    ),
     TOKENIZER: (
-        "tokenizer.json", 34_363_039,
-        "cb9140fae3ac5122c972d37adf83e1248471a38147ad76f8215c8872c6fd8322"),
+        "tokenizer.json",
+        34_363_039,
+        "cb9140fae3ac5122c972d37adf83e1248471a38147ad76f8215c8872c6fd8322",
+    ),
 }
 
 # What each half of the feature needs. Indexing wants only the vision tower;
@@ -97,6 +104,7 @@ def available() -> bool:
         import onnxruntime  # noqa: F401
         import tokenizers  # noqa: F401
         from PIL import Image  # noqa: F401
+
         return True
     except Exception:  # pragma: no cover - optional dep
         return False
@@ -108,8 +116,7 @@ def models_dir(cache_dir: str) -> Path:
 
 def _present(cache_dir: str, names) -> bool:
     d = models_dir(cache_dir)
-    return all((d / n).is_file() and (d / n).stat().st_size == _FILES[n][1]
-               for n in names)
+    return all((d / n).is_file() and (d / n).stat().st_size == _FILES[n][1] for n in names)
 
 
 def vision_ready(cache_dir: str) -> bool:
@@ -134,9 +141,12 @@ def download_bytes(cache_dir: str, names=None) -> int:
     a 372 MB download with no warning.
     """
     d = models_dir(cache_dir)
-    return sum(size for n, (_rel, size, _sha) in _FILES.items()
-               if (names is None or n in names)
-               and not ((d / n).is_file() and (d / n).stat().st_size == size))
+    return sum(
+        size
+        for n, (_rel, size, _sha) in _FILES.items()
+        if (names is None or n in names)
+        and not ((d / n).is_file() and (d / n).stat().st_size == size)
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -186,7 +196,7 @@ def ensure_models(cache_dir: str, names=None, log=None) -> Path:
     """
     d = models_dir(cache_dir)
     d.mkdir(parents=True, exist_ok=True)
-    for name in (names if names is not None else _FILES):
+    for name in names if names is not None else _FILES:
         target = d / name
         if target.is_file() and target.stat().st_size == _FILES[name][1]:
             continue
@@ -197,6 +207,7 @@ def ensure_models(cache_dir: str, names=None, log=None) -> Path:
 def _session(path: Path, threads: int):
     """One onnxruntime CPU session, with the thread cap the caller asked for."""
     import onnxruntime as ort
+
     so = ort.SessionOptions()
     so.intra_op_num_threads = threads
     return ort.InferenceSession(str(path), so, providers=["CPUExecutionProvider"])
@@ -256,7 +267,8 @@ class SiglipBackend:
         if not available():
             raise RuntimeError(
                 "semantic embedding backend unavailable; install the 'semantic' "
-                "extra (onnxruntime + tokenizers + Pillow + numpy).")
+                "extra (onnxruntime + tokenizers + Pillow + numpy)."
+            )
         self.cache_dir = cache_dir
         self.threads = default_threads() if threads is None else max(1, int(threads))
         self._log = log
@@ -304,6 +316,7 @@ class SiglipBackend:
             with self._lock:
                 if self._text is None:
                     from tokenizers import Tokenizer
+
                     d = ensure_models(self.cache_dir, _TEXT_FILES, log=self._log)
                     session = _session(d / TEXT_MODEL, self.threads)
                     self._text_in = session.get_inputs()[0].name
@@ -321,6 +334,7 @@ class SiglipBackend:
     def _pixels(image) -> "np.ndarray":
         """One PIL image -> ``(3, 256, 256)`` float32 in ``[-1, 1]``."""
         from PIL import Image
+
         if image.mode != "RGB":
             image = image.convert("RGB")
         if image.size != (IMAGE_SIZE, IMAGE_SIZE):
@@ -331,6 +345,7 @@ class SiglipBackend:
 
     def _open(self, item) -> "np.ndarray":
         from PIL import Image
+
         if isinstance(item, (str, Path)):
             with Image.open(item) as im:
                 # No exif_transpose here: callers hand over cached thumbnails
@@ -340,7 +355,7 @@ class SiglipBackend:
                 return self._pixels(im)
         if isinstance(item, np.ndarray):
             return self._pixels(Image.fromarray(item))
-        return self._pixels(item)          # already a PIL image
+        return self._pixels(item)  # already a PIL image
 
     def _tokenize(self, texts: list[str]) -> "np.ndarray":
         self.load_text()
@@ -351,8 +366,7 @@ class SiglipBackend:
     @staticmethod
     def _normalize(vectors: "np.ndarray") -> "np.ndarray":
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        return np.divide(vectors, norms, out=np.zeros_like(vectors),
-                         where=norms > 0)
+        return np.divide(vectors, norms, out=np.zeros_like(vectors), where=norms > 0)
 
     def embed_images(self, items) -> "np.ndarray":
         """Paths / PIL images / HWC uint8 arrays -> ``(N, 768)`` unit vectors.

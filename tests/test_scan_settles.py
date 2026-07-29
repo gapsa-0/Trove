@@ -35,7 +35,9 @@ def _catalog(tmp_path, rows: int):
         conn.execute(
             """INSERT INTO files(root_id, rel_path, size, mtime, media_type, sha256,
                                  first_seen, last_seen)
-               VALUES(1, ?, 1, 0, 'image', ?, 'now', 'now')""", (f"{n}.jpg", str(n)))
+               VALUES(1, ?, 1, 0, 'image', ?, 'now', 'now')""",
+            (f"{n}.jpg", str(n)),
+        )
     conn.commit()
     return conn
 
@@ -82,7 +84,7 @@ def test_a_change_on_disk_queues_another_scan(tmp_path, monkeypatch):
 def test_an_interrupted_scan_does_not_count_as_coverage(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     conn = _catalog(tmp_path, rows=10)
-    db.scan_run_start(conn, 1, ["/media"])     # cancelled: never finished
+    db.scan_run_start(conn, 1, ["/media"])  # cancelled: never finished
     conn.close()
 
     assert _scan_pending(jm, tmp_path, on_disk=10)["state"] == "queued"

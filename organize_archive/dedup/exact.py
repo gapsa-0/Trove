@@ -16,7 +16,7 @@ from ..db import database as db
 @dataclass
 class DedupStats:
     groups: int = 0
-    duplicate_files: int = 0      # copies hidden (beyond the canonical)
+    duplicate_files: int = 0  # copies hidden (beyond the canonical)
     reclaimable_bytes: int = 0
 
 
@@ -32,13 +32,19 @@ def perceptual_available() -> bool:
 
 def _pick_canonical(members):
     """Return the best representative, using a stable, documented ordering."""
-    return min(members, key=lambda m: (
-        -(m[1] or 0) * (m[2] or 0),  # highest pixel count
-        -(m[3] or 0),                # then least-compressed/largest file
-        not m[4], not m[5],           # then richer provenance
-        m[6] is None, m[6] or "",     # then earliest resolved date
-        m[7], m[0],                   # then stable path/id
-    ))[0]
+    return min(
+        members,
+        key=lambda m: (
+            -(m[1] or 0) * (m[2] or 0),  # highest pixel count
+            -(m[3] or 0),  # then least-compressed/largest file
+            not m[4],
+            not m[5],  # then richer provenance
+            m[6] is None,
+            m[6] or "",  # then earliest resolved date
+            m[7],
+            m[0],  # then stable path/id
+        ),
+    )[0]
 
 
 class _UnionFind:
@@ -63,6 +69,7 @@ class _BKTree:
     A pairwise comparison turns a 150k-photo archive into billions of checks.
     The tree narrows each lookup using Hamming distance's triangle inequality.
     """
+
     def __init__(self):
         self.root = None
 
@@ -90,12 +97,17 @@ class _BKTree:
             distance = self._distance(value, node[0])
             if distance <= radius:
                 found.append(node[1])
-            pending.extend(child for edge, child in node[2].items()
-                           if distance - radius <= edge <= distance + radius)
+            pending.extend(
+                child
+                for edge, child in node[2].items()
+                if distance - radius <= edge <= distance + radius
+            )
         return found
 
 
-def _perceptual_hashes(conn, cfg, progress=None, root_id: int | None = None) -> tuple[dict[int, int], int, int]:
+def _perceptual_hashes(
+    conn, cfg, progress=None, root_id: int | None = None
+) -> tuple[dict[int, int], int, int]:
     """Compute missing/stale pHashes and return ``file_id -> hash``.
 
     ImageHash/Pillow are optional so exact duplicate detection continues to work
@@ -105,8 +117,10 @@ def _perceptual_hashes(conn, cfg, progress=None, root_id: int | None = None) -> 
     try:
         from PIL import Image, ImageOps
         import imagehash
+
         try:
             import pillow_heif
+
             pillow_heif.register_heif_opener()
         except ImportError:
             pass
@@ -120,7 +134,10 @@ def _perceptual_hashes(conn, cfg, progress=None, root_id: int | None = None) -> 
            FROM files f JOIN roots r ON r.id=f.root_id
            LEFT JOIN perceptual_hashes p ON p.file_id=f.id AND p.algorithm='phash64'
            WHERE f.present=1 AND f.media_type='image' AND f.sha256 IS NOT NULL"""
-        + root_clause + " ORDER BY f.id", params).fetchall()
+        + root_clause
+        + " ORDER BY f.id",
+        params,
+    ).fetchall()
     if progress is not None:
         progress.total = len(rows)
     hashes, computed, errors = {}, 0, 0
@@ -187,7 +204,10 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
            LEFT JOIN dates d ON d.file_id=f.id
            LEFT JOIN media_meta mm ON mm.file_id=f.id
            WHERE f.present=1 AND f.sha256 IS NOT NULL"""
-        + root_clause + " ORDER BY f.id", root_params).fetchall()
+        + root_clause
+        + " ORDER BY f.id",
+        root_params,
+    ).fetchall()
     by_id = {r["id"]: r for r in rows}
     uf = _UnionFind(by_id)
     by_sha: dict[str, list[int]] = {}
@@ -224,9 +244,14 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     # connection hasn't committed) instead of publishing a window where every
     # reader sees zero duplicates -- the People/pets backlog inflating and the
     # Overview's duplicate-count tile dropping to zero for the whole run.
-    group_clause = "" if root_id is None else (
-        " WHERE id IN (SELECT DISTINCT m.group_id FROM dup_members m "
-        "JOIN files f ON f.id=m.file_id WHERE f.root_id=?)")
+    group_clause = (
+        ""
+        if root_id is None
+        else (
+            " WHERE id IN (SELECT DISTINCT m.group_id FROM dup_members m "
+            "JOIN files f ON f.id=m.file_id WHERE f.root_id=?)"
+        )
+    )
     group_params = () if root_id is None else (root_id,)
     old_groups = conn.execute("SELECT id FROM dup_groups" + group_clause, group_params).fetchall()
     if old_groups:
@@ -249,8 +274,19 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     done = 0
     for members in buckets.values():
         count = len(members)
-        packed = [(m["id"], m["width"], m["height"], m["size"], m["has_side"],
-                   m["has_date"], m["best_datetime"], m["rel_path"]) for m in members]
+        packed = [
+            (
+                m["id"],
+                m["width"],
+                m["height"],
+                m["size"],
+                m["has_side"],
+                m["has_date"],
+                m["best_datetime"],
+                m["rel_path"],
+            )
+            for m in members
+        ]
         canon = _pick_canonical(packed)
         canonical_size = by_id[canon]["size"]
         redundant = sum(m["size"] for m in members if m["id"] != canon)
@@ -259,7 +295,8 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
             """INSERT INTO dup_groups(method, canonical_file_id, member_count,
                size_each, redundant_bytes, created_at)
                VALUES(?,?,?,?,?,?)""",
-            (method, canon, count, canonical_size, redundant, now))
+            (method, canon, count, canonical_size, redundant, now),
+        )
         gid = cur.lastrowid
         for m in members:
             fid = m["id"]
@@ -274,12 +311,9 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
         if progress is not None and done % 100 == 0:
             progress.update(done, 0, f"{count}× {method}")
 
-    conn.executemany(
-        "INSERT INTO dup_members(group_id, file_id, role) VALUES(?,?,?)", member_rows)
-    conn.executemany(
-        "UPDATE files SET dup_group_id=?, hidden=0 WHERE id=?", canon_updates)
-    conn.executemany(
-        "UPDATE files SET dup_group_id=?, hidden=1 WHERE id=?", dup_updates)
+    conn.executemany("INSERT INTO dup_members(group_id, file_id, role) VALUES(?,?,?)", member_rows)
+    conn.executemany("UPDATE files SET dup_group_id=?, hidden=0 WHERE id=?", canon_updates)
+    conn.executemany("UPDATE files SET dup_group_id=?, hidden=1 WHERE id=?", dup_updates)
     conn.commit()
     if progress is not None:
         progress.update(done, 0, "")

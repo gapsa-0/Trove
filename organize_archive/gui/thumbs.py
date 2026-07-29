@@ -40,8 +40,9 @@ def _apply_rotation(im, rotate: int):
     off-by-one padding creeps into a quarter turn.
     """
     from PIL import Image
+
     transpose = {
-        90: Image.Transpose.ROTATE_270,     # PIL names turns counter-clockwise
+        90: Image.Transpose.ROTATE_270,  # PIL names turns counter-clockwise
         180: Image.Transpose.ROTATE_180,
         270: Image.Transpose.ROTATE_90,
     }.get(rotate)
@@ -57,6 +58,7 @@ def _try_pillow():
     if not _HEIF_REGISTERED:
         try:
             import pillow_heif
+
             pillow_heif.register_heif_opener()
         except Exception:
             pass
@@ -67,10 +69,24 @@ def _try_pillow():
 def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
     try:
         subprocess.run(
-            [tool("ffmpeg"), "-y", "-ss", offset, "-i", str(src), "-frames:v", "1",
-             "-vf", f"scale={size}:-1:force_original_aspect_ratio=decrease",
-             "-q:v", "4", str(tp)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20,
+            [
+                tool("ffmpeg"),
+                "-y",
+                "-ss",
+                offset,
+                "-i",
+                str(src),
+                "-frames:v",
+                "1",
+                "-vf",
+                f"scale={size}:-1:force_original_aspect_ratio=decrease",
+                "-q:v",
+                "4",
+                str(tp),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
             **no_window(),
         )
     except Exception:
@@ -97,13 +113,18 @@ SEMANTIC_FRAME_VER = 1
 
 def _semantic_frame_key(fid: int, sha256: str | None, index: int, rotate: int = 0) -> str:
     base = sha256 if sha256 else f"fid{fid}"
-    return (f"{base}_sf{index}_v{SEMANTIC_FRAME_VER}"
-            + (f"_r{rotate}" if rotate else ""))
+    return f"{base}_sf{index}_v{SEMANTIC_FRAME_VER}" + (f"_r{rotate}" if rotate else "")
 
 
-def video_frames_for(cache_dir: str, fid: int, src: Path, offsets: list[str],
-                     size: int = 1024, sha256: str | None = None,
-                     rotate: int = 0) -> list[Path]:
+def video_frames_for(
+    cache_dir: str,
+    fid: int,
+    src: Path,
+    offsets: list[str],
+    size: int = 1024,
+    sha256: str | None = None,
+    rotate: int = 0,
+) -> list[Path]:
     """Disk-cached frames at each of ``offsets``, reusing ``_video_frame``.
 
     An offset ffmpeg can't produce (past a very short clip's end) is skipped
@@ -114,8 +135,11 @@ def video_frames_for(cache_dir: str, fid: int, src: Path, offsets: list[str],
     """
     out = []
     for i, offset in enumerate(offsets):
-        tp = Path(cache_dir) / "semantic_frames" / \
-            f"{_semantic_frame_key(fid, sha256, i, rotate)}_{size}.jpg"
+        tp = (
+            Path(cache_dir)
+            / "semantic_frames"
+            / f"{_semantic_frame_key(fid, sha256, i, rotate)}_{size}.jpg"
+        )
         tp.parent.mkdir(parents=True, exist_ok=True)
         if tp.exists() or _video_frame(tp, src, size, offset):
             out.append(tp)
@@ -138,8 +162,9 @@ def _sanitize_offset(offset: str) -> str:
     return offset.replace(":", "-").replace(".", "_")
 
 
-def detect_frame_for(cache_dir: str, fid: int, src: Path, offset: str,
-                     size: int, sha256: str | None = None) -> Path | None:
+def detect_frame_for(
+    cache_dir: str, fid: int, src: Path, offset: str, size: int, sha256: str | None = None
+) -> Path | None:
     """Disk-cached keyframe extracted at ``offset``, for the fused detect stage.
 
     Re-derivable from ``offset`` alone (plus fid/sha/size), so a crop served
@@ -149,8 +174,11 @@ def detect_frame_for(cache_dir: str, fid: int, src: Path, offset: str,
     original.
     """
     base = sha256 if sha256 else f"fid{fid}"
-    tp = Path(cache_dir) / "detect_frames" / \
-        f"{base}_{_sanitize_offset(offset)}_v{DETECT_FRAME_VER}_{size}.jpg"
+    tp = (
+        Path(cache_dir)
+        / "detect_frames"
+        / f"{base}_{_sanitize_offset(offset)}_v{DETECT_FRAME_VER}_{size}.jpg"
+    )
     tp.parent.mkdir(parents=True, exist_ok=True)
     if tp.exists():
         return tp
@@ -161,18 +189,26 @@ def detect_frame_for(cache_dir: str, fid: int, src: Path, offset: str,
 FACE_THUMB_VER = 2
 
 
-def _face_key(fid: int, sha256: str | None, box, rotate: int = 0,
-             variant: str = "") -> str:
+def _face_key(fid: int, sha256: str | None, box, rotate: int = 0, variant: str = "") -> str:
     x, y, w, h = box
     base = sha256 if sha256 else f"fid{fid}"
-    return (f"{base}_{x}_{y}_{w}_{h}_fv{FACE_THUMB_VER}"
-            + (f"_r{rotate}" if rotate else "")
-            + (f"_{variant}" if variant else ""))
+    return (
+        f"{base}_{x}_{y}_{w}_{h}_fv{FACE_THUMB_VER}"
+        + (f"_r{rotate}" if rotate else "")
+        + (f"_{variant}" if variant else "")
+    )
 
 
-def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
-                   sha256: str | None = None, size: int = 200,
-                   rotate: int = 0, variant: str = "") -> Path | None:
+def face_thumb_for(
+    cache_dir: str,
+    face_id: int,
+    src: Path,
+    box,
+    sha256: str | None = None,
+    size: int = 200,
+    rotate: int = 0,
+    variant: str = "",
+) -> Path | None:
     """A padded square crop around one face box, disk-cached. Content-addressed
     (sha + box) so the same face in byte-identical duplicates shares one crop.
     Read-only over the original; returns None if Pillow is unavailable.
@@ -183,8 +219,9 @@ def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
     same (sha, box) key -- namely two different frames of one video that
     happen to produce identical boxes; callers pass the frame's offset string
     for video detections, empty for photos."""
-    tp = Path(cache_dir) / "faces" / \
-        f"{_face_key(face_id, sha256, box, rotate, variant)}_{size}.jpg"
+    tp = (
+        Path(cache_dir) / "faces" / f"{_face_key(face_id, sha256, box, rotate, variant)}_{size}.jpg"
+    )
     if tp.exists():
         return tp
     pil = _try_pillow()
@@ -216,10 +253,10 @@ def face_thumb_for(cache_dir: str, face_id: int, src: Path, box,
         return None
 
 
-def thumb_for(cache_dir: str, fid: int, src: Path, size: int = 320,
-              sha256: str | None = None, rotate: int = 0) -> Path | None:
-    tp = Path(cache_dir) / "thumbs" / \
-        f"{_cache_key(fid, sha256, rotate)}_{size}.jpg"
+def thumb_for(
+    cache_dir: str, fid: int, src: Path, size: int = 320, sha256: str | None = None, rotate: int = 0
+) -> Path | None:
+    tp = Path(cache_dir) / "thumbs" / f"{_cache_key(fid, sha256, rotate)}_{size}.jpg"
     if tp.exists():
         return tp
     if src.suffix.lower() in VIDEO_EXTS:
@@ -243,8 +280,9 @@ def thumb_for(cache_dir: str, fid: int, src: Path, size: int = 320,
 UPRIGHT_VER = 1
 
 
-def upright_for(cache_dir: str, fid: int, src: Path, rotate: int,
-                sha256: str | None = None) -> Path | None:
+def upright_for(
+    cache_dir: str, fid: int, src: Path, rotate: int, sha256: str | None = None
+) -> Path | None:
     """A full-size copy of a sideways-stored photo, turned upright.
 
     Only for the viewer, and only when ``rotate`` is non-zero — an untouched
@@ -253,8 +291,7 @@ def upright_for(cache_dir: str, fid: int, src: Path, rotate: int,
     """
     if not rotate:
         return None
-    tp = Path(cache_dir) / "upright" / \
-        f"{_cache_key(fid, sha256, rotate)}_u{UPRIGHT_VER}.jpg"
+    tp = Path(cache_dir) / "upright" / f"{_cache_key(fid, sha256, rotate)}_u{UPRIGHT_VER}.jpg"
     if tp.exists():
         return tp
     pil = _try_pillow()

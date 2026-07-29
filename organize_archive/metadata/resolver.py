@@ -53,8 +53,9 @@ def exif_datetime(tags: dict) -> tuple[datetime, float] | None:
     return None
 
 
-def resolve(candidates: dict[str, tuple[datetime, float]],
-            priority: list[str]) -> tuple[datetime, str, float] | None:
+def resolve(
+    candidates: dict[str, tuple[datetime, float]], priority: list[str]
+) -> tuple[datetime, str, float] | None:
     """Pick the first source in `priority` that produced a candidate."""
     for source in priority:
         cand = candidates.get(source)

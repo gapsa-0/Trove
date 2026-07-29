@@ -41,6 +41,7 @@ def _fmt_bytes(n: int) -> str:
 
 # -- commands ---------------------------------------------------------------
 
+
 def cmd_init(args, cfg: Config) -> int:
     cfg.ensure_dirs()
     conn = db.connect(cfg.db_path)
@@ -57,12 +58,13 @@ def cmd_init(args, cfg: Config) -> int:
     if cfg.roots:
         print(f"Configured roots:       {', '.join(cfg.roots)}")
     else:
-        print("No archive folders configured. Add one with: "
-              "oa config --add-root PATH")
+        print("No archive folders configured. Add one with: oa config --add-root PATH")
     missing = _preflight()
     if missing:
-        print(f"\nNote: optional tools not found: {', '.join(missing)} "
-              f"(needed for metadata/video in later phases).")
+        print(
+            f"\nNote: optional tools not found: {', '.join(missing)} "
+            f"(needed for metadata/video in later phases)."
+        )
     return 0
 
 
@@ -71,8 +73,7 @@ def cmd_scan(args, cfg: Config) -> int:
         print("No database yet. Run:  oa init")
         return 1
     if not (args.root or cfg.roots):
-        print("No archive folders configured. Add one with: "
-              "oa config --add-root PATH")
+        print("No archive folders configured. Add one with: oa config --add-root PATH")
         return 1
     cfg.ensure_dirs()
     conn = db.connect(cfg.db_path)
@@ -91,6 +92,7 @@ def cmd_scan(args, cfg: Config) -> int:
     progress = None
     if not args.no_progress:
         from pathlib import Path
+
         print("Counting files…", flush=True)
         total = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
         print(f"  {total} media files to check.")
@@ -103,8 +105,13 @@ def cmd_scan(args, cfg: Config) -> int:
             print(f"Scanning: {root}")
             try:
                 stats = walker.scan_root(
-                    conn, cfg, root, run_started, progress=progress,
-                    base_done=totals.seen, base_bytes=totals.bytes_hashed,
+                    conn,
+                    cfg,
+                    root,
+                    run_started,
+                    progress=progress,
+                    base_done=totals.seen,
+                    base_bytes=totals.bytes_hashed,
                 )
             except FileNotFoundError as e:
                 print(f"  ! {e}", file=sys.stderr)
@@ -126,15 +133,16 @@ def cmd_scan(args, cfg: Config) -> int:
     conn.execute(
         """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
            files_updated=?, bytes_hashed=? WHERE id=?""",
-        (db.now_iso(), totals.seen, totals.new, totals.updated,
-         totals.bytes_hashed, run_id),
+        (db.now_iso(), totals.seen, totals.new, totals.updated, totals.bytes_hashed, run_id),
     )
     conn.commit()
     conn.close()
 
     if interrupted:
-        print("\n\nInterrupted; progress saved. Re-run 'oa scan' to resume "
-              "(already-hashed files are skipped).")
+        print(
+            "\n\nInterrupted; progress saved. Re-run 'oa scan' to resume "
+            "(already-hashed files are skipped)."
+        )
     print("\nScan complete:" if not interrupted else "\nProgress so far:")
     print(f"  media files seen : {totals.seen}")
     print(f"  new              : {totals.new}")
@@ -159,17 +167,20 @@ def cmd_enrich(args, cfg: Config) -> int:
         return 1
 
     if not exif_available():
-        print("Note: exiftool not found; resolving dates from Takeout JSON, "
-              "filenames and file times only (no EXIF).")
+        print(
+            "Note: exiftool not found; resolving dates from Takeout JSON, "
+            "filenames and file times only (no EXIF)."
+        )
     if cfg.timezone is None:
-        print("Note: no timezone set; Takeout (UTC) dates may shift evening "
-              "photos by a day. Set one with:  oa config --set-timezone <IANA>")
+        print(
+            "Note: no timezone set; Takeout (UTC) dates may shift evening "
+            "photos by a day. Set one with:  oa config --set-timezone <IANA>"
+        )
 
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
 
-    progress = None if args.no_progress else ScanProgress(
-        None, show_bytes=False, label="enriching")
+    progress = None if args.no_progress else ScanProgress(None, show_bytes=False, label="enriching")
     stats = enrich_mod.enrich(conn, cfg, progress=progress)
     if progress is not None:
         progress.close()
@@ -189,13 +200,13 @@ def cmd_dedup(args, cfg: Config) -> int:
     from pathlib import Path
     from .dedup import exact
     from .scan.progress import ScanProgress
+
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan")
         return 1
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
-    progress = None if args.no_progress else ScanProgress(
-        None, show_bytes=False, label="grouping")
+    progress = None if args.no_progress else ScanProgress(None, show_bytes=False, label="grouping")
     # Keep archive boundaries intact even when several roots share one catalog.
     # A separate run per root also prevents a copy in one archive from hiding a
     # file in another archive.
@@ -214,14 +225,17 @@ def cmd_dedup(args, cfg: Config) -> int:
     print(f"  redundant copies   : {stats.duplicate_files:,} (hidden, not deleted)")
     print(f"  reclaimable space  : {_fmt_bytes(stats.reclaimable_bytes)}")
     if not exact.perceptual_available():
-        print("  note: visual matching needs the optional media dependencies "
-              "(install with: pip install '.[media]')")
+        print(
+            "  note: visual matching needs the optional media dependencies "
+            "(install with: pip install '.[media]')"
+        )
     return 0
 
 
 def cmd_faces(args, cfg: Config) -> int:
     from pathlib import Path
     from .faces import backend, extract as fx, cluster as fc
+
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
         return 1
@@ -230,19 +244,24 @@ def cmd_faces(args, cfg: Config) -> int:
 
     if getattr(args, "migrate_adaface", False):
         from .faces import migrate_adaface
-        st = migrate_adaface.snapshot_and_wipe(
-            conn, cfg, db_path=cfg.db_path, log=print)
+
+        st = migrate_adaface.snapshot_and_wipe(conn, cfg, db_path=cfg.db_path, log=print)
         conn.close()
         print("\nAdaFace migration staged:")
         print(f"  backup             : {st.backup_path}")
-        print(f"  identities kept    : {st.faces_snapshotted:,} faces, "
-              f"{st.links_snapshotted:,} links, {st.pets_snapshotted:,} pets")
-        print("\nNow re-run `oa faces` (or the GUI pipeline) to re-extract with "
-              "AdaFace, then `oa faces --recluster` to restore names and cluster.")
+        print(
+            f"  identities kept    : {st.faces_snapshotted:,} faces, "
+            f"{st.links_snapshotted:,} links, {st.pets_snapshotted:,} pets"
+        )
+        print(
+            "\nNow re-run `oa faces` (or the GUI pipeline) to re-extract with "
+            "AdaFace, then `oa faces --recluster` to restore names and cluster."
+        )
         return 0
 
     if getattr(args, "recalibrate_fiqa", False):
         from .faces import fiqa
+
         counts = fiqa.recalibrate(conn, cfg, log=print)
         conn.close()
         print("\nRe-tiered every face from its stored feature norm:")
@@ -277,15 +296,18 @@ def cmd_faces(args, cfg: Config) -> int:
 
     if not backend.available():
         conn.close()
-        print("Face detection needs OpenCV's DNN face APIs. Install a modern "
-              "opencv-python (the 'faces' extra) and retry.")
+        print(
+            "Face detection needs OpenCV's DNN face APIs. Install a modern "
+            "opencv-python (the 'faces' extra) and retry."
+        )
         return 1
 
     if args.calibrate is not None:
         limit = max(1, args.calibrate)
         print(f"Dry-running face quality gates on up to {limit} pending image(s) …")
-        progress = None if args.no_progress else ScanProgress(
-            None, show_bytes=False, label="calibrating")
+        progress = (
+            None if args.no_progress else ScanProgress(None, show_bytes=False, label="calibrating")
+        )
         result = fx.calibrate_quality(conn, cfg, limit=limit, progress=progress)
         if progress is not None:
             progress.close()
@@ -302,13 +324,13 @@ def cmd_faces(args, cfg: Config) -> int:
 
     if not args.recluster:
         if not backend.models_ready(cfg.cache_dir):
-            print("Fetching face models (one-time, ~38 MB) into "
-                  f"{cfg.cache_dir}/models …")
+            print(f"Fetching face models (one-time, ~38 MB) into {cfg.cache_dir}/models …")
         # Same self-healing the GUI does when it opens an archive: if the stored
         # vectors came from a different embedder, stage the migration here so the
         # detection below refills the archive from zero. Explicit
         # --migrate-adaface stays available for staging it without detecting.
         from .faces import migrate_adaface
+
         migrate_adaface.run_if_needed(conn, cfg, db_path=cfg.db_path, log=print)
         pending = fx.pending_count(conn)
         if pending == 0:
@@ -316,17 +338,19 @@ def cmd_faces(args, cfg: Config) -> int:
         else:
             cap = f" (limit {args.limit})" if args.limit else ""
             print(f"Detecting faces in {pending} image(s){cap} …")
-            progress = None if args.no_progress else ScanProgress(
-                None, show_bytes=False, label="faces")
+            progress = (
+                None if args.no_progress else ScanProgress(None, show_bytes=False, label="faces")
+            )
             es = fx.extract(conn, cfg, progress=progress, limit=args.limit)
             if progress is not None:
                 progress.close()
             print(f"\n  images scanned    : {es.processed}")
             print(f"  faces detected    : {es.faces_found}")
             print(f"  photos with faces : {es.images_with_faces}")
-            rejected = sum(getattr(es, f"rejected_{reason}")
-                           for reason in ("score", "size", "focus", "exposure",
-                                          "clipped", "nonhuman"))
+            rejected = sum(
+                getattr(es, f"rejected_{reason}")
+                for reason in ("score", "size", "focus", "exposure", "clipped", "nonhuman")
+            )
             if rejected:
                 print(f"  quality rejections: {rejected}")
             if es.errors:
@@ -338,13 +362,15 @@ def cmd_faces(args, cfg: Config) -> int:
     # follows it has produced the new faces to reattach the old identities to.
     # Idempotent, so running it on every clustering pass is harmless.
     from .faces import migrate_adaface
+
     if migrate_adaface.pending(conn):
         print("\nRestoring names, pins and links onto the re-extracted faces …")
         migrate_adaface.reattach(conn, cfg, log=print)
 
     print("\nClustering faces into people …")
-    progress = None if args.no_progress else ScanProgress(
-        None, show_bytes=False, label="clustering")
+    progress = (
+        None if args.no_progress else ScanProgress(None, show_bytes=False, label="clustering")
+    )
     cs = fc.cluster_faces(conn, cfg, progress=progress)
     if progress is not None:
         progress.close()
@@ -362,12 +388,12 @@ def cmd_faces(args, cfg: Config) -> int:
 
 def cmd_pets(args, cfg: Config) -> int:
     from .pets import backend, extract as px, cluster as pc
+
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa dedup")
         return 1
     if not backend.available():
-        print("Pet detection needs OpenCV DNN and NumPy. Install the 'faces' "
-              "extra and retry.")
+        print("Pet detection needs OpenCV DNN and NumPy. Install the 'faces' extra and retry.")
         return 1
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
@@ -376,8 +402,9 @@ def cmd_pets(args, cfg: Config) -> int:
         if pending:
             if not backend.models_ready(cfg.cache_dir):
                 print("Fetching the local pet detector once into the model cache …")
-            progress = None if args.no_progress else ScanProgress(
-                None, show_bytes=False, label="pets")
+            progress = (
+                None if args.no_progress else ScanProgress(None, show_bytes=False, label="pets")
+            )
             stats = px.extract(conn, cfg, progress=progress, limit=args.limit)
             if progress is not None:
                 progress.close()
@@ -400,6 +427,7 @@ def cmd_pets(args, cfg: Config) -> int:
 
 def cmd_dates(args, cfg: Config) -> int:
     from pathlib import Path
+
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan")
         return 1
@@ -458,6 +486,7 @@ def cmd_gui(args, cfg: Config) -> int:
 
 def cmd_status(args, cfg: Config) -> int:
     from pathlib import Path
+
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init")
         return 1
@@ -501,6 +530,7 @@ def cmd_status(args, cfg: Config) -> int:
 def cmd_config(args, cfg: Config) -> int:
     if args.show:
         from dataclasses import asdict
+
         print(json.dumps(asdict(cfg), indent=2))
     if args.add_root:
         if args.add_root not in cfg.roots:
@@ -512,15 +542,19 @@ def cmd_config(args, cfg: Config) -> int:
     if args.set_timezone:
         try:
             from zoneinfo import ZoneInfo
+
             ZoneInfo(args.set_timezone)
         except Exception:
-            print(f"Unknown timezone: {args.set_timezone!r} "
-                  "(use an IANA name like America/Argentina/Buenos_Aires)")
+            print(
+                f"Unknown timezone: {args.set_timezone!r} "
+                "(use an IANA name like America/Argentina/Buenos_Aires)"
+            )
             return 1
         cfg.timezone = args.set_timezone
         cfg.save()
-        print(f"Timezone set to {args.set_timezone}. Re-run 'oa enrich' to apply "
-              "it to Takeout dates.")
+        print(
+            f"Timezone set to {args.set_timezone}. Re-run 'oa enrich' to apply it to Takeout dates."
+        )
     return 0
 
 
@@ -533,25 +567,26 @@ def cmd_migrate_data(args, cfg: Config) -> int:
     source = Path(args.from_path).expanduser() if args.from_path else _legacy_data_dir()
     if not source.exists() or not source.is_dir():
         if args.from_path:
-            print(f"Migration source does not exist or is not a directory: {source}",
-                  file=sys.stderr)
+            print(
+                f"Migration source does not exist or is not a directory: {source}", file=sys.stderr
+            )
         else:
-            print("No legacy project-local data directory was found. "
-                  "Specify one with: oa migrate-data --from PATH", file=sys.stderr)
+            print(
+                "No legacy project-local data directory was found. "
+                "Specify one with: oa migrate-data --from PATH",
+                file=sys.stderr,
+            )
         return 1
 
     artefacts = (source / "config.json", source / "archive.db", source / "cache")
-    if not any(path.is_file() if path.name != "cache" else path.is_dir()
-               for path in artefacts):
-        print("Migration source contains none of: config.json, archive.db, cache/",
-              file=sys.stderr)
+    if not any(path.is_file() if path.name != "cache" else path.is_dir() for path in artefacts):
+        print("Migration source contains none of: config.json, archive.db, cache/", file=sys.stderr)
         return 1
 
     target = app_data_dir()
     target_artefacts = (target / "config.json", target / "archive.db", target / "cache")
     if any(path.exists() for path in target_artefacts):
-        print(f"Migration target already contains application data: {target}",
-              file=sys.stderr)
+        print(f"Migration target already contains application data: {target}", file=sys.stderr)
         print("Refusing to merge existing data automatically.", file=sys.stderr)
         return 1
 
@@ -573,9 +608,12 @@ def cmd_migrate_data(args, cfg: Config) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="oa", description=__doc__)
     p.add_argument("--version", action="version", version=f"organize_archive {__version__}")
-    p.add_argument("--db", metavar="PATH",
-                   help="Use this database file instead of the configured default "
-                        "(useful for isolated testing while a scan runs).")
+    p.add_argument(
+        "--db",
+        metavar="PATH",
+        help="Use this database file instead of the configured default "
+        "(useful for isolated testing while a scan runs).",
+    )
     sub = p.add_subparsers(dest="command", required=True)
 
     sp = sub.add_parser("init", help="Create the database and register roots")
@@ -583,44 +621,70 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("scan", help="Walk roots and index/hash media files (resumable)")
     sp.add_argument("--root", action="append", help="Scan this root only (repeatable)")
-    sp.add_argument("--no-progress", action="store_true",
-                    help="Disable the progress bar and pre-count")
+    sp.add_argument(
+        "--no-progress", action="store_true", help="Disable the progress bar and pre-count"
+    )
     sp.set_defaults(func=cmd_scan)
 
     sp = sub.add_parser("enrich", help="Resolve dates, GPS and metadata (resumable)")
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_enrich)
 
-    sp = sub.add_parser("dedup", help="Group exact duplicates and visually identical image variants")
+    sp = sub.add_parser(
+        "dedup", help="Group exact duplicates and visually identical image variants"
+    )
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_dedup)
 
     sp = sub.add_parser("faces", help="Detect faces (local) and cluster them into people")
-    sp.add_argument("--limit", type=int, default=None,
-                    help="Only scan this many pending images this run (resumable)")
-    sp.add_argument("--recluster", action="store_true",
-                    help="Skip detection; just re-cluster existing faces into people")
-    sp.add_argument("--quality-report", action="store_true",
-                    help="Show persisted face quality/rejection diagnostics and exit")
-    sp.add_argument("--calibrate", type=int, nargs="?", const=100, metavar="N",
-                    help="Dry-run current quality gates on N pending images (default 100)")
-    sp.add_argument("--recalibrate-fiqa", action="store_true",
-                    help="Recompute the FIQA calibration from all stored feature "
-                         "norms and re-tier every face (no re-embedding). Run "
-                         "after changing faces_fiqa_* thresholds, then --recluster")
-    sp.add_argument("--migrate-adaface", action="store_true",
-                    help="Back up the database, preserve names/pins/links, and "
-                         "clear the old embeddings so the next run re-extracts "
-                         "with AdaFace (required once after the embedder change)")
+    sp.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Only scan this many pending images this run (resumable)",
+    )
+    sp.add_argument(
+        "--recluster",
+        action="store_true",
+        help="Skip detection; just re-cluster existing faces into people",
+    )
+    sp.add_argument(
+        "--quality-report",
+        action="store_true",
+        help="Show persisted face quality/rejection diagnostics and exit",
+    )
+    sp.add_argument(
+        "--calibrate",
+        type=int,
+        nargs="?",
+        const=100,
+        metavar="N",
+        help="Dry-run current quality gates on N pending images (default 100)",
+    )
+    sp.add_argument(
+        "--recalibrate-fiqa",
+        action="store_true",
+        help="Recompute the FIQA calibration from all stored feature "
+        "norms and re-tier every face (no re-embedding). Run "
+        "after changing faces_fiqa_* thresholds, then --recluster",
+    )
+    sp.add_argument(
+        "--migrate-adaface",
+        action="store_true",
+        help="Back up the database, preserve names/pins/links, and "
+        "clear the old embeddings so the next run re-extracts "
+        "with AdaFace (required once after the embedder change)",
+    )
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_faces)
 
-    sp = sub.add_parser(
-        "pets", help="Detect animals locally and group likely pet identities")
-    sp.add_argument("--limit", type=int, default=None,
-                    help="Only scan this many pending images this run")
-    sp.add_argument("--recluster", action="store_true",
-                    help="Skip detection and rebuild pet identity groups")
+    sp = sub.add_parser("pets", help="Detect animals locally and group likely pet identities")
+    sp.add_argument(
+        "--limit", type=int, default=None, help="Only scan this many pending images this run"
+    )
+    sp.add_argument(
+        "--recluster", action="store_true", help="Skip detection and rebuild pet identity groups"
+    )
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_pets)
 
@@ -629,8 +693,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("gui", help="Launch the local web UI (standalone window)")
     sp.add_argument("--port", type=int, default=8756, help="Port (default 8756)")
-    sp.add_argument("--tab", action="store_true",
-                    help="Open a normal browser tab instead of an app window")
+    sp.add_argument(
+        "--tab", action="store_true", help="Open a normal browser tab instead of an app window"
+    )
     sp.add_argument("--no-open", action="store_true", help="Don't open anything")
     sp.set_defaults(func=cmd_gui)
 
@@ -640,15 +705,22 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("config", help="Show or modify configuration")
     sp.add_argument("--show", action="store_true", help="Print current config")
     sp.add_argument("--add-root", metavar="PATH", help="Add a source root")
-    sp.add_argument("--set-timezone", metavar="IANA",
-                    help="Set timezone for Takeout date conversion "
-                         "(e.g. America/Argentina/Buenos_Aires)")
+    sp.add_argument(
+        "--set-timezone",
+        metavar="IANA",
+        help="Set timezone for Takeout date conversion (e.g. America/Argentina/Buenos_Aires)",
+    )
     sp.set_defaults(func=cmd_config)
 
-    sp = sub.add_parser("migrate-data",
-                        help="Copy legacy project-local data into user application data")
-    sp.add_argument("--from", dest="from_path", metavar="PATH",
-                    help="Legacy data directory (defaults to this project's data/)")
+    sp = sub.add_parser(
+        "migrate-data", help="Copy legacy project-local data into user application data"
+    )
+    sp.add_argument(
+        "--from",
+        dest="from_path",
+        metavar="PATH",
+        help="Legacy data directory (defaults to this project's data/)",
+    )
     sp.set_defaults(func=cmd_migrate_data)
 
     return p

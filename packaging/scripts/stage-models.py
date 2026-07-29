@@ -18,6 +18,7 @@ Sources, in the order tried:
 Every source is SHA-256 verified against the manifest before it is staged, so all
 three produce byte-identical output.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,7 +58,9 @@ def models() -> list[dict]:
         relative = Path(item["file"])
         if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"unsafe model path: {item['file']}")
-        if len(item["sha256"]) != 64 or any(c not in "0123456789abcdefABCDEF" for c in item["sha256"]):
+        if len(item["sha256"]) != 64 or any(
+            c not in "0123456789abcdefABCDEF" for c in item["sha256"]
+        ):
             raise ValueError(f"invalid SHA-256 for model {item['name']}")
         if not isinstance(item.get("size"), int) or item["size"] <= 0:
             raise ValueError(f"invalid size for model {item['name']}")
@@ -82,6 +85,7 @@ def cache_models_dir() -> Path | None:
     try:
         sys.path.insert(0, str(ROOT))
         from organize_archive.config import Config  # noqa: PLC0415
+
         return Path(Config().cache_dir) / "models"
     except Exception:
         return None
@@ -103,7 +107,8 @@ def fetch(item: dict, destination: Path) -> str:
             if actual != item["sha256"].lower():
                 raise ValueError(
                     f"{item['name']}: {candidate} does not match the manifest "
-                    f"(got {actual}). Re-export it or fix the manifest.")
+                    f"(got {actual}). Re-export it or fix the manifest."
+                )
             shutil.copy2(candidate, destination)
             return str(candidate)
     url = item.get("url")
@@ -120,7 +125,8 @@ def fetch(item: dict, destination: Path) -> str:
         f"  Fix by either: publishing the file as a release asset and recording its\n"
         f"  https URL in the manifest (needed for CI builds), or building from a\n"
         f"  machine that has it and passing --from <cache/models dir>.\n"
-        f"  Regenerate it with: python3 {item['source'].split(' —')[0]}")
+        f"  Regenerate it with: python3 {item['source'].split(' —')[0]}"
+    )
 
 
 def stage() -> int:
@@ -141,14 +147,20 @@ def stage() -> int:
             except (OSError, ValueError, urllib.error.URLError) as error:
                 print(error, file=sys.stderr)
                 return 1
-            staged_info.append({
-                "name": item["name"], "file": item["file"],
-                "sha256": item["sha256"].lower(), "license": item["license"],
-                "source": item["source"], "staged_from": origin,
-            })
+            staged_info.append(
+                {
+                    "name": item["name"],
+                    "file": item["file"],
+                    "sha256": item["sha256"].lower(),
+                    "license": item["license"],
+                    "source": item["source"],
+                    "staged_from": origin,
+                }
+            )
             print(f"staged {item['name']} from {origin}")
         (tmp / "models-build-info.json").write_text(
-            json.dumps({"models": staged_info}, indent=2) + "\n", encoding="utf-8")
+            json.dumps({"models": staged_info}, indent=2) + "\n", encoding="utf-8"
+        )
         if STAGE.exists():
             shutil.rmtree(STAGE)
         os.replace(tmp, STAGE)

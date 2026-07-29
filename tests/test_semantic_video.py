@@ -35,7 +35,8 @@ def _archive_db(tmp_path, sha256="abc", media_type="video"):
            (id,root_id,rel_path,size,mtime,media_type,sha256,present,hidden,
             first_seen,last_seen)
            VALUES(1,1,'clip.mp4',10,0,?,?,1,0,'2026-01-01','2026-01-01')""",
-        (media_type, sha256))
+        (media_type, sha256),
+    )
     conn.commit()
     conn.close()
     return db_path
@@ -44,6 +45,7 @@ def _archive_db(tmp_path, sha256="abc", media_type="video"):
 # ---------------------------------------------------------------------------
 # media_part(): sampled frames, as file paths
 # ---------------------------------------------------------------------------
+
 
 def test_video_media_part_returns_sampled_frame_paths(tmp_path, monkeypatch):
     frames = []
@@ -61,8 +63,14 @@ def test_video_media_part_returns_sampled_frame_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(thumbs, "video_frames_for", fake_frames)
 
     part, kind, reason = semantic.media_part(
-        Config(), tmp_path / "clip.mp4", "mp4", "video", str(tmp_path / "cache"),
-        rotate=0, duration_s=12.0)
+        Config(),
+        tmp_path / "clip.mp4",
+        "mp4",
+        "video",
+        str(tmp_path / "cache"),
+        rotate=0,
+        duration_s=12.0,
+    )
 
     assert reason is None
     assert kind == "video_frames"
@@ -77,11 +85,12 @@ def test_image_media_part_returns_one_cached_thumbnail(tmp_path, monkeypatch):
     thumb = tmp_path / "thumb.jpg"
     thumb.write_bytes(b"jpeg")
     monkeypatch.setattr(
-        thumbs, "thumb_for",
-        lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: thumb)
+        thumbs, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: thumb
+    )
 
     part, kind, reason = semantic.media_part(
-        Config(), tmp_path / "photo.jpg", "jpg", "image", str(tmp_path / "cache"))
+        Config(), tmp_path / "photo.jpg", "jpg", "image", str(tmp_path / "cache")
+    )
 
     assert (part, kind, reason) == ([thumb], "thumbnail", None)
 
@@ -90,12 +99,20 @@ def test_no_extractable_frames_is_a_clean_permanent_skip(tmp_path, monkeypatch):
     """No ffmpeg (or a container it can't read) must land as a permanent skip,
     same family as "unsupported format" -- never as a retryable error."""
     monkeypatch.setattr(
-        thumbs, "video_frames_for",
-        lambda cache_dir, fid, src, offsets, size=1024, sha256=None, rotate=0: [])
+        thumbs,
+        "video_frames_for",
+        lambda cache_dir, fid, src, offsets, size=1024, sha256=None, rotate=0: [],
+    )
 
     part, kind, reason = semantic.media_part(
-        Config(), tmp_path / "clip.mp4", "mp4", "video", str(tmp_path / "cache"),
-        rotate=0, duration_s=None)
+        Config(),
+        tmp_path / "clip.mp4",
+        "mp4",
+        "video",
+        str(tmp_path / "cache"),
+        rotate=0,
+        duration_s=None,
+    )
 
     assert part is None and kind is None
     assert reason is not None
@@ -105,11 +122,12 @@ def test_no_extractable_frames_is_a_clean_permanent_skip(tmp_path, monkeypatch):
 def test_undecodable_image_is_a_clean_permanent_skip(tmp_path, monkeypatch):
     """The thumbnailer is the only decoder, so what it refuses cannot be indexed."""
     monkeypatch.setattr(
-        thumbs, "thumb_for",
-        lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: None)
+        thumbs, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: None
+    )
 
     part, kind, reason = semantic.media_part(
-        Config(), tmp_path / "photo.xyz", "xyz", "image", str(tmp_path / "cache"))
+        Config(), tmp_path / "photo.xyz", "xyz", "image", str(tmp_path / "cache")
+    )
 
     assert part is None
     assert semantic._is_permanent_skip(reason)
@@ -118,6 +136,7 @@ def test_undecodable_image_is_a_clean_permanent_skip(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Frame averaging
 # ---------------------------------------------------------------------------
+
 
 class _FakeVisionBackend(eb.SiglipBackend):
     """Only the model call is faked; normalisation and averaging stay real."""
@@ -131,12 +150,11 @@ class _FakeVisionBackend(eb.SiglipBackend):
         self.calls += 1
         if not items:
             return np.zeros((0, 3), dtype=np.float32)
-        return self._normalize(np.stack(self._vectors[:len(items)]))
+        return self._normalize(np.stack(self._vectors[: len(items)]))
 
 
 def test_video_vector_is_the_renormalised_mean_of_its_frames():
-    backend = _FakeVisionBackend([
-        [3.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 5.0]])
+    backend = _FakeVisionBackend([[3.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 5.0]])
 
     vector = backend.embed_frames_mean(["a", "b", "c"])
 
@@ -162,18 +180,23 @@ def test_no_frames_at_all_yields_no_vector():
 # save_outcome(): the skip/error split
 # ---------------------------------------------------------------------------
 
+
 def test_an_undecodable_source_is_recorded_as_skipped(tmp_path):
     db_path = _archive_db(tmp_path)
     conn = db.connect(db_path)
     row = {"id": 1, "sha256": "abc"}
 
     semantic.save_outcome(
-        conn, Config(), row, None, "video_frames",
-        "unsupported video: could not extract any frames (ffmpeg missing or unreadable video)")
+        conn,
+        Config(),
+        row,
+        None,
+        "video_frames",
+        "unsupported video: could not extract any frames (ffmpeg missing or unreadable video)",
+    )
     conn.commit()
 
-    status = conn.execute(
-        "SELECT status FROM semantic_embeddings WHERE file_id=1").fetchone()[0]
+    status = conn.execute("SELECT status FROM semantic_embeddings WHERE file_id=1").fetchone()[0]
     assert status == "skipped"
 
 
@@ -184,18 +207,19 @@ def test_an_ordinary_failure_still_records_as_error(tmp_path):
     conn = db.connect(db_path)
     row = {"id": 1, "sha256": "abc"}
 
-    semantic.save_outcome(conn, Config(), row, None, "video_frames",
-                          "OSError: cannot identify image file")
+    semantic.save_outcome(
+        conn, Config(), row, None, "video_frames", "OSError: cannot identify image file"
+    )
     conn.commit()
 
-    status = conn.execute(
-        "SELECT status FROM semantic_embeddings WHERE file_id=1").fetchone()[0]
+    status = conn.execute("SELECT status FROM semantic_embeddings WHERE file_id=1").fetchone()[0]
     assert status == "error"
 
 
 # ---------------------------------------------------------------------------
 # JobManager._semantic_pass(): one bad file costs one file
 # ---------------------------------------------------------------------------
+
 
 def _job_manager(tmp_path, monkeypatch):
     # Everything stays under tmp_path: archive_db_path/archive_cache_dir
@@ -216,14 +240,27 @@ def test_a_failing_file_is_recorded_once_and_never_retried(tmp_path, monkeypatch
     _archive_db(tmp_path)
     jm = _job_manager(tmp_path, monkeypatch)
     try:
-        row = {"id": 1, "rel_path": "clip.mp4", "ext": "mp4", "media_type": "video",
-               "sha256": "abc", "root_path": "/x", "rotate_deg": 0, "duration_s": 5.0}
+        row = {
+            "id": 1,
+            "rel_path": "clip.mp4",
+            "ext": "mp4",
+            "media_type": "video",
+            "sha256": "abc",
+            "root_path": "/x",
+            "rotate_deg": 0,
+            "duration_s": 5.0,
+        }
         monkeypatch.setattr(semantic, "pending_rows", lambda conn, root_id, force=False: [row])
         monkeypatch.setattr(semantic, "work_counts", lambda conn, root_id, force=False: (1, 0))
         monkeypatch.setattr(
-            semantic, "media_part",
-            lambda cfg, path, ext, media_type, cache_dir, rotate, duration_s:
-                ([tmp_path / "frame.jpg"], "video_frames", None))
+            semantic,
+            "media_part",
+            lambda cfg, path, ext, media_type, cache_dir, rotate, duration_s: (
+                [tmp_path / "frame.jpg"],
+                "video_frames",
+                None,
+            ),
+        )
         calls = []
 
         def fake_embed_part(cfg, part, kind):
@@ -233,15 +270,15 @@ def test_a_failing_file_is_recorded_once_and_never_retried(tmp_path, monkeypatch
         monkeypatch.setattr(semantic, "embed_part", fake_embed_part)
 
         job = jobs_mod.Job(id=1, kind="semantic", root_id=1, root_path="/x")
-        indexed, skipped, failed, total = jm._semantic_pass(
-            job, threading.Event(), force=False)
+        indexed, skipped, failed, total = jm._semantic_pass(job, threading.Event(), force=False)
 
         assert len(calls) == 1
         assert (indexed, skipped, failed, total) == (0, 0, 1, 1)
 
         conn = db.connect(tmp_path / "archive.db")
         stored = conn.execute(
-            "SELECT status, error FROM semantic_embeddings WHERE file_id=1").fetchone()
+            "SELECT status, error FROM semantic_embeddings WHERE file_id=1"
+        ).fetchone()
         assert stored["status"] == "error"
         assert "broken frame" in stored["error"]
     finally:
@@ -255,25 +292,46 @@ def test_one_bad_file_does_not_take_its_neighbours_down(tmp_path, monkeypatch):
         """INSERT INTO files
            (id,root_id,rel_path,size,mtime,media_type,sha256,present,hidden,
             first_seen,last_seen)
-           VALUES(2,1,'photo.jpg',10,0,'image','def',1,0,'2026-01-01','2026-01-01')""")
+           VALUES(2,1,'photo.jpg',10,0,'image','def',1,0,'2026-01-01','2026-01-01')"""
+    )
     conn.commit()
     conn.close()
 
     jm = _job_manager(tmp_path, monkeypatch)
     try:
         rows = [
-            {"id": 1, "rel_path": "clip.mp4", "ext": "mp4", "media_type": "video",
-             "sha256": "abc", "root_path": "/x", "rotate_deg": 0, "duration_s": 5.0},
-            {"id": 2, "rel_path": "photo.jpg", "ext": "jpg", "media_type": "image",
-             "sha256": "def", "root_path": "/x", "rotate_deg": 0, "duration_s": None},
+            {
+                "id": 1,
+                "rel_path": "clip.mp4",
+                "ext": "mp4",
+                "media_type": "video",
+                "sha256": "abc",
+                "root_path": "/x",
+                "rotate_deg": 0,
+                "duration_s": 5.0,
+            },
+            {
+                "id": 2,
+                "rel_path": "photo.jpg",
+                "ext": "jpg",
+                "media_type": "image",
+                "sha256": "def",
+                "root_path": "/x",
+                "rotate_deg": 0,
+                "duration_s": None,
+            },
         ]
         monkeypatch.setattr(semantic, "pending_rows", lambda conn, root_id, force=False: rows)
         monkeypatch.setattr(semantic, "work_counts", lambda conn, root_id, force=False: (2, 0))
         monkeypatch.setattr(
-            semantic, "media_part",
-            lambda cfg, path, ext, media_type, cache_dir, rotate, duration_s:
-                ([tmp_path / "x.jpg"],
-                 "video_frames" if media_type == "video" else "thumbnail", None))
+            semantic,
+            "media_part",
+            lambda cfg, path, ext, media_type, cache_dir, rotate, duration_s: (
+                [tmp_path / "x.jpg"],
+                "video_frames" if media_type == "video" else "thumbnail",
+                None,
+            ),
+        )
 
         def fake_embed_part(cfg, part, kind):
             if kind == "video_frames":
@@ -283,14 +341,15 @@ def test_one_bad_file_does_not_take_its_neighbours_down(tmp_path, monkeypatch):
         monkeypatch.setattr(semantic, "embed_part", fake_embed_part)
 
         job = jobs_mod.Job(id=1, kind="semantic", root_id=1, root_path="/x")
-        indexed, skipped, failed, total = jm._semantic_pass(
-            job, threading.Event(), force=False)
+        indexed, skipped, failed, total = jm._semantic_pass(job, threading.Event(), force=False)
 
         assert (indexed, skipped, failed, total) == (1, 0, 1, 2)
 
         conn = db.connect(tmp_path / "archive.db")
-        rows_out = {r["file_id"]: r["status"] for r in conn.execute(
-            "SELECT file_id, status FROM semantic_embeddings")}
+        rows_out = {
+            r["file_id"]: r["status"]
+            for r in conn.execute("SELECT file_id, status FROM semantic_embeddings")
+        }
         assert rows_out == {1: "error", 2: "indexed"}
     finally:
         jm.shutdown(timeout=2.0)

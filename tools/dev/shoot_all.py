@@ -89,8 +89,7 @@ TOOLS_DEV = Path(__file__).resolve().parent
 def _load_cdp_shot():
     """Import cdp_shot.py by path (it is not a package) -- same idiom as
     tools/build/adaface_export.py loading its sibling adaface_net.py."""
-    spec = importlib.util.spec_from_file_location(
-        "cdp_shot", TOOLS_DEV / "cdp_shot.py")
+    spec = importlib.util.spec_from_file_location("cdp_shot", TOOLS_DEV / "cdp_shot.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -102,8 +101,7 @@ cdp = _load_cdp_shot()
 # theme and sidebar state are deterministic for every shot regardless of
 # whatever a previous manual session left behind.
 _SEED_JS = (
-    "localStorage.setItem('archiveTheme', {theme!r});"
-    "localStorage.setItem('navCollapsed', '0');"
+    "localStorage.setItem('archiveTheme', {theme!r});localStorage.setItem('navCollapsed', '0');"
 )
 
 VIEWPORT = {"width": 1400, "height": 1200, "deviceScaleFactor": 1, "mobile": False}
@@ -147,18 +145,41 @@ ROUTES = [
     {"name": "pets", "hash": "pets", "wait": 6.0},
     {"name": "places", "hash": "places", "wait": 6.0},
     {"name": "dups", "hash": "dups", "wait": 4.0},
-    {"name": "settings", "hash": "overview", "wait": 4.0,
-     "post": "openSettings()", "post_wait": 2.0},
-    {"name": "person", "hash": "people", "wait": 5.0,
-     "post": "showPerson({id})", "post_wait": 4.0, "discover": "person"},
+    {
+        "name": "settings",
+        "hash": "overview",
+        "wait": 4.0,
+        "post": "openSettings()",
+        "post_wait": 2.0,
+    },
+    {
+        "name": "person",
+        "hash": "people",
+        "wait": 5.0,
+        "post": "showPerson({id})",
+        "post_wait": 4.0,
+        "discover": "person",
+    },
     # The item modal loads the FULL-SIZE original, not a thumbnail, so it needs
     # far more settle time than the grid behind it: at post_wait 2.0 two runs of
     # an unchanged tree differed by 30% of pixels, purely because the image had
     # not painted yet in one of them.
-    {"name": "item", "hash": "library", "wait": 4.0,
-     "post": "openItem({id})", "post_wait": 6.0, "discover": "item"},
-    {"name": "pet", "hash": "pets", "wait": 5.0,
-     "post": "showPet({id})", "post_wait": 4.0, "discover": "pet"},
+    {
+        "name": "item",
+        "hash": "library",
+        "wait": 4.0,
+        "post": "openItem({id})",
+        "post_wait": 6.0,
+        "discover": "item",
+    },
+    {
+        "name": "pet",
+        "hash": "pets",
+        "wait": 5.0,
+        "post": "showPet({id})",
+        "post_wait": 4.0,
+        "discover": "pet",
+    },
 ]
 
 
@@ -167,6 +188,7 @@ def discover_ids(base_url, archive_id):
     server -- the ids are archive-specific, so they cannot be hardcoded.
     Missing rows come back as None; callers skip that route with a note
     rather than shooting a route with a bogus id."""
+
     def jget(path):
         with urllib.request.urlopen(f"{base_url}{path}", timeout=15) as r:
             return json.loads(r.read())
@@ -195,8 +217,7 @@ class Shooter:
     def _call(self, sock, ws, msgid_box, method, params=None):
         msgid_box[0] += 1
         mid = msgid_box[0]
-        cdp.ws_send_text(sock, json.dumps(
-            {"id": mid, "method": method, "params": params or {}}))
+        cdp.ws_send_text(sock, json.dumps({"id": mid, "method": method, "params": params or {}}))
         while True:
             obj = json.loads(ws.recv_message())
             if obj.get("id") == mid:
@@ -220,8 +241,9 @@ class Shooter:
         expr = "Array.from(document.images).filter(i => !i.complete).length"
         waited, last, repeats = 0.0, None, 0
         while waited < cap:
-            res = self._call(sock, ws, msgid_box, "Runtime.evaluate",
-                             {"expression": expr, "returnByValue": True})
+            res = self._call(
+                sock, ws, msgid_box, "Runtime.evaluate", {"expression": expr, "returnByValue": True}
+            )
             pending = res.get("result", {}).get("result", {}).get("value")
             if pending == 0:
                 return waited
@@ -254,10 +276,14 @@ class Shooter:
             self._call(sock, ws, msgid_box, "Emulation.setDeviceMetricsOverride", VIEWPORT)
             if self.block_tiles:
                 self._call(sock, ws, msgid_box, "Network.enable")
-                self._call(sock, ws, msgid_box, "Network.setBlockedURLs",
-                           {"urls": TILE_HOSTS})
-            self._call(sock, ws, msgid_box, "Page.addScriptToEvaluateOnNewDocument",
-                       {"source": _SEED_JS.format(theme=theme)})
+                self._call(sock, ws, msgid_box, "Network.setBlockedURLs", {"urls": TILE_HOSTS})
+            self._call(
+                sock,
+                ws,
+                msgid_box,
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": _SEED_JS.format(theme=theme)},
+            )
             self._call(sock, ws, msgid_box, "Page.navigate", {"url": url})
             time.sleep(wait)
             self._settle_images(sock, ws, msgid_box)
@@ -302,13 +328,23 @@ def cmd_shoot(args):
                 continue
             post = post.format(id=item_id)
 
-        url = args.base_url if route["hash"] is None else f"{args.base_url}/#/archive/{args.archive_id}/{route['hash']}"
+        url = (
+            args.base_url
+            if route["hash"] is None
+            else f"{args.base_url}/#/archive/{args.archive_id}/{route['hash']}"
+        )
 
         for theme in ("light", "dark"):
             outfile = out_dir / f"{route['name']}-{theme}.png"
             try:
-                size = shooter.shoot(url, theme, outfile, route["wait"],
-                                     post=post, post_wait=route.get("post_wait", 0.0))
+                size = shooter.shoot(
+                    url,
+                    theme,
+                    outfile,
+                    route["wait"],
+                    post=post,
+                    post_wait=route.get("post_wait", 0.0),
+                )
                 print(f"{outfile}  {size} bytes")
                 written += 1
             except Exception as e:
@@ -322,9 +358,9 @@ def cmd_shoot(args):
 
 # See module docstring "Compare threshold" for the reasoning behind these two
 # numbers together.
-REGRESSION_PCT_ALONE = 5.0     # differing-pixel share alone is enough above this
+REGRESSION_PCT_ALONE = 5.0  # differing-pixel share alone is enough above this
 REGRESSION_PCT_WITH_MAD = 1.0  # ...or a smaller share, if it's also this severe:
-REGRESSION_MAD = 40.0          # mean abs diff (0-255) among the differing pixels
+REGRESSION_MAD = 40.0  # mean abs diff (0-255) among the differing pixels
 
 
 def _compare_pair(path_a, path_b):
@@ -348,8 +384,9 @@ def _compare_pair(path_a, path_b):
     if not differing.any():
         return "identical", False, -1.0
     mad = diff[differing].mean() / 3.0  # back to a per-channel 0-255 scale
-    is_regression = (pct > REGRESSION_PCT_ALONE or
-                      (pct > REGRESSION_PCT_WITH_MAD and mad > REGRESSION_MAD))
+    is_regression = pct > REGRESSION_PCT_ALONE or (
+        pct > REGRESSION_PCT_WITH_MAD and mad > REGRESSION_MAD
+    )
     verdict = f"{pct:.1f}% of pixels differ (MAD {mad:.1f})"
     if is_regression:
         verdict += "  <-- REGRESSION"
@@ -385,13 +422,17 @@ def cmd_compare(args):
 
 def main():
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--compare", action="store_true", help="compare two shot directories")
     ap.add_argument("args", nargs="*", help="positional args for the chosen mode")
     ap.add_argument("--port", type=int, default=9333, help="Chrome remote-debugging port")
     ap.add_argument("--only", help="comma-separated route names to shoot, e.g. overview,people")
-    ap.add_argument("--tiles", action="store_true",
-                    help="allow map tiles to load (default: blocked, for reproducibility)")
+    ap.add_argument(
+        "--tiles",
+        action="store_true",
+        help="allow map tiles to load (default: blocked, for reproducibility)",
+    )
     parsed = ap.parse_args()
 
     if parsed.compare:
@@ -404,8 +445,13 @@ def main():
             ap.error("shoot needs exactly: <base_url> <out_dir> <archive_id>")
         base_url, out_dir, archive_id = parsed.args
         ns = argparse.Namespace(
-            base_url=base_url.rstrip("/"), out_dir=out_dir, archive_id=int(archive_id),
-            port=parsed.port, only=parsed.only, tiles=parsed.tiles)
+            base_url=base_url.rstrip("/"),
+            out_dir=out_dir,
+            archive_id=int(archive_id),
+            port=parsed.port,
+            only=parsed.only,
+            tiles=parsed.tiles,
+        )
         cmd_shoot(ns)
 
 

@@ -32,13 +32,15 @@ def app_icon(cache_dir: str, size: int) -> bytes:
 # for the picker bar and the sidebar -- both are authored in this 28-unit
 # coordinate space, so a change to one must be mirrored in the other.
 _TILE = 28.0
-_TOP = (74, 163, 255)          # gradient stops, matching #4aa3ff -> #0062e0
+_TOP = (74, 163, 255)  # gradient stops, matching #4aa3ff -> #0062e0
 _BOTTOM = (0, 98, 224)
-_FACET = (10, 111, 224, 255)   # #0a6fe0, the facet lines drawn over the gem
+_FACET = (10, 111, 224, 255)  # #0a6fe0, the facet lines drawn over the gem
 _GEM = [(10.5, 8), (17.5, 8), (22, 13.5), (14, 22), (6, 13.5)]
-_FACET_LINES = [[(6, 13.5), (22, 13.5)],
-                [(10.5, 8), (12, 13.5), (14, 22)],
-                [(17.5, 8), (16, 13.5), (14, 22)]]
+_FACET_LINES = [
+    [(6, 13.5), (22, 13.5)],
+    [(10.5, 8), (12, 13.5), (14, 22)],
+    [(17.5, 8), (16, 13.5), (14, 22)],
+]
 
 
 def _render(Image, ImageDraw, size: int):
@@ -56,18 +58,15 @@ def _render(Image, ImageDraw, size: int):
     grad = Image.new("RGB", (1, px))
     for y in range(px):
         t = y / max(1, px - 1)
-        grad.putpixel((0, y), tuple(
-            round(a + (b - a) * t) for a, b in zip(_TOP, _BOTTOM)))
+        grad.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(_TOP, _BOTTOM)))
     im = grad.resize((px, px)).convert("RGBA")
 
     mask = Image.new("L", (px, px), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, px - 1, px - 1], radius=8 * scale, fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, px - 1, px - 1], radius=8 * scale, fill=255)
     im.putalpha(mask)
 
     d = ImageDraw.Draw(im)
     d.polygon([pt(p) for p in _GEM], fill=(255, 255, 255, 255))
     for line in _FACET_LINES:
-        d.line([pt(p) for p in line], fill=_FACET,
-               width=max(1, round(1.1 * scale)), joint="curve")
+        d.line([pt(p) for p in line], fill=_FACET, width=max(1, round(1.1 * scale)), joint="curve")
     return im.resize((size, size), Image.LANCZOS)

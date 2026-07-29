@@ -24,8 +24,14 @@ def _fmt_gb(nbytes: int) -> str:
 
 
 class ScanProgress:
-    def __init__(self, total: int | None, stream=None, width: int = 32,
-                 show_bytes: bool = True, label: str = ""):
+    def __init__(
+        self,
+        total: int | None,
+        stream=None,
+        width: int = 32,
+        show_bytes: bool = True,
+        label: str = "",
+    ):
         self.total = total or 0
         self.stream = stream or sys.stdout
         self.width = width
@@ -82,8 +88,8 @@ class ScanProgress:
                 room = cols - 1 - len(base) - 2  # 2 for the separating spaces
                 if room >= 8:
                     cur = self.current
-                    if len(cur) > room:            # keep the tail (extension) visible
-                        cur = "…" + cur[-(room - 1):]
+                    if len(cur) > room:  # keep the tail (extension) visible
+                        cur = "…" + cur[-(room - 1) :]
                     line = f"{base}  {cur}"
             line = line[: cols - 1]
             # \r returns to column 0; \x1b[K clears any leftover from a longer frame.

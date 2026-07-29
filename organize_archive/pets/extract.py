@@ -26,7 +26,8 @@ def scan_source(cfg: Config) -> str:
     return (
         f"{cfg.pets_model_version};score={cfg.pets_min_score:g};"
         f"minpx={cfg.pets_min_px};side={cfg.pets_max_side};species={species};"
-        f"human={cfg.pets_human_min_score:g}/{cfg.pets_human_iou:g}")
+        f"human={cfg.pets_human_min_score:g}/{cfg.pets_human_iou:g}"
+    )
 
 
 def image_count(conn, root_id=None):
@@ -34,7 +35,9 @@ def image_count(conn, root_id=None):
     params = (root_id,) if root_id is not None else ()
     return conn.execute(
         f"""SELECT COUNT(*) FROM files WHERE present=1 AND hidden=0
-            AND media_type='image'{rc}""", params).fetchone()[0]
+            AND media_type='image'{rc}""",
+        params,
+    ).fetchone()[0]
 
 
 def pending_count(conn, root_id=None, model_source=None):
@@ -52,7 +55,8 @@ def pending_count(conn, root_id=None, model_source=None):
             WHERE (s.file_id IS NULL OR s.source_sha256 IS NOT f.sha256
                    {model_clause})
               AND f.present=1 AND f.hidden=0 AND f.media_type='image'{rc}""",
-        params).fetchone()[0]
+        params,
+    ).fetchone()[0]
 
 
 def _pending(conn, limit, root_id=None, model_source=None):
@@ -72,16 +76,23 @@ def _pending(conn, limit, root_id=None, model_source=None):
             WHERE (s.file_id IS NULL OR s.source_sha256 IS NOT f.sha256
                    {model_clause})
               AND f.present=1 AND f.hidden=0 AND f.media_type='image'{rc}
-            ORDER BY f.id LIMIT ?""", params).fetchall()
+            ORDER BY f.id LIMIT ?""",
+        params,
+    ).fetchall()
 
 
 def make_backend(cfg: Config, log=None):
     source = scan_source(cfg)
     return backend.PetBackend(
-        cfg.cache_dir, min_score=cfg.pets_min_score, min_px=cfg.pets_min_px,
-        max_side=cfg.pets_max_side, species=cfg.pets_species,
+        cfg.cache_dir,
+        min_score=cfg.pets_min_score,
+        min_px=cfg.pets_min_px,
+        max_side=cfg.pets_max_side,
+        species=cfg.pets_species,
         human_min_score=cfg.pets_human_min_score,
-        model_source=source, log=log)
+        model_source=source,
+        log=log,
+    )
 
 
 def _overlap_fraction(face, animal) -> float:
@@ -94,8 +105,9 @@ def _overlap_fraction(face, animal) -> float:
     return intersection / area
 
 
-def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
-            root_id=None, be=None) -> PetExtractStats:
+def extract(
+    conn, cfg: Config, *, progress=None, limit=None, batch_size=32, root_id=None, be=None
+) -> PetExtractStats:
     stats = PetExtractStats()
     if not backend.available():
         raise RuntimeError("pet backend unavailable (needs OpenCV DNN and NumPy)")
@@ -113,8 +125,11 @@ def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
         if remaining is not None and remaining <= 0:
             break
         rows = _pending(
-            conn, batch_size if remaining is None else min(batch_size, remaining),
-            root_id=root_id, model_source=source)
+            conn,
+            batch_size if remaining is None else min(batch_size, remaining),
+            root_id=root_id,
+            model_source=source,
+        )
         if not rows:
             break
         for row in rows:
@@ -124,8 +139,7 @@ def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
                 # Standalone CLI path: plain animal detection. The GUI's fused
                 # detect stage (organize_archive/detect) is what cross-checks the
                 # faces; this only fills animal_detections for pet grouping.
-                conn.execute(
-                    "DELETE FROM animal_detections WHERE file_id=?", (row["id"],))
+                conn.execute("DELETE FROM animal_detections WHERE file_id=?", (row["id"],))
                 detections = be.process_path(str(path))
                 for detection in detections:
                     conn.execute(
@@ -133,9 +147,19 @@ def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
                            (file_id,species,box_x,box_y,box_w,box_h,det_score,
                             embedding,model_source,created_at)
                            VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                        (row["id"], detection.species, detection.x, detection.y,
-                         detection.w, detection.h, detection.score,
-                         detection.embedding.tobytes(), source, now))
+                        (
+                            row["id"],
+                            detection.species,
+                            detection.x,
+                            detection.y,
+                            detection.w,
+                            detection.h,
+                            detection.score,
+                            detection.embedding.tobytes(),
+                            source,
+                            now,
+                        ),
+                    )
                 count = len(detections)
             except Exception as error:
                 stats.errors += 1
@@ -145,7 +169,8 @@ def extract(conn, cfg: Config, *, progress=None, limit=None, batch_size=32,
                 """INSERT OR REPLACE INTO pet_scan
                    (file_id,n_animals,source_sha256,model_source,scanned_at)
                    VALUES(?,?,?,?,?)""",
-                (row["id"], count, row["sha256"], source, now))
+                (row["id"], count, row["sha256"], source, now),
+            )
             stats.processed += 1
             stats.animals += count
             stats.photos_with_animals += int(count > 0)

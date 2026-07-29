@@ -52,12 +52,13 @@ def test_bridge_vectors_cannot_fuse_two_identities():
     cfg = Config()
     a, b = _identity(1, 25), _identity(2, 25)
     mid = _unit(a.mean(0) + b.mean(0))
-    bridges = np.stack([_unit(mid + 0.02 * np.random.default_rng(i).normal(size=64))
-                        for i in range(8)]).astype("float32")
+    bridges = np.stack(
+        [_unit(mid + 0.02 * np.random.default_rng(i).normal(size=64)) for i in range(8)]
+    ).astype("float32")
 
     X = np.concatenate([a, b, bridges]).astype("float32")
-    high = list(range(50))              # the two real identities
-    border = list(range(50, 58))        # the bridges
+    high = list(range(50))  # the two real identities
+    border = list(range(50, 58))  # the bridges
 
     cores = fc.CoreBuilder(cfg).build(X[np.asarray(high)])
     assert len(cores) == 2, f"expected two pure cores, got {len(cores)}"
@@ -66,7 +67,7 @@ def test_bridge_vectors_cannot_fuse_two_identities():
     assigned = fc.BorderAssigner(cfg).assign(X, cores_global, border)
     for core in cores_global:
         for member in core:
-            assert member < 50          # no bridge was ever allowed to seed
+            assert member < 50  # no bridge was ever allowed to seed
     # Whatever the bridges do, the two identities remain two separate clusters.
     assert len(cores_global) == 2
     # And no bridge may end up joining both.
@@ -118,14 +119,14 @@ def test_a_cannot_link_blocks_a_border_assignment():
     cores_global = [[high[i] for i in c] for c in cores]
     assert cores_global
 
-    face_ids = list(range(100, 100 + len(X)))   # arbitrary stable ids
-    without = fc.BorderAssigner(cfg).assign(X, cores_global, [20],
-                                            cannot=set(), face_ids=face_ids)
+    face_ids = list(range(100, 100 + len(X)))  # arbitrary stable ids
+    without = fc.BorderAssigner(cfg).assign(X, cores_global, [20], cannot=set(), face_ids=face_ids)
     assert 20 in without, "precondition: it attaches when unconstrained"
 
     cannot = {frozenset((face_ids[20], face_ids[m])) for m in cores_global[0]}
-    with_block = fc.BorderAssigner(cfg).assign(X, cores_global, [20],
-                                               cannot=cannot, face_ids=face_ids)
+    with_block = fc.BorderAssigner(cfg).assign(
+        X, cores_global, [20], cannot=cannot, face_ids=face_ids
+    )
     assert 20 not in with_block, "a cannot-link did not block the assignment"
 
 
@@ -137,13 +138,15 @@ def _catalog(tmp_path, tiers):
     conn.execute(
         """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
                              first_seen,last_seen,present,hidden)
-           VALUES(1,1,'a.jpg',1,0,'image','2026-01-01','2026-01-01',1,0)""")
+           VALUES(1,1,'a.jpg',1,0,'image','2026-01-01','2026-01-01',1,0)"""
+    )
     for vec, tier in tiers:
         conn.execute(
             """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
                                  quality_tier,embedding,created_at)
                VALUES(1,0,0,60,60,0.9,?,?,'2026-01-01')""",
-            (tier, np.asarray(vec, dtype="float32").tobytes()))
+            (tier, np.asarray(vec, dtype="float32").tobytes()),
+        )
     conn.commit()
     return conn
 
@@ -160,8 +163,8 @@ def test_low_quality_faces_never_reach_clustering(tmp_path):
     assert stats.low_quality_excluded == 6
     assert stats.faces == 12, "LOW_QUALITY faces were loaded into clustering"
     assigned = conn.execute(
-        "SELECT COUNT(*) FROM faces WHERE quality_tier='LOW_QUALITY' "
-        "AND person_id IS NOT NULL").fetchone()[0]
+        "SELECT COUNT(*) FROM faces WHERE quality_tier='LOW_QUALITY' AND person_id IS NOT NULL"
+    ).fetchone()[0]
     assert assigned == 0, "a LOW_QUALITY face was assigned to a person"
     conn.close()
 

@@ -74,6 +74,10 @@ def ensure_app_data_dirs() -> None:
     and get created lazily under each archive's own cache dir.
     """
     data_dir = app_data_dir()
-    for directory in (data_dir, default_cache_dir() / "models",
-                      default_cache_dir() / "icons", data_dir / "logs"):
+    for directory in (
+        data_dir,
+        default_cache_dir() / "models",
+        default_cache_dir() / "icons",
+        data_dir / "logs",
+    ):
         directory.mkdir(parents=True, exist_ok=True)

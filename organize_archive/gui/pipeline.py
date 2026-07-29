@@ -27,7 +27,13 @@ from ..db import database as db
 
 # Stage kinds (also the job ``kind`` values the worker dispatches on).
 SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC = (
-    "scan", "enrich", "dedup", "places", "detect", "semantic")
+    "scan",
+    "enrich",
+    "dedup",
+    "places",
+    "detect",
+    "semantic",
+)
 
 # Stages that take the single DB-writer lock run one at a time; the rest use
 # their own connection and overlap freely (scan ∥ enrich ∥ semantic).
@@ -38,36 +44,40 @@ PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC})
 @dataclass(frozen=True)
 class StageDef:
     kind: str
-    deps: tuple[str, ...]        # upstream kinds that must be up_to_date first
-    card: str                    # which display card this stage rolls up into
-    counted: bool                # whether `pending` is a number worth showing
+    deps: tuple[str, ...]  # upstream kinds that must be up_to_date first
+    card: str  # which display card this stage rolls up into
+    counted: bool  # whether `pending` is a number worth showing
 
 
 # Order matters: dependency resolution and the scheduler both walk this list in
 # order, so a stage's deps always appear before it.
 STAGES: tuple[StageDef, ...] = (
-    StageDef(SCAN,     (),               "scan",     True),
-    StageDef(ENRICH,   (),               "scan",     True),   # runs parallel to scan
-    StageDef(DEDUP,    (SCAN, ENRICH),   "dedup",    False),  # wholesale rebuild, no count
-    StageDef(PLACES,   (DEDUP,),         "places",   True),
-    StageDef(DETECT,   (DEDUP,),         "detect",   True),   # people + pets, one decode
-    StageDef(SEMANTIC, (DEDUP,),         "semantic", True),
+    StageDef(SCAN, (), "scan", True),
+    StageDef(ENRICH, (), "scan", True),  # runs parallel to scan
+    StageDef(DEDUP, (SCAN, ENRICH), "dedup", False),  # wholesale rebuild, no count
+    StageDef(PLACES, (DEDUP,), "places", True),
+    StageDef(DETECT, (DEDUP,), "detect", True),  # people + pets, one decode
+    StageDef(SEMANTIC, (DEDUP,), "semantic", True),
 )
 
 # Display cards, in the order the Overview renders them.
 CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic")
 # Coherent operation names (one per card), in a single consistent format.
 CARD_LABEL = {
-    "scan": "Scan", "dedup": "Deduplication",
-    "detect": "People & pets", "places": "Location mapping",
+    "scan": "Scan",
+    "dedup": "Deduplication",
+    "detect": "People & pets",
+    "places": "Location mapping",
     "semantic": "Semantic indexing",
 }
 # What a card says while its stage is actively running, one consistent
 # "<verb>ing <object>…" format across every stage.
 _RUN_TEXT = {
-    "scan": "Scanning files…", "dedup": "Finding duplicates…",
+    "scan": "Scanning files…",
+    "dedup": "Finding duplicates…",
     "detect": "Detecting people & pets…",
-    "places": "Mapping locations…", "semantic": "Indexing media…",
+    "places": "Mapping locations…",
+    "semantic": "Indexing media…",
 }
 _UNAVAILABLE_TEXT = {
     "detect": "Detection unavailable",
@@ -78,19 +88,24 @@ _UNAVAILABLE_TEXT = {
 def _availability(cfg: Config) -> dict[str, bool]:
     from ..detect import extract as dx
     from . import semantic
+
     # Both of these ask "are the dependencies importable", never "are the model
     # weights on disk": an unavailable stage is never queued, and it is the
     # stage itself that downloads its weights, so gating on the files would be
     # a deadlock.
     return {
-        SCAN: True, ENRICH: True, DEDUP: True, PLACES: True,
+        SCAN: True,
+        ENRICH: True,
+        DEDUP: True,
+        PLACES: True,
         DETECT: dx.available(),
         SEMANTIC: semantic.available(),
     }
 
 
-def _pending(cfg: Config, jobs, root_id: int, root_path: str,
-             avail: dict[str, bool], allow_walk: bool) -> dict[str, int]:
+def _pending(
+    cfg: Config, jobs, root_id: int, root_path: str, avail: dict[str, bool], allow_walk: bool
+) -> dict[str, int]:
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
     from . import queries, semantic
@@ -104,18 +119,21 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
     try:
         settled = db.scan_settled(conn, root_id, on_disk)
         indexed = conn.execute(
-            "SELECT COUNT(*) FROM files f WHERE f.present=1 AND f.root_id=?",
-            (root_id,)).fetchone()[0]
+            "SELECT COUNT(*) FROM files f WHERE f.present=1 AND f.root_id=?", (root_id,)
+        ).fetchone()[0]
         enriched = conn.execute(
             """SELECT COUNT(*) FROM files f JOIN dates d ON d.file_id=f.id
-               WHERE f.present=1 AND f.root_id=?""", (root_id,)).fetchone()[0]
+               WHERE f.present=1 AND f.root_id=?""",
+            (root_id,),
+        ).fetchone()[0]
         # Geotagged files not yet attached to any place (covers the first-time
         # bootstrap too: with no clusters yet, every geotagged file is unplaced).
         geo_unplaced = conn.execute(
             """SELECT COUNT(*) FROM files f JOIN geo g ON g.file_id=f.id
                WHERE f.present=1 AND f.root_id=? AND g.lat IS NOT NULL
                  AND f.id NOT IN (SELECT file_id FROM place_cluster_members)""",
-            (root_id,)).fetchone()[0]
+            (root_id,),
+        ).fetchone()[0]
     finally:
         conn.close()
 
@@ -137,16 +155,18 @@ def _pending(cfg: Config, jobs, root_id: int, root_path: str,
         # set when scan/enrich change data and cleared on a successful rebuild.
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
-        DETECT: (queries.detect_pending(db_path, root_id, pet_scan_source(cfg),
-                                        cfg.detect_video_frames)
-                 if avail[DETECT] else 0),
-        SEMANTIC: (queries.semantic_pending(db_path, root_id)
-                   if avail[SEMANTIC] else 0),
+        DETECT: (
+            queries.detect_pending(db_path, root_id, pet_scan_source(cfg), cfg.detect_video_frames)
+            if avail[DETECT]
+            else 0
+        ),
+        SEMANTIC: (queries.semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
     }
 
 
-def stage_states(cfg: Config, jobs, root_id: int, root_path: str,
-                 allow_walk: bool = False) -> list[dict]:
+def stage_states(
+    cfg: Config, jobs, root_id: int, root_path: str, allow_walk: bool = False
+) -> list[dict]:
     """Resolve every stage to one state, used by BOTH the scheduler and the API.
 
     Returns one dict per stage (not per card) so the scheduler can act on the
@@ -161,7 +181,7 @@ def stage_states(cfg: Config, jobs, root_id: int, root_path: str,
 
     running: dict[str, dict] = {}
     last: dict[str, dict] = {}
-    for j in jobs.list(root_id):          # newest first
+    for j in jobs.list(root_id):  # newest first
         last.setdefault(j["kind"], j)
         if j["status"] == "running":
             running.setdefault(j["kind"], j)
@@ -185,31 +205,46 @@ def stage_states(cfg: Config, jobs, root_id: int, root_path: str,
         resolved[k] = state
         # The dep still short of done, so a blocked stage can name what it waits on.
         blocker = next((d for d in sd.deps if resolved.get(d) != "up_to_date"), None)
-        out.append({
-            "kind": k, "card": sd.card, "counted": sd.counted,
-            "state": state, "pending": pending[k],
-            "progress": _progress(job), "blocker": blocker,
-            "error": (last.get(k) or {}).get("message") if state == "error" else None,
-        })
+        out.append(
+            {
+                "kind": k,
+                "card": sd.card,
+                "counted": sd.counted,
+                "state": state,
+                "pending": pending[k],
+                "progress": _progress(job),
+                "blocker": blocker,
+                "error": (last.get(k) or {}).get("message") if state == "error" else None,
+            }
+        )
     return out
 
 
 def _progress(job: dict | None) -> dict | None:
     if not job:
         return None
-    return {"percent": job.get("percent"), "done": job.get("done", 0),
-            "total": job.get("total", 0), "current": job.get("current", ""),
-            "elapsed": job.get("elapsed", 0)}
+    return {
+        "percent": job.get("percent"),
+        "done": job.get("done", 0),
+        "total": job.get("total", 0),
+        "current": job.get("current", ""),
+        "elapsed": job.get("elapsed", 0),
+    }
 
 
 # Precedence when several stages share one card (scan + enrich): the most
 # "active" state wins, so a running enrich keeps the Scan card spinning.
-_STATE_RANK = {"running": 5, "error": 4, "queued": 3, "blocked": 2,
-               "unavailable": 1, "up_to_date": 0}
+_STATE_RANK = {
+    "running": 5,
+    "error": 4,
+    "queued": 3,
+    "blocked": 2,
+    "unavailable": 1,
+    "up_to_date": 0,
+}
 
 
-def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozenset()
-          ) -> list[dict]:
+def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozenset()) -> list[dict]:
     """Roll per-stage states up into the display cards the GUI renders verbatim.
 
     ``paused_stages`` holds the card ids the user paused individually. A card
@@ -276,13 +311,19 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
                 # fingerprint would be a lie; the flat text stands instead.
                 message = f"Fingerprinting {done:,} of {total:,} photos…"
 
-        result.append({
-            "id": card_id, "label": CARD_LABEL[card_id], "state": state,
-            "pending": pending, "counted": counted, "progress": progress,
-            "next": False,
-            "waiting_on": CARD_LABEL.get(_CARD_OF.get(blocker)) if blocker else None,
-            "message": message,
-        })
+        result.append(
+            {
+                "id": card_id,
+                "label": CARD_LABEL[card_id],
+                "state": state,
+                "pending": pending,
+                "counted": counted,
+                "progress": progress,
+                "next": False,
+                "waiting_on": CARD_LABEL.get(_CARD_OF.get(blocker)) if blocker else None,
+                "message": message,
+            }
+        )
 
     # Second pass, the "up next" marker. A blocked card is *next in line* when the
     # stage it's waiting on is running right now: it's the one that starts the
@@ -364,16 +405,24 @@ def _extra_jobs(jobs, root_id: int) -> list[dict]:
     out, seen = [], set()
     for j in jobs.list(root_id):
         kind = j["kind"]
-        if (j["status"] != "running" or kind in _CARD_OF or kind in seen):
+        if j["status"] != "running" or kind in _CARD_OF or kind in seen:
             continue
         seen.add(kind)
-        out.append({
-            "id": kind, "label": _EXTRA_JOB_LABEL.get(kind, kind),
-            "state": "running", "pending": None, "counted": False,
-            "progress": _progress(j), "next": False, "waiting_on": None,
-            "message": f"{_EXTRA_JOB_LABEL.get(kind, kind)}…",
-            "paused": False, "stalled": False,
-        })
+        out.append(
+            {
+                "id": kind,
+                "label": _EXTRA_JOB_LABEL.get(kind, kind),
+                "state": "running",
+                "pending": None,
+                "counted": False,
+                "progress": _progress(j),
+                "next": False,
+                "waiting_on": None,
+                "message": f"{_EXTRA_JOB_LABEL.get(kind, kind)}…",
+                "paused": False,
+                "stalled": False,
+            }
+        )
     return out
 
 
@@ -397,8 +446,7 @@ def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
     """
     states = stage_states(cfg, jobs, root_id, root_path)
     paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
-    per_stage = (frozenset(jobs.paused_stages())
-                 if hasattr(jobs, "paused_stages") else frozenset())
+    per_stage = frozenset(jobs.paused_stages()) if hasattr(jobs, "paused_stages") else frozenset()
     card_list = cards(states, per_stage)
     extra = _extra_jobs(jobs, root_id)
     for c in card_list:
@@ -414,8 +462,7 @@ def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
         overall = "running"
     elif paused:
         overall = "paused"
-    elif any(c["state"] in ("queued", "blocked", "error") and not c["stalled"]
-             for c in card_list):
+    elif any(c["state"] in ("queued", "blocked", "error") and not c["stalled"] for c in card_list):
         overall = "working"
     elif any(c["state"] in ("queued", "blocked", "error") for c in card_list):
         # Everything still outstanding is stopped by a per-stage pause; the
@@ -423,6 +470,11 @@ def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
         overall = "paused"
     else:
         overall = "idle"
-    return {"root_id": root_id, "overall": overall, "stages": card_list,
-            "extra": extra, "paused": paused,
-            "paused_stages": sorted(per_stage)}
+    return {
+        "root_id": root_id,
+        "overall": overall,
+        "stages": card_list,
+        "extra": extra,
+        "paused": paused,
+        "paused_stages": sorted(per_stage),
+    }

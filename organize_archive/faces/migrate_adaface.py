@@ -145,8 +145,7 @@ def _backup(db_path: str, log=None) -> str:
     return str(dst)
 
 
-def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None,
-                      log=None) -> MigrationStats:
+def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -> MigrationStats:
     """Preserve identity, clear the invalid embeddings, re-arm the scanners."""
     db.init_db(conn)
     stats = MigrationStats()
@@ -179,14 +178,12 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None,
            -- link whose endpoints are absent here could only be dropped.
            OR fa.id IN (SELECT face_a FROM face_links
                         UNION SELECT face_b FROM face_links)""")
-    stats.faces_snapshotted = conn.execute(
-        f"SELECT COUNT(*) FROM {_CARRY_FACES}").fetchone()[0]
+    stats.faces_snapshotted = conn.execute(f"SELECT COUNT(*) FROM {_CARRY_FACES}").fetchone()[0]
 
     conn.execute(f"""
         INSERT INTO {_CARRY_LINKS} (old_face_a, old_face_b, kind, created_at)
         SELECT face_a, face_b, kind, created_at FROM face_links""")
-    stats.links_snapshotted = conn.execute(
-        f"SELECT COUNT(*) FROM {_CARRY_LINKS}").fetchone()[0]
+    stats.links_snapshotted = conn.execute(f"SELECT COUNT(*) FROM {_CARRY_LINKS}").fetchone()[0]
 
     # Pets ride along. The fused detect pass deletes and rewrites
     # animal_detections for every file it revisits, so pet names — anchored to
@@ -201,13 +198,13 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None,
         FROM animal_detections a LEFT JOIN pets p ON p.id = a.pet_id
         WHERE NULLIF(TRIM(COALESCE(p.name, '')), '') IS NOT NULL
            OR a.manual_pet IS NOT NULL""")
-    stats.pets_snapshotted = conn.execute(
-        f"SELECT COUNT(*) FROM {_CARRY_PETS}").fetchone()[0]
+    stats.pets_snapshotted = conn.execute(f"SELECT COUNT(*) FROM {_CARRY_PETS}").fetchone()[0]
     conn.execute(f"""
         INSERT INTO {_CARRY_PET_LINKS} (old_det_a, old_det_b, kind, created_at)
         SELECT det_a, det_b, kind, created_at FROM pet_links""")
     stats.pet_links_snapshotted = conn.execute(
-        f"SELECT COUNT(*) FROM {_CARRY_PET_LINKS}").fetchone()[0]
+        f"SELECT COUNT(*) FROM {_CARRY_PET_LINKS}"
+    ).fetchone()[0]
 
     # -- wipe --------------------------------------------------------------
     # What gets destroyed here is only what the embedder change INVALIDATED:
@@ -237,9 +234,11 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None,
     conn.execute("DELETE FROM fiqa_calibration")
     conn.commit()
     if log:
-        log(f"snapshotted {stats.faces_snapshotted} identity-bearing faces, "
+        log(
+            f"snapshotted {stats.faces_snapshotted} identity-bearing faces, "
             f"{stats.links_snapshotted} links, {stats.pets_snapshotted} pets; "
-            "cleared faces and re-armed the detector")
+            "cleared faces and re-armed the detector"
+        )
     return stats
 
 
@@ -271,7 +270,8 @@ def _match_by_box(carry_rows, new_rows) -> dict[int, int]:
                 continue
             score = _iou(
                 (old["box_x"], old["box_y"], old["box_w"], old["box_h"]),
-                (new["box_x"], new["box_y"], new["box_w"], new["box_h"]))
+                (new["box_x"], new["box_y"], new["box_w"], new["box_h"]),
+            )
             if score >= MIN_IOU:
                 pairs.append((score, old["old_id"], new["id"]))
     pairs.sort(reverse=True)
@@ -285,31 +285,42 @@ def _match_by_box(carry_rows, new_rows) -> dict[int, int]:
     return out
 
 
-def _remap(conn, carry_table: str, id_col: str, new_table: str,
-           new_id_col: str = "id") -> dict[int, int]:
+def _remap(
+    conn, carry_table: str, id_col: str, new_table: str, new_id_col: str = "id"
+) -> dict[int, int]:
     """Fill carry.new_* by matching boxes file by file. Returns old→new."""
     mapping: dict[int, int] = {}
-    file_ids = [r[0] for r in conn.execute(
-        f"SELECT DISTINCT file_id FROM {carry_table}")]
+    file_ids = [r[0] for r in conn.execute(f"SELECT DISTINCT file_id FROM {carry_table}")]
     for fid in file_ids:
         carry_rows = [
-            {"old_id": r[id_col], "box_x": r["box_x"], "box_y": r["box_y"],
-             "box_w": r["box_w"], "box_h": r["box_h"],
-             "frame_offset": r["frame_offset"]}
-            for r in conn.execute(
-                f"SELECT * FROM {carry_table} WHERE file_id=?", (fid,))]
+            {
+                "old_id": r[id_col],
+                "box_x": r["box_x"],
+                "box_y": r["box_y"],
+                "box_w": r["box_w"],
+                "box_h": r["box_h"],
+                "frame_offset": r["frame_offset"],
+            }
+            for r in conn.execute(f"SELECT * FROM {carry_table} WHERE file_id=?", (fid,))
+        ]
         new_rows = [
-            {"id": r[new_id_col], "box_x": r["box_x"], "box_y": r["box_y"],
-             "box_w": r["box_w"], "box_h": r["box_h"],
-             "frame_offset": r["frame_offset"]}
-            for r in conn.execute(
-                f"SELECT * FROM {new_table} WHERE file_id=?", (fid,))]
+            {
+                "id": r[new_id_col],
+                "box_x": r["box_x"],
+                "box_y": r["box_y"],
+                "box_w": r["box_w"],
+                "box_h": r["box_h"],
+                "frame_offset": r["frame_offset"],
+            }
+            for r in conn.execute(f"SELECT * FROM {new_table} WHERE file_id=?", (fid,))
+        ]
         matched = _match_by_box(carry_rows, new_rows)
         mapping.update(matched)
     new_col = "new_face_id" if carry_table == _CARRY_FACES else "new_det_id"
     conn.executemany(
         f"UPDATE {carry_table} SET {new_col}=? WHERE {id_col}=?",
-        [(new_id, old_id) for old_id, new_id in mapping.items()])
+        [(new_id, old_id) for old_id, new_id in mapping.items()],
+    )
     return mapping
 
 
@@ -333,13 +344,13 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
     # right faces no matter how the new AdaFace vectors happen to cluster —
     # which is the whole point, since they will not cluster identically.
     for row in conn.execute(
-            f"""SELECT new_face_id, person_name, manual_person, not_person,
+        f"""SELECT new_face_id, person_name, manual_person, not_person,
                        nonhuman_kind, nonhuman_source
-                FROM {_CARRY_FACES} WHERE new_face_id IS NOT NULL"""):
+                FROM {_CARRY_FACES} WHERE new_face_id IS NOT NULL"""
+    ):
         pin = row["manual_person"] or row["person_name"]
         if pin:
-            conn.execute("UPDATE faces SET manual_person=? WHERE id=?",
-                         (pin, row["new_face_id"]))
+            conn.execute("UPDATE faces SET manual_person=? WHERE id=?", (pin, row["new_face_id"]))
             stats.pins_restored += 1
             if row["person_name"]:
                 stats.names_restored += 1
@@ -347,7 +358,8 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
             conn.execute(
                 """UPDATE faces SET not_person=1, nonhuman_kind=?,
                        nonhuman_source=? WHERE id=?""",
-                (row["nonhuman_kind"], row["nonhuman_source"], row["new_face_id"]))
+                (row["nonhuman_kind"], row["nonhuman_source"], row["new_face_id"]),
+            )
             stats.not_person_restored += 1
 
     for link in conn.execute(f"SELECT * FROM {_CARRY_LINKS}"):
@@ -362,19 +374,23 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
         lo, hi = (a, b) if a < b else (b, a)
         conn.execute(
             """INSERT OR IGNORE INTO face_links(face_a, face_b, kind, created_at)
-               VALUES(?,?,?,?)""", (lo, hi, link["kind"], link["created_at"]))
+               VALUES(?,?,?,?)""",
+            (lo, hi, link["kind"], link["created_at"]),
+        )
         stats.links_restored += 1
 
     # -- pets --------------------------------------------------------------
     pet_map = _remap(conn, _CARRY_PETS, "old_det_id", "animal_detections")
     stats.pets_reattached = len(pet_map)
     for row in conn.execute(
-            f"""SELECT new_det_id, pet_name, manual_pet FROM {_CARRY_PETS}
-                WHERE new_det_id IS NOT NULL"""):
+        f"""SELECT new_det_id, pet_name, manual_pet FROM {_CARRY_PETS}
+                WHERE new_det_id IS NOT NULL"""
+    ):
         pin = row["manual_pet"] or row["pet_name"]
         if pin:
-            conn.execute("UPDATE animal_detections SET manual_pet=? WHERE id=?",
-                         (pin, row["new_det_id"]))
+            conn.execute(
+                "UPDATE animal_detections SET manual_pet=? WHERE id=?", (pin, row["new_det_id"])
+            )
     for link in conn.execute(f"SELECT * FROM {_CARRY_PET_LINKS}"):
         a = pet_map.get(link["old_det_a"])
         b = pet_map.get(link["old_det_b"])
@@ -383,16 +399,20 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
         lo, hi = (a, b) if a < b else (b, a)
         conn.execute(
             """INSERT OR IGNORE INTO pet_links(det_a, det_b, kind, created_at)
-               VALUES(?,?,?,?)""", (lo, hi, link["kind"], link["created_at"]))
+               VALUES(?,?,?,?)""",
+            (lo, hi, link["kind"], link["created_at"]),
+        )
         stats.pet_links_restored += 1
 
     conn.commit()
     if log:
-        log(f"reattached {stats.faces_reattached} faces "
+        log(
+            f"reattached {stats.faces_reattached} faces "
             f"({stats.names_restored} named, {stats.pins_restored} pinned, "
             f"{stats.not_person_restored} not-a-person), "
             f"{stats.links_restored} links restored / {stats.links_dropped} dropped, "
-            f"{stats.pets_reattached} pet detections; {stats.unmatched} unmatched")
+            f"{stats.pets_reattached} pet detections; {stats.unmatched} unmatched"
+        )
     _ = now
     return stats
 
@@ -401,8 +421,7 @@ _EMBEDDER_KEY = "faces_embedder"
 
 
 def stored_embedder(conn) -> str | None:
-    row = conn.execute(
-        "SELECT value FROM app_state WHERE key=?", (_EMBEDDER_KEY,)).fetchone()
+    row = conn.execute("SELECT value FROM app_state WHERE key=?", (_EMBEDDER_KEY,)).fetchone()
     return row["value"] if row else None
 
 
@@ -411,11 +430,11 @@ def mark_embedder(conn, version: str) -> None:
         """INSERT INTO app_state(key, value, updated_at) VALUES(?,?,?)
            ON CONFLICT(key) DO UPDATE SET
                value=excluded.value, updated_at=excluded.updated_at""",
-        (_EMBEDDER_KEY, version, db.now_iso()))
+        (_EMBEDDER_KEY, version, db.now_iso()),
+    )
 
 
-def run_if_needed(conn, cfg: Config, db_path: str | None = None,
-                  log=None) -> MigrationStats | None:
+def run_if_needed(conn, cfg: Config, db_path: str | None = None, log=None) -> MigrationStats | None:
     """Re-arm the archive for re-extraction when the embedder has changed.
 
     This is what makes the switch automatic: the app calls it when it opens an
@@ -428,6 +447,7 @@ def run_if_needed(conn, cfg: Config, db_path: str | None = None,
     every open. Returns None when no migration was needed.
     """
     from . import backend
+
     db.init_db(conn)
     current = backend.EMBEDDER_VERSION
     if stored_embedder(conn) == current:

@@ -36,10 +36,12 @@ def _spawn_calls(tree: ast.AST):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if (isinstance(func, ast.Attribute)
-                and func.attr in _SPAWNERS
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "subprocess"):
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr in _SPAWNERS
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "subprocess"
+        ):
             yield node
 
 
@@ -49,10 +51,12 @@ def _suppresses_console(call: ast.Call) -> bool:
         if kw.arg == "creationflags":
             return True
         # kw.arg is None for **kwargs unpacking; accept **no_window().
-        if (kw.arg is None
-                and isinstance(kw.value, ast.Call)
-                and isinstance(kw.value.func, ast.Name)
-                and kw.value.func.id == "no_window"):
+        if (
+            kw.arg is None
+            and isinstance(kw.value, ast.Call)
+            and isinstance(kw.value.func, ast.Name)
+            and kw.value.func.id == "no_window"
+        ):
             return True
     return False
 
@@ -68,8 +72,7 @@ def test_every_subprocess_spawn_suppresses_its_console():
 
     assert not offenders, (
         "These spawns would flash a console window on the Windows build.\n"
-        "Add **no_window() (organize_archive.runtime) to each:\n"
-        + "\n".join(offenders)
+        "Add **no_window() (organize_archive.runtime) to each:\n" + "\n".join(offenders)
     )
 
 
@@ -93,8 +96,7 @@ def test_no_window_sets_create_no_window_on_windows(monkeypatch):
 def test_the_scanner_would_actually_catch_a_bare_spawn():
     """Guard the guard: a checker that silently matches nothing is worthless."""
     bare = ast.parse("import subprocess\nsubprocess.run(['ffmpeg'])\n")
-    guarded = ast.parse(
-        "import subprocess\nsubprocess.run(['ffmpeg'], **no_window())\n")
+    guarded = ast.parse("import subprocess\nsubprocess.run(['ffmpeg'], **no_window())\n")
 
     assert [not _suppresses_console(c) for c in _spawn_calls(bare)] == [True]
     assert [_suppresses_console(c) for c in _spawn_calls(guarded)] == [True]

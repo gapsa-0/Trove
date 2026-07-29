@@ -5,6 +5,7 @@ Archives are downloaded to a temporary directory, SHA-256 verified before any
 extraction, and staged atomically.  Downloaded archives and staged binaries are
 deliberately ignored by Git; the manifest records the reproducible inputs.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,10 +64,14 @@ def validate_target(target: str) -> tuple[list[dict], list[dict]]:
             raise ValueError(f"invalid tool entry for {target}")
         required = ("name", "version", "url", "sha256", "license", "executable")
         if not all(isinstance(item.get(key), str) and item[key] for key in required):
-            raise ValueError(f"invalid tool entry for {target}: required fields are {', '.join(required)}")
+            raise ValueError(
+                f"invalid tool entry for {target}: required fields are {', '.join(required)}"
+            )
         if item["name"] not in KNOWN_TOOL_NAMES or item["name"] in names:
             raise ValueError(f"invalid or duplicate tool name for {target}: {item['name']!r}")
-        if len(item["sha256"]) != 64 or any(c not in "0123456789abcdefABCDEF" for c in item["sha256"]):
+        if len(item["sha256"]) != 64 or any(
+            c not in "0123456789abcdefABCDEF" for c in item["sha256"]
+        ):
             raise ValueError(f"invalid SHA-256 for {target}: {item['name']}")
         # Optional: stage the archive member under a different name, and copy a
         # sibling runtime directory along with it (ExifTool's Windows build is
@@ -82,14 +87,24 @@ def validate_target(target: str) -> tuple[list[dict], list[dict]]:
         names.add(item["name"])
     unavailable_names: set[str] = set()
     for item in unavailable:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str) or not isinstance(item.get("reason"), str):
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("name"), str)
+            or not isinstance(item.get("reason"), str)
+        ):
             raise ValueError(f"invalid unavailable tool entry for {target}")
-        if item["name"] not in OPTIONAL_TOOL_NAMES or item["name"] in unavailable_names or item["name"] in names:
+        if (
+            item["name"] not in OPTIONAL_TOOL_NAMES
+            or item["name"] in unavailable_names
+            or item["name"] in names
+        ):
             raise ValueError(f"invalid unavailable tool declaration for {target}: {item['name']!r}")
         unavailable_names.add(item["name"])
     missing = REQUIRED_TOOL_NAMES - names
     if missing:
-        raise ValueError(f"{target} is missing required tool payloads: {', '.join(sorted(missing))}")
+        raise ValueError(
+            f"{target} is missing required tool payloads: {', '.join(sorted(missing))}"
+        )
     return tools, unavailable
 
 
@@ -166,7 +181,10 @@ def stage_target(target: str) -> Path:
     tools, unavailable = validate_target(target)
     final_stage = ROOT / "packaging" / "tools" / "staged" / target
     final_stage.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=f".{target}-", dir=final_stage.parent) as stage_tmp_name, tempfile.TemporaryDirectory(prefix="archive-tools-") as download_tmp_name:
+    with (
+        tempfile.TemporaryDirectory(prefix=f".{target}-", dir=final_stage.parent) as stage_tmp_name,
+        tempfile.TemporaryDirectory(prefix="archive-tools-") as download_tmp_name,
+    ):
         stage_tmp, download_tmp = Path(stage_tmp_name), Path(download_tmp_name)
         archives: dict[tuple[str, str], Path] = {}
         build_info: list[dict] = []
@@ -186,7 +204,9 @@ def stage_target(target: str) -> Path:
             executable = executable_for(item, target)
             hits = [path for path in extracted.rglob(executable) if path.is_file()]
             if len(hits) != 1:
-                raise ValueError(f"expected one {executable} in {item['name']} archive, found {len(hits)}")
+                raise ValueError(
+                    f"expected one {executable} in {item['name']} archive, found {len(hits)}"
+                )
             staged = stage_tmp / staged_name_for(item, target)
             shutil.copy2(hits[0], staged)
             if target.startswith("linux-"):
@@ -202,18 +222,33 @@ def stage_target(target: str) -> Path:
                 if not destination_dir.exists():
                     shutil.copytree(source_dir, destination_dir)
             if can_probe(target):
-                probe = subprocess.run([str(staged), *version_args(item["name"])], check=True, text=True, capture_output=True)
+                probe = subprocess.run(
+                    [str(staged), *version_args(item["name"])],
+                    check=True,
+                    text=True,
+                    capture_output=True,
+                )
                 runtime_version = (probe.stdout or probe.stderr).splitlines()[0]
             else:
                 runtime_version = f"not probed (staged for {target} on {sys.platform})"
-                print(f"warning: {item['name']} staged without a version probe ({runtime_version})", file=sys.stderr)
-            build_info.append({
-                "name": item["name"], "version": item["version"], "url": item["url"],
-                "sha256": item["sha256"].lower(), "license": item["license"],
-                "runtime_version": runtime_version,
-            })
+                print(
+                    f"warning: {item['name']} staged without a version probe ({runtime_version})",
+                    file=sys.stderr,
+                )
+            build_info.append(
+                {
+                    "name": item["name"],
+                    "version": item["version"],
+                    "url": item["url"],
+                    "sha256": item["sha256"].lower(),
+                    "license": item["license"],
+                    "runtime_version": runtime_version,
+                }
+            )
         info = {"target": target, "tools": build_info, "unavailable": unavailable}
-        (stage_tmp / "tools-build-info.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
+        (stage_tmp / "tools-build-info.json").write_text(
+            json.dumps(info, indent=2) + "\n", encoding="utf-8"
+        )
         if final_stage.exists():
             shutil.rmtree(final_stage)
         os.replace(stage_tmp, final_stage)

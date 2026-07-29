@@ -97,8 +97,7 @@ class AdaFaceNormFIQA(QualityAssessor):
     harshly, larger h makes the score gentler.
     """
 
-    def __init__(self, calibration: Calibration, *, h: float,
-                 high: float, low: float):
+    def __init__(self, calibration: Calibration, *, h: float, high: float, low: float):
         super().__init__(high=high, low=low)
         self.calibration = calibration
         self.model = calibration.model
@@ -155,7 +154,7 @@ class UncalibratedFIQA(QualityAssessor):
     model = "uncalibrated"
 
     def __init__(self):
-        super().__init__(high=1.1, low=-0.1)   # nothing reaches either bound
+        super().__init__(high=1.1, low=-0.1)  # nothing reaches either bound
 
     def score(self, face) -> float:
         return 0.5
@@ -163,14 +162,14 @@ class UncalibratedFIQA(QualityAssessor):
 
 # -- calibration storage --------------------------------------------------
 
+
 def load_calibration(conn, model: str) -> Calibration | None:
     row = conn.execute(
-        "SELECT model, mean, std, n_faces FROM fiqa_calibration WHERE model=?",
-        (model,)).fetchone()
+        "SELECT model, mean, std, n_faces FROM fiqa_calibration WHERE model=?", (model,)
+    ).fetchone()
     if row is None:
         return None
-    return Calibration(model=row["model"], mean=row["mean"], std=row["std"],
-                       n_faces=row["n_faces"])
+    return Calibration(model=row["model"], mean=row["mean"], std=row["std"], n_faces=row["n_faces"])
 
 
 def save_calibration(conn, calibration: Calibration) -> None:
@@ -180,8 +179,8 @@ def save_calibration(conn, calibration: Calibration) -> None:
            ON CONFLICT(model) DO UPDATE SET
                mean=excluded.mean, std=excluded.std,
                n_faces=excluded.n_faces, updated_at=excluded.updated_at""",
-        (calibration.model, calibration.mean, calibration.std,
-         calibration.n_faces, db.now_iso()))
+        (calibration.model, calibration.mean, calibration.std, calibration.n_faces, db.now_iso()),
+    )
 
 
 def make_assessor(conn, cfg: Config) -> QualityAssessor:
@@ -189,8 +188,9 @@ def make_assessor(conn, cfg: Config) -> QualityAssessor:
     calibration = load_calibration(conn, cfg.faces_fiqa_model)
     if calibration is None:
         return UncalibratedFIQA()
-    return AdaFaceNormFIQA(calibration, h=cfg.faces_fiqa_h,
-                           high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low)
+    return AdaFaceNormFIQA(
+        calibration, h=cfg.faces_fiqa_h, high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low
+    )
 
 
 def compute_calibration(conn, cfg: Config, limit: int | None = None) -> Calibration | None:
@@ -200,9 +200,12 @@ def compute_calibration(conn, cfg: Config, limit: int | None = None) -> Calibrat
     population that will actually be clustered.
     """
     import statistics
-    sql = ("SELECT fa.fiqa_norm n FROM faces fa JOIN files f ON f.id=fa.file_id "
-           "WHERE fa.fiqa_norm IS NOT NULL AND f.hidden=0 "
-           "AND COALESCE(fa.not_person,0)=0 ORDER BY fa.id")
+
+    sql = (
+        "SELECT fa.fiqa_norm n FROM faces fa JOIN files f ON f.id=fa.file_id "
+        "WHERE fa.fiqa_norm IS NOT NULL AND f.hidden=0 "
+        "AND COALESCE(fa.not_person,0)=0 ORDER BY fa.id"
+    )
     params: tuple = ()
     if limit:
         sql += " LIMIT ?"
@@ -210,8 +213,12 @@ def compute_calibration(conn, cfg: Config, limit: int | None = None) -> Calibrat
     norms = [r["n"] for r in conn.execute(sql, params)]
     if len(norms) < 2:
         return None
-    return Calibration(model=cfg.faces_fiqa_model, mean=statistics.fmean(norms),
-                       std=statistics.pstdev(norms), n_faces=len(norms))
+    return Calibration(
+        model=cfg.faces_fiqa_model,
+        mean=statistics.fmean(norms),
+        std=statistics.pstdev(norms),
+        n_faces=len(norms),
+    )
 
 
 def retier_all(conn, cfg: Config) -> dict[str, int]:
@@ -224,14 +231,16 @@ def retier_all(conn, cfg: Config) -> dict[str, int]:
     calibration = load_calibration(conn, cfg.faces_fiqa_model)
     if calibration is None:
         return {t: 0 for t in TIERS}
-    assessor = AdaFaceNormFIQA(calibration, h=cfg.faces_fiqa_h,
-                               high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low)
+    assessor = AdaFaceNormFIQA(
+        calibration, h=cfg.faces_fiqa_h, high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low
+    )
     fallback = CompositeFIQA(high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low)
     counts = {t: 0 for t in TIERS}
     updates = []
     for row in conn.execute(
-            """SELECT id, fiqa_norm, det_score AS score, quality_score,
-                      clipped_fraction, box_w AS w, box_h AS h FROM faces"""):
+        """SELECT id, fiqa_norm, det_score AS score, quality_score,
+                      clipped_fraction, box_w AS w, box_h AS h FROM faces"""
+    ):
         if row["fiqa_norm"] is not None:
             score = assessor.score_norm(row["fiqa_norm"])
             source, tier = assessor.model, assessor.tier(score)
@@ -241,8 +250,8 @@ def retier_all(conn, cfg: Config) -> dict[str, int]:
         counts[tier] += 1
         updates.append((score, source, tier, row["id"]))
     conn.executemany(
-        "UPDATE faces SET fiqa_score=?, fiqa_source=?, quality_tier=? WHERE id=?",
-        updates)
+        "UPDATE faces SET fiqa_score=?, fiqa_source=?, quality_tier=? WHERE id=?", updates
+    )
     return counts
 
 
@@ -256,8 +265,7 @@ def bootstrap_calibration(conn, cfg: Config, log=None) -> Calibration | None:
     existing = load_calibration(conn, cfg.faces_fiqa_model)
     if existing is not None:
         return existing
-    pending = conn.execute(
-        "SELECT COUNT(*) FROM faces WHERE fiqa_norm IS NOT NULL").fetchone()[0]
+    pending = conn.execute("SELECT COUNT(*) FROM faces WHERE fiqa_norm IS NOT NULL").fetchone()[0]
     if pending < max(2, cfg.faces_fiqa_calib_sample):
         return None
     calibration = compute_calibration(conn, cfg, limit=cfg.faces_fiqa_calib_sample)
@@ -266,10 +274,12 @@ def bootstrap_calibration(conn, cfg: Config, log=None) -> Calibration | None:
     save_calibration(conn, calibration)
     counts = retier_all(conn, cfg)
     if log:
-        log(f"FIQA calibrated on {calibration.n_faces} faces "
+        log(
+            f"FIQA calibrated on {calibration.n_faces} faces "
             f"(mean {calibration.mean:.2f}, std {calibration.std:.2f}); "
             f"tiers: {counts[HIGH]} high / {counts[BORDERLINE]} borderline / "
-            f"{counts[LOW_QUALITY]} low-quality")
+            f"{counts[LOW_QUALITY]} low-quality"
+        )
     return calibration
 
 
@@ -288,7 +298,9 @@ def recalibrate(conn, cfg: Config, log=None) -> dict[str, int]:
     counts = retier_all(conn, cfg)
     conn.commit()
     if log:
-        log(f"FIQA recalibrated on {calibration.n_faces} faces; "
+        log(
+            f"FIQA recalibrated on {calibration.n_faces} faces; "
             f"tiers: {counts[HIGH]} high / {counts[BORDERLINE]} borderline / "
-            f"{counts[LOW_QUALITY]} low-quality")
+            f"{counts[LOW_QUALITY]} low-quality"
+        )
     return counts

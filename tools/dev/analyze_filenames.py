@@ -21,8 +21,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from organize_archive.scan.walker import is_ignored          # noqa: E402
-from organize_archive.metadata import filename_dates as fd    # noqa: E402
+from organize_archive.scan.walker import is_ignored  # noqa: E402
+from organize_archive.metadata import filename_dates as fd  # noqa: E402
 
 
 def skeleton(s: str) -> str:
@@ -51,8 +51,8 @@ def main(root: str) -> int:
             unmatched.append(n)
 
     print(f"TOTAL: {total}")
-    print(f"MATCHED:   {matched} ({100*matched/total:.1f}%)")
-    print(f"UNMATCHED: {len(unmatched)} ({100*len(unmatched)/total:.1f}%)")
+    print(f"MATCHED:   {matched} ({100 * matched / total:.1f}%)")
+    print(f"UNMATCHED: {len(unmatched)} ({100 * len(unmatched) / total:.1f}%)")
     print("\nConfidence distribution:")
     for c in sorted(conf, reverse=True):
         print(f"  {c}: {conf[c]}")

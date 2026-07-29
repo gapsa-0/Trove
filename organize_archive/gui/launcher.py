@@ -17,8 +17,15 @@ from ..runtime import no_window
 
 # Names to try on PATH (Linux/macOS, and Windows where present).
 _NAMES = [
-    "chromium", "chromium-browser", "google-chrome", "google-chrome-stable",
-    "brave-browser", "microsoft-edge", "microsoft-edge-stable", "chrome", "msedge",
+    "chromium",
+    "chromium-browser",
+    "google-chrome",
+    "google-chrome-stable",
+    "brave-browser",
+    "microsoft-edge",
+    "microsoft-edge-stable",
+    "chrome",
+    "msedge",
 ]
 
 
@@ -59,7 +66,8 @@ def open_app_window(url: str) -> bool:
         # rule holds with no exceptions to remember (see tests/test_no_console_windows.py).
         subprocess.Popen(
             [browser, f"--app={url}", "--new-window"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             **no_window(),
         )
         return True

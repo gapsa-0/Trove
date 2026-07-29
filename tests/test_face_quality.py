@@ -11,8 +11,7 @@ from organize_archive.faces import extract
 
 
 np = pytest.importorskip("numpy")
-pytestmark = pytest.mark.skipif(
-    backend.cv2 is None, reason="OpenCV is an optional face dependency")
+pytestmark = pytest.mark.skipif(backend.cv2 is None, reason="OpenCV is an optional face dependency")
 
 
 def test_quality_metrics_distinguish_detail_blur_and_extreme_exposure():
@@ -60,17 +59,25 @@ def _catalog(tmp_path):
 class _FakeBackend:
     def process_path_report(self, _path, *, apply_quality_gate=True):
         face = SimpleNamespace(
-            x=1, y=2, w=30, h=31, score=.95,
-            focus_score=80.0, brightness=120.0, extreme_fraction=.02,
-            clipped_fraction=0.0, quality_score=.71,
+            x=1,
+            y=2,
+            w=30,
+            h=31,
+            score=0.95,
+            focus_score=80.0,
+            brightness=120.0,
+            extreme_fraction=0.02,
+            clipped_fraction=0.0,
+            quality_score=0.71,
             quality_source="test-v1",
             embedding=np.array([1.0, 0.0], dtype="float32"),
         )
         if apply_quality_gate:
             return backend.DetectionReport(
-                faces=[face], candidates=3,
-                rejected={"score": 0, "size": 0, "focus": 1,
-                          "exposure": 1, "clipped": 0})
+                faces=[face],
+                candidates=3,
+                rejected={"score": 0, "size": 0, "focus": 1, "exposure": 1, "clipped": 0},
+            )
         return backend.DetectionReport(faces=[face], candidates=1)
 
 
@@ -85,7 +92,7 @@ def test_extraction_persists_quality_and_rejection_diagnostics(tmp_path, monkeyp
                   quality_score,quality_source FROM faces"""
     ).fetchone()
     scan = conn.execute("SELECT * FROM face_scan").fetchone()
-    assert tuple(face) == (80.0, 120.0, .02, 0.0, .71, "test-v1")
+    assert tuple(face) == (80.0, 120.0, 0.02, 0.0, 0.71, "test-v1")
     assert scan["n_candidates"] == 3
     assert scan["rejected_focus"] == 1
     assert scan["rejected_exposure"] == 1
@@ -99,8 +106,8 @@ def test_calibration_is_read_only(tmp_path):
     conn = _catalog(tmp_path)
     cfg = Config(
         faces_min_focus=100.0,
-        faces_max_extreme_fraction=.8,
-        faces_max_clipped_fraction=.18,
+        faces_max_extreme_fraction=0.8,
+        faces_max_clipped_fraction=0.18,
     )
 
     stats = extract.calibrate_quality(conn, cfg, limit=1, be=_FakeBackend())

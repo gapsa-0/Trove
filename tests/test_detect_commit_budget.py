@@ -75,9 +75,7 @@ def _catalog(tmp_path, n: int) -> _CountingConnection:
     root.mkdir()
     conn = _connect_counting(tmp_path / "archive.db")
     db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')",
-        (str(root),))
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')", (str(root),))
     for i in range(1, n + 1):
         (root / f"{i}.jpg").write_bytes(b"fake")
         conn.execute(
@@ -85,16 +83,16 @@ def _catalog(tmp_path, n: int) -> _CountingConnection:
                (id,root_id,rel_path,size,mtime,media_type,sha256,
                 first_seen,last_seen)
                VALUES(?,1,?,4,0,'image',?,'2026-01-01','2026-01-01')""",
-            (i, f"{i}.jpg", f"sha{i}"))
+            (i, f"{i}.jpg", f"sha{i}"),
+        )
     conn.commit()
-    conn.commit_calls = 0   # only count commits made during extract() itself
+    conn.commit_calls = 0  # only count commits made during extract() itself
     return conn
 
 
 def _run_with_fake_clock(conn, cfg, step: float, monkeypatch):
     monkeypatch.setattr(dx, "available", lambda: True)
-    monkeypatch.setattr(
-        dx, "_load_bgr", lambda _p, _s: (np.zeros((10, 10, 3), "uint8"), 1.0))
+    monkeypatch.setattr(dx, "_load_bgr", lambda _p, _s: (np.zeros((10, 10, 3), "uint8"), 1.0))
     clock = [0.0]
 
     def fake_monotonic():

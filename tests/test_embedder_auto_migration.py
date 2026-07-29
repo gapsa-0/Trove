@@ -14,19 +14,23 @@ def _catalog(tmp_path, with_faces=True):
     conn.execute(
         """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
                              first_seen,last_seen,present,hidden)
-           VALUES(1,1,'a.jpg',1,0,'image','2026-01-01','2026-01-01',1,0)""")
+           VALUES(1,1,'a.jpg',1,0,'image','2026-01-01','2026-01-01',1,0)"""
+    )
     if with_faces:
         conn.execute(
             """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,det_score,
                                  embedding,created_at)
-               VALUES(10,1,10,10,60,60,0.9,X'00','2026-01-01')""")
+               VALUES(10,1,10,10,60,60,0.9,X'00','2026-01-01')"""
+        )
         conn.execute(
             """INSERT INTO face_scan(file_id,n_faces,scanned_at)
-               VALUES(1,1,'2026-01-01')""")
+               VALUES(1,1,'2026-01-01')"""
+        )
         # The fused pass always writes both markers together.
         conn.execute(
             """INSERT INTO pet_scan(file_id,n_animals,model_source,scanned_at)
-               VALUES(1,0,'yolox','2026-01-01')""")
+               VALUES(1,0,'yolox','2026-01-01')"""
+        )
     conn.commit()
     return conn
 
@@ -58,13 +62,13 @@ def test_valid_pet_data_is_not_destroyed(tmp_path):
     conn.execute(
         """INSERT INTO animal_detections(id,file_id,species,box_x,box_y,box_w,
                                          box_h,det_score,model_source,created_at)
-           VALUES(1,1,'dog',0,0,50,50,0.9,'yolox','2026-01-01')""")
+           VALUES(1,1,'dog',0,0,50,50,0.9,'yolox','2026-01-01')"""
+    )
     conn.commit()
 
     mig.run_if_needed(conn, cfg)
 
-    assert conn.execute(
-        "SELECT COUNT(*) FROM animal_detections").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM animal_detections").fetchone()[0] == 1
     conn.close()
 
 
@@ -72,7 +76,7 @@ def test_an_archive_from_the_old_embedder_re_arms_itself(tmp_path):
     """The point of the whole hook: no command, no flag, work starts from zero."""
     cfg = Config()
     conn = _catalog(tmp_path)
-    assert mig.stored_embedder(conn) is None      # never recorded = old archive
+    assert mig.stored_embedder(conn) is None  # never recorded = old archive
 
     stats = mig.run_if_needed(conn, cfg)
 
@@ -95,9 +99,9 @@ def test_it_does_not_run_twice(tmp_path):
     conn.execute(
         """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
                              fiqa_norm,embedding,created_at)
-           VALUES(1,10,10,60,60,0.9,21.5,X'11','2026-02-01')""")
-    conn.execute(
-        "INSERT INTO face_scan(file_id,n_faces,scanned_at) VALUES(1,1,'2026-02-01')")
+           VALUES(1,10,10,60,60,0.9,21.5,X'11','2026-02-01')"""
+    )
+    conn.execute("INSERT INTO face_scan(file_id,n_faces,scanned_at) VALUES(1,1,'2026-02-01')")
     conn.commit()
 
     assert mig.run_if_needed(conn, cfg) is None, "migration ran a second time"
@@ -124,9 +128,9 @@ def test_bumping_the_embedder_version_re_arms_again(tmp_path, monkeypatch):
     conn.execute(
         """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
                              embedding,created_at)
-           VALUES(1,10,10,60,60,0.9,X'11','2026-02-01')""")
-    conn.execute(
-        "INSERT INTO face_scan(file_id,n_faces,scanned_at) VALUES(1,1,'2026-02-01')")
+           VALUES(1,10,10,60,60,0.9,X'11','2026-02-01')"""
+    )
+    conn.execute("INSERT INTO face_scan(file_id,n_faces,scanned_at) VALUES(1,1,'2026-02-01')")
     conn.commit()
 
     monkeypatch.setattr(backend, "EMBEDDER_VERSION", "some-future-model-v2")
@@ -149,11 +153,11 @@ def test_the_users_review_answers_survive_the_automatic_wipe(tmp_path):
     conn.execute(
         """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
                              fiqa_norm,embedding,created_at)
-           VALUES(1,10,10,60,60,0.9,21.5,X'11','2026-02-01')""")
+           VALUES(1,10,10,60,60,0.9,21.5,X'11','2026-02-01')"""
+    )
     conn.commit()
     mig.reattach(conn, cfg)
 
-    assert conn.execute(
-        "SELECT manual_person FROM faces").fetchone()["manual_person"] == "Mari"
+    assert conn.execute("SELECT manual_person FROM faces").fetchone()["manual_person"] == "Mari"
     assert mig.pending(conn) is False
     conn.close()

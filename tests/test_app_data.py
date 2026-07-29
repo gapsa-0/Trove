@@ -65,6 +65,7 @@ def test_gui_server_starts_cleanly_on_first_run(monkeypatch, tmp_path):
         host, port = httpd.server_address
         # Handle one request without a background server thread.
         import threading
+
         thread = threading.Thread(target=httpd.handle_request)
         thread.start()
         with urlopen(f"http://{host}:{port}/api/archives", timeout=2) as response:
@@ -134,7 +135,9 @@ def test_migrate_legacy_archive_preserves_a_pre_isolation_catalog(monkeypatch, t
     conn.execute(
         """INSERT INTO files(root_id, rel_path, size, mtime, media_type, sha256,
                              first_seen, last_seen)
-           VALUES(?, 'a.jpg', 1, 0, 'image', 'x', 'now', 'now')""", (root_id,))
+           VALUES(?, 'a.jpg', 1, 0, 'image', 'x', 'now', 'now')""",
+        (root_id,),
+    )
     conn.commit()
     conn.close()
     thumb = Path(cfg.cache_dir) / "thumbs" / "x_v1_320.jpg"
@@ -147,7 +150,9 @@ def test_migrate_legacy_archive_preserves_a_pre_isolation_catalog(monkeypatch, t
     entry = cfg.archives[0]
     assert entry["path"] == str(tmp_path / "source")
     assert Path(cfg.archive_db_path(entry["id"])).is_file()
-    assert (Path(cfg.archive_cache_dir(entry["id"])) / "thumbs" / "x_v1_320.jpg").read_bytes() == b"thumb"
+    assert (
+        Path(cfg.archive_cache_dir(entry["id"])) / "thumbs" / "x_v1_320.jpg"
+    ).read_bytes() == b"thumb"
     assert Path(cfg.db_path).is_file()  # the legacy file is copied, not moved
 
     # A later server start (fresh Config.load()) must not migrate a second time.

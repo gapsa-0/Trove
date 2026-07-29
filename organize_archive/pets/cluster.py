@@ -21,6 +21,7 @@ class PetClusterStats:
 def _clusters(vectors, threshold):
     """Greedy complete-link grouping; every member must match every other."""
     import numpy as np
+
     groups = []
     for index, vector in enumerate(vectors):
         choices = []
@@ -59,8 +60,7 @@ def _apply_links(conn, groups, emb_rows):
     A link is ignored when either detection no longer exists (its file was
     removed, or it was never embedded) or when both are already in the same
     group. Returns ``groups`` unchanged when there are no links at all."""
-    links = conn.execute(
-        "SELECT det_a, det_b, kind FROM pet_links").fetchall()
+    links = conn.execute("SELECT det_a, det_b, kind FROM pet_links").fetchall()
     if not links:
         return groups
     det_to_group: dict[int, int] = {}
@@ -106,6 +106,7 @@ def _apply_links(conn, groups, emb_rows):
 
 def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     import numpy as np
+
     stats = PetClusterStats()
     # Pet identities are catalog-global just like persons. Rebuild from every
     # scanned root so opening one archive cannot erase another archive's pets.
@@ -113,14 +114,20 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     rows = conn.execute(
         f"""SELECT a.* FROM animal_detections a JOIN files f ON f.id=a.file_id
             WHERE f.present=1 AND f.hidden=0 AND a.species!='teddy bear'{rc}
-            ORDER BY a.species,a.id""", params).fetchall()
+            ORDER BY a.species,a.id""",
+        params,
+    ).fetchall()
     stats.detections = len(rows)
     old_members = {}
     for pet in conn.execute("SELECT id,name FROM pets WHERE name IS NOT NULL"):
         old_members[pet["id"]] = {
             "name": pet["name"],
-            "ids": {r[0] for r in conn.execute(
-                "SELECT id FROM animal_detections WHERE pet_id=?", (pet["id"],))},
+            "ids": {
+                r[0]
+                for r in conn.execute(
+                    "SELECT id FROM animal_detections WHERE pet_id=?", (pet["id"],)
+                )
+            },
         }
     conn.execute("UPDATE animal_detections SET pet_id=NULL WHERE manual_pet IS NULL")
     conn.execute("DELETE FROM pets")
@@ -143,9 +150,7 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
         repair_manual_pet_files(conn)
         conn.commit()
         return stats
-    V = np.array(
-        [np.frombuffer(row["embedding"], "float32") for row in emb_rows],
-        dtype="float32")
+    V = np.array([np.frombuffer(row["embedding"], "float32") for row in emb_rows], dtype="float32")
     V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
 
     # -- per-species clustering, collected into one flat list of GROUPS -----
@@ -182,18 +187,27 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
         counts = Counter(emb_rows[i]["species"] for i in group)
         top = max(counts.values())
         tied = {sp for sp, c in counts.items() if c == top}
-        species = max((emb_rows[i] for i in group if emb_rows[i]["species"] in tied),
-                      key=lambda row: row["det_score"])["species"]
+        species = max(
+            (emb_rows[i] for i in group if emb_rows[i]["species"] in tied),
+            key=lambda row: row["det_score"],
+        )["species"]
         cursor = conn.execute(
             """INSERT INTO pets
                (name,species,cover_detection_id,detection_count,centroid,created_at)
                VALUES(?,?,?,?,?,?)""",
-            (best_name, species, cover["id"], len(group),
-             centroid.astype("float32").tobytes(), now))
+            (
+                best_name,
+                species,
+                cover["id"],
+                len(group),
+                centroid.astype("float32").tobytes(),
+                now,
+            ),
+        )
         marks = ",".join("?" for _ in ids)
         conn.execute(
-            f"UPDATE animal_detections SET pet_id=? WHERE id IN ({marks})",
-            (cursor.lastrowid, *ids))
+            f"UPDATE animal_detections SET pet_id=? WHERE id IN ({marks})", (cursor.lastrowid, *ids)
+        )
         stats.pets += 1
         stats.clustered += len(group)
         stats.names_preserved += int(best_name is not None)

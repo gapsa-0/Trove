@@ -4,14 +4,17 @@ from organize_archive.metadata.takeout import SidecarMatcher, parse_sidecar
 
 
 def _write(d, name, taken=1652519397, lat=0.0, lon=0.0, title=None):
-    (d / name).write_text(json.dumps({
-        "title": title or name.replace(".json", "").replace(
-            ".supplemental-metadata", ""),
-        "description": "",
-        "photoTakenTime": {"timestamp": str(taken)},
-        "geoData": {"latitude": lat, "longitude": lon, "altitude": 0.0},
-        "geoDataExif": {"latitude": lat, "longitude": lon, "altitude": 0.0},
-    }))
+    (d / name).write_text(
+        json.dumps(
+            {
+                "title": title or name.replace(".json", "").replace(".supplemental-metadata", ""),
+                "description": "",
+                "photoTakenTime": {"timestamp": str(taken)},
+                "geoData": {"latitude": lat, "longitude": lon, "altitude": 0.0},
+                "geoDataExif": {"latitude": lat, "longitude": lon, "altitude": 0.0},
+            }
+        )
+    )
 
 
 def test_exact_match(tmp_path):

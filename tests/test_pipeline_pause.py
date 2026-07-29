@@ -36,8 +36,14 @@ def _job_manager(tmp_path, monkeypatch):
 
 
 _QUEUED_SCAN_STAGE = {
-    "kind": "scan", "card": "scan", "counted": True, "state": "queued",
-    "pending": 3, "progress": None, "blocker": None, "error": None,
+    "kind": "scan",
+    "card": "scan",
+    "counted": True,
+    "state": "queued",
+    "pending": 3,
+    "progress": None,
+    "blocker": None,
+    "error": None,
 }
 
 
@@ -45,18 +51,25 @@ def _rig_auto_tick(jm, monkeypatch, started):
     """Wire _auto_tick() to see one open archive with one queued (startable)
     stage, and capture what it tries to start instead of really starting it."""
     jm._open_root_id = 1
-    monkeypatch.setattr(queries_mod, "archives",
-                        lambda cfg: [{"id": 1, "path": "/fake", "exists": True}])
-    monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
-                        [dict(_QUEUED_SCAN_STAGE)])
-    monkeypatch.setattr(jm, "start", lambda kind, root_id=None, root_path=None, force=False:
-                        started.append(kind) or {"id": 1})
+    monkeypatch.setattr(
+        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [dict(_QUEUED_SCAN_STAGE)],
+    )
+    monkeypatch.setattr(
+        jm,
+        "start",
+        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+    )
 
 
 # ---------------------------------------------------------------------------
 # set_paused() gates _auto_tick()
 # ---------------------------------------------------------------------------
+
 
 def test_auto_tick_starts_queued_work_when_not_paused(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
@@ -96,6 +109,7 @@ def test_set_paused_false_restores_normal_auto_tick_behaviour(tmp_path, monkeypa
 # ---------------------------------------------------------------------------
 # Pausing stops the CPU load: it cancels running jobs, not just future ones
 # ---------------------------------------------------------------------------
+
 
 def test_set_paused_true_cancels_currently_running_jobs(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
@@ -137,6 +151,7 @@ def test_set_paused_false_nudges_the_scheduler(tmp_path, monkeypatch):
 # The flag round-trips through Config persistence
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_paused_defaults_false_and_round_trips_through_config(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     cfg = Config.load()
@@ -170,6 +185,7 @@ def test_set_paused_persists_and_seeds_a_fresh_job_manager(monkeypatch, tmp_path
 # pipeline.snapshot() surfaces the flag and adjusts cards/overall
 # ---------------------------------------------------------------------------
 
+
 class _FakeJobs:
     """Minimal stand-in for JobManager, matching the constraint that
     pipeline.snapshot() must be defensive when `paused` is absent (older
@@ -198,14 +214,14 @@ class _FakeJobs:
 def test_snapshot_reports_unpaused_by_default(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     from organize_archive.db import database as db
+
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
     conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/x','now')")
     # An archive is only idle once a completed scan accounts for what is on
     # disk (db.scan_settled); without one there is always a scan owed.
     run = db.scan_run_start(conn, 1, ["/x"])
-    conn.execute("UPDATE scan_runs SET finished_at='now', files_on_disk=0 WHERE id=?",
-                 (run,))
+    conn.execute("UPDATE scan_runs SET finished_at='now', files_on_disk=0 WHERE id=?", (run,))
     conn.commit()
     conn.close()
 
@@ -215,15 +231,18 @@ def test_snapshot_reports_unpaused_by_default(tmp_path, monkeypatch):
 
 
 def test_snapshot_marks_queued_cards_paused_without_changing_state(tmp_path, monkeypatch):
-    monkeypatch.setattr(pipeline_mod, "stage_states", lambda cfg, jobs, root_id, root_path, allow_walk=False: [
-        dict(_QUEUED_SCAN_STAGE)])
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [dict(_QUEUED_SCAN_STAGE)],
+    )
 
     snap = pipeline_mod.snapshot(Config(), _FakeJobs(paused=True), 1, str(tmp_path))
 
     assert snap["paused"] is True
     assert snap["overall"] == "paused"
     scan_card = next(c for c in snap["stages"] if c["id"] == "scan")
-    assert scan_card["state"] == "queued"       # untouched -- client/scheduler key off this
+    assert scan_card["state"] == "queued"  # untouched -- client/scheduler key off this
     assert scan_card["message"] == "Paused"
 
 
@@ -232,14 +251,14 @@ def test_snapshot_defensive_when_jobs_has_no_paused_method(tmp_path, monkeypatch
     feature; snapshot() must not blow up against one missing .paused()."""
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     from organize_archive.db import database as db
+
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
     conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/x','now')")
     # An archive is only idle once a completed scan accounts for what is on
     # disk (db.scan_settled); without one there is always a scan owed.
     run = db.scan_run_start(conn, 1, ["/x"])
-    conn.execute("UPDATE scan_runs SET finished_at='now', files_on_disk=0 WHERE id=?",
-                 (run,))
+    conn.execute("UPDATE scan_runs SET finished_at='now', files_on_disk=0 WHERE id=?", (run,))
     conn.commit()
     conn.close()
 
@@ -265,20 +284,35 @@ def test_snapshot_defensive_when_jobs_has_no_paused_method(tmp_path, monkeypatch
 # scan ∥ semantic: two stages that can run at the same time, on different cards,
 # so pausing one must demonstrably leave the other startable.
 _QUEUED_SEMANTIC_STAGE = {
-    "kind": "semantic", "card": "semantic", "counted": True, "state": "queued",
-    "pending": 7, "progress": None, "blocker": None, "error": None,
+    "kind": "semantic",
+    "card": "semantic",
+    "counted": True,
+    "state": "queued",
+    "pending": 7,
+    "progress": None,
+    "blocker": None,
+    "error": None,
 }
 
 
 def _rig_two_stages(jm, monkeypatch, started):
     jm._open_root_id = 1
-    monkeypatch.setattr(queries_mod, "archives",
-                        lambda cfg: [{"id": 1, "path": "/fake", "exists": True}])
-    monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
-                        [dict(_QUEUED_SCAN_STAGE), dict(_QUEUED_SEMANTIC_STAGE)])
-    monkeypatch.setattr(jm, "start", lambda kind, root_id=None, root_path=None, force=False:
-                        started.append(kind) or {"id": 1})
+    monkeypatch.setattr(
+        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+    )
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [
+            dict(_QUEUED_SCAN_STAGE),
+            dict(_QUEUED_SEMANTIC_STAGE),
+        ],
+    )
+    monkeypatch.setattr(
+        jm,
+        "start",
+        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+    )
 
 
 def test_pausing_one_stage_leaves_the_others_running(tmp_path, monkeypatch):
@@ -290,7 +324,7 @@ def test_pausing_one_stage_leaves_the_others_running(tmp_path, monkeypatch):
 
     assert jm.stage_paused("scan") is True
     assert jm._auto_tick() is True
-    assert started == ["semantic"]          # scan skipped, its sibling still starts
+    assert started == ["semantic"]  # scan skipped, its sibling still starts
 
 
 def test_resuming_a_stage_starts_it_again(tmp_path, monkeypatch):
@@ -315,14 +349,20 @@ def test_pausing_the_scan_card_stops_enrich_too(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     started = []
     jm._open_root_id = 1
-    monkeypatch.setattr(queries_mod, "archives",
-                        lambda cfg: [{"id": 1, "path": "/fake", "exists": True}])
+    monkeypatch.setattr(
+        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+    )
     enrich = dict(_QUEUED_SCAN_STAGE, kind="enrich")
-    monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
-                        [dict(_QUEUED_SCAN_STAGE), enrich])
-    monkeypatch.setattr(jm, "start", lambda kind, root_id=None, root_path=None, force=False:
-                        started.append(kind) or {"id": 1})
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [dict(_QUEUED_SCAN_STAGE), enrich],
+    )
+    monkeypatch.setattr(
+        jm,
+        "start",
+        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+    )
 
     jm.set_stage_paused("scan", True)
 
@@ -337,7 +377,7 @@ def test_pausing_a_stage_cancels_only_that_stage_s_running_jobs(tmp_path, monkey
             jm._jobs[jid] = jobs_mod.Job(id=jid, kind=kind, root_id=1, root_path="/fake")
             jm._cancels[jid] = threading.Event()
 
-    jm.set_stage_paused("scan", True)     # the scan card owns scan + enrich
+    jm.set_stage_paused("scan", True)  # the scan card owns scan + enrich
 
     assert jm._cancels[1].is_set()
     assert not jm._cancels[2].is_set()
@@ -359,15 +399,34 @@ def test_paused_stage_does_not_keep_the_scheduler_at_its_fast_interval(tmp_path,
 def test_stages_blocked_behind_a_paused_stage_are_not_outstanding(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     jm._open_root_id = 1
-    monkeypatch.setattr(queries_mod, "archives",
-                        lambda cfg: [{"id": 1, "path": "/fake", "exists": True}])
-    dedup = {"kind": "dedup", "card": "dedup", "counted": False, "state": "queued",
-             "pending": 1, "progress": None, "blocker": None, "error": None}
-    places = {"kind": "places", "card": "places", "counted": True, "state": "blocked",
-              "pending": 4, "progress": None, "blocker": "dedup", "error": None}
-    monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
-                        [dedup, places])
+    monkeypatch.setattr(
+        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+    )
+    dedup = {
+        "kind": "dedup",
+        "card": "dedup",
+        "counted": False,
+        "state": "queued",
+        "pending": 1,
+        "progress": None,
+        "blocker": None,
+        "error": None,
+    }
+    places = {
+        "kind": "places",
+        "card": "places",
+        "counted": True,
+        "state": "blocked",
+        "pending": 4,
+        "progress": None,
+        "blocker": "dedup",
+        "error": None,
+    }
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [dedup, places],
+    )
 
     jm.set_stage_paused("dedup", True)
 
@@ -387,18 +446,37 @@ def test_paused_stages_persist_and_seed_a_fresh_job_manager(monkeypatch, tmp_pat
 
 
 def test_snapshot_marks_the_paused_card_and_what_waits_behind_it(tmp_path, monkeypatch):
-    dedup = {"kind": "dedup", "card": "dedup", "counted": False, "state": "queued",
-             "pending": 1, "progress": None, "blocker": None, "error": None}
-    places = {"kind": "places", "card": "places", "counted": True, "state": "blocked",
-              "pending": 4, "progress": None, "blocker": "dedup", "error": None}
-    monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
-                        [dedup, places])
+    dedup = {
+        "kind": "dedup",
+        "card": "dedup",
+        "counted": False,
+        "state": "queued",
+        "pending": 1,
+        "progress": None,
+        "blocker": None,
+        "error": None,
+    }
+    places = {
+        "kind": "places",
+        "card": "places",
+        "counted": True,
+        "state": "blocked",
+        "pending": 4,
+        "progress": None,
+        "blocker": "dedup",
+        "error": None,
+    }
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [dedup, places],
+    )
 
     snap = pipeline_mod.snapshot(
-        Config(), _FakeJobs(paused=False, stages={"dedup"}), 1, str(tmp_path))
+        Config(), _FakeJobs(paused=False, stages={"dedup"}), 1, str(tmp_path)
+    )
 
-    assert snap["paused"] is False          # the pipeline as a whole is not paused
+    assert snap["paused"] is False  # the pipeline as a whole is not paused
     assert snap["paused_stages"] == ["dedup"]
     cards = {c["id"]: c for c in snap["stages"]}
     assert cards["dedup"]["paused"] is True and cards["dedup"]["message"] == "Paused"
@@ -411,12 +489,18 @@ def test_snapshot_marks_the_paused_card_and_what_waits_behind_it(tmp_path, monke
 
 
 def test_snapshot_still_reports_working_when_another_stage_can_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(pipeline_mod, "stage_states",
-                        lambda cfg, jobs, root_id, root_path, allow_walk=False:
-                        [dict(_QUEUED_SCAN_STAGE), dict(_QUEUED_SEMANTIC_STAGE)])
+    monkeypatch.setattr(
+        pipeline_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [
+            dict(_QUEUED_SCAN_STAGE),
+            dict(_QUEUED_SEMANTIC_STAGE),
+        ],
+    )
 
     snap = pipeline_mod.snapshot(
-        Config(), _FakeJobs(paused=False, stages={"scan"}), 1, str(tmp_path))
+        Config(), _FakeJobs(paused=False, stages={"scan"}), 1, str(tmp_path)
+    )
 
     assert snap["overall"] == "working"
     cards = {c["id"]: c for c in snap["stages"]}

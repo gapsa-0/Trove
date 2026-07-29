@@ -57,16 +57,16 @@ from ..gui import thumbs
 
 @dataclass
 class DetectStats:
-    processed: int = 0             # files examined this run (images + videos)
-    videos: int = 0                # of which were videos
-    video_frames: int = 0          # sampled keyframes actually decoded
+    processed: int = 0  # files examined this run (images + videos)
+    videos: int = 0  # of which were videos
+    video_frames: int = 0  # sampled keyframes actually decoded
     faces_found: int = 0
     images_with_faces: int = 0
     animals: int = 0
     photos_with_animals: int = 0
-    nonhuman_suppressed: int = 0   # faces dropped as an animal's own face
+    nonhuman_suppressed: int = 0  # faces dropped as an animal's own face
     human_animals_dropped: int = 0  # "pets" that a person box exposed as people
-    rotated: int = 0               # photos found to be stored sideways
+    rotated: int = 0  # photos found to be stored sideways
     candidates: int = 0
     rejected_score: int = 0
     rejected_size: int = 0
@@ -110,7 +110,8 @@ def image_count(conn, cfg: Config | None = None, root_id: int | None = None) -> 
     return conn.execute(
         f"""SELECT COUNT(*) FROM files f
             WHERE f.present=1 AND f.media_type IN {media_types} AND f.hidden=0{rc}""",
-        params).fetchone()[0]
+        params,
+    ).fetchone()[0]
 
 
 def pending_count(conn, cfg: Config, root_id: int | None = None) -> int:
@@ -123,7 +124,9 @@ def pending_count(conn, cfg: Config, root_id: int | None = None) -> int:
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
-            WHERE {_pending_where(cfg)}{rc}""", p).fetchone()[0]
+            WHERE {_pending_where(cfg)}{rc}""",
+        p,
+    ).fetchone()[0]
 
 
 def _pending(conn, cfg: Config, batch_size: int):
@@ -137,7 +140,8 @@ def _pending(conn, cfg: Config, batch_size: int):
             WHERE {_pending_where(cfg)}
             ORDER BY f.id
             LIMIT :lim""",
-        {"pet_src": pet_scan_source(cfg), "lim": batch_size}).fetchall()
+        {"pet_src": pet_scan_source(cfg), "lim": batch_size},
+    ).fetchall()
 
 
 def available() -> bool:
@@ -155,12 +159,17 @@ def make_backends(cfg: Config, log=None):
     if face_backend.available():
         try:
             face_be = face_backend.FaceBackend(
-                cfg.cache_dir, min_score=cfg.faces_min_score, min_px=cfg.faces_min_px,
-                max_side=cfg.faces_max_side, det_size=cfg.faces_det_size,
+                cfg.cache_dir,
+                min_score=cfg.faces_min_score,
+                min_px=cfg.faces_min_px,
+                max_side=cfg.faces_max_side,
+                det_size=cfg.faces_det_size,
                 max_clipped_fraction=cfg.faces_max_clipped_fraction,
                 min_focus=cfg.faces_min_focus,
                 max_extreme_fraction=cfg.faces_max_extreme_fraction,
-                quality_version=cfg.faces_quality_version, log=log)
+                quality_version=cfg.faces_quality_version,
+                log=log,
+            )
         except Exception as e:
             # Weights that could not be fetched or loaded must not take the other
             # detector down with them: report and carry on pets-only.
@@ -169,10 +178,15 @@ def make_backends(cfg: Config, log=None):
     if pet_backend.available():
         try:
             pet_be = pet_backend.PetBackend(
-                cfg.cache_dir, min_score=cfg.pets_min_score, min_px=cfg.pets_min_px,
-                max_side=cfg.pets_max_side, species=cfg.pets_species,
+                cfg.cache_dir,
+                min_score=cfg.pets_min_score,
+                min_px=cfg.pets_min_px,
+                max_side=cfg.pets_max_side,
+                species=cfg.pets_species,
                 human_min_score=cfg.pets_human_min_score,
-                model_source=pet_scan_source(cfg), log=log)
+                model_source=pet_scan_source(cfg),
+                log=log,
+            )
         except Exception as e:
             if log:
                 log(f"pet detection unavailable: {e}")
@@ -190,8 +204,10 @@ def _load_bgr(path: str, max_side: int):
     import cv2
     import numpy as np
     from PIL import Image, ImageOps
+
     try:
         import pillow_heif
+
         pillow_heif.register_heif_opener()
     except Exception:
         pass
@@ -244,6 +260,7 @@ def _rotate_boxes_back(humans, k: int, w: int, h: int):
     mirror of that.
     """
     from ..pets.backend import HumanDetection
+
     out = []
     for d in humans:
         if k == 1:
@@ -262,6 +279,7 @@ def _human_boxes_on_turns(img, pet_be):
     already in memory, so no image is ever decoded twice.
     """
     import numpy as np
+
     h, w = img.shape[:2]
     found = []
     for k in (1, 3):
@@ -281,8 +299,7 @@ def _drop_human_animals(animals, humans, min_iou: float, *, outscore=False):
     """
     kept, human_like = [], []
     for a in animals:
-        if any(_iou(a, p) >= min_iou and (not outscore or p.score >= a.score)
-               for p in humans):
+        if any(_iou(a, p) >= min_iou and (not outscore or p.score >= a.score) for p in humans):
             human_like.append(a)
         else:
             kept.append(a)
@@ -298,6 +315,7 @@ def rotate_image(img, deg: int):
     if not deg:
         return img
     import numpy as np
+
     return np.ascontiguousarray(np.rot90(img, _TURNS[deg]))
 
 
@@ -305,14 +323,14 @@ def rotate_image(img, deg: int):
 class _Found:
     """Everything one decoded frame yielded, already cross-checked."""
 
-    faces: list = field(default_factory=list)      # kept, human
-    animals: list = field(default_factory=list)    # kept, real animals
-    humans: list = field(default_factory=list)     # person boxes (context)
-    report: object = None                          # the raw DetectionReport
-    human_animals: int = 0                         # pets that were really people
-    suppressed_faces: int = 0                      # animals' own faces
-    max_subject_share: float = 0.0                 # biggest box, as a frame share
-    animal_score: float = 0.0                      # best animal reading, pre-veto
+    faces: list = field(default_factory=list)  # kept, human
+    animals: list = field(default_factory=list)  # kept, real animals
+    humans: list = field(default_factory=list)  # person boxes (context)
+    report: object = None  # the raw DetectionReport
+    human_animals: int = 0  # pets that were really people
+    suppressed_faces: int = 0  # animals' own faces
+    max_subject_share: float = 0.0  # biggest box, as a frame share
+    animal_score: float = 0.0  # best animal reading, pre-veto
 
 
 def _detect_on(img, scale, cfg: Config, face_be, pet_be) -> _Found:
@@ -332,20 +350,21 @@ def _detect_on(img, scale, cfg: Config, face_be, pet_be) -> _Found:
         # against a person reading from some other angle.
         found.animal_score = max((a.score for a in animals), default=0.0)
         h, w = img.shape[:2]
-        found.max_subject_share = max(
-            (b.w * b.h for b in (*animals, *humans)), default=0) / max(1, w * h)
-        animals, human_like = _drop_human_animals(
-            animals, humans, cfg.pets_human_iou)
+        found.max_subject_share = max((b.w * b.h for b in (*animals, *humans)), default=0) / max(
+            1, w * h
+        )
+        animals, human_like = _drop_human_animals(animals, humans, cfg.pets_human_iou)
         if animals:
             # Survivors may still be people who are simply not vertical here —
             # the quarter-turns are where YOLOX reads them as `person` again.
             turn_humans = _human_boxes_on_turns(img, pet_be)
             humans += turn_humans
             animals, turned = _drop_human_animals(
-                animals, turn_humans, cfg.pets_human_iou, outscore=True)
+                animals, turn_humans, cfg.pets_human_iou, outscore=True
+            )
             human_like += turned
         found.human_animals = len(human_like)
-        for box in (*animals, *humans):     # -> this frame's full-res pixels
+        for box in (*animals, *humans):  # -> this frame's full-res pixels
             box.x = max(0, round(box.x * inv))
             box.y = max(0, round(box.y * inv))
             box.w = round(box.w * inv)
@@ -357,14 +376,15 @@ def _detect_on(img, scale, cfg: Config, face_be, pet_be) -> _Found:
 
     for fc in found.report.faces:
         in_animal = any(
-            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, a.x, a.y, a.w, a.h)
-            >= cfg.pets_face_overlap for a in found.animals)
+            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, a.x, a.y, a.w, a.h) >= cfg.pets_face_overlap
+            for a in found.animals
+        )
         in_person = any(
-            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, p.x, p.y, p.w, p.h)
-            >= cfg.pets_face_overlap for p in found.humans)
+            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, p.x, p.y, p.w, p.h) >= cfg.pets_face_overlap
+            for p in found.humans
+        )
         if in_animal and not in_person:
-            found.report.rejected["nonhuman"] = (
-                found.report.rejected.get("nonhuman", 0) + 1)
+            found.report.rejected["nonhuman"] = found.report.rejected.get("nonhuman", 0) + 1
             found.suppressed_faces += 1
             continue
         found.faces.append(fc)
@@ -379,8 +399,7 @@ def _best_person(pet_be, img) -> tuple[float, float]:
     return (best.score, best.w * best.h / frame) if best else (0.0, 0.0)
 
 
-def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float,
-                      animal_score: float):
+def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float, animal_score: float):
     """Find the quarter turn that makes this photo's subjects upright.
 
     Two kinds of evidence, in order of how specific they are:
@@ -432,8 +451,9 @@ def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float,
     if face_be is not None:
         best_deg, best = 0, []
         for deg in (90, 270):
-            faces = [s for s in face_be.probe_faces(rotate_image(img, deg))
-                     if s >= cfg.faces_min_score]
+            faces = [
+                s for s in face_be.probe_faces(rotate_image(img, deg)) if s >= cfg.faces_min_score
+            ]
             if len(faces) > len(best):
                 best_deg, best = deg, faces
         if len(best) >= cfg.orientation_min_faces:
@@ -443,8 +463,7 @@ def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float,
     # only ever succeed on a dominant subject in a landscape frame, so a photo
     # without one skips them entirely.
     h, w = img.shape[:2]
-    if (pet_be is None or subject_share < cfg.orientation_min_subject
-            or w <= h):
+    if pet_be is None or subject_share < cfg.orientation_min_subject or w <= h:
         return 0, 0.0, ""
     upright, _ = _best_person(pet_be, img)
     best_deg, best_score, best_share = 0, upright, 0.0
@@ -452,10 +471,13 @@ def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float,
         score, share = _best_person(pet_be, rotate_image(img, deg))
         if score > best_score:
             best_deg, best_score, best_share = deg, score, share
-    if (best_deg and best_score >= cfg.orientation_person_min
-            and best_score - upright >= cfg.orientation_person_margin
-            and best_share >= cfg.orientation_min_subject
-            and best_score >= animal_score):
+    if (
+        best_deg
+        and best_score >= cfg.orientation_person_min
+        and best_score - upright >= cfg.orientation_person_margin
+        and best_share >= cfg.orientation_min_subject
+        and best_score >= animal_score
+    ):
         return best_deg, best_score, "person"
     return 0, 0.0, ""
 
@@ -541,6 +563,7 @@ def collapse_video_faces(entries: list[tuple], threshold: float) -> list[tuple]:
     frame_offset is a frame the app can still re-derive a good crop from.
     """
     import numpy as np
+
     kept: list[list] = []  # [Face, offset], mutated in place as better hits arrive
     for face, offset in entries:
         best_i, best_sim = -1, -1.0
@@ -567,6 +590,7 @@ def collapse_video_animals(entries: list[tuple], threshold: float) -> list[tuple
     metric).
     """
     import numpy as np
+
     kept: list[list] = []
     for animal, offset in entries:
         best_i, best_sim = -1, -1.0
@@ -585,9 +609,17 @@ def collapse_video_animals(entries: list[tuple], threshold: float) -> list[tuple
     return [(a, o) for a, o in kept]
 
 
-def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
-            limit: int | None = None, face_be=None, pet_be=None,
-            cache_dir: str | None = None) -> DetectStats:
+def extract(
+    conn,
+    cfg: Config,
+    *,
+    progress=None,
+    batch_size: int = 32,
+    limit: int | None = None,
+    face_be=None,
+    pet_be=None,
+    cache_dir: str | None = None,
+) -> DetectStats:
     """Detect people + animals for pending images/videos in one decode each.
 
     ``limit`` caps files this run (chunked runs / testing); None = until drained.
@@ -608,13 +640,15 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
         raise RuntimeError("detect backend unavailable (needs faces and/or pets)")
     if face_be is None and pet_be is None:
         face_be, pet_be = make_backends(
-            cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None)
+            cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None
+        )
         if face_be is None and pet_be is None:
             # Both sets of weights failed to load. Stop here rather than walk the
             # pending images and mark them scanned with nothing detected.
             raise RuntimeError(
                 "detect backend unavailable: neither the face nor the pet models "
-                "could be loaded (see the messages above)")
+                "could be loaded (see the messages above)"
+            )
 
     total = pending_count(conn, cfg)
     if limit is not None:
@@ -630,13 +664,13 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
     if face_be is not None:
         face_be.assessor = fiqa.make_assessor(conn, cfg)
     import time as _time
+
     _last_commit = _time.monotonic()
     while True:
         remaining = None if limit is None else max(0, limit - stats.processed)
         if remaining == 0:
             break
-        rows = _pending(
-            conn, cfg, batch_size if remaining is None else min(batch_size, remaining))
+        rows = _pending(conn, cfg, batch_size if remaining is None else min(batch_size, remaining))
         if not rows:
             break
 
@@ -662,17 +696,21 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                     raw_faces, raw_animals = [], []
                     for offset in offsets:
                         frame_path = thumbs.detect_frame_for(
-                            cache_dir, fid, path, offset,
-                            cfg.detect_video_frame_px, sha256=row["sha256"])
+                            cache_dir,
+                            fid,
+                            path,
+                            offset,
+                            cfg.detect_video_frame_px,
+                            sha256=row["sha256"],
+                        )
                         if frame_path is None:
-                            continue    # this offset alone failed; try the rest
+                            continue  # this offset alone failed; try the rest
                         stats.video_frames += 1
                         img, scale = _load_bgr(str(frame_path), cfg.detect_max_side)
                         found = _detect_on(img, scale, cfg, face_be, pet_be)
                         face_report.candidates += found.report.candidates
                         for reason, n in found.report.rejected.items():
-                            face_report.rejected[reason] = (
-                                face_report.rejected.get(reason, 0) + n)
+                            face_report.rejected[reason] = face_report.rejected.get(reason, 0) + n
                         stats.human_animals_dropped += found.human_animals
                         stats.nonhuman_suppressed += found.suppressed_faces
                         raw_faces.extend((fc, offset) for fc in found.faces)
@@ -687,10 +725,8 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                             _last_commit = _time.monotonic()
                     # Same person/animal across several frames must not become
                     # several rows -- collapse before writing.
-                    face_hits = collapse_video_faces(
-                        raw_faces, cfg.detect_video_same_face)
-                    animal_hits = collapse_video_animals(
-                        raw_animals, cfg.detect_video_same_animal)
+                    face_hits = collapse_video_faces(raw_faces, cfg.detect_video_same_face)
+                    animal_hits = collapse_video_animals(raw_animals, cfg.detect_video_same_animal)
                     # No frame at all (no ffmpeg, unreadable container) is a
                     # clean permanent skip, not an error: the scan markers
                     # below still get written with zero counts, so this video
@@ -707,11 +743,14 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                     # pass. SCRFD finding nothing at all is the signal, not the
                     # cross-check's verdict: a face it did find and an animal
                     # then claimed says the photo was readable, so leave it be.
-                    if (face_be is not None and not found.report.faces
-                            and (found.animals or found.humans)):
+                    if (
+                        face_be is not None
+                        and not found.report.faces
+                        and (found.animals or found.humans)
+                    ):
                         rotate, conf, orient_src = _resolve_rotation(
-                            img, face_be, pet_be, cfg, found.max_subject_share,
-                            found.animal_score)
+                            img, face_be, pet_be, cfg, found.max_subject_share, found.animal_score
+                        )
                         if rotate:
                             img = rotate_image(img, rotate)
                             found = _detect_on(img, scale, cfg, face_be, pet_be)
@@ -733,15 +772,28 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                         """INSERT INTO orientation
                            (file_id, rotate_deg, source, confidence, created_at)
                            VALUES (?,?,?,?,?)""",
-                        (fid, rotate, orient_src, conf, now))
+                        (fid, rotate, orient_src, conf, now),
+                    )
                 for a, offset in animal_hits:
                     conn.execute(
                         """INSERT INTO animal_detections
                            (file_id,species,box_x,box_y,box_w,box_h,det_score,
                             embedding,model_source,frame_offset,created_at)
                            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                        (fid, a.species, a.x, a.y, a.w, a.h, a.score,
-                         a.embedding.tobytes(), pet_src, offset, now))
+                        (
+                            fid,
+                            a.species,
+                            a.x,
+                            a.y,
+                            a.w,
+                            a.h,
+                            a.score,
+                            a.embedding.tobytes(),
+                            pet_src,
+                            offset,
+                            now,
+                        ),
+                    )
                 for fc, offset in face_hits:
                     conn.execute(
                         """INSERT INTO faces
@@ -751,18 +803,32 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                             fiqa_norm, fiqa_score, fiqa_source, quality_tier,
                             embedding, frame_offset, created_at)
                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (fid, fc.x, fc.y, fc.w, fc.h, fc.score,
-                         fc.focus_score, fc.brightness, fc.extreme_fraction,
-                         fc.clipped_fraction, fc.quality_score, fc.quality_source,
-                         # getattr, like _best_face_quality above: lightweight
-                         # stand-in backends (tests, third-party) yield objects
-                         # without the FIQA fields, and an un-tiered face is a
-                         # supported state (NULL reads as BORDERLINE downstream).
-                         getattr(fc, "fiqa_norm", None),
-                         getattr(fc, "fiqa_score", None),
-                         getattr(getattr(face_be, "assessor", None), "model", None),
-                         getattr(fc, "quality_tier", None),
-                         fc.embedding.tobytes(), offset, now))
+                        (
+                            fid,
+                            fc.x,
+                            fc.y,
+                            fc.w,
+                            fc.h,
+                            fc.score,
+                            fc.focus_score,
+                            fc.brightness,
+                            fc.extreme_fraction,
+                            fc.clipped_fraction,
+                            fc.quality_score,
+                            fc.quality_source,
+                            # getattr, like _best_face_quality above: lightweight
+                            # stand-in backends (tests, third-party) yield objects
+                            # without the FIQA fields, and an un-tiered face is a
+                            # supported state (NULL reads as BORDERLINE downstream).
+                            getattr(fc, "fiqa_norm", None),
+                            getattr(fc, "fiqa_score", None),
+                            getattr(getattr(face_be, "assessor", None), "model", None),
+                            getattr(fc, "quality_tier", None),
+                            fc.embedding.tobytes(),
+                            offset,
+                            now,
+                        ),
+                    )
 
                 n_faces = len(face_hits)
                 n_animals = len(animal_hits)
@@ -784,16 +850,25 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
                     rejected_focus, rejected_exposure, rejected_clipped,
                     rejected_nonhuman, scanned_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (fid, n_faces, face_report.candidates,
-                 face_report.rejected.get("score", 0),
-                 face_report.rejected.get("size", 0), 0, 0,
-                 face_report.rejected.get("clipped", 0),
-                 face_report.rejected.get("nonhuman", 0), now))
+                (
+                    fid,
+                    n_faces,
+                    face_report.candidates,
+                    face_report.rejected.get("score", 0),
+                    face_report.rejected.get("size", 0),
+                    0,
+                    0,
+                    face_report.rejected.get("clipped", 0),
+                    face_report.rejected.get("nonhuman", 0),
+                    now,
+                ),
+            )
             conn.execute(
                 """INSERT OR REPLACE INTO pet_scan
                    (file_id, n_animals, source_sha256, model_source, scanned_at)
                    VALUES (?,?,?,?,?)""",
-                (fid, n_animals, row["sha256"], pet_src, now))
+                (fid, n_animals, row["sha256"], pet_src, now),
+            )
 
             stats.processed += 1
             stats.faces_found += n_faces
@@ -825,10 +900,15 @@ def extract(conn, cfg: Config, *, progress=None, batch_size: int = 32,
         # face's tier never depends on which batch it happened to land in.
         if face_be is not None:
             before = fiqa.load_calibration(conn, cfg.faces_fiqa_model)
-            if before is None and fiqa.bootstrap_calibration(
-                    conn, cfg,
-                    log=(lambda m: progress.update(stats.processed, 0, m))
-                    if progress else None) is not None:
+            if (
+                before is None
+                and fiqa.bootstrap_calibration(
+                    conn,
+                    cfg,
+                    log=(lambda m: progress.update(stats.processed, 0, m)) if progress else None,
+                )
+                is not None
+            ):
                 conn.commit()
                 face_be.assessor = fiqa.make_assessor(conn, cfg)
 

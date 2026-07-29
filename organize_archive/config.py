@@ -16,9 +16,18 @@ from pathlib import Path
 
 # Project layout ------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-from .paths import (app_data_dir, config_file, default_cache_dir,
-                    default_db_path, ensure_app_data_dirs, secrets_file,
-                    archives_dir, archive_dir, archive_db_path, archive_cache_dir)
+from .paths import (
+    app_data_dir,
+    config_file,
+    default_cache_dir,
+    default_db_path,
+    ensure_app_data_dirs,
+    secrets_file,
+    archives_dir,
+    archive_dir,
+    archive_db_path,
+    archive_cache_dir,
+)
 
 # Credentials this application no longer has any use for. Semantic search became
 # local (organize_archive/embeddings), so nothing can spend a Voyage key any
@@ -84,16 +93,29 @@ DEFAULT_ROOTS: list[str] = []
 # Files that are not media content. Google Takeout ``.json`` sidecars are
 # excluded here as *content* — they are consumed as metadata in Phase 3.
 IGNORE_EXTENSIONS = {
-    "json", "db", "thm", "ini", "nomedia", "part", "tmp",
+    "json",
+    "db",
+    "thm",
+    "ini",
+    "nomedia",
+    "part",
+    "tmp",
 }
 IGNORE_FILENAMES = {
-    "thumbs.db", "desktop.ini", ".nomedia", ".picasa.ini",
-    "picasa.ini", ".ds_store",
+    "thumbs.db",
+    "desktop.ini",
+    ".nomedia",
+    ".picasa.ini",
+    "picasa.ini",
+    ".ds_store",
 }
 # Substrings that mark Google/Picasa/Android index & housekeeping leftovers
 # (these often have no extension, e.g. "thumbdata3-123", "nomedia_1620517712...").
 IGNORE_NAME_SUBSTRINGS = (
-    "thumbindex", "thumbdata", "database_uuid", "nomedia",
+    "thumbindex",
+    "thumbdata",
+    "database_uuid",
+    "nomedia",
     ".com.google.chrome.",  # browser temp download leftovers
 )
 
@@ -195,25 +217,25 @@ class Config:
     # score the Phase-1 gate needs (faces/fiqa.py) — one model, two signals.
     # Changing the embedder changes the vectors, so it requires a full re-extract
     # (see faces/migrate_adaface.py, which carries names and pins across it).
-    faces_det_size: int = 640        # SCRFD detector input square (bigger = better
-                                     # small-face recall, slower)
-    faces_min_score: float = 0.50    # accept faces at/above this SCRFD confidence
-                                     # (SCRFD's own floor is ~0.5; real frontal
-                                     # faces score ~0.8+). Animal faces are handled
-                                     # by the pet cross-check, not this threshold.
-    faces_min_px: int = 50           # drop faces smaller than this (box side, px,
-                                     # measured in ORIGINAL pixels). The Phase-1
-                                     # base filter: below ~50px there is too little
-                                     # detail for a trustworthy embedding, and such
-                                     # faces are exactly the weak "bridge" vectors
-                                     # that used to chain distinct people together.
-    faces_max_side: int = 960        # standalone backend decode cap (the fused
-                                     # detect stage decodes once at detect_max_side)
+    faces_det_size: int = 640  # SCRFD detector input square (bigger = better
+    # small-face recall, slower)
+    faces_min_score: float = 0.50  # accept faces at/above this SCRFD confidence
+    # (SCRFD's own floor is ~0.5; real frontal
+    # faces score ~0.8+). Animal faces are handled
+    # by the pet cross-check, not this threshold.
+    faces_min_px: int = 50  # drop faces smaller than this (box side, px,
+    # measured in ORIGINAL pixels). The Phase-1
+    # base filter: below ~50px there is too little
+    # detail for a trustworthy embedding, and such
+    # faces are exactly the weak "bridge" vectors
+    # that used to chain distinct people together.
+    faces_max_side: int = 960  # standalone backend decode cap (the fused
+    # detect stage decodes once at detect_max_side)
     faces_max_clipped_fraction: float = 0.18  # reject a box mostly outside the frame
     # Advisory quality metrics (focus/exposure) are still measured on the aligned
     # crop and stored per face for display/calibration, but no longer gate the live
     # path — SCRFD's confidence is the primary filter. Used by `oa faces --calibrate`.
-    faces_min_focus: float = 35.0             # grayscale Laplacian variance (advisory)
+    faces_min_focus: float = 35.0  # grayscale Laplacian variance (advisory)
     faces_max_extreme_fraction: float = 0.80  # near-black/near-white pixels (advisory)
     faces_quality_version: str = "opencv-laplacian-v1"
 
@@ -241,37 +263,37 @@ class Config:
     # ~10% LOW_QUALITY / ~40% BORDERLINE / ~50% HIGH — a real borderline band for
     # pass 2 to work on, and a discard tier that is only the genuinely unusable.
     faces_fiqa_h: float = 2.0
-    faces_fiqa_high: float = 0.55    # >= this is HIGH (core-eligible); ~the median
-                                     # face, so about half the archive seeds cores
-    faces_fiqa_low: float = 0.18     # < this is LOW_QUALITY (excluded from
-                                     # clustering and hidden in the GUI); ~the
-                                     # bottom decile. In between is BORDERLINE.
-    faces_fiqa_calib_sample: int = 2000   # faces used to fix mean/std, once
+    faces_fiqa_high: float = 0.55  # >= this is HIGH (core-eligible); ~the median
+    # face, so about half the archive seeds cores
+    faces_fiqa_low: float = 0.18  # < this is LOW_QUALITY (excluded from
+    # clustering and hidden in the GUI); ~the
+    # bottom decile. In between is BORDERLINE.
+    faces_fiqa_calib_sample: int = 2000  # faces used to fix mean/std, once
 
     # Fused detection (Phase 6/9). People (SCRFD) and animals (YOLOX) are found in
     # ONE pass: each image is decoded a single time at this resolution and both
     # detectors run on that array, so ~150k photos are decoded once, not twice.
-    detect_max_side: int = 1280      # long-side cap for the single shared decode
+    detect_max_side: int = 1280  # long-side cap for the single shared decode
 
     # Video detection. Videos are detected from a handful of sampled keyframes
     # rather than decoded frame-by-frame (mirrors semantic.py's video indexing).
-    detect_video_frames: int = 5      # keyframes sampled per video; 0 disables
-                                      # video detection entirely (falls back to
-                                      # today's images-only behaviour)
+    detect_video_frames: int = 5  # keyframes sampled per video; 0 disables
+    # video detection entirely (falls back to
+    # today's images-only behaviour)
     detect_video_frame_px: int = 1280  # width frames are extracted at. LOAD-
-                                      # BEARING, not cosmetic: detection boxes for
-                                      # a video are stored in the *extracted
-                                      # frame's* pixel coordinates, so a crop must
-                                      # re-extract at this exact size later.
-                                      # Changing it invalidates existing video
-                                      # detections (their boxes no longer line up
-                                      # with a freshly extracted frame).
+    # BEARING, not cosmetic: detection boxes for
+    # a video are stored in the *extracted
+    # frame's* pixel coordinates, so a crop must
+    # re-extract at this exact size later.
+    # Changing it invalidates existing video
+    # detections (their boxes no longer line up
+    # with a freshly extracted frame).
     detect_video_same_face: float = 0.55  # cosine similarity above which two
-                                      # faces found in different frames of the
-                                      # SAME video are considered the same person
-                                      # and collapsed to one row
+    # faces found in different frames of the
+    # SAME video are considered the same person
+    # and collapsed to one row
     detect_video_same_animal: float = 0.80  # same, for animal DINOv2 embeddings
-                                      # (same species is additionally required)
+    # (same species is additionally required)
 
     # Pets. YOLOX detects animal regions locally; identities are grouped from a
     # DINOv2 re-ID embedding of each crop (cache/models/dinov2_pet/). The animal
@@ -279,12 +301,11 @@ class Config:
     # dropped from People (the one non-human rule, applied inline in detect/).
     pets_min_score: float = 0.60
     pets_min_px: int = 48
-    pets_max_side: int = 1280        # standalone backend decode cap (see detect_max_side)
-    pets_species: list[str] = field(
-        default_factory=lambda: ["cat", "dog", "bird", "horse"])
+    pets_max_side: int = 1280  # standalone backend decode cap (see detect_max_side)
+    pets_species: list[str] = field(default_factory=lambda: ["cat", "dog", "bird", "horse"])
     pets_cluster_similarity: float = 0.75  # DINOv2 cosine (calibrated on-archive:
-                                            # same-animal ~0.8-0.96, different ≤~0.3;
-                                            # complete-link keeps 0.75 conservative)
+    # same-animal ~0.8-0.96, different ≤~0.3;
+    # complete-link keeps 0.75 conservative)
     pets_min_detections: int = 2
     pets_face_overlap: float = 0.60  # face-in-animal overlap that marks a non-human
     # Human cross-check. The same YOLOX pass reports COCO `person` boxes at
@@ -358,11 +379,11 @@ class Config:
     # under faces_merge_sim. 0.55 sits far above different people's centroids (~0.30),
     # so it reunites split selves without fusing distinct people (validated: zero
     # collisions among named people).
-    faces_knn_k: int = 5              # stage-1 mutual-kNN neighbours per face
-    faces_link_sim: float = 0.50      # stage-1 mutual-kNN similarity floor (cosine)
-    faces_merge_sim: float = 0.40     # stage-2 avg-linkage merge (mean cosine sim)
+    faces_knn_k: int = 5  # stage-1 mutual-kNN neighbours per face
+    faces_link_sim: float = 0.50  # stage-1 mutual-kNN similarity floor (cosine)
+    faces_merge_sim: float = 0.40  # stage-2 avg-linkage merge (mean cosine sim)
     faces_centroid_merge_sim: float = 0.55  # stage-3 centroid-direction merge (cosine)
-    faces_min_faces: int = 3          # min faces for a cluster to become a person
+    faces_min_faces: int = 3  # min faces for a cluster to become a person
 
     # Core-expansion clustering (Phase 3). The stages above no longer run over the
     # whole population: they run over HIGH-quality faces only, building "cores"
@@ -375,14 +396,14 @@ class Config:
     # core pass wants small, unambiguous fragments, and stages 2-3 (average- and
     # centroid-linkage) are what put a person's fragments back together
     # afterwards, so strictness here costs recall only if those merges fail.
-    faces_core_link_sim: float = 0.75    # pass-1 mutual-kNN floor within cores
+    faces_core_link_sim: float = 0.75  # pass-1 mutual-kNN floor within cores
     faces_border_assign_sim: float = 0.55  # pass-2: attach a borderline face to a
-                                     # core at/above this cosine, else leave it as
-                                     # noise. Lenient by design — the purity is
-                                     # already guaranteed by who built the core.
-    faces_border_votes: int = 3       # compare against a core's top-N members, not
-                                     # just its centroid: a spread-out core's mean
-                                     # understates similarity to its own members.
+    # core at/above this cosine, else leave it as
+    # noise. Lenient by design — the purity is
+    # already guaranteed by who built the core.
+    faces_border_votes: int = 3  # compare against a core's top-N members, not
+    # just its centroid: a spread-out core's mean
+    # understates similarity to its own members.
 
     # Date resolution priority (Phase 3). Tunable; first available wins.
     date_priority: list[str] = field(
@@ -406,8 +427,11 @@ class Config:
     # Unlike the catalogue itself, config.json is not discarded on upgrade, so
     # these three have to be actively reset.
     _SUPERSEDED_SEMANTIC = (
-        "semantic_embedding_model", "semantic_embedding_dimensions",
-        "semantic_search_min_similarity", "semantic_search_relative_floor")
+        "semantic_embedding_model",
+        "semantic_embedding_dimensions",
+        "semantic_search_min_similarity",
+        "semantic_search_relative_floor",
+    )
 
     @classmethod
     def load(cls) -> "Config":
@@ -451,8 +475,9 @@ class Config:
         """
         used = {a["id"] for a in self.archives}
         try:
-            used |= {int(d.name) for d in archives_dir().iterdir()
-                     if d.is_dir() and d.name.isdigit()}
+            used |= {
+                int(d.name) for d in archives_dir().iterdir() if d.is_dir() and d.name.isdigit()
+            }
         except OSError:
             pass
         return max(used, default=0) + 1
@@ -535,6 +560,7 @@ class Config:
                     # alone that silently hides the whole catalogue from a GUI
                     # that only ever asks for `aid`.
                     from .db import database as _db
+
                     dst.row_factory = sqlite3.Row
                     dst.execute("PRAGMA foreign_keys=ON")
                     _db.reconcile_root(dst, aid, root_path)
@@ -549,14 +575,15 @@ class Config:
                         # -- a prior attempt may have partially copied before
                         # crashing or being interrupted, leaving the target
                         # directory already present.
-                        shutil.copytree(cache_src, archive_cache_dir(aid) / sub,
-                                         dirs_exist_ok=True)
+                        shutil.copytree(cache_src, archive_cache_dir(aid) / sub, dirs_exist_ok=True)
                 self.archives.append({"id": aid, "path": root_path, "added_at": _now_iso()})
             elif len(roots) > 1:
-                print(f"Note: {legacy_db} holds {len(roots)} roots from the previous "
-                      "shared-catalog design. Each archive now needs its own database, "
-                      "so automatic migration was skipped; re-add those folders as "
-                      "separate archives in the GUI.")
+                print(
+                    f"Note: {legacy_db} holds {len(roots)} roots from the previous "
+                    "shared-catalog design. Each archive now needs its own database, "
+                    "so automatic migration was skipped; re-add those folders as "
+                    "separate archives in the GUI."
+                )
         finally:
             src.close()
         self.save()

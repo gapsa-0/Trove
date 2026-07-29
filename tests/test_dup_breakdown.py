@@ -26,7 +26,8 @@ def _catalog_with_duplicates(tmp_path):
             """INSERT INTO files(id,root_id,rel_path,ext,size,mtime,media_type,
                                  sha256,first_seen,last_seen)
                VALUES(?,1,?,'jpg',?,0,?,?,'2026-01-01','2026-01-01')""",
-            (file_id, f"{file_id}.jpg", size, media_type, sha))
+            (file_id, f"{file_id}.jpg", size, media_type, sha),
+        )
 
     def add_group(gid, method, canonical, duplicates):
         redundant = sum(size for _, size in duplicates)
@@ -34,12 +35,17 @@ def _catalog_with_duplicates(tmp_path):
             """INSERT INTO dup_groups(id,method,canonical_file_id,member_count,
                                       size_each,redundant_bytes,created_at)
                VALUES(?,?,?,?,?,?,'2026-01-01')""",
-            (gid, method, canonical, 1 + len(duplicates), None, redundant))
-        conn.execute("INSERT INTO dup_members(group_id,file_id,role) "
-                     "VALUES(?,?,'canonical')", (gid, canonical))
+            (gid, method, canonical, 1 + len(duplicates), None, redundant),
+        )
+        conn.execute(
+            "INSERT INTO dup_members(group_id,file_id,role) VALUES(?,?,'canonical')",
+            (gid, canonical),
+        )
         for file_id, _ in duplicates:
-            conn.execute("INSERT INTO dup_members(group_id,file_id,role) "
-                         "VALUES(?,?,'duplicate')", (gid, file_id))
+            conn.execute(
+                "INSERT INTO dup_members(group_id,file_id,role) VALUES(?,?,'duplicate')",
+                (gid, file_id),
+            )
 
     # Group 1: a plain exact pair.
     add_file(1, "a" * 64, 100)

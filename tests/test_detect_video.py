@@ -32,9 +32,14 @@ np = pytest.importorskip("numpy")
 
 def _face(embedding, score=0.9, quality_score=None):
     return SimpleNamespace(
-        x=0, y=0, w=10, h=10, score=score,
+        x=0,
+        y=0,
+        w=10,
+        h=10,
+        score=score,
         embedding=np.asarray(embedding, dtype="float32"),
-        quality_score=quality_score)
+        quality_score=quality_score,
+    )
 
 
 def _unit(*vals):
@@ -46,12 +51,12 @@ def _unit(*vals):
 # collapse_video_faces
 # ---------------------------------------------------------------------------
 
+
 def test_near_identical_faces_across_frames_collapse_keeping_higher_quality():
     a = _face(_unit(1.0, 0.0), quality_score=0.4)
-    b = _face(_unit(0.99, 0.02), quality_score=0.9)   # near-duplicate, better crop
+    b = _face(_unit(0.99, 0.02), quality_score=0.9)  # near-duplicate, better crop
 
-    kept = dx.collapse_video_faces(
-        [(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
+    kept = dx.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
 
     assert len(kept) == 1
     face, offset = kept[0]
@@ -61,10 +66,9 @@ def test_near_identical_faces_across_frames_collapse_keeping_higher_quality():
 
 def test_dissimilar_faces_across_frames_stay_separate():
     a = _face(_unit(1.0, 0.0))
-    b = _face(_unit(0.0, 1.0))   # orthogonal: a different person
+    b = _face(_unit(0.0, 1.0))  # orthogonal: a different person
 
-    kept = dx.collapse_video_faces(
-        [(a, "00:00:01.000"), (b, "00:00:02.000")], threshold=0.55)
+    kept = dx.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:02.000")], threshold=0.55)
 
     assert len(kept) == 2
     assert {offset for _f, offset in kept} == {"00:00:01.000", "00:00:02.000"}
@@ -72,10 +76,9 @@ def test_dissimilar_faces_across_frames_stay_separate():
 
 def test_collapse_keeps_the_earlier_ones_offset_when_later_is_not_better():
     a = _face(_unit(1.0, 0.0), quality_score=0.9)
-    b = _face(_unit(0.99, 0.02), quality_score=0.2)   # near-dup, worse crop
+    b = _face(_unit(0.99, 0.02), quality_score=0.2)  # near-dup, worse crop
 
-    kept = dx.collapse_video_faces(
-        [(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
+    kept = dx.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
 
     assert len(kept) == 1
     face, offset = kept[0]
@@ -87,18 +90,24 @@ def test_collapse_keeps_the_earlier_ones_offset_when_later_is_not_better():
 # collapse_video_animals
 # ---------------------------------------------------------------------------
 
+
 def _animal(species, embedding, score=0.8):
     return AnimalDetection(
-        species=species, x=0, y=0, w=20, h=20, score=score,
-        embedding=np.asarray(embedding, dtype="float32"))
+        species=species,
+        x=0,
+        y=0,
+        w=20,
+        h=20,
+        score=score,
+        embedding=np.asarray(embedding, dtype="float32"),
+    )
 
 
 def test_near_identical_animals_same_species_collapse_keeping_higher_score():
     a = _animal("dog", _unit(1.0, 0.0), score=0.6)
     b = _animal("dog", _unit(0.98, 0.05), score=0.95)
 
-    kept = dx.collapse_video_animals(
-        [(a, "00:00:01.000"), (b, "00:00:04.000")], threshold=0.80)
+    kept = dx.collapse_video_animals([(a, "00:00:01.000"), (b, "00:00:04.000")], threshold=0.80)
 
     assert len(kept) == 1
     animal, offset = kept[0]
@@ -111,8 +120,7 @@ def test_animals_of_different_species_never_collapse_even_if_embeddings_match():
     cat = _animal("cat", same_vec)
     dog = _animal("dog", same_vec)
 
-    kept = dx.collapse_video_animals(
-        [(cat, "00:00:01.000"), (dog, "00:00:02.000")], threshold=0.80)
+    kept = dx.collapse_video_animals([(cat, "00:00:01.000"), (dog, "00:00:02.000")], threshold=0.80)
 
     assert len(kept) == 2
     assert {a.species for a, _o in kept} == {"cat", "dog"}
@@ -121,6 +129,7 @@ def test_animals_of_different_species_never_collapse_even_if_embeddings_match():
 # ---------------------------------------------------------------------------
 # offset generation
 # ---------------------------------------------------------------------------
+
 
 def test_offsets_for_known_duration_are_n_distinct_and_spread_across_it():
     offsets = dx._video_offsets(100.0, 5)
@@ -157,20 +166,20 @@ def test_zero_requested_frames_yields_no_offsets():
 # pending-work counting honours cfg.detect_video_frames
 # ---------------------------------------------------------------------------
 
+
 def _catalog_with_one_video(tmp_path):
     root = tmp_path / "media"
     root.mkdir()
     (root / "clip.mp4").write_bytes(b"fake")
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')",
-        (str(root),))
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')", (str(root),))
     conn.execute(
         """INSERT INTO files
            (id,root_id,rel_path,size,mtime,media_type,sha256,present,hidden,
             first_seen,last_seen)
-           VALUES(1,1,'clip.mp4',4,0,'video','sha1',1,0,'2026-01-01','2026-01-01')""")
+           VALUES(1,1,'clip.mp4',4,0,'video','sha1',1,0,'2026-01-01','2026-01-01')"""
+    )
     conn.commit()
     return conn
 

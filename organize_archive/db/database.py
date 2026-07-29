@@ -153,8 +153,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "nonhuman_detections", "quality_score", "REAL")
     _add_column_if_missing(conn, "nonhuman_detections", "quality_source", "TEXT")
     _add_column_if_missing(
-        conn, "nonhuman_detections", "review_status",
-        "TEXT NOT NULL DEFAULT 'pending'")
+        conn, "nonhuman_detections", "review_status", "TEXT NOT NULL DEFAULT 'pending'"
+    )
     _add_column_if_missing(conn, "nonhuman_detections", "restored_face_id", "INTEGER")
     _add_column_if_missing(conn, "pet_scan", "source_sha256", "TEXT")
     # Detection now also runs on videos, via sampled keyframes. A box on a video
@@ -184,9 +184,7 @@ def get_or_create_root(conn: sqlite3.Connection, path: str) -> int:
     row = conn.execute("SELECT id FROM roots WHERE path=?", (path,)).fetchone()
     if row:
         return row["id"]
-    cur = conn.execute(
-        "INSERT INTO roots(path, added_at) VALUES(?, ?)", (path, now_iso())
-    )
+    cur = conn.execute("INSERT INTO roots(path, added_at) VALUES(?, ?)", (path, now_iso()))
     conn.commit()
     return cur.lastrowid
 
@@ -222,8 +220,10 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
     has no business holding them. Returns True when it changed anything, so
     callers can invalidate work derived from the old shape.
     """
-    rows = {r["id"]: (r["path"], r["added_at"])
-            for r in conn.execute("SELECT id, path, added_at FROM roots")}
+    rows = {
+        r["id"]: (r["path"], r["added_at"])
+        for r in conn.execute("SELECT id, path, added_at FROM roots")
+    }
     if {rid: p for rid, (p, _) in rows.items()} == {root_id: path}:
         return False
 
@@ -242,8 +242,9 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
             # A row may still be sitting on the target id under a stale path.
             conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
             conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
-            conn.execute("INSERT INTO roots(id, path, added_at) VALUES(?,?,?)",
-                         (root_id, path, now_iso()))
+            conn.execute(
+                "INSERT INTO roots(id, path, added_at) VALUES(?,?,?)", (root_id, path, now_iso())
+            )
         elif owner != root_id:
             # Renumber the owning root onto the archive's id, taking its files
             # with it. The placeholder keeps `roots.path` unique for the moment
@@ -253,11 +254,12 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
             conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
             conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
             conn.execute("UPDATE roots SET path=? WHERE id=?", (placeholder, owner))
-            conn.execute("INSERT INTO roots(id, path, added_at) VALUES(?,?,?)",
-                         (root_id, path, rows[owner][1]))
+            conn.execute(
+                "INSERT INTO roots(id, path, added_at) VALUES(?,?,?)",
+                (root_id, path, rows[owner][1]),
+            )
             for table in _ROOT_SCOPED_TABLES:
-                conn.execute(f"UPDATE {table} SET root_id=? WHERE root_id=?",
-                             (root_id, owner))
+                conn.execute(f"UPDATE {table} SET root_id=? WHERE root_id=?", (root_id, owner))
             conn.execute("DELETE FROM roots WHERE id=?", (owner,))
         conn.commit()
     except Exception:
@@ -287,22 +289,29 @@ def scan_run_start(conn: sqlite3.Connection, root_id: int, roots) -> int:
     return cur.lastrowid
 
 
-def scan_run_finish(conn: sqlite3.Connection, run_id: int, stats,
-                    files_on_disk: int | None) -> None:
+def scan_run_finish(
+    conn: sqlite3.Connection, run_id: int, stats, files_on_disk: int | None
+) -> None:
     """Close out a scan that walked the whole root. Only ever called on the
     normal path — an interrupted scan leaves ``finished_at`` NULL so it is not
     mistaken for full coverage."""
     conn.execute(
         """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
            files_updated=?, bytes_hashed=?, files_on_disk=? WHERE id=?""",
-        (now_iso(), stats.seen, stats.new, stats.updated, stats.bytes_hashed,
-         files_on_disk, run_id),
+        (
+            now_iso(),
+            stats.seen,
+            stats.new,
+            stats.updated,
+            stats.bytes_hashed,
+            files_on_disk,
+            run_id,
+        ),
     )
     conn.commit()
 
 
-def scan_settled(conn: sqlite3.Connection, root_id: int,
-                 files_on_disk: int | None) -> bool:
+def scan_settled(conn: sqlite3.Connection, root_id: int, files_on_disk: int | None) -> bool:
     """True when a completed scan already covers exactly what is on disk now.
 
     ``files_on_disk`` is the current count; comparing it with the one the last
@@ -314,7 +323,9 @@ def scan_settled(conn: sqlite3.Connection, root_id: int,
     row = conn.execute(
         """SELECT files_on_disk FROM scan_runs
            WHERE root_id=? AND finished_at IS NOT NULL AND files_on_disk IS NOT NULL
-           ORDER BY id DESC LIMIT 1""", (root_id,)).fetchone()
+           ORDER BY id DESC LIMIT 1""",
+        (root_id,),
+    ).fetchone()
     return row is not None and row["files_on_disk"] == files_on_disk
 
 
@@ -329,21 +340,22 @@ def scan_settled(conn: sqlite3.Connection, root_id: int,
 # would have given, rather than defaulting to "rebuild everything" the moment
 # the process restarts.
 
+
 def dedup_coverage(conn: sqlite3.Connection, root_id: int) -> tuple[int, int | None]:
     """(count, max id) of files eligible for dedup grouping under this root:
     present, content-hashed files -- the same population dedup/exact.py's
     `run()` groups. `None` for the max id means there are no such files yet.
     """
     row = conn.execute(
-        "SELECT COUNT(*), MAX(id) FROM files "
-        "WHERE present=1 AND sha256 IS NOT NULL AND root_id=?",
+        "SELECT COUNT(*), MAX(id) FROM files WHERE present=1 AND sha256 IS NOT NULL AND root_id=?",
         (root_id,),
     ).fetchone()
     return row[0], row[1]
 
 
-def dedup_mark_done(conn: sqlite3.Connection, root_id: int,
-                     covered_files: int, covered_max_file_id: int | None) -> None:
+def dedup_mark_done(
+    conn: sqlite3.Connection, root_id: int, covered_files: int, covered_max_file_id: int | None
+) -> None:
     """Record a successful rebuild's coverage.
 
     Its caller (``jobs._run_dedup``) writes this on the rebuild's connection but

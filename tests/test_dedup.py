@@ -41,11 +41,14 @@ def test_visual_match_merges_different_encodings_and_keeps_best_image(monkeypatc
     _file(conn, root, "large.jpg", "a" * 64, 40)
     _file(conn, root, "small.png", "b" * 64, 10)
     _file(conn, root, "different.jpg", "c" * 64, 20)
-    conn.executemany("INSERT INTO media_meta(file_id, width, height) VALUES(?, ?, ?)",
-                     [(1, 100, 100), (2, 50, 50)])
+    conn.executemany(
+        "INSERT INTO media_meta(file_id, width, height) VALUES(?, ?, ?)",
+        [(1, 100, 100), (2, 50, 50)],
+    )
     conn.commit()
-    monkeypatch.setattr(exact, "_perceptual_hashes",
-                        lambda *args, **kwargs: ({1: 0, 2: 0x3F, 3: 2**64 - 1}, 2, 0))
+    monkeypatch.setattr(
+        exact, "_perceptual_hashes", lambda *args, **kwargs: ({1: 0, 2: 0x3F, 3: 2**64 - 1}, 2, 0)
+    )
 
     stats = exact.run(conn, Config())
 
@@ -73,12 +76,13 @@ def test_interrupted_regroup_leaves_previous_grouping_intact(monkeypatch):
 
     exact.run(conn)  # establish the baseline ("previous") grouping
     before_hidden = [r[0] for r in conn.execute("SELECT hidden FROM files ORDER BY id")]
-    before_dup_group_id = [r[0] for r in conn.execute(
-        "SELECT dup_group_id FROM files ORDER BY id")]
+    before_dup_group_id = [r[0] for r in conn.execute("SELECT dup_group_id FROM files ORDER BY id")]
     before_groups = conn.execute(
-        "SELECT method, canonical_file_id, member_count FROM dup_groups").fetchall()
+        "SELECT method, canonical_file_id, member_count FROM dup_groups"
+    ).fetchall()
     before_members = conn.execute(
-        "SELECT group_id, file_id, role FROM dup_members ORDER BY file_id").fetchall()
+        "SELECT group_id, file_id, role FROM dup_members ORDER BY file_id"
+    ).fetchall()
     assert len(before_groups) == 1  # sanity: a real grouping exists to protect
 
     def _boom(*_args, **_kwargs):
@@ -99,12 +103,13 @@ def test_interrupted_regroup_leaves_previous_grouping_intact(monkeypatch):
     assert raised, "expected the injected failure to propagate out of run()"
 
     after_hidden = [r[0] for r in conn.execute("SELECT hidden FROM files ORDER BY id")]
-    after_dup_group_id = [r[0] for r in conn.execute(
-        "SELECT dup_group_id FROM files ORDER BY id")]
+    after_dup_group_id = [r[0] for r in conn.execute("SELECT dup_group_id FROM files ORDER BY id")]
     after_groups = conn.execute(
-        "SELECT method, canonical_file_id, member_count FROM dup_groups").fetchall()
+        "SELECT method, canonical_file_id, member_count FROM dup_groups"
+    ).fetchall()
     after_members = conn.execute(
-        "SELECT group_id, file_id, role FROM dup_members ORDER BY file_id").fetchall()
+        "SELECT group_id, file_id, role FROM dup_members ORDER BY file_id"
+    ).fetchall()
 
     assert after_hidden == before_hidden
     assert after_dup_group_id == before_dup_group_id

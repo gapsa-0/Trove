@@ -22,7 +22,10 @@ def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
     env = os.environ | {"XDG_DATA_HOME": str(tmp_path / "data")}
     process = subprocess.Popen(
         [sys.executable, "-m", "organize_archive.desktop", "--host", "127.0.0.1", "--port", "0"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
     )
     try:
         ready = _read_ready(process)
@@ -31,7 +34,9 @@ def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
             # Read the version rather than repeating it: the release process bumps
             # it in several files at once, and a copy here just breaks on release.
             assert json.load(response) == {
-                "ok": True, "version": organize_archive.__version__, "commit": "dev",
+                "ok": True,
+                "version": organize_archive.__version__,
+                "commit": "dev",
             }
         process.send_signal(signal.SIGTERM)
         assert process.wait(timeout=10) == 0
@@ -43,7 +48,8 @@ def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
 def test_desktop_backend_rejects_non_loopback_host():
     process = subprocess.run(
         [sys.executable, "-m", "organize_archive.desktop", "--host", "0.0.0.0"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert process.returncode == 2
     assert process.stdout == ""

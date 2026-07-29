@@ -37,12 +37,13 @@ from organize_archive.paths import default_cache_dir
 _CACHE = str(default_cache_dir())
 
 transformers = pytest.importorskip(
-    "transformers", reason="transformers is a dev-only reference dependency")
+    "transformers", reason="transformers is a dev-only reference dependency"
+)
 PIL = pytest.importorskip("PIL")
 
 pytestmark = pytest.mark.skipif(
-    not eb.models_ready(_CACHE),
-    reason="SigLIP 2 weights are not downloaded on this machine")
+    not eb.models_ready(_CACHE), reason="SigLIP 2 weights are not downloaded on this machine"
+)
 
 
 def _fixture_images():
@@ -53,6 +54,7 @@ def _fixture_images():
     square fixture could not tell the three apart.
     """
     from PIL import Image
+
     wide = np.zeros((120, 400, 3), dtype=np.uint8)
     wide[:, :133] = (220, 30, 30)
     wide[:, 133:266] = (30, 220, 30)
@@ -63,8 +65,7 @@ def _fixture_images():
 
 
 def _preprocessor_config() -> dict:
-    return json.loads(
-        (eb.models_dir(_CACHE) / "preprocessor_config.json").read_text("utf-8"))
+    return json.loads((eb.models_dir(_CACHE) / "preprocessor_config.json").read_text("utf-8"))
 
 
 def test_backend_constants_match_the_checkpoints_preprocessor_config():
@@ -79,7 +80,7 @@ def test_backend_constants_match_the_checkpoints_preprocessor_config():
 
     assert cfg["size"] == {"height": eb.IMAGE_SIZE, "width": eb.IMAGE_SIZE}
     assert cfg["do_resize"] and cfg["do_rescale"] and cfg["do_normalize"]
-    assert cfg["resample"] == 2                      # PIL BILINEAR
+    assert cfg["resample"] == 2  # PIL BILINEAR
     assert abs(cfg["rescale_factor"] - 1 / 255) < 1e-12
     assert cfg["image_mean"] == [0.5, 0.5, 0.5]
     assert cfg["image_std"] == [0.5, 0.5, 0.5]
@@ -95,8 +96,9 @@ def test_image_preprocessing_matches_the_declared_recipe():
     from PIL import Image
 
     cfg = _preprocessor_config()
-    resample = {0: Image.NEAREST, 1: Image.LANCZOS, 2: Image.BILINEAR,
-                3: Image.BICUBIC}[cfg["resample"]]
+    resample = {0: Image.NEAREST, 1: Image.LANCZOS, 2: Image.BILINEAR, 3: Image.BICUBIC}[
+        cfg["resample"]
+    ]
     mean = np.asarray(cfg["image_mean"], dtype=np.float32)
     std = np.asarray(cfg["image_std"], dtype=np.float32)
     images = _fixture_images()
@@ -104,7 +106,8 @@ def test_image_preprocessing_matches_the_declared_recipe():
     reference = []
     for image in images:
         resized = image.convert("RGB").resize(
-            (cfg["size"]["width"], cfg["size"]["height"]), resample)
+            (cfg["size"]["width"], cfg["size"]["height"]), resample
+        )
         x = np.asarray(resized, dtype=np.float32) * cfg["rescale_factor"]
         reference.append(((x - mean) / std).transpose(2, 0, 1))
     reference = np.stack(reference)
@@ -142,8 +145,8 @@ def test_pixel_values_are_in_the_trained_range():
         assert -1.0 <= float(x.min()) and float(x.max()) <= 1.0
     # A mid-grey image maps to exactly 0 under (x/255 - 0.5) / 0.5.
     from PIL import Image
-    grey = eb.SiglipBackend._pixels(
-        Image.new("RGB", (300, 200), (128, 128, 128)))
+
+    grey = eb.SiglipBackend._pixels(Image.new("RGB", (300, 200), (128, 128, 128)))
     assert abs(float(grey.mean()) - (128 / 255 - 0.5) / 0.5) < 1e-6
 
 
@@ -154,7 +157,7 @@ QUERIES = [
     "Cumpleaños en la Playa",
     "niños jugando en el jardín con un perro",
     "wedding party at night",
-    "una palabra " * 40,          # long enough to force truncation
+    "una palabra " * 40,  # long enough to force truncation
 ]
 
 
@@ -171,9 +174,13 @@ def test_tokenizer_matches_transformers_on_lowercased_text():
     backend = _tokenizer()
 
     ours = backend._tokenize(QUERIES)
-    expected = reference([q.lower() for q in QUERIES], padding="max_length",
-                         max_length=eb.MAX_TOKENS, truncation=True,
-                         return_tensors="np")["input_ids"]
+    expected = reference(
+        [q.lower() for q in QUERIES],
+        padding="max_length",
+        max_length=eb.MAX_TOKENS,
+        truncation=True,
+        return_tensors="np",
+    )["input_ids"]
 
     assert ours.dtype == np.int64
     assert np.array_equal(ours, np.asarray(expected, dtype=np.int64))

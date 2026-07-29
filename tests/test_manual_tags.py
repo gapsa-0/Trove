@@ -7,9 +7,7 @@ def _base_catalog(tmp_path):
     db_path = tmp_path / "archive.db"
     conn = db.connect(db_path)
     db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')"
-    )
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')")
     for file_id in (1, 2, 3):
         conn.execute(
             """INSERT INTO files(
@@ -42,6 +40,7 @@ def _add_pet(conn, pid, name):
 
 # -- add / remove round trips ------------------------------------------------
 
+
 def test_add_and_remove_person_round_trip(tmp_path):
     db_path = _base_catalog(tmp_path)
     conn = db.connect(db_path)
@@ -54,8 +53,7 @@ def test_add_and_remove_person_round_trip(tmp_path):
     assert res["person"] == {"id": 1, "name": "Alice"}
 
     check = db.open_readonly(db_path)
-    row = check.execute(
-        "SELECT person_id, file_id, person_name FROM person_files").fetchone()
+    row = check.execute("SELECT person_id, file_id, person_name FROM person_files").fetchone()
     assert (row["person_id"], row["file_id"], row["person_name"]) == (1, 1, "Alice")
     check.close()
 
@@ -111,6 +109,7 @@ def test_add_pet_unnamed_is_rejected(tmp_path):
 
 # -- repair: person_files survives persons being rebuilt ---------------------
 
+
 def test_repair_manual_person_files_repoints_after_recluster(tmp_path):
     db_path = _base_catalog(tmp_path)
     conn = db.connect(db_path)
@@ -129,9 +128,7 @@ def test_repair_manual_person_files_repoints_after_recluster(tmp_path):
     queries.repair_manual_person_files(conn)
     conn.commit()
 
-    row = conn.execute(
-        "SELECT person_id, person_name FROM person_files WHERE file_id=1"
-    ).fetchone()
+    row = conn.execute("SELECT person_id, person_name FROM person_files WHERE file_id=1").fetchone()
     assert row["person_id"] == 2
     assert row["person_name"] == "Alice"
     conn.close()
@@ -152,10 +149,8 @@ def test_repair_manual_person_files_leaves_untouched_when_name_gone(tmp_path):
     queries.repair_manual_person_files(conn)
     conn.commit()
 
-    row = conn.execute(
-        "SELECT person_id, person_name FROM person_files WHERE file_id=1"
-    ).fetchone()
-    assert row["person_id"] == 1        # untouched -- rots, but isn't deleted
+    row = conn.execute("SELECT person_id, person_name FROM person_files WHERE file_id=1").fetchone()
+    assert row["person_id"] == 1  # untouched -- rots, but isn't deleted
     assert row["person_name"] == "Alice"
     conn.close()
 
@@ -179,14 +174,17 @@ def test_repair_manual_person_files_handles_pk_collision(tmp_path):
     # file 3 is already manually pointed at the surviving id/name pair.
     conn.execute(
         "INSERT INTO person_files(person_id,file_id,person_name,created_at) "
-        "VALUES(2,3,'Alice','2026-01-01')")
+        "VALUES(2,3,'Alice','2026-01-01')"
+    )
     conn.commit()
 
     queries.repair_manual_person_files(conn)  # must not raise
     conn.commit()
 
-    rows = {r["file_id"]: r["person_id"] for r in conn.execute(
-        "SELECT file_id, person_id FROM person_files")}
+    rows = {
+        r["file_id"]: r["person_id"]
+        for r in conn.execute("SELECT file_id, person_id FROM person_files")
+    }
     assert rows == {1: 2, 2: 2, 3: 2}
     conn.close()
 
@@ -207,14 +205,14 @@ def test_repair_manual_pet_files_repoints_after_recluster(tmp_path):
     queries.repair_manual_pet_files(conn)
     conn.commit()
 
-    row = conn.execute(
-        "SELECT pet_id, pet_name FROM pet_files WHERE file_id=1").fetchone()
+    row = conn.execute("SELECT pet_id, pet_name FROM pet_files WHERE file_id=1").fetchone()
     assert row["pet_id"] == 7
     assert row["pet_name"] == "Fido"
     conn.close()
 
 
 # -- reads: manual-only files count exactly once -----------------------------
+
 
 def test_face_person_manual_only_file_counted_once(tmp_path):
     db_path = _base_catalog(tmp_path)
@@ -224,7 +222,8 @@ def test_face_person_manual_only_file_counted_once(tmp_path):
     conn.execute(
         """INSERT INTO faces(
                id,file_id,box_x,box_y,box_w,box_h,embedding,person_id,created_at
-           ) VALUES(1,1,0,0,1,1,X'00',1,'2026-01-01')""")
+           ) VALUES(1,1,0,0,1,1,X'00',1,'2026-01-01')"""
+    )
     conn.commit()
     conn.close()
 
@@ -263,7 +262,8 @@ def test_face_persons_grid_counts_include_manual_only_files(tmp_path):
     conn.execute(
         """INSERT INTO faces(
                id,file_id,box_x,box_y,box_w,box_h,embedding,person_id,created_at
-           ) VALUES(1,1,0,0,1,1,X'00',1,'2026-01-01')""")
+           ) VALUES(1,1,0,0,1,1,X'00',1,'2026-01-01')"""
+    )
     conn.commit()
     conn.close()
 

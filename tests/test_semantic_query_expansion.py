@@ -10,9 +10,7 @@ def _semantic_catalogue(tmp_path):
     db_path = tmp_path / "archive.db"
     conn = db.connect(db_path)
     db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')"
-    )
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')")
     for file_id, vector in (
         (1, (1.0, 0.0)),
         (2, (0.0, 1.0)),
@@ -39,11 +37,12 @@ def _semantic_catalogue(tmp_path):
 def test_semantic_search_merges_alternate_query_vector(tmp_path):
     db_path = _semantic_catalogue(tmp_path)
 
-    original_only = queries.semantic_search(
-        db_path, [1.0, 0.0], root_id=1, min_similarity=0.8
-    )
+    original_only = queries.semantic_search(db_path, [1.0, 0.0], root_id=1, min_similarity=0.8)
     expanded = queries.semantic_search(
-        db_path, [1.0, 0.0], root_id=1, min_similarity=0.8,
+        db_path,
+        [1.0, 0.0],
+        root_id=1,
+        min_similarity=0.8,
         alternate_vectors=[([0.0, 1.0], 0.01)],
     )
 
@@ -68,7 +67,5 @@ def test_embed_queries_uses_one_forward_pass(monkeypatch):
 
     monkeypatch.setattr(semantic, "backend", lambda cfg, log=None: FakeBackend())
 
-    assert semantic.embed_queries(object(), ["lago", "lake"]) == [
-        [1.0, 0.0], [0.0, 1.0]
-    ]
+    assert semantic.embed_queries(object(), ["lago", "lake"]) == [[1.0, 0.0], [0.0, 1.0]]
     assert calls == [["lago", "lake"]]

@@ -98,7 +98,8 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
     rows = conn.execute(
         """SELECT f.id, g.lat, g.lon FROM files f JOIN geo g ON g.file_id=f.id
            WHERE f.present=1 AND f.root_id=? AND g.lat IS NOT NULL""",
-        (root_id,)).fetchall()
+        (root_id,),
+    ).fetchall()
     stats.points = len(rows)
 
     old_by_id: dict[int, tuple[str, set]] = {}
@@ -106,7 +107,9 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
         """SELECT pc.id cid, pc.name name, pcm.file_id fid
            FROM place_clusters pc JOIN place_cluster_members pcm ON pcm.cluster_id=pc.id
            WHERE pc.root_id=? AND pc.name IS NOT NULL
-           ORDER BY pc.id""", (root_id,)):
+           ORDER BY pc.id""",
+        (root_id,),
+    ):
         _, fids = old_by_id.setdefault(r["cid"], (r["name"], set()))
         fids.add(r["fid"])
     old_named = list(old_by_id.values())
@@ -139,7 +142,8 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
         cur = conn.execute(
             """INSERT INTO place_clusters(root_id, name, lat, lon, member_count, created_at)
                VALUES(?,?,?,?,?,?)""",
-            (root_id, name, lat, lon, len(members), now))
+            (root_id, name, lat, lon, len(members), now),
+        )
         cid = cur.lastrowid
         member_rows.extend((cid, fid) for fid in members)
         stats.clusters += 1
@@ -148,7 +152,8 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
 
     conn.executemany(
         "INSERT INTO place_cluster_members(cluster_id, file_id, source) VALUES(?,?, 'auto')",
-        member_rows)
+        member_rows,
+    )
     conn.commit()
     return stats
 
@@ -172,23 +177,28 @@ def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats
            FROM files f JOIN geo g ON g.file_id = f.id
            WHERE f.present = 1 AND f.root_id = ? AND g.lat IS NOT NULL
              AND f.id NOT IN (SELECT file_id FROM place_cluster_members)""",
-        (root_id,)).fetchall()
+        (root_id,),
+    ).fetchall()
     stats.points = len(rows)
     if not rows:
         return stats
 
     # Mutable working copies of existing places; a plain list is fine because the
     # unplaced backlog is small (this runs every pipeline tick).
-    places = [dict(lat=p["lat"], lon=p["lon"], count=p["member_count"],
-                   pinned=p["pinned"], id=p["id"])
-              for p in conn.execute(
-                  "SELECT id, lat, lon, member_count, pinned FROM place_clusters "
-                  "WHERE root_id=?", (root_id,))]
+    places = [
+        dict(lat=p["lat"], lon=p["lon"], count=p["member_count"], pinned=p["pinned"], id=p["id"])
+        for p in conn.execute(
+            "SELECT id, lat, lon, member_count, pinned FROM place_clusters WHERE root_id=?",
+            (root_id,),
+        )
+    ]
 
     def attach(cid, fid):
         conn.execute(
             "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
-            "VALUES(?,?, 'auto')", (cid, fid))
+            "VALUES(?,?, 'auto')",
+            (cid, fid),
+        )
 
     for r in rows:
         lat, lon = r["lat"], r["lon"]
@@ -209,7 +219,9 @@ def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats
             cur = conn.execute(
                 """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
                                               pinned, created_at)
-                   VALUES(?, NULL, ?, ?, 1, 0, ?)""", (root_id, lat, lon, now))
+                   VALUES(?, NULL, ?, ?, 1, 0, ?)""",
+                (root_id, lat, lon, now),
+            )
             cid = cur.lastrowid
             attach(cid, r["id"])
             places.append(dict(lat=lat, lon=lon, count=1, pinned=0, id=cid))
@@ -219,6 +231,7 @@ def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats
     for p in places:
         conn.execute(
             "UPDATE place_clusters SET member_count=?, lat=?, lon=? WHERE id=?",
-            (p["count"], p["lat"], p["lon"], p["id"]))
+            (p["count"], p["lat"], p["lon"], p["id"]),
+        )
     conn.commit()
     return stats

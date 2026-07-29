@@ -41,9 +41,10 @@ def test_reconcile_adopts_a_second_root_for_the_same_folder(tmp_path):
     # The scanned rows are adopted, keeping their ids (and everything hanging
     # off them); only the rows describing the folder that is no longer part of
     # this archive are dropped.
-    assert [r["rel_path"] for r in conn.execute(
-        "SELECT rel_path FROM files WHERE root_id=1 ORDER BY rel_path")] == [
-        "real.jpg", "real2.jpg"]
+    assert [
+        r["rel_path"]
+        for r in conn.execute("SELECT rel_path FROM files WHERE root_id=1 ORDER BY rel_path")
+    ] == ["real.jpg", "real2.jpg"]
     assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 2
     # Idempotent: a second pass is a no-op and reports nothing changed.
     assert db.reconcile_root(conn, 1, "/live") is False

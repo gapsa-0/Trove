@@ -71,16 +71,16 @@ from ..db import database as db
 
 @dataclass
 class ClusterStats:
-    people: int = 0        # clusters kept as a person
-    faces: int = 0         # faces considered (non-hidden, not LOW_QUALITY)
-    clustered: int = 0     # faces assigned to a person
-    noise: int = 0         # faces left unassigned (singletons / sub-min clusters)
-    named: int = 0         # people that inherited a name from a prior run
-    fragments: int = 0     # pass-1 multi-face fragments fed to the merge
-    high: int = 0          # HIGH-tier faces (eligible to seed cores)
-    cores: int = 0         # cores built by pass 1
-    borderline: int = 0    # BORDERLINE faces offered to pass 2
-    border_assigned: int = 0     # of those, attached to a core
+    people: int = 0  # clusters kept as a person
+    faces: int = 0  # faces considered (non-hidden, not LOW_QUALITY)
+    clustered: int = 0  # faces assigned to a person
+    noise: int = 0  # faces left unassigned (singletons / sub-min clusters)
+    named: int = 0  # people that inherited a name from a prior run
+    fragments: int = 0  # pass-1 multi-face fragments fed to the merge
+    high: int = 0  # HIGH-tier faces (eligible to seed cores)
+    cores: int = 0  # cores built by pass 1
+    borderline: int = 0  # BORDERLINE faces offered to pass 2
+    border_assigned: int = 0  # of those, attached to a core
     low_quality_excluded: int = 0  # faces the FIQA gate kept out entirely
 
 
@@ -108,6 +108,7 @@ def _faiss():
     """
     try:
         import faiss
+
         return faiss
     except Exception:  # pragma: no cover - optional dep
         return None
@@ -127,8 +128,9 @@ def _knn_search(X, k: int, block: int = 1024, progress=None, use_faiss: bool = T
     change of engine can never quietly become a change of clustering.
     """
     import numpy as np
+
     n = len(X)
-    k = max(1, min(k, n - 1))                       # can't have more neighbours than faces
+    k = max(1, min(k, n - 1))  # can't have more neighbours than faces
     faiss = _faiss() if use_faiss else None
 
     if faiss is not None:
@@ -155,14 +157,14 @@ def _knn_search(X, k: int, block: int = 1024, progress=None, use_faiss: bool = T
     nbs = np.zeros((n, k), dtype=np.float32)
     for i0 in range(0, n, block):
         i1 = min(n, i0 + block)
-        sims = X[i0:i1] @ X.T                       # (b, n)
+        sims = X[i0:i1] @ X.T  # (b, n)
         sims[np.arange(i1 - i0), np.arange(i0, i1)] = -1.0
         idx = np.argpartition(-sims, k, axis=1)[:, :k]
         part = np.take_along_axis(sims, idx, axis=1)
         order = np.argsort(-part, axis=1)
         nbr[i0:i1] = np.take_along_axis(idx, order, axis=1)
         nbs[i0:i1] = np.take_along_axis(part, order, axis=1)
-        del sims, idx, part, order                 # free the (b, n) block promptly
+        del sims, idx, part, order  # free the (b, n) block promptly
         if progress is not None:
             progress.update(i1, 0, "grouping faces…")
     return nbr, nbs
@@ -178,6 +180,7 @@ def _mutual_knn(X, k: int, floor: float, block: int = 1024, progress=None):
     giant blob.
     """
     import numpy as np
+
     n = len(X)
     k = max(1, min(k, n - 1))
     nbr, nbs = _knn_search(X, k, block=block, progress=progress)
@@ -225,7 +228,7 @@ def _apply_links(conn, cluster_list, face_ids):
     for lk in links:
         ca, cb = fid2c.get(lk["face_a"]), fid2c.get(lk["face_b"])
         if ca is None or cb is None or ca == cb:
-            continue                      # a face is noise, or already together
+            continue  # a face is noise, or already together
         (same if lk["kind"] == "same" else cannot).append((ca, cb))
     if not same:
         return cluster_list
@@ -258,12 +261,12 @@ def _apply_manual_pins(conn, now) -> set:
     the clustering already set correct stats for every untouched person."""
     pins = conn.execute(
         "SELECT id, person_id, manual_person FROM faces "
-        "WHERE manual_person IS NOT NULL AND manual_person != ''").fetchall()
+        "WHERE manual_person IS NOT NULL AND manual_person != ''"
+    ).fetchall()
     if not pins:
         return set()
     name_to_pid = {}
-    for p in conn.execute(
-            "SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''"):
+    for p in conn.execute("SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''"):
         name_to_pid.setdefault(p["name"], p["id"])
     affected: set = set()
     for f in pins:
@@ -271,8 +274,9 @@ def _apply_manual_pins(conn, now) -> set:
         pid = name_to_pid.get(name)
         if pid is None:
             cur = conn.execute(
-                "INSERT INTO persons(name, cover_face_id, face_count, created_at) "
-                "VALUES(?,?,0,?)", (name, f["id"], now))
+                "INSERT INTO persons(name, cover_face_id, face_count, created_at) VALUES(?,?,0,?)",
+                (name, f["id"], now),
+            )
             pid = cur.lastrowid
             name_to_pid[name] = pid
         if cur_pid != pid:
@@ -289,13 +293,14 @@ def _refresh_person_stats(conn, pids) -> None:
     persons so it's a short write — cluster_faces runs this inside its rebuild
     transaction, which a colliding GUI write must wait behind."""
     for pid in pids:
-        if not conn.execute(
-                "SELECT 1 FROM faces WHERE person_id=? LIMIT 1", (pid,)).fetchone():
+        if not conn.execute("SELECT 1 FROM faces WHERE person_id=? LIMIT 1", (pid,)).fetchone():
             conn.execute("DELETE FROM persons WHERE id=?", (pid,))
             continue
         cnt = conn.execute(
             "SELECT COUNT(*) FROM faces fa JOIN files f ON f.id=fa.file_id "
-            "WHERE fa.person_id=? AND f.hidden=0", (pid,)).fetchone()[0]
+            "WHERE fa.person_id=? AND f.hidden=0",
+            (pid,),
+        ).fetchone()[0]
         cover = conn.execute(
             "SELECT fa.id FROM faces fa JOIN files f ON f.id=fa.file_id "
             "WHERE fa.person_id=? AND f.hidden=0 "
@@ -303,9 +308,12 @@ def _refresh_person_stats(conn, pids) -> None:
             # be one the quality gate rejected.
             "AND COALESCE(fa.quality_tier,'BORDERLINE') != 'LOW_QUALITY' "
             "ORDER BY fa.det_score DESC LIMIT 1",
-            (pid,)).fetchone()
-        conn.execute("UPDATE persons SET face_count=?, cover_face_id=? WHERE id=?",
-                     (cnt, cover["id"] if cover else None, pid))
+            (pid,),
+        ).fetchone()
+        conn.execute(
+            "UPDATE persons SET face_count=?, cover_face_id=? WHERE id=?",
+            (cnt, cover["id"] if cover else None, pid),
+        )
 
 
 def _finalize(conn, stats, now, progress):
@@ -320,6 +328,7 @@ def _finalize(conn, stats, now, progress):
     (if any) carries it now. This is the single choke point every return path
     goes through, so it's the one place that needs the call."""
     from ..gui.queries import repair_manual_person_files
+
     repair_manual_person_files(conn)
     _refresh_person_stats(conn, _apply_manual_pins(conn, now))
     stats.people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
@@ -345,6 +354,7 @@ class CoreBuilder:
     def build(self, X, progress=None) -> list[list[int]]:
         import numpy as np
         from sklearn.cluster import AgglomerativeClustering
+
         cfg = self.cfg
         n = len(X)
         if n < 2:
@@ -354,8 +364,7 @@ class CoreBuilder:
         # faces_core_link_sim, not faces_link_sim: cores are meant to be
         # unambiguous, and stages 2-3 below are what reassemble a person whose
         # fragments this strictness split apart.
-        dsu = _mutual_knn(X, cfg.faces_knn_k, cfg.faces_core_link_sim,
-                          progress=progress)
+        dsu = _mutual_knn(X, cfg.faces_knn_k, cfg.faces_core_link_sim, progress=progress)
         frag: dict[int, list[int]] = {}
         for i in range(n):
             frag.setdefault(dsu.find(i), []).append(i)
@@ -390,8 +399,11 @@ class CoreBuilder:
             dist = (1.0 - cent @ cent.T).astype("float32")
             np.clip(dist, 0.0, 2.0, out=dist)
             merge = AgglomerativeClustering(
-                n_clusters=None, distance_threshold=1.0 - cfg.faces_merge_sim,
-                metric="precomputed", linkage="average").fit_predict(dist)
+                n_clusters=None,
+                distance_threshold=1.0 - cfg.faces_merge_sim,
+                metric="precomputed",
+                linkage="average",
+            ).fit_predict(dist)
 
         clusters: dict[int, list[int]] = {}
         for fi, m in enumerate(merge):
@@ -413,15 +425,16 @@ class CoreBuilder:
         # min_faces cut is applied after), so a small stray fragment can still
         # rejoin the person it belongs to.
         if len(cluster_list) > 1:
-            ccent = np.array([X[idxs].mean(0) for idxs in cluster_list],
-                             dtype="float32")
+            ccent = np.array([X[idxs].mean(0) for idxs in cluster_list], dtype="float32")
             ccent /= np.linalg.norm(ccent, axis=1, keepdims=True) + 1e-9
             cdist = (1.0 - ccent @ ccent.T).astype("float32")
             np.clip(cdist, 0.0, 2.0, out=cdist)
             clab = AgglomerativeClustering(
                 n_clusters=None,
                 distance_threshold=1.0 - cfg.faces_centroid_merge_sim,
-                metric="precomputed", linkage="average").fit_predict(cdist)
+                metric="precomputed",
+                linkage="average",
+            ).fit_predict(cdist)
             merged: dict[int, list[int]] = {}
             for ci, cl in enumerate(clab):
                 merged.setdefault(int(cl), []).extend(cluster_list[ci])
@@ -449,10 +462,12 @@ class BorderAssigner:
     def __init__(self, cfg: Config):
         self.cfg = cfg
 
-    def assign(self, X, cores: list[list[int]], border_idx,
-               cannot: set | None = None, face_ids=None) -> dict[int, int]:
+    def assign(
+        self, X, cores: list[list[int]], border_idx, cannot: set | None = None, face_ids=None
+    ) -> dict[int, int]:
         """Map ``{row index of X -> core position}`` for those that attach."""
         import numpy as np
+
         cfg = self.cfg
         if not cores or len(border_idx) == 0:
             return {}
@@ -460,8 +475,7 @@ class BorderAssigner:
         # One flat index over every core member, with a parallel owner array, so
         # a single search answers "which cores is this face near, and how near".
         members = np.concatenate([np.asarray(c, dtype=np.int64) for c in cores])
-        owner = np.concatenate([
-            np.full(len(c), ci, dtype=np.int32) for ci, c in enumerate(cores)])
+        owner = np.concatenate([np.full(len(c), ci, dtype=np.int32) for ci, c in enumerate(cores)])
         M = np.ascontiguousarray(X[members])
         Q = np.ascontiguousarray(X[np.asarray(border_idx, dtype=np.int64)])
 
@@ -488,15 +502,21 @@ class BorderAssigner:
                     continue
                 per_core.setdefault(int(owner[hit]), []).append(float(sim))
             ranked = sorted(
-                ((sum(sorted(v, reverse=True)[:votes])
-                  / min(len(v), votes), ci) for ci, v in per_core.items()),
-                reverse=True)
+                (
+                    (sum(sorted(v, reverse=True)[:votes]) / min(len(v), votes), ci)
+                    for ci, v in per_core.items()
+                ),
+                reverse=True,
+            )
             for score, ci in ranked:
                 if score < cfg.faces_border_assign_sim:
-                    break                      # ranked desc: no later core can pass
-                if cannot and face_ids is not None and self._blocked(
-                        face_ids[global_i], cores[ci], face_ids, cannot):
-                    continue                   # try the next-best core instead
+                    break  # ranked desc: no later core can pass
+                if (
+                    cannot
+                    and face_ids is not None
+                    and self._blocked(face_ids[global_i], cores[ci], face_ids, cannot)
+                ):
+                    continue  # try the next-best core instead
                 out[global_i] = ci
                 break
         return out
@@ -512,9 +532,10 @@ class BorderAssigner:
 
 
 def _cannot_pairs(conn) -> set:
-    return {frozenset((r["face_a"], r["face_b"]))
-            for r in conn.execute(
-                "SELECT face_a, face_b FROM face_links WHERE kind != 'same'")}
+    return {
+        frozenset((r["face_a"], r["face_b"]))
+        for r in conn.execute("SELECT face_a, face_b FROM face_links WHERE kind != 'same'")
+    }
 
 
 def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
@@ -534,21 +555,23 @@ def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
            FROM faces fa JOIN files f ON f.id = fa.file_id
            WHERE f.hidden = 0 AND COALESCE(fa.not_person, 0) = 0
                  AND COALESCE(fa.quality_tier, 'BORDERLINE') != 'LOW_QUALITY'
-           ORDER BY fa.id""").fetchall()
+           ORDER BY fa.id"""
+    ).fetchall()
     stats.faces = len(rows)
     stats.low_quality_excluded = conn.execute(
         """SELECT COUNT(*) FROM faces fa JOIN files f ON f.id = fa.file_id
            WHERE f.hidden = 0 AND COALESCE(fa.not_person, 0) = 0
-                 AND fa.quality_tier = 'LOW_QUALITY'""").fetchone()[0]
+                 AND fa.quality_tier = 'LOW_QUALITY'"""
+    ).fetchone()[0]
     if progress is not None:
         progress.total = stats.faces or 1
 
     # Remember each named person's face-id set to carry the name across rebuild.
     old_named: list[tuple[str, set]] = []
     for pid, name in conn.execute(
-            "SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''"):
-        fids = {r["id"] for r in conn.execute(
-            "SELECT id FROM faces WHERE person_id=?", (pid,))}
+        "SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''"
+    ):
+        fids = {r["id"] for r in conn.execute("SELECT id FROM faces WHERE person_id=?", (pid,))}
         if fids:
             old_named.append((name, fids))
 
@@ -581,8 +604,7 @@ def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
     seeded_from_all = len(high_idx) < cfg.faces_min_faces
     seed_idx = list(range(stats.faces)) if seeded_from_all else high_idx
     builder = CoreBuilder(cfg)
-    local_cores = builder.build(X[np.asarray(seed_idx, dtype=np.int64)],
-                                progress=progress)
+    local_cores = builder.build(X[np.asarray(seed_idx, dtype=np.int64)], progress=progress)
     stats.fragments = getattr(builder, "fragments", 0)
     # Back to global row indices.
     cores = [[seed_idx[i] for i in core] for core in local_cores]
@@ -594,7 +616,8 @@ def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
     # -- pass 2: attach borderline faces to a core, or leave them as noise -
     if not seeded_from_all and border_idx:
         assigned = BorderAssigner(cfg).assign(
-            X, cores, border_idx, cannot=_cannot_pairs(conn), face_ids=face_ids)
+            X, cores, border_idx, cannot=_cannot_pairs(conn), face_ids=face_ids
+        )
         for global_i, ci in assigned.items():
             cores[ci].append(global_i)
         stats.border_assigned = len(assigned)
@@ -621,11 +644,11 @@ def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
     # the old name sat on only one of those sub-clusters, so it is a minority of the
     # bigger merged cluster — a majority gate would then wrongly DROP the name. The
     # small floor below only rejects incidental 1-2 face overlaps.
-    triples = []                                  # (overlap, name, cluster_idx)
+    triples = []  # (overlap, name, cluster_idx)
     for ci, fset in enumerate(fsets):
         for cand_name, cand_fids in old_named:
             ov = len(fset & cand_fids)
-            if ov >= 3:                           # ignore incidental tiny overlaps
+            if ov >= 3:  # ignore incidental tiny overlaps
                 triples.append((ov, cand_name, ci))
     triples.sort(reverse=True)
     name_of: dict[int, str] = {}
@@ -645,7 +668,8 @@ def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
         cur = conn.execute(
             """INSERT INTO persons (name, cover_face_id, face_count, centroid, created_at)
                VALUES (?,?,?,?,?)""",
-            (name, face_ids[cover], len(idxs), cvec.tobytes(), now))
+            (name, face_ids[cover], len(idxs), cvec.tobytes(), now),
+        )
         pid = cur.lastrowid
         assign.extend((pid, face_ids[i]) for i in idxs)
         stats.people += 1

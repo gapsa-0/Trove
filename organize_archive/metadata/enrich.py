@@ -91,12 +91,14 @@ def _pending(conn, batch_size: int, root_ids: tuple[int, ...] | None = None):
     ).fetchall()
 
 
-def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
-           root_ids: tuple[int, ...] | None = None) -> EnrichStats:
+def enrich(
+    conn, cfg: Config, progress=None, batch_size: int = 80, root_ids: tuple[int, ...] | None = None
+) -> EnrichStats:
     stats = EnrichStats()
     matcher = SidecarMatcher()
     reader = ExifReader() if (ExifReader and exif_available()) else None
     import time as _time
+
     _last_commit = _time.monotonic()
 
     where = "d.file_id IS NULL AND f.present=1"
@@ -106,7 +108,8 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
         params.extend(root_ids)
     total = conn.execute(
         f"""SELECT COUNT(*) FROM files f LEFT JOIN dates d ON d.file_id=f.id
-            WHERE {where}""", params
+            WHERE {where}""",
+        params,
     ).fetchone()[0]
     if progress is not None:
         progress.total = total
@@ -144,8 +147,15 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
                            (file_id, json_rel_path, title, description,
                             taken_time, match_method, match_confidence)
                            VALUES (?,?,?,?,?,?,?)""",
-                        (fid, json_path.name, side.title, side.description,
-                         side.taken_time, method, mconf),
+                        (
+                            fid,
+                            json_path.name,
+                            side.title,
+                            side.description,
+                            side.taken_time,
+                            method,
+                            mconf,
+                        ),
                     )
                     if side.taken_time:
                         dt = resolver.epoch_to_wall(side.taken_time, cfg.timezone)
@@ -162,9 +172,7 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
                 candidates["filename"] = fn
 
             # --- mtime (always available) ---
-            candidates["mtime"] = (
-                resolver.epoch_to_wall(int(row["mtime"]), cfg.timezone), 0.2
-            )
+            candidates["mtime"] = (resolver.epoch_to_wall(int(row["mtime"]), cfg.timezone), 0.2)
 
             resolved = resolver.resolve(candidates, cfg.date_priority)
             if resolved is not None:
@@ -204,10 +212,17 @@ def enrich(conn, cfg: Config, progress=None, batch_size: int = 80,
                    (file_id, width, height, duration_s, make, model,
                     orientation, mime, detected_type)
                    VALUES (?,?,?,?,?,?,?,?,?)""",
-                (fid,
-                 _num(tags.get("ImageWidth")), _num(tags.get("ImageHeight")),
-                 _num(tags.get("Duration")), tags.get("Make"), tags.get("Model"),
-                 _num(tags.get("Orientation")), mime, det),
+                (
+                    fid,
+                    _num(tags.get("ImageWidth")),
+                    _num(tags.get("ImageHeight")),
+                    _num(tags.get("Duration")),
+                    tags.get("Make"),
+                    tags.get("Model"),
+                    _num(tags.get("Orientation")),
+                    mime,
+                    det,
+                ),
             )
             if row["media_type"] == "other" and det:
                 conn.execute("UPDATE files SET media_type=? WHERE id=?", (det, fid))

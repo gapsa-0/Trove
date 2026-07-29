@@ -52,9 +52,7 @@ except Exception:  # pragma: no cover - optional dep
 # catch a truncated download.
 INSIGHTFACE_SUBDIR = "insightface"
 DET_MODEL = "det_10g.onnx"
-BUFFALO_URL = (
-    "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
-)
+BUFFALO_URL = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
 _MIN_SIZES = {DET_MODEL: 10_000_000}
 
 # AdaFace embedder: a self-exported ONNX (from the WebFace12M checkpoint),
@@ -80,6 +78,7 @@ def available() -> bool:
     try:
         import insightface  # noqa: F401
         import onnxruntime  # noqa: F401
+
         return True
     except Exception:  # pragma: no cover - optional dep
         return False
@@ -123,13 +122,16 @@ def models_ready(cache_dir: str) -> bool:
     d = _models_dir(cache_dir)
     return adaface_ready(cache_dir) and all(
         (d / name).is_file() and (d / name).stat().st_size >= min_size
-        for name, min_size in _MIN_SIZES.items())
+        for name, min_size in _MIN_SIZES.items()
+    )
 
 
 def _detector_ready(cache_dir: str) -> bool:
     d = _models_dir(cache_dir)
-    return all((d / name).is_file() and (d / name).stat().st_size >= min_size
-               for name, min_size in _MIN_SIZES.items())
+    return all(
+        (d / name).is_file() and (d / name).stat().st_size >= min_size
+        for name, min_size in _MIN_SIZES.items()
+    )
 
 
 def ensure_models(cache_dir: str, log=None) -> Path:
@@ -162,8 +164,8 @@ def ensure_models(cache_dir: str, log=None) -> Path:
                         shutil.copyfileobj(src, out)
                     if os.path.getsize(tmp_part) < _MIN_SIZES[base]:
                         raise OSError(
-                            f"extracted {base} is too small "
-                            f"({os.path.getsize(tmp_part)} bytes)")
+                            f"extracted {base} is too small ({os.path.getsize(tmp_part)} bytes)"
+                        )
                     os.replace(tmp_part, d / base)
                 finally:
                     if os.path.exists(tmp_part):
@@ -178,12 +180,12 @@ def ensure_models(cache_dir: str, log=None) -> Path:
 
 @dataclass
 class Face:
-    x: int          # box in ORIGINAL-image pixel coords
+    x: int  # box in ORIGINAL-image pixel coords
     y: int
     w: int
     h: int
     score: float
-    embedding: "np.ndarray"   # float32, L2-normalized, 512-d (AdaFace ir101)
+    embedding: "np.ndarray"  # float32, L2-normalized, 512-d (AdaFace ir101)
     focus_score: float
     brightness: float
     extreme_fraction: float
@@ -202,8 +204,7 @@ class Face:
     quality_tier: str = "BORDERLINE"
 
 
-_REJECTION_REASONS = (
-    "score", "size", "focus", "exposure", "clipped", "nonhuman")
+_REJECTION_REASONS = ("score", "size", "focus", "exposure", "clipped", "nonhuman")
 
 # FIQA routing tiers, ordered best-first. Mirrored by faces/fiqa.py and by the
 # faces.quality_tier column; kept here so the Face dataclass and the detection
@@ -224,9 +225,9 @@ class DetectionReport:
     faces: list[Face] = field(default_factory=list)
     candidates: int = 0
     rejected: dict[str, int] = field(
-        default_factory=lambda: {reason: 0 for reason in _REJECTION_REASONS})
-    tiers: dict[str, int] = field(
-        default_factory=lambda: {t: 0 for t in _QUALITY_TIERS})
+        default_factory=lambda: {reason: 0 for reason in _REJECTION_REASONS}
+    )
+    tiers: dict[str, int] = field(default_factory=lambda: {t: 0 for t in _QUALITY_TIERS})
 
 
 @dataclass(frozen=True)
@@ -278,17 +279,29 @@ class FaceBackend:
     # rather than silently dropped inside SCRFD.
     _DET_THRESH = 0.30
 
-    def __init__(self, cache_dir: str, *, min_score: float = 0.50,
-                 min_px: int = 50, max_side: int = 960, det_size: int = 640,
-                 max_clipped_fraction: float = 0.18,
-                 min_focus: float = 35.0, max_extreme_fraction: float = 0.80,
-                 quality_version: str = "opencv-laplacian-v1",
-                 assessor=None, log=None, **_ignored):
+    def __init__(
+        self,
+        cache_dir: str,
+        *,
+        min_score: float = 0.50,
+        min_px: int = 50,
+        max_side: int = 960,
+        det_size: int = 640,
+        max_clipped_fraction: float = 0.18,
+        min_focus: float = 35.0,
+        max_extreme_fraction: float = 0.80,
+        quality_version: str = "opencv-laplacian-v1",
+        assessor=None,
+        log=None,
+        **_ignored,
+    ):
         if not available():
             raise RuntimeError(
                 "face backend unavailable; install the 'faces' extra "
-                "(insightface + onnxruntime) and a modern opencv-python.")
+                "(insightface + onnxruntime) and a modern opencv-python."
+            )
         from insightface.model_zoo import get_model
+
         d = ensure_models(cache_dir, log=log)
         self.min_score = min_score
         self.min_px = min_px
@@ -301,8 +314,9 @@ class FaceBackend:
         self.assessor = assessor
         providers = ["CPUExecutionProvider"]
         self._det = get_model(str(d / DET_MODEL), providers=providers)
-        self._det.prepare(ctx_id=-1, input_size=self.det_size,
-                          det_thresh=min(self._DET_THRESH, min_score))
+        self._det.prepare(
+            ctx_id=-1, input_size=self.det_size, det_thresh=min(self._DET_THRESH, min_score)
+        )
         self._ada = self._load_adaface(cache_dir)
 
     def _load_adaface(self, cache_dir: str):
@@ -314,12 +328,14 @@ class FaceBackend:
         much later as nonsense clusters.
         """
         import onnxruntime as ort
+
         mp = adaface_model_path(cache_dir)
         if not adaface_ready(cache_dir):
             raise RuntimeError(
                 f"AdaFace model missing or truncated at {mp}. Regenerate it with "
                 "`python3 tools/build/adaface_export.py` (needs torch + huggingface_hub, "
-                "dev-only), or install a packaged build that ships it.")
+                "dev-only), or install a packaged build that ships it."
+            )
         so = ort.SessionOptions()
         so.intra_op_num_threads = os.cpu_count() or 4
         return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])
@@ -358,13 +374,15 @@ class FaceBackend:
         standalone/calibration paths.
         """
         from PIL import Image, ImageOps
+
         try:
             import pillow_heif
+
             pillow_heif.register_heif_opener()
         except Exception:
             pass
         with Image.open(path) as im:
-            orig_side = max(im.size)   # true on-disk size, before draft() shrinks it
+            orig_side = max(im.size)  # true on-disk size, before draft() shrinks it
             # draft() lets libjpeg downscale in the DCT domain while decoding a
             # JPEG (by 1/2, 1/4, 1/8) — a ~3-4x speedup on load. Must run before
             # any pixel access (i.e. before exif_transpose). No-op for non-JPEG.
@@ -386,8 +404,9 @@ class FaceBackend:
 
     # -- detection + embedding -------------------------------------------
     @staticmethod
-    def _clipped_fraction(x: float, y: float, w: float, h: float,
-                          image_w: int, image_h: int) -> float:
+    def _clipped_fraction(
+        x: float, y: float, w: float, h: float, image_w: int, image_h: int
+    ) -> float:
         area = max(0.0, w) * max(0.0, h)
         if area == 0.0:
             return 1.0
@@ -407,8 +426,9 @@ class FaceBackend:
             return []
         return [float(b[4]) for b in bboxes]
 
-    def detect_report(self, img_bgr, scale: float = 1.0,
-                      *, apply_quality_gate: bool = True) -> DetectionReport:
+    def detect_report(
+        self, img_bgr, scale: float = 1.0, *, apply_quality_gate: bool = True
+    ) -> DetectionReport:
         """Detect + embed faces in a preloaded BGR image.
 
         ``scale`` maps ``img_bgr`` coords back to the true original: boxes are
@@ -417,6 +437,7 @@ class FaceBackend:
         ``det_size`` and returns coords in ``img_bgr`` space.
         """
         from insightface.utils import face_align
+
         report = DetectionReport()
         h, w = img_bgr.shape[:2]
         bboxes, kpss = self._det.detect(img_bgr, input_size=self.det_size)
@@ -446,16 +467,20 @@ class FaceBackend:
                 continue
             feat, norm = embedded
             face = Face(
-                x=max(0, round(x1 * inv)), y=max(0, round(y1 * inv)),
-                w=round(bw * inv), h=round(bh * inv),
-                score=score, embedding=feat,
+                x=max(0, round(x1 * inv)),
+                y=max(0, round(y1 * inv)),
+                w=round(bw * inv),
+                h=round(bh * inv),
+                score=score,
+                embedding=feat,
                 focus_score=quality.focus_score,
                 brightness=quality.brightness,
                 extreme_fraction=quality.extreme_fraction,
                 clipped_fraction=clipped,
                 quality_score=quality.quality_score,
                 quality_source=self.quality_version,
-                fiqa_norm=norm)
+                fiqa_norm=norm,
+            )
             # Phase 1 routing. The base filters above (score/size/clipping) run
             # BEFORE embedding so cheap rejections stay cheap; the FIQA score is
             # a by-product of the embedding itself, so its gate necessarily runs
@@ -464,8 +489,7 @@ class FaceBackend:
             if self.assessor is not None:
                 face.fiqa_score = self.assessor.score(face)
                 face.quality_tier = self.assessor.tier(face.fiqa_score)
-            report.tiers[face.quality_tier] = \
-                report.tiers.get(face.quality_tier, 0) + 1
+            report.tiers[face.quality_tier] = report.tiers.get(face.quality_tier, 0) + 1
             report.faces.append(face)
         return report
 
@@ -477,8 +501,6 @@ class FaceBackend:
         """Compatibility wrapper returning only accepted faces."""
         return self.process_path_report(path).faces
 
-    def process_path_report(self, path: str,
-                            *, apply_quality_gate: bool = True) -> DetectionReport:
+    def process_path_report(self, path: str, *, apply_quality_gate: bool = True) -> DetectionReport:
         img, scale = self.load_bgr(path)
-        return self.detect_report(
-            img, scale, apply_quality_gate=apply_quality_gate)
+        return self.detect_report(img, scale, apply_quality_gate=apply_quality_gate)

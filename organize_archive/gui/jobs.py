@@ -21,12 +21,12 @@ from ..scan import walker
 @dataclass
 class Job:
     id: int
-    kind: str                 # "scan" | "enrich" | "dedup" | "places" | "detect" |
-                               # "face_cluster" | "pet_cluster" | "semantic"
+    kind: str  # "scan" | "enrich" | "dedup" | "places" | "detect" |
+    # "face_cluster" | "pet_cluster" | "semantic"
     root_id: int | None
     root_path: str | None
     force: bool = False
-    status: str = "running"   # running | done | error | cancelled
+    status: str = "running"  # running | done | error | cancelled
     total: int = 0
     done: int = 0
     current: str = ""
@@ -48,8 +48,8 @@ class _JobProgress:
     re-clustering between them) present one continuous bar: each pass reports
     0..chunk offset by ``base``, while the grand ``total`` stays put instead of
     being reset to the chunk size on every pass."""
-    def __init__(self, job: Job, cancel: threading.Event, base: int = 0,
-                 fixed_total: bool = False):
+
+    def __init__(self, job: Job, cancel: threading.Event, base: int = 0, fixed_total: bool = False):
         self.job = job
         self._cancel = cancel
         self.base = base
@@ -99,8 +99,8 @@ class JobManager:
         self._jobs: dict[int, Job] = {}
         self._cancels: dict[int, threading.Event] = {}
         self._seq = 0
-        self._lock = threading.Lock()          # guards registry
-        self._write_lock = threading.Lock()    # serializes DB writers
+        self._lock = threading.Lock()  # guards registry
+        self._write_lock = threading.Lock()  # serializes DB writers
 
         # Dedup rebuilds every group wholesale (no per-file backlog), so its
         # "needs a run" signal is catalog-derived (db.dedup_needed /
@@ -156,16 +156,14 @@ class JobManager:
     def list(self, root_id: int | None = None) -> list[dict]:
         with self._lock:
             js = sorted(self._jobs.values(), key=lambda j: j.id, reverse=True)
-        return [j.public() for j in js
-                if root_id is None or j.root_id == root_id]
+        return [j.public() for j in js if root_id is None or j.root_id == root_id]
 
     def active_kind(self, kind: str) -> bool:
-        return any(j.status == "running" and j.kind == kind
-                   for j in self._jobs.values())
+        return any(j.status == "running" and j.kind == kind for j in self._jobs.values())
 
-    def disk_count(self, root_id: int, root_path: str,
-                   max_age: float | None = None,
-                   allow_walk: bool = True) -> int | None:
+    def disk_count(
+        self, root_id: int, root_path: str, max_age: float | None = None, allow_walk: bool = True
+    ) -> int | None:
         """Files on disk under this root, cached so the polled status endpoint
         never triggers a fresh ~150k-file walk. Returns None if the folder is
         gone.
@@ -181,6 +179,7 @@ class JobManager:
         """
         from pathlib import Path
         from ..scan.walker import count_files
+
         ttl = self._WALK_TTL if max_age is None else max_age
         hit = self._walk_cache.get(root_id)
         now = time.monotonic()
@@ -246,6 +245,7 @@ class JobManager:
         starts. A lost invalidation is harmless — the next tick re-derives the
         same obligation and tries again.
         """
+
         def _write():
             conn = db.connect(self.cfg.archive_db_path(root_id))
             try:
@@ -253,6 +253,7 @@ class JobManager:
                 conn.commit()
             finally:
                 conn.close()
+
         try:
             db.write_with_retry(_write)
         except sqlite3.OperationalError:
@@ -300,18 +301,25 @@ class JobManager:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
-                active = any(j.status == "running" and j.root_id == root_id
-                             for j in self._jobs.values())
+                active = any(
+                    j.status == "running" and j.root_id == root_id for j in self._jobs.values()
+                )
             if not active:
                 return True
             time.sleep(0.05)
         with self._lock:
-            return not any(j.status == "running" and j.root_id == root_id
-                           for j in self._jobs.values())
+            return not any(
+                j.status == "running" and j.root_id == root_id for j in self._jobs.values()
+            )
 
     # -- control ----------------------------------------------------------
-    def start(self, kind: str, root_id: int | None = None,
-              root_path: str | None = None, force: bool = False) -> dict:
+    def start(
+        self,
+        kind: str,
+        root_id: int | None = None,
+        root_path: str | None = None,
+        force: bool = False,
+    ) -> dict:
         if self._stopping.is_set():
             return {"error": "application is shutting down"}
         # All GUI jobs belong to the archive currently on screen.  This also
@@ -323,8 +331,7 @@ class JobManager:
             return {"error": f"a {kind} job is already running"}
         with self._lock:
             self._seq += 1
-            job = Job(id=self._seq, kind=kind, root_id=root_id, root_path=root_path,
-                      force=force)
+            job = Job(id=self._seq, kind=kind, root_id=root_id, root_path=root_path, force=force)
             self._jobs[job.id] = job
             cancel = threading.Event()
             self._cancels[job.id] = cancel
@@ -362,8 +369,8 @@ class JobManager:
             # the work up on its own and refills from zero. Cheap no-op (one
             # primary-key lookup) once the archive is on the current embedder.
             from ..faces import migrate_adaface
-            migrate_adaface.run_if_needed(
-                conn, self.cfg, db_path=self.cfg.archive_db_path(root_id))
+
+            migrate_adaface.run_if_needed(conn, self.cfg, db_path=self.cfg.archive_db_path(root_id))
         except Exception:
             conn.close()
             raise
@@ -387,7 +394,8 @@ class JobManager:
         """Stop work when the currently viewed archive is closed."""
         with self._lock:
             if self._open_root_id is None or (
-                    root_id is not None and root_id != self._open_root_id):
+                root_id is not None and root_id != self._open_root_id
+            ):
                 return
             closing = self._open_root_id
             self._open_root_id = None
@@ -426,6 +434,7 @@ class JobManager:
         CPU actually frees up instead of only the *next* run being skipped.
         """
         from . import pipeline
+
         if value:
             self._paused_stages.add(card)
         else:
@@ -464,8 +473,9 @@ class JobManager:
             except Exception:
                 traceback.print_exc()
                 acted = False
-            self._auto_interval = (self._AUTO_MIN if acted
-                                    else min(self._auto_interval * 1.5, self._AUTO_MAX))
+            self._auto_interval = (
+                self._AUTO_MIN if acted else min(self._auto_interval * 1.5, self._AUTO_MAX)
+            )
 
     def _auto_tick(self) -> bool:
         """One scheduling decision, driven entirely by the same pipeline snapshot
@@ -482,19 +492,23 @@ class JobManager:
         if self._paused:
             return False
         from . import pipeline, queries
+
         open_root_id = self._open_root_id
         if open_root_id is None:
             return False
-        archive = next((a for a in queries.archives(self.cfg)
-                        if a["id"] == open_root_id and a["exists"]), None)
+        archive = next(
+            (a for a in queries.archives(self.cfg) if a["id"] == open_root_id and a["exists"]), None
+        )
         if not archive:
             return False
 
-        states = pipeline.stage_states(self.cfg, self, open_root_id, archive["path"],
-                                       allow_walk=True)
+        states = pipeline.stage_states(
+            self.cfg, self, open_root_id, archive["path"], allow_walk=True
+        )
         stalled = self._stalled_kinds(states)
-        lock_running = any(s["kind"] in pipeline.LOCK_KINDS and s["state"] == "running"
-                           for s in states)
+        lock_running = any(
+            s["kind"] in pipeline.LOCK_KINDS and s["state"] == "running" for s in states
+        )
         acted = False
         started_lock = False
         for s in states:
@@ -528,8 +542,10 @@ class JobManager:
         # paused stage nor anything queued behind it can start until the user
         # says so, and counting it would pin the scheduler (and its disk walk)
         # to the fast interval indefinitely.
-        outstanding = any(s["state"] in ("running", "queued", "blocked", "error")
-                          and not stalled[s["kind"]] for s in states)
+        outstanding = any(
+            s["state"] in ("running", "queued", "blocked", "error") and not stalled[s["kind"]]
+            for s in states
+        )
         return acted or outstanding
 
     def _stalled_kinds(self, states: list[dict]) -> dict[str, bool]:
@@ -541,11 +557,13 @@ class JobManager:
         detection and semantic stages that queue behind it.
         """
         from . import pipeline
+
         stalled: dict[str, bool] = {}
         for s in states:
             blocker = s["blocker"]
-            stalled[s["kind"]] = (self.stage_paused(pipeline.card_of(s["kind"]))
-                                  or bool(blocker and stalled.get(blocker)))
+            stalled[s["kind"]] = self.stage_paused(pipeline.card_of(s["kind"])) or bool(
+                blocker and stalled.get(blocker)
+            )
         return stalled
 
     # -- worker -----------------------------------------------------------
@@ -619,14 +637,20 @@ class JobManager:
         run_id = db.scan_run_start(conn, job.root_id, roots)
         totals = walker.ScanStats()
         for r in roots:
-            stats = walker.scan_root(conn, self.cfg, r, run_started,
-                                     progress=prog, base_done=totals.seen,
-                                     # Small batches so the parallel enrich job
-                                     # can begin reading committed rows quickly.
-                                     commit_every=80,
-                                     # This archive's root id, not a path lookup:
-                                     # the rows must land where the GUI reads.
-                                     root_id=job.root_id)
+            stats = walker.scan_root(
+                conn,
+                self.cfg,
+                r,
+                run_started,
+                progress=prog,
+                base_done=totals.seen,
+                # Small batches so the parallel enrich job
+                # can begin reading committed rows quickly.
+                commit_every=80,
+                # This archive's root id, not a path lookup:
+                # the rows must land where the GUI reads.
+                root_id=job.root_id,
+            )
             totals.seen += stats.seen
             totals.new += stats.new
             totals.updated += stats.updated
@@ -635,27 +659,31 @@ class JobManager:
         # Reached only when every root was walked end to end: cancellation and
         # errors both leave the run open, so neither can pass for full coverage.
         db.scan_run_finish(conn, run_id, totals, on_disk)
-        job.message = (f"{totals.seen} files scanned"
-                       + (f" · {totals.errors} unreadable" if totals.errors else ""))
+        job.message = f"{totals.seen} files scanned" + (
+            f" · {totals.errors} unreadable" if totals.errors else ""
+        )
 
     def _run_enrich(self, conn, job: Job, cancel):
         from ..metadata import enrich as enrich_mod
+
         prog = _JobProgress(job, cancel)
         root_ids = (job.root_id,) if job.root_id else None
         stats = enrich_mod.enrich(conn, self.cfg, progress=prog, root_ids=root_ids)
-        job.message = (f"{stats.processed} processed, "
-                       f"{stats.with_takeout} Takeout-matched, "
-                       f"{stats.with_gps} with GPS")
+        job.message = (
+            f"{stats.processed} processed, "
+            f"{stats.with_takeout} Takeout-matched, "
+            f"{stats.with_gps} with GPS"
+        )
 
     def _run_dedup(self, conn, job: Job, cancel):
         from ..dedup import exact
+
         prog = _JobProgress(job, cancel)
         stats = exact.run(conn, self.cfg, progress=prog, root_id=job.root_id)
         # Hidden files are duplicate copies. They must never consume semantic
         # storage or appear as a stale vector if a prior run overlapped dedup.
         conn.execute(
-            "DELETE FROM semantic_embeddings WHERE file_id IN "
-            "(SELECT id FROM files WHERE hidden=1)"
+            "DELETE FROM semantic_embeddings WHERE file_id IN (SELECT id FROM files WHERE hidden=1)"
         )
         # Record what this successful rebuild covered so dedup_needed() can
         # tell -- from the catalog alone, even after a restart -- that nothing
@@ -668,8 +696,10 @@ class JobManager:
         covered_files, covered_max_id = db.dedup_coverage(conn, job.root_id)
         db.dedup_mark_done(conn, job.root_id, covered_files, covered_max_id)
         conn.commit()
-        job.message = (f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
-                       f"{stats.reclaimable_bytes/1e9:.1f} GB reclaimable")
+        job.message = (
+            f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
+            f"{stats.reclaimable_bytes / 1e9:.1f} GB reclaimable"
+        )
 
     def _run_places(self, conn, job: Job, cancel):
         # Keep map places in sync WITHOUT ever destroying user edits. Places are
@@ -679,6 +709,7 @@ class JobManager:
         # Each archive is now its own database, so this only ever touches the
         # one this job belongs to.
         from ..geo.clusters import cluster_places, assign_unplaced
+
         job.total, job.done = 1, 0
         has_places = conn.execute(
             "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (job.root_id,)
@@ -698,6 +729,7 @@ class JobManager:
         from ..detect import extract as dx
         from ..faces import cluster as fc
         from ..pets import cluster as pc
+
         # Progress is cumulative over ALL canonical media, not just this run's
         # backlog: total = every canonical image (+ video, once video detection
         # is enabled), done starts at how many are already detected. So the
@@ -708,17 +740,22 @@ class JobManager:
         already = max(0, total - dx.pending_count(conn, self.cfg, job.root_id))
         job.total, job.done = total, already
         # Load both detector model sets once and reuse across every chunk.
-        face_be, pet_be = dx.make_backends(
-            self.cfg, log=lambda m: setattr(job, "current", m))
+        face_be, pet_be = dx.make_backends(self.cfg, log=lambda m: setattr(job, "current", m))
         processed = faces_found = animals = suppressed = human_pets = 0
         turned = 0
         while True:
             if cancel.is_set():
                 raise KeyboardInterrupt
             prog = _JobProgress(job, cancel, base=already + processed, fixed_total=True)
-            st = dx.extract(conn, self.cfg, progress=prog, limit=self._DETECT_CHUNK,
-                            face_be=face_be, pet_be=pet_be,
-                            cache_dir=self.cfg.archive_cache_dir(job.root_id))
+            st = dx.extract(
+                conn,
+                self.cfg,
+                progress=prog,
+                limit=self._DETECT_CHUNK,
+                face_be=face_be,
+                pet_be=pet_be,
+                cache_dir=self.cfg.archive_cache_dir(job.root_id),
+            )
             if st.processed == 0:
                 break
             processed += st.processed
@@ -738,6 +775,7 @@ class JobManager:
         # partially re-extracted archive would strand identities on faces that
         # have not been detected yet.
         from ..faces import migrate_adaface
+
         restored = 0
         if migrate_adaface.pending(conn):
             job.current = "restoring names and corrections…"
@@ -752,10 +790,12 @@ class JobManager:
             + (f" · {suppressed} animal-face FPs dropped" if suppressed else "")
             + (f" · {human_pets} people misread as pets" if human_pets else "")
             + (f" · {turned} photos turned upright" if turned else "")
-            + (f" · {restored} identities restored" if restored else ""))
+            + (f" · {restored} identities restored" if restored else "")
+        )
 
     def _run_face_cluster(self, conn, job: Job, cancel):
         from ..faces.cluster import cluster_faces
+
         job.current = "reclustering people after review…"
         stats = cluster_faces(conn, self.cfg)
         job.done = job.total = 1
@@ -766,6 +806,7 @@ class JobManager:
         # merge's fresh 'different' pet_links row takes effect immediately
         # rather than waiting for the next full detect chunk.
         from ..pets.cluster import cluster_pets
+
         job.current = "reclustering pets after review…"
         stats = cluster_pets(conn, self.cfg, root_id=job.root_id)
         job.done = job.total = 1
@@ -788,11 +829,12 @@ class JobManager:
             total_failed += failed
             if remaining == 0:
                 break
-            force = False   # only the first pass honours a forced full reindex
+            force = False  # only the first pass honours a forced full reindex
         job.message = (
             f"{total_indexed} indexed, {total_skipped} skipped, {total_failed} errors"
             if (total_indexed or total_skipped or total_failed)
-            else "semantic index is already current")
+            else "semantic index is already current"
+        )
 
     def _semantic_pass(self, job: Job, cancel, force: bool):
         """One snapshot pass. Returns (indexed, skipped, failed, rows_in_pass)."""
@@ -827,9 +869,14 @@ class JobManager:
             job.current = row["rel_path"]
             try:
                 part, kind, reason = semantic.media_part(
-                    self.cfg, Path(row["root_path"]) / row["rel_path"],
-                    row["ext"], row["media_type"], cache_dir,
-                    row["rotate_deg"], row["duration_s"])
+                    self.cfg,
+                    Path(row["root_path"]) / row["rel_path"],
+                    row["ext"],
+                    row["media_type"],
+                    cache_dir,
+                    row["rotate_deg"],
+                    row["duration_s"],
+                )
                 if reason:
                     self._save_semantic_outcome(job.root_id, row, None, kind, reason)
                     skipped += 1
@@ -837,8 +884,12 @@ class JobManager:
                     values = semantic.embed_part(self.cfg, part, kind)
                     if values is None:
                         self._save_semantic_outcome(
-                            job.root_id, row, None, kind,
-                            f"unsupported {row['media_type']}: no frame could be decoded")
+                            job.root_id,
+                            row,
+                            None,
+                            kind,
+                            f"unsupported {row['media_type']}: no frame could be decoded",
+                        )
                         skipped += 1
                     else:
                         self._save_semantic_outcome(job.root_id, row, values, kind, None)
@@ -864,6 +915,7 @@ class JobManager:
         since no embedding was ever written for it.
         """
         from . import semantic
+
         conn = db.connect(self.cfg.archive_db_path(root_id))
         try:
             # Dedup may have completed while this item was being embedded.
@@ -871,8 +923,7 @@ class JobManager:
             current = conn.execute(
                 "SELECT hidden, sha256 FROM files WHERE id=?", (row["id"],)
             ).fetchone()
-            if (current is None or current["hidden"] or
-                    current["sha256"] != row["sha256"]):
+            if current is None or current["hidden"] or current["sha256"] != row["sha256"]:
                 return
 
             def _write():

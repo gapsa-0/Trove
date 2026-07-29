@@ -20,9 +20,7 @@ def _catalog(tmp_path, count=1):
     root.mkdir()
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')",
-        (str(root),))
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')", (str(root),))
     for file_id in range(1, count + 1):
         name = f"{file_id}.jpg"
         (root / name).write_bytes(b"fake")
@@ -30,16 +28,25 @@ def _catalog(tmp_path, count=1):
             """INSERT INTO files
                (id,root_id,rel_path,size,mtime,media_type,first_seen,last_seen)
                VALUES(?,1,?,4,0,'image','2026-01-01','2026-01-01')""",
-            (file_id, name))
+            (file_id, name),
+        )
     conn.commit()
     return conn
 
 
 class _PetBackend:
     def process_path(self, _path):
-        return [backend.AnimalDetection(
-            species="dog", x=10, y=12, w=90, h=100, score=.91,
-            embedding=np.ones(320, dtype="float32") / np.sqrt(320))]
+        return [
+            backend.AnimalDetection(
+                species="dog",
+                x=10,
+                y=12,
+                w=90,
+                h=100,
+                score=0.91,
+                embedding=np.ones(320, dtype="float32") / np.sqrt(320),
+            )
+        ]
 
 
 def test_pet_extraction_is_resumable_and_persists_provenance(tmp_path, monkeypatch):
@@ -60,8 +67,7 @@ def test_pet_extraction_is_resumable_and_persists_provenance(tmp_path, monkeypat
     assert scan["n_animals"] == 1
     conn.execute("UPDATE files SET sha256='changed' WHERE id=1")
     conn.commit()
-    assert extract.pending_count(
-        conn, model_source=extract.scan_source(cfg)) == 1
+    assert extract.pending_count(conn, model_source=extract.scan_source(cfg)) == 1
     assert extract.extract(conn, cfg, be=_PetBackend()).processed == 1
     assert conn.execute("SELECT COUNT(*) FROM animal_detections").fetchone()[0] == 1
     assert extract.pending_count(conn, model_source="new-model") == 1
@@ -83,9 +89,10 @@ def test_pet_clustering_is_species_separated_and_preserves_names(tmp_path):
                (file_id,species,box_x,box_y,box_w,box_h,det_score,embedding,
                 model_source,created_at)
                VALUES(?,?,0,0,50,50,.9,?,'test',?)""",
-            (file_id, species, vector.tobytes(), now))
+            (file_id, species, vector.tobytes(), now),
+        )
     conn.commit()
-    cfg = Config(pets_cluster_similarity=.99, pets_min_detections=2)
+    cfg = Config(pets_cluster_similarity=0.99, pets_min_detections=2)
 
     first = cluster.cluster_pets(conn, cfg)
     cat = conn.execute("SELECT id FROM pets WHERE species='cat'").fetchone()
@@ -95,39 +102,50 @@ def test_pet_clustering_is_species_separated_and_preserves_names(tmp_path):
 
     assert first.pets == 2
     assert second.pets == 2
-    assert conn.execute(
-        "SELECT name FROM pets WHERE species='cat'").fetchone()[0] == "Michi"
+    assert conn.execute("SELECT name FROM pets WHERE species='cat'").fetchone()[0] == "Michi"
     conn.close()
 
 
 class _FaceBackend:
     def process_path_report(self, _path):
         face = SimpleNamespace(
-            x=20, y=20, w=30, h=30, score=.95,
-            focus_score=100.0, brightness=120.0, extreme_fraction=.01,
-            clipped_fraction=0.0, quality_score=.8, quality_source="test",
-            embedding=np.array([1.0, 0.0], dtype="float32"))
+            x=20,
+            y=20,
+            w=30,
+            h=30,
+            score=0.95,
+            focus_score=100.0,
+            brightness=120.0,
+            extreme_fraction=0.01,
+            clipped_fraction=0.0,
+            quality_score=0.8,
+            quality_source="test",
+            embedding=np.array([1.0, 0.0], dtype="float32"),
+        )
         return face_backend.DetectionReport(faces=[face], candidates=1)
 
 
-@pytest.mark.xfail(reason=(
-    "Superseded by the fused detector: the animal-overlap veto now lives in "
-    "organize_archive.detect.extract, which runs both detectors over one decode, "
-    "and organize_archive.faces.extract (driven here) is no longer on the app's "
-    "path. The behaviour asserted below is still wanted — it needs porting to the "
-    "fused pass, which requires fakes for both backends and a decodable fixture."),
-    strict=False)
-def test_animal_overlap_filters_face_but_manual_review_can_restore_it(
-        tmp_path, monkeypatch):
+@pytest.mark.xfail(
+    reason=(
+        "Superseded by the fused detector: the animal-overlap veto now lives in "
+        "organize_archive.detect.extract, which runs both detectors over one decode, "
+        "and organize_archive.faces.extract (driven here) is no longer on the app's "
+        "path. The behaviour asserted below is still wanted — it needs porting to the "
+        "fused pass, which requires fakes for both backends and a decodable fixture."
+    ),
+    strict=False,
+)
+def test_animal_overlap_filters_face_but_manual_review_can_restore_it(tmp_path, monkeypatch):
     conn = _catalog(tmp_path)
     conn.execute(
         """INSERT INTO animal_detections
            (file_id,species,box_x,box_y,box_w,box_h,det_score,embedding,
             model_source,created_at)
-           VALUES(1,'dog',0,0,100,100,.9,X'00','test','2026-01-01')""")
+           VALUES(1,'dog',0,0,100,100,.9,X'00','test','2026-01-01')"""
+    )
     conn.commit()
     monkeypatch.setattr(face_backend, "available", lambda: True)
-    cfg = Config(pets_face_overlap=.6)
+    cfg = Config(pets_face_overlap=0.6)
 
     stats = face_extract.extract(conn, cfg, be=_FaceBackend())
 
@@ -138,13 +156,11 @@ def test_animal_overlap_filters_face_but_manual_review_can_restore_it(
     assert conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 0
     conn.close()
 
-    result = queries.review_nonhuman(
-        str(tmp_path / "archive.db"), candidate["id"], "human")
+    result = queries.review_nonhuman(str(tmp_path / "archive.db"), candidate["id"], "human")
     assert result["ok"]
     check = db.open_readonly(tmp_path / "archive.db")
     assert check.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 1
-    assert check.execute(
-        "SELECT rejected_nonhuman FROM face_scan").fetchone()[0] == 0
+    assert check.execute("SELECT rejected_nonhuman FROM face_scan").fetchone()[0] == 0
     check.close()
 
     # A detector/config rescan of the same source must preserve this correction.
@@ -152,13 +168,11 @@ def test_animal_overlap_filters_face_but_manual_review_can_restore_it(
     write.execute(
         """INSERT OR REPLACE INTO pet_scan
            (file_id,n_animals,source_sha256,model_source,scanned_at)
-           VALUES(1,1,NULL,'old-model','2026-01-01')""")
+           VALUES(1,1,NULL,'old-model','2026-01-01')"""
+    )
     write.commit()
     monkeypatch.setattr(backend, "available", lambda: True)
     extract.extract(write, cfg, be=_PetBackend())
-    assert write.execute(
-        "SELECT review_status FROM nonhuman_detections").fetchone()[0] == "human"
+    assert write.execute("SELECT review_status FROM nonhuman_detections").fetchone()[0] == "human"
     assert write.execute("SELECT not_person FROM faces").fetchone()[0] == 0
     write.close()
-
-

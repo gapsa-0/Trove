@@ -29,14 +29,16 @@ def _catalogue(tmp_path, scores):
             """INSERT INTO files(
                    id,root_id,rel_path,size,mtime,media_type,first_seen,last_seen
                ) VALUES(?,1,?,1,0,'image','2026-01-01','2026-01-01')""",
-            (file_id, f"{file_id}.jpg"))
+            (file_id, f"{file_id}.jpg"),
+        )
         vector = (cosine, math.sqrt(max(0.0, 1.0 - cosine * cosine)))
         conn.execute(
             """INSERT INTO semantic_embeddings(
                    file_id,source_sha256,model,dimensions,embedding,status,
                    indexer_version,indexed_at
                ) VALUES(?,'hash','test',2,?,'indexed','test','2026-01-01')""",
-            (file_id, struct.pack("<2f", *vector)))
+            (file_id, struct.pack("<2f", *vector)),
+        )
     conn.commit()
     conn.close()
     return db_path
@@ -54,8 +56,7 @@ def test_the_cut_follows_the_querys_own_best_score():
     import tempfile
     from pathlib import Path
 
-    with tempfile.TemporaryDirectory() as strong_dir, \
-            tempfile.TemporaryDirectory() as weak_dir:
+    with tempfile.TemporaryDirectory() as strong_dir, tempfile.TemporaryDirectory() as weak_dir:
         strong = _catalogue(Path(strong_dir), [0.150, 0.140, 0.125, 0.080, 0.040])
         weak = _catalogue(Path(weak_dir), [0.090, 0.084, 0.075, 0.048, 0.024])
 
@@ -74,7 +75,8 @@ def test_totals_reflect_the_relative_cut(tmp_path):
     db_path = _catalogue(tmp_path, [0.15, 0.14, 0.05, 0.04, 0.03])
 
     hits = queries.semantic_search(
-        db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0, relative_floor=0.80)
+        db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0, relative_floor=0.80
+    )
 
     assert hits["total"] == 2
 
@@ -85,7 +87,8 @@ def test_the_absolute_floor_still_applies_underneath(tmp_path):
     db_path = _catalogue(tmp_path, [0.030, 0.029, 0.028])
 
     hits = queries.semantic_search(
-        db_path, [1.0, 0.0], root_id=1, min_similarity=0.05, relative_floor=0.80)
+        db_path, [1.0, 0.0], root_id=1, min_similarity=0.05, relative_floor=0.80
+    )
 
     assert hits["items"] == [] and hits["total"] == 0
 
@@ -93,8 +96,7 @@ def test_the_absolute_floor_still_applies_underneath(tmp_path):
 def test_relative_floor_off_by_default_keeps_every_scored_row(tmp_path):
     db_path = _catalogue(tmp_path, [0.15, 0.10, 0.06])
 
-    hits = queries.semantic_search(db_path, [1.0, 0.0], root_id=1,
-                                   min_similarity=-1.0)
+    hits = queries.semantic_search(db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0)
 
     assert hits["total"] == 3
 
@@ -109,6 +111,7 @@ def test_an_all_negative_result_set_is_not_inverted_by_the_relative_cut(tmp_path
     db_path = _catalogue(tmp_path, [-0.02, -0.05, -0.09])
 
     hits = queries.semantic_search(
-        db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0, relative_floor=0.80)
+        db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0, relative_floor=0.80
+    )
 
     assert hits["total"] == 3

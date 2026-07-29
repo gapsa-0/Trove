@@ -23,17 +23,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from organize_archive.config import Config          # noqa: E402
-from organize_archive.db import database as db       # noqa: E402
-from organize_archive.gui import thumbs              # noqa: E402
+from organize_archive.config import Config  # noqa: E402
+from organize_archive.db import database as db  # noqa: E402
+from organize_archive.gui import thumbs  # noqa: E402
 
 
 def _worker(args):
     """Generate (or reuse cached) one face crop; returns (face_id, path|None)."""
     cache_dir, face_id, src, box, sha = args
     try:
-        tp = thumbs.face_thumb_for(cache_dir, face_id, Path(src), box,
-                                   sha256=sha, size=200)
+        tp = thumbs.face_thumb_for(cache_dir, face_id, Path(src), box, sha256=sha, size=200)
         return face_id, (str(tp) if tp else None)
     except Exception:
         return face_id, None
@@ -85,7 +84,9 @@ def main():
     persons = conn.execute(
         """SELECT id, name, face_count, cover_face_id
            FROM persons WHERE face_count >= ?
-           ORDER BY face_count DESC, id""", (args.min_faces,)).fetchall()
+           ORDER BY face_count DESC, id""",
+        (args.min_faces,),
+    ).fetchall()
     if not persons:
         print("No clusters found.")
         return 1
@@ -98,15 +99,16 @@ def main():
            FROM faces fa
            JOIN files f ON f.id = fa.file_id
            JOIN roots r ON r.id = f.root_id
-           WHERE fa.person_id IS NOT NULL AND f.hidden = 0""").fetchall()
+           WHERE fa.person_id IS NOT NULL AND f.hidden = 0"""
+    ).fetchall()
 
     by_person: dict[int, list] = {}
     for r in rows:
         by_person.setdefault(r["person_id"], []).append(r)
 
     # Choose representative faces per cluster, collect the crop jobs.
-    plan = []          # list of (person_row, [face_row, ...])
-    jobs = {}          # face_id -> (cache_dir, fid, src, box, sha)
+    plan = []  # list of (person_row, [face_row, ...])
+    jobs = {}  # face_id -> (cache_dir, fid, src, box, sha)
     for p in persons:
         faces = by_person.get(p["id"], [])
         if not faces:
@@ -118,8 +120,7 @@ def main():
             box = (r["box_x"], r["box_y"], r["box_w"], r["box_h"])
             jobs[r["fid"]] = (cfg.cache_dir, r["fid"], src, box, r["sha256"])
 
-    print(f"{len(plan)} clusters · {len(jobs)} face crops to render "
-          f"(min-faces={args.min_faces}) …")
+    print(f"{len(plan)} clusters · {len(jobs)} face crops to render (min-faces={args.min_faces}) …")
 
     # Generate crops in parallel (cached on disk; reused across runs).
     crops: dict[int, str] = {}
@@ -153,14 +154,14 @@ def main():
     canvas = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(canvas)
     try:
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
     except Exception:
         font = ImageFont.load_default()
 
     def hue_color(pid):
         # stable pseudo-color per cluster id for the caption bar
         import colorsys
+
         h = ((pid * 47) % 360) / 360.0
         r, g, b = colorsys.hsv_to_rgb(h, 0.55, 0.85)
         return (int(r * 255), int(g * 255), int(b * 255))
@@ -174,8 +175,7 @@ def main():
         col = hue_color(p["id"])
         draw.rectangle([gx, gy, gx + tile_w - 1, gy + cap_h - 1], fill=col)
         label = p["name"] if p["name"] else f"#{p['id']}"
-        draw.text((gx + 4, gy + 3), f"{label}  ·{p['face_count']}",
-                  fill=(15, 15, 15), font=font)
+        draw.text((gx + 4, gy + 3), f"{label}  ·{p['face_count']}", fill=(15, 15, 15), font=font)
         # face crops
         for k in range(per):
             mr, mc = divmod(k, mini_cols)

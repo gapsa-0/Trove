@@ -23,8 +23,14 @@ from pathlib import Path
 
 # Localised "-edited" suffixes Google appends to edited copies (name stem).
 EDITED_SUFFIXES = (
-    "-edited", "-editado", "-ha editado", "-bearbeitet",
-    "-modifié", "-modifiée", "-bewerkt", "-editat",
+    "-edited",
+    "-editado",
+    "-ha editado",
+    "-bearbeitet",
+    "-modifié",
+    "-modifiée",
+    "-bewerkt",
+    "-editat",
 )
 
 _COUNTER_RE = re.compile(r"^(.*?)\((\d+)\)(\.[^.]+)?$")
@@ -36,7 +42,7 @@ _TRAIL_COUNTER_RE = re.compile(r"\(\d+\)$")
 class SidecarData:
     title: str | None
     description: str | None
-    taken_time: int | None      # photoTakenTime epoch (UTC)
+    taken_time: int | None  # photoTakenTime epoch (UTC)
     lat: float | None
     lon: float | None
     alt: float | None
@@ -53,8 +59,7 @@ def _candidate_names(name: str) -> list[tuple[str, str, float]]:
     if m:
         stem, num, ext = m.group(1), m.group(2), m.group(3) or ""
         out.append((f"{stem}{ext}({num}).json", "counter", 0.95))
-        out.append((f"{stem}{ext}.supplemental-metadata({num}).json",
-                    "counter-suppl", 0.95))
+        out.append((f"{stem}{ext}.supplemental-metadata({num}).json", "counter-suppl", 0.95))
 
     stem_noext, dot, ext = name.rpartition(".")
     base = stem_noext if dot else name
@@ -83,9 +88,7 @@ class SidecarMatcher:
         try:
             with os.scandir(d) as it:
                 for e in it:
-                    if e.name.lower().endswith(".json") and e.is_file(
-                        follow_symlinks=False
-                    ):
+                    if e.name.lower().endswith(".json") and e.is_file(follow_symlinks=False):
                         self._jsons[e.name] = Path(e.path)
         except OSError:
             pass
@@ -128,6 +131,7 @@ def _clean_coord(lat, lon, alt):
             return float(x)
         except (TypeError, ValueError):
             return None
+
     lat, lon, alt = num(lat), num(lon), num(alt)
     # 0/0 is Takeout's "no location", not the Gulf of Guinea.
     if (not lat) and (not lon):
@@ -150,19 +154,17 @@ def parse_sidecar(json_path: Path) -> SidecarData | None:
             taken = None
 
     geo = data.get("geoData") or {}
-    lat, lon, alt = _clean_coord(
-        geo.get("latitude"), geo.get("longitude"), geo.get("altitude")
-    )
+    lat, lon, alt = _clean_coord(geo.get("latitude"), geo.get("longitude"), geo.get("altitude"))
     if lat is None:
         ge = data.get("geoDataExif") or {}
-        lat, lon, alt = _clean_coord(
-            ge.get("latitude"), ge.get("longitude"), ge.get("altitude")
-        )
+        lat, lon, alt = _clean_coord(ge.get("latitude"), ge.get("longitude"), ge.get("altitude"))
 
     desc = data.get("description") or None
     return SidecarData(
         title=data.get("title"),
         description=desc,
         taken_time=taken,
-        lat=lat, lon=lon, alt=alt,
+        lat=lat,
+        lon=lon,
+        alt=alt,
     )

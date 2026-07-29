@@ -128,8 +128,9 @@ def _video_frame_offsets(duration_s) -> list[str]:
     return offsets
 
 
-def _video_frames_part(path: Path, cache_dir: str, rotate: int, duration_s
-                       ) -> tuple[list[Path] | None, str | None, str | None]:
+def _video_frames_part(
+    path: Path, cache_dir: str, rotate: int, duration_s
+) -> tuple[list[Path] | None, str | None, str | None]:
     """A handful of frames sampled across the clip, instead of the whole video.
 
     Each is embedded separately and the unit vectors averaged, so a clip lands
@@ -137,20 +138,31 @@ def _video_frames_part(path: Path, cache_dir: str, rotate: int, duration_s
     single frame happened to be first.
     """
     frames = thumbs.video_frames_for(
-        cache_dir, _cache_id(path), path, _video_frame_offsets(duration_s),
-        size=_VIDEO_FRAME_SIZE, rotate=rotate)
+        cache_dir,
+        _cache_id(path),
+        path,
+        _video_frame_offsets(duration_s),
+        size=_VIDEO_FRAME_SIZE,
+        rotate=rotate,
+    )
     if not frames:
         # "unsupported" prefix matches the other permanent-skip reasons below
         # (save_outcome/_is_permanent_skip): no ffmpeg, or a container it
         # can't read, is a clean permanent skip, not a retryable error.
-        return None, None, ("unsupported video: could not extract any frames "
-                            "(ffmpeg missing or unreadable video)")
+        return (
+            None,
+            None,
+            (
+                "unsupported video: could not extract any frames "
+                "(ffmpeg missing or unreadable video)"
+            ),
+        )
     return frames, "video_frames", None
 
 
-def media_part(cfg, path: Path, ext: str, media_type: str,
-               cache_dir: str, rotate: int = 0, duration_s=None
-               ) -> tuple[list[Path] | None, str | None, str | None]:
+def media_part(
+    cfg, path: Path, ext: str, media_type: str, cache_dir: str, rotate: int = 0, duration_s=None
+) -> tuple[list[Path] | None, str | None, str | None]:
     """The image files to embed for one archive item, or a non-fatal skip reason.
 
     Returns cached JPEGs, never the original: one 1024px thumbnail for a photo,
@@ -168,15 +180,19 @@ def media_part(cfg, path: Path, ext: str, media_type: str,
         # The thumbnailer is the only decoder involved, so whatever it can open
         # is exactly what can be indexed: HEIC, RAW and friends included. If it
         # returns nothing, no amount of retrying will help.
-        thumb = thumbs.thumb_for(cache_dir, _cache_id(path), path,
-                                 size=_IMAGE_THUMB_SIZE, rotate=rotate)
+        thumb = thumbs.thumb_for(
+            cache_dir, _cache_id(path), path, size=_IMAGE_THUMB_SIZE, rotate=rotate
+        )
         if thumb is None:
             return None, None, f"unsupported image format: .{ext or 'unknown'}"
         return [thumb], "thumbnail", None
     if media_type == "audio":
         return None, None, "unsupported audio format (the search model has no audio tower)"
-    return None, None, ("unsupported document format (only visual media is "
-                        "indexed, not PDFs directly)")
+    return (
+        None,
+        None,
+        ("unsupported document format (only visual media is indexed, not PDFs directly)"),
+    )
 
 
 def embed_part(cfg, part: list[Path], kind: str | None) -> list[float] | None:
@@ -194,13 +210,19 @@ def embed_part(cfg, part: list[Path], kind: str | None) -> list[float] | None:
     return None if vector is None else [float(v) for v in vector]
 
 
-def embed_media(cfg, path: Path, ext: str, media_type: str, cache_dir: str,
-                cancel=None, rotate: int = 0, duration_s=None
-                ) -> tuple[list[float] | None, str | None, str | None]:
+def embed_media(
+    cfg,
+    path: Path,
+    ext: str,
+    media_type: str,
+    cache_dir: str,
+    cancel=None,
+    rotate: int = 0,
+    duration_s=None,
+) -> tuple[list[float] | None, str | None, str | None]:
     if cancel is not None and cancel.is_set():
         raise KeyboardInterrupt
-    part, kind, skip_reason = media_part(
-        cfg, path, ext, media_type, cache_dir, rotate, duration_s)
+    part, kind, skip_reason = media_part(cfg, path, ext, media_type, cache_dir, rotate, duration_s)
     if skip_reason:
         return None, kind, skip_reason
     values = embed_part(cfg, part, kind)
@@ -216,8 +238,10 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
         where.append("f.root_id=?")
         params.append(root_id)
     if not force:
-        where.append("(e.file_id IS NULL OR e.source_sha256 IS NOT f.sha256 "
-                     "OR COALESCE(e.indexer_version, '') != ?)")
+        where.append(
+            "(e.file_id IS NULL OR e.source_sha256 IS NOT f.sha256 "
+            "OR COALESCE(e.indexer_version, '') != ?)"
+        )
         params.append(INDEXER_VERSION)
     # rotate_deg: index the photo the way up the app shows it. Detection runs
     # alongside this stage rather than before it, so a photo indexed first is
@@ -231,7 +255,9 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
              LEFT JOIN semantic_embeddings e ON e.file_id=f.id
              LEFT JOIN orientation o ON o.file_id=f.id
              LEFT JOIN media_meta m ON m.file_id=f.id
-             WHERE {' AND '.join(where)} ORDER BY f.id""", params).fetchall()
+             WHERE {" AND ".join(where)} ORDER BY f.id""",
+        params,
+    ).fetchall()
 
 
 def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, int]:
@@ -240,13 +266,17 @@ def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, in
     if root_id is not None:
         where.append("f.root_id=?")
         params.append(root_id)
-    total = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {' AND '.join(where)}", params).fetchone()[0]
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM files f WHERE {' AND '.join(where)}", params
+    ).fetchone()[0]
     if force:
         return total, 0
     completed = conn.execute(
         f"""SELECT COUNT(*) FROM files f JOIN semantic_embeddings e ON e.file_id=f.id
-            WHERE {' AND '.join(where)} AND e.source_sha256 IS f.sha256
-              AND COALESCE(e.indexer_version, '') = ?""", (*params, INDEXER_VERSION)).fetchone()[0]
+            WHERE {" AND ".join(where)} AND e.source_sha256 IS f.sha256
+              AND COALESCE(e.indexer_version, '') = ?""",
+        (*params, INDEXER_VERSION),
+    ).fetchone()[0]
     return total, completed
 
 
@@ -261,8 +291,11 @@ def _is_permanent_skip(error: str | None) -> bool:
 
 
 def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) -> None:
-    status = "indexed" if values is not None else ("skipped" if _is_permanent_skip(error) else "error")
+    status = (
+        "indexed" if values is not None else ("skipped" if _is_permanent_skip(error) else "error")
+    )
     import struct
+
     blob = struct.pack(f"<{len(values)}f", *values) if values is not None else None
     conn.execute(
         """INSERT INTO semantic_embeddings
@@ -272,6 +305,16 @@ def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) ->
                model=excluded.model, dimensions=excluded.dimensions, embedding=excluded.embedding,
                status=excluded.status, input_kind=excluded.input_kind, error=excluded.error,
                indexer_version=excluded.indexer_version, indexed_at=excluded.indexed_at""",
-        (row["id"], row["sha256"] or "", cfg.semantic_embedding_model,
-         cfg.semantic_embedding_dimensions, blob, status, kind, error,
-         INDEXER_VERSION, db.now_iso()))
+        (
+            row["id"],
+            row["sha256"] or "",
+            cfg.semantic_embedding_model,
+            cfg.semantic_embedding_dimensions,
+            blob,
+            status,
+            kind,
+            error,
+            INDEXER_VERSION,
+            db.now_iso(),
+        ),
+    )

@@ -66,20 +66,88 @@ def dinov2_ready(cache_dir: str) -> bool:
     p = dinov2_model_path(cache_dir)
     return p.is_file() and p.stat().st_size > 1_000_000
 
+
 COCO_CLASSES = (
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
-    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep",
-    "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
-    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
-    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
-    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
-    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-    "scissors", "teddy bear", "hair drier", "toothbrush",
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "backpack",
+    "umbrella",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "dining table",
+    "toilet",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
 )
 
 
@@ -109,8 +177,7 @@ def ensure_model(cache_dir: str, log=None) -> Path:
         urllib.request.urlretrieve(MODEL_URL, temporary)
         size = os.path.getsize(temporary)
         if size < MODEL_MIN_BYTES:
-            raise OSError(
-                f"downloaded {MODEL_NAME} is too small ({size} bytes)")
+            raise OSError(f"downloaded {MODEL_NAME} is too small ({size} bytes)")
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
@@ -150,13 +217,14 @@ def _load_dinov2(cache_dir: str):
         import onnxruntime as ort
     except Exception as e:  # pragma: no cover - optional dep
         raise RuntimeError(
-            "pet re-ID needs onnxruntime (pip install onnxruntime); "
-            f"import failed: {e}")
+            f"pet re-ID needs onnxruntime (pip install onnxruntime); import failed: {e}"
+        )
     mp = dinov2_model_path(cache_dir)
     if not mp.is_file():
         raise RuntimeError(
             f"DINOv2 pet model missing at {mp}. Regenerate it with "
-            "tools/build/dinov2_pet_export.py.")
+            "tools/build/dinov2_pet_export.py."
+        )
     so = ort.SessionOptions()
     so.intra_op_num_threads = os.cpu_count() or 4
     return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])
@@ -166,10 +234,18 @@ class PetBackend:
     input_size = (640, 640)
     strides = (8, 16, 32)
 
-    def __init__(self, cache_dir: str, *, min_score: float = 0.60,
-                 min_px: int = 48, max_side: int = 1280, species=(),
-                 human_min_score: float = 0.20,
-                 model_source="opencv-yolox-s-2022nov", log=None):
+    def __init__(
+        self,
+        cache_dir: str,
+        *,
+        min_score: float = 0.60,
+        min_px: int = 48,
+        max_side: int = 1280,
+        species=(),
+        human_min_score: float = 0.20,
+        model_source="opencv-yolox-s-2022nov",
+        log=None,
+    ):
         if not available():
             raise RuntimeError("pet detection needs OpenCV DNN and NumPy")
         self.min_score = float(min_score)
@@ -198,8 +274,10 @@ class PetBackend:
 
     def load_bgr(self, path: str):
         from PIL import Image, ImageOps
+
         try:
             import pillow_heif
+
             pillow_heif.register_heif_opener()
         except Exception:
             pass
@@ -209,8 +287,11 @@ class PetBackend:
             image.thumbnail((self.max_side, self.max_side))
             rgb = np.asarray(image)
         loaded_h, loaded_w = rgb.shape[:2]
-        return (cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
-                loaded_w / max(1, original_w), loaded_h / max(1, original_h))
+        return (
+            cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+            loaded_w / max(1, original_w),
+            loaded_h / max(1, original_h),
+        )
 
     def detect(self, image_bgr) -> list[AnimalDetection]:
         """Pet-species boxes only (unchanged contract for the standalone path)."""
@@ -231,11 +312,17 @@ class PetBackend:
             x, y, width, height = box
             if min(width, height) < self.min_px:
                 continue
-            animals.append(AnimalDetection(
-                species=species, x=x, y=y, w=width, h=height, score=score,
-                embedding=self._embed_crop(
-                    image_bgr[y:y + height, x:x + width]),
-            ))
+            animals.append(
+                AnimalDetection(
+                    species=species,
+                    x=x,
+                    y=y,
+                    w=width,
+                    h=height,
+                    score=score,
+                    embedding=self._embed_crop(image_bgr[y : y + height, x : x + width]),
+                )
+            )
         return animals, humans
 
     def detect_humans(self, image_bgr) -> list[HumanDetection]:
@@ -244,9 +331,11 @@ class PetBackend:
         Used for the quarter-turn re-test, where the animal boxes of the rotated
         frame are of no interest and embedding them would be pure waste.
         """
-        return [HumanDetection(*box, score=score)
-                for species, box, score in self._forward(image_bgr)
-                if species == "person"]
+        return [
+            HumanDetection(*box, score=score)
+            for species, box, score in self._forward(image_bgr)
+            if species == "person"
+        ]
 
     def _forward(self, image_bgr):
         """One YOLOX pass -> ``(species, (x, y, w, h), score)`` in image pixels.
@@ -257,16 +346,16 @@ class PetBackend:
         original_h, original_w = image_bgr.shape[:2]
         rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         ratio = min(
-            self.input_size[0] / max(1, original_w),
-            self.input_size[1] / max(1, original_h))
+            self.input_size[0] / max(1, original_w), self.input_size[1] / max(1, original_h)
+        )
         resized_w, resized_h = (
             max(1, round(original_w * ratio)),
-            max(1, round(original_h * ratio)))
-        padded = np.full(
-            (self.input_size[1], self.input_size[0], 3), 114,
-            dtype="float32")
+            max(1, round(original_h * ratio)),
+        )
+        padded = np.full((self.input_size[1], self.input_size[0], 3), 114, dtype="float32")
         padded[:resized_h, :resized_w] = cv2.resize(
-            rgb, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
+            rgb, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR
+        )
         blob = padded.transpose(2, 0, 1)[None]
         self.net.setInput(blob)
         output = self.net.forward(self.net.getUnconnectedOutLayersNames())[0]
@@ -287,11 +376,10 @@ class PetBackend:
         # animal boxes survive.
         nms_floor = min(self.min_score, self.human_min_score)
         eligible = [
-            i for i, class_id in enumerate(class_ids)
-            if (COCO_CLASSES[int(class_id)] in self.species
-                and confidences[i] >= self.min_score)
-            or (COCO_CLASSES[int(class_id)] == "person"
-                and confidences[i] >= self.human_min_score)
+            i
+            for i, class_id in enumerate(class_ids)
+            if (COCO_CLASSES[int(class_id)] in self.species and confidences[i] >= self.min_score)
+            or (COCO_CLASSES[int(class_id)] == "person" and confidences[i] >= self.human_min_score)
         ]
         if not eligible:
             return []
@@ -300,19 +388,21 @@ class PetBackend:
         candidate_classes = class_ids[eligible].tolist()
         if hasattr(cv2.dnn, "NMSBoxesBatched"):
             keep = cv2.dnn.NMSBoxesBatched(
-                candidate_boxes, candidate_scores, candidate_classes,
-                nms_floor, 0.50)
+                candidate_boxes, candidate_scores, candidate_classes, nms_floor, 0.50
+            )
         else:  # OpenCV 4.8 compatibility: perform NMS independently per class.
             kept = []
             for class_id in set(candidate_classes):
-                local = [index for index, value in enumerate(candidate_classes)
-                         if value == class_id]
+                local = [
+                    index for index, value in enumerate(candidate_classes) if value == class_id
+                ]
                 selected = cv2.dnn.NMSBoxes(
                     [candidate_boxes[index] for index in local],
                     [candidate_scores[index] for index in local],
-                    nms_floor, 0.50)
-                kept.extend(local[int(index)]
-                            for index in np.asarray(selected).reshape(-1))
+                    nms_floor,
+                    0.50,
+                )
+                kept.extend(local[int(index)] for index in np.asarray(selected).reshape(-1))
             keep = kept
         out = []
         for local_index in np.asarray(keep).reshape(-1):
@@ -322,9 +412,13 @@ class PetBackend:
             y = max(0, round(float(y) / ratio))
             width = min(original_w - x, round(float(width) / ratio))
             height = min(original_h - y, round(float(height) / ratio))
-            out.append((COCO_CLASSES[int(class_ids[source_index])],
-                        (x, y, width, height),
-                        float(confidences[source_index])))
+            out.append(
+                (
+                    COCO_CLASSES[int(class_ids[source_index])],
+                    (x, y, width, height),
+                    float(confidences[source_index]),
+                )
+            )
         return out
 
     def _embed_crop(self, crop_bgr) -> "np.ndarray":
@@ -338,7 +432,7 @@ class PetBackend:
         rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
         rgb = cv2.resize(rgb, (224, 224), interpolation=cv2.INTER_AREA)
         x = (rgb.astype("float32") / 255.0 - self._mean) / self._std
-        x = x.transpose(2, 0, 1)[None]                       # (1,3,224,224) NCHW
+        x = x.transpose(2, 0, 1)[None]  # (1,3,224,224) NCHW
         feat = self._dino.run(None, {"input": x})[0].reshape(-1).astype("float32")
         n = float(np.linalg.norm(feat))
         return feat if n == 0.0 else feat / n

@@ -18,13 +18,21 @@ from ..runtime import no_window, tool
 # Only these tags are requested (order-insensitive). -n forces numeric output
 # (decimal GPS, numeric orientation, duration in seconds).
 _TAGS = [
-    "-FileType", "-MIMEType",
-    "-ImageWidth", "-ImageHeight",
+    "-FileType",
+    "-MIMEType",
+    "-ImageWidth",
+    "-ImageHeight",
     "-Duration",
-    "-Make", "-Model", "-Orientation",
-    "-DateTimeOriginal", "-CreateDate",
-    "-GPSLatitude", "-GPSLongitude", "-GPSAltitude",
-    "-GPSLatitudeRef", "-GPSLongitudeRef",
+    "-Make",
+    "-Model",
+    "-Orientation",
+    "-DateTimeOriginal",
+    "-CreateDate",
+    "-GPSLatitude",
+    "-GPSLongitude",
+    "-GPSAltitude",
+    "-GPSLatitudeRef",
+    "-GPSLongitudeRef",
 ]
 
 
@@ -45,22 +53,28 @@ class ExifReader:
         if not paths:
             return {}
 
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".args", encoding="utf-8", delete=False
-        ) as af:
+        with tempfile.NamedTemporaryFile("w", suffix=".args", encoding="utf-8", delete=False) as af:
             for p in paths:
                 af.write(str(p) + "\n")
             argfile = af.name
 
         try:
             cmd = [
-                tool("exiftool"), "-json", "-n", "-q",
-                "-charset", "filename=utf8",
+                tool("exiftool"),
+                "-json",
+                "-n",
+                "-q",
+                "-charset",
+                "filename=utf8",
                 *_TAGS,
-                "-@", argfile,
+                "-@",
+                argfile,
             ]
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, errors="replace",
+                cmd,
+                capture_output=True,
+                text=True,
+                errors="replace",
                 **no_window(),
             )
         finally:

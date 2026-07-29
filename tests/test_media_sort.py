@@ -9,9 +9,7 @@ def _dated_catalogue(tmp_path):
     db_path = tmp_path / "archive.db"
     conn = db.connect(db_path)
     db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')"
-    )
+    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')")
     for file_id, taken, vector in (
         (1, "2024-05-01T10:00:00", (1.0, 0.0)),
         (2, "2020-01-01T10:00:00", (1.0, 0.0)),

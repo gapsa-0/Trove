@@ -41,9 +41,7 @@ def _from_ms(ms) -> datetime | None:
     if not (_MS_MIN <= v <= _MS_MAX):
         return None
     try:
-        return _valid(
-            datetime.fromtimestamp(v / 1000, tz=timezone.utc).replace(tzinfo=None)
-        )
+        return _valid(datetime.fromtimestamp(v / 1000, tz=timezone.utc).replace(tzinfo=None))
     except (ValueError, OSError, OverflowError):
         return None
 
@@ -88,59 +86,106 @@ def _dt_two_number_date(a, b, y, day_first, h=0, mi=0, s=0, base_conf=0.55):
 # Higher-confidence / more-specific patterns come first.
 _PATTERNS: list[tuple[re.Pattern, "callable", float]] = [
     # WhatsApp desktop: "... 2022-05-14 at 09.09.57.jpeg"
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})[-.](\d{2})[-.](\d{2})\s+at\s+"
-                r"(\d{2})[.:](\d{2})[.:](\d{2})", re.IGNORECASE),
-     lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]), 0.9),
+    (
+        re.compile(
+            r"(?<!\d)(20\d{2}|19\d{2})[-.](\d{2})[-.](\d{2})\s+at\s+"
+            r"(\d{2})[.:](\d{2})[.:](\d{2})",
+            re.IGNORECASE,
+        ),
+        lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]),
+        0.9,
+    ),
     # Windows Phone: WP_20180312_12_11_18_Pro  (underscore-separated time)
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})_(\d{2})_(\d{2})_(\d{2})"),
-     lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]), 0.9),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})_(\d{2})_(\d{2})_(\d{2})"),
+        lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]),
+        0.9,
+    ),
     # IMG_20220514_090957 / VID_20220514_090957 / 20220514-090957 / with ms suffix
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})[_\-\.T](\d{2})(\d{2})(\d{2})"),
-     lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]), 0.9),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})[_\-\.T](\d{2})(\d{2})(\d{2})"),
+        lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]),
+        0.9,
+    ),
     # 2022-05-14 09.09.57 / 2022-05-14_09-09-57 / 2022:05:14 09:09:57
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})[\-:\.](\d{2})[\-:\.](\d{2})[ _T]"
-                r"(\d{2})[\-:\.](\d{2})[\-:\.](\d{2})"),
-     lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]), 0.9),
+    (
+        re.compile(
+            r"(?<!\d)(20\d{2}|19\d{2})[\-:\.](\d{2})[\-:\.](\d{2})[ _T]"
+            r"(\d{2})[\-:\.](\d{2})[\-:\.](\d{2})"
+        ),
+        lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]),
+        0.9,
+    ),
     # Compact date+time, optionally with trailing milliseconds:
     # 20220514090957 / BURST20240213093218240 / ..._20201226073741907
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\d{0,3}(?!\d)"),
-     lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]), 0.75),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\d{0,3}(?!\d)"),
+        lambda m: _dt(m[1], m[2], m[3], m[4], m[5], m[6]),
+        0.75,
+    ),
     # Year-first, fully dash-separated date+time: 2018-14-03-21-07-07.
     # Standard Y-M-D is tried first; rescued as Y-D-M only if that's invalid
     # (no known app writes this shape, so both orders are attempted).
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})(?!\d)"),
-     lambda m: _dt_yfirst_rescue(m[1], m[2], m[3], m[4], m[5], m[6]), 0.75),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})(?!\d)"),
+        lambda m: _dt_yfirst_rescue(m[1], m[2], m[3], m[4], m[5], m[6]),
+        0.75,
+    ),
     # Date + HHMM (4-digit time, no seconds): IMG00243-20120105-1855
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})[-_](\d{2})(\d{2})(?!\d)"),
-     lambda m: _dt(m[1], m[2], m[3], m[4], m[5]), 0.65),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})[-_](\d{2})(\d{2})(?!\d)"),
+        lambda m: _dt(m[1], m[2], m[3], m[4], m[5]),
+        0.65,
+    ),
     # Non-year-led date+time: DD-MM-YYYY_HH-MM / MM-DD-YYYY_HH-MM (e.g. a
     # WhatsApp-forwarded video renamed by the OS locale's date format).
     # Dynamic confidence (see parse()): conf=None marks this entry.
-    (re.compile(r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2}|19\d{2})[_\-](\d{2})[-_.:](\d{2})(?!\d)"),
-     lambda m, day_first: _dt_two_number_date(
-         m[1], m[2], m[3], day_first, m[4], m[5], base_conf=0.65), None),
+    (
+        re.compile(
+            r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2}|19\d{2})[_\-](\d{2})[-_.:](\d{2})(?!\d)"
+        ),
+        lambda m, day_first: _dt_two_number_date(
+            m[1], m[2], m[3], day_first, m[4], m[5], base_conf=0.65
+        ),
+        None,
+    ),
     # WhatsApp mobile: IMG-20220514-WA0001  (date only)
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})-WA\d+", re.IGNORECASE),
-     lambda m: _dt(m[1], m[2], m[3]), 0.6),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})-WA\d+", re.IGNORECASE),
+        lambda m: _dt(m[1], m[2], m[3]),
+        0.6,
+    ),
     # App exports with a unix-ms timestamp and a known prefix:
     # FB_IMG_1488863651591 / FaceApp_1493811250511 / picture_1628697487196
-    (re.compile(r"(?:FB_IMG|FaceApp|picture|Signal|PANO|IMG|VID)[ _\-]?(1[0-9]{12})(?!\d)",
-                re.IGNORECASE),
-     lambda m: _from_ms(m[1]), 0.6),
+    (
+        re.compile(
+            r"(?:FB_IMG|FaceApp|picture|Signal|PANO|IMG|VID)[ _\-]?(1[0-9]{12})(?!\d)",
+            re.IGNORECASE,
+        ),
+        lambda m: _from_ms(m[1]),
+        0.6,
+    ),
     # Date only: 2022-05-14 / 2022_05_14 / 2022.05.14 (rescued as Y-D-M if
     # the standard Y-M-D reading is invalid, e.g. "2019-25-06").
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})[\-_\.](\d{2})[\-_\.](\d{2})(?!\d)"),
-     lambda m: _dt_yfirst_rescue(m[1], m[2], m[3]), 0.55),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})[\-_\.](\d{2})[\-_\.](\d{2})(?!\d)"),
+        lambda m: _dt_yfirst_rescue(m[1], m[2], m[3]),
+        0.55,
+    ),
     # Non-year-led date only: DD-MM-YYYY / MM-DD-YYYY (dynamic confidence).
-    (re.compile(r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2}|19\d{2})(?!\d)"),
-     lambda m, day_first: _dt_two_number_date(
-         m[1], m[2], m[3], day_first, base_conf=0.55), None),
+    (
+        re.compile(r"(?<!\d)(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2}|19\d{2})(?!\d)"),
+        lambda m, day_first: _dt_two_number_date(m[1], m[2], m[3], day_first, base_conf=0.55),
+        None,
+    ),
     # Bare 13-digit unix-ms timestamp (low confidence — could be an id).
-    (re.compile(r"(?<!\d)(1[0-9]{12})(?!\d)"),
-     lambda m: _from_ms(m[1]), 0.4),
+    (re.compile(r"(?<!\d)(1[0-9]{12})(?!\d)"), lambda m: _from_ms(m[1]), 0.4),
     # Date only compact: 20220514 (last resort, easily a false positive).
-    (re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(?!\d)"),
-     lambda m: _dt(m[1], m[2], m[3]), 0.4),
+    (
+        re.compile(r"(?<!\d)(20\d{2}|19\d{2})(\d{2})(\d{2})(?!\d)"),
+        lambda m: _dt(m[1], m[2], m[3]),
+        0.4,
+    ),
 ]
 
 

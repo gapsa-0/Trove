@@ -18,12 +18,14 @@ def _insert_video_row(conn, file_id=1):
         """INSERT INTO files(id, root_id, rel_path, size, mtime, media_type,
                              sha256, first_seen, last_seen)
            VALUES(?, 1, 'clip.mp4', 10, 0, 'video', 'sha', 'now', 'now')""",
-        (file_id,))
+        (file_id,),
+    )
     conn.execute(
         """INSERT INTO semantic_embeddings(file_id, source_sha256, model,
                dimensions, embedding, status, input_kind, indexed_at)
            VALUES(?, 'sha', 'm', 1, NULL, 'indexed', 'video', '2026-01-01')""",
-        (file_id,))
+        (file_id,),
+    )
 
 
 def test_fresh_database_lands_on_schema_version_12():

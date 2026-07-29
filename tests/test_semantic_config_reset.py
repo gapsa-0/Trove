@@ -25,13 +25,15 @@ def _write_config(data):
 
 
 def test_a_voyage_era_config_loads_as_the_local_defaults():
-    _write_config({
-        "semantic_embedding_model": "voyage-multimodal-3.5",
-        "semantic_embedding_dimensions": 1024,
-        "semantic_search_min_similarity": 0.25,
-        "semantic_inline_max_bytes": 20971520,
-        "timezone": "America/Argentina/Buenos_Aires",
-    })
+    _write_config(
+        {
+            "semantic_embedding_model": "voyage-multimodal-3.5",
+            "semantic_embedding_dimensions": 1024,
+            "semantic_search_min_similarity": 0.25,
+            "semantic_inline_max_bytes": 20971520,
+            "timezone": "America/Argentina/Buenos_Aires",
+        }
+    )
 
     cfg = Config.load()
     fresh = Config()
@@ -45,12 +47,14 @@ def test_a_voyage_era_config_loads_as_the_local_defaults():
 
 
 def test_the_reset_is_written_back_so_it_happens_once():
-    path = _write_config({
-        "semantic_embedding_model": "voyage-multimodal-3.5",
-        "semantic_embedding_dimensions": 1024,
-        "semantic_search_min_similarity": 0.25,
-        "semantic_inline_max_bytes": 20971520,
-    })
+    path = _write_config(
+        {
+            "semantic_embedding_model": "voyage-multimodal-3.5",
+            "semantic_embedding_dimensions": 1024,
+            "semantic_search_min_similarity": 0.25,
+            "semantic_inline_max_bytes": 20971520,
+        }
+    )
 
     Config.load()
 
@@ -67,11 +71,13 @@ def test_a_deliberately_tuned_local_threshold_survives_a_reload():
     It fires only for a config that still names the *old* model; once the file
     records the local one, a user-tuned threshold is theirs to keep.
     """
-    _write_config({
-        "semantic_embedding_model": Config().semantic_embedding_model,
-        "semantic_embedding_dimensions": 768,
-        "semantic_search_min_similarity": 0.11,
-    })
+    _write_config(
+        {
+            "semantic_embedding_model": Config().semantic_embedding_model,
+            "semantic_embedding_dimensions": 768,
+            "semantic_search_min_similarity": 0.11,
+        }
+    )
 
     assert Config.load().semantic_search_min_similarity == 0.11
 
@@ -93,8 +99,8 @@ def test_other_secrets_are_preserved_when_the_voyage_key_is_removed():
     path = secrets_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps({"voyage_api_key": "pa-secret", "something_else": "keep"}),
-        encoding="utf-8")
+        json.dumps({"voyage_api_key": "pa-secret", "something_else": "keep"}), encoding="utf-8"
+    )
 
     discard_superseded_secrets()
 
@@ -104,4 +110,4 @@ def test_other_secrets_are_preserved_when_the_voyage_key_is_removed():
 
 def test_discarding_secrets_is_safe_when_there_is_no_secrets_file():
     assert not secrets_file().exists()
-    discard_superseded_secrets()          # must not raise
+    discard_superseded_secrets()  # must not raise

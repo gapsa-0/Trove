@@ -47,7 +47,7 @@ def test_remove_archive_only_touches_its_own_isolated_store(monkeypatch, tmp_pat
     result = remove_archive(cfg, one)
 
     assert result == {"ok": True, "path": str(one_src.resolve())}
-    assert not paths.archive_dir(one).exists()          # db + cache both gone
+    assert not paths.archive_dir(one).exists()  # db + cache both gone
     assert [a["id"] for a in cfg.archives] == [two]
 
     # Archive two is completely untouched, despite the shared content hash.
