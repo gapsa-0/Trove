@@ -18,6 +18,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.13', cache: pip }
       - run: python -m pip install -e '.[dev]'
+      # Lint before testing: it finishes in under a second, so a style failure
+      # reports immediately instead of behind the whole suite.
+      - run: ruff check --output-format=github .
+      - run: ruff format --check .
       - run: pytest -q
       - run: python packaging/scripts/stage-tools.py --validate
       - run: python packaging/scripts/stage-models.py --validate
@@ -28,6 +32,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
       - run: npm ci
+        working-directory: desktop
+      - run: npm run lint
         working-directory: desktop
       - run: npm run check:version && npm run test:ready && node --check src/main.cjs && node --check src/preload.cjs
         working-directory: desktop
