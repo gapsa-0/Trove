@@ -13,11 +13,11 @@ import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
-from . import queries, thumbs, icons
+from . import icons, queries, thumbs
 from .jobs import JobManager
 
 _INDEX = Path(__file__).with_name("index.html")

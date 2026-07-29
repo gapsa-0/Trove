@@ -10,7 +10,7 @@ import json
 import os
 import shutil
 import sqlite3
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,15 +18,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 from .paths import (
     app_data_dir,
+    archive_cache_dir,
+    archive_db_path,
+    archive_dir,
+    archives_dir,
     config_file,
     default_cache_dir,
     default_db_path,
     ensure_app_data_dirs,
     secrets_file,
-    archives_dir,
-    archive_dir,
-    archive_db_path,
-    archive_cache_dir,
 )
 
 # Credentials this application no longer has any use for. Semantic search became

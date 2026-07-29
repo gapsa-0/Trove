@@ -22,7 +22,8 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.embeddings import backend as eb
-from organize_archive.gui import jobs as jobs_mod, semantic, thumbs
+from organize_archive.gui import jobs as jobs_mod
+from organize_archive.gui import semantic, thumbs
 
 
 def _archive_db(tmp_path, sha256="abc", media_type="video"):

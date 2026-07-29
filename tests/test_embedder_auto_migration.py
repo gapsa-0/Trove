@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.faces import backend, migrate_adaface as mig
+from organize_archive.faces import backend
+from organize_archive.faces import migrate_adaface as mig
 
 
 def _catalog(tmp_path, with_faces=True):

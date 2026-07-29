@@ -15,8 +15,7 @@ from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
-from . import backend
-from . import fiqa
+from . import backend, fiqa
 
 
 @dataclass

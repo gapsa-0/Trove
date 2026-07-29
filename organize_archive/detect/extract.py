@@ -50,9 +50,9 @@ from ..config import Config
 from ..db import database as db
 from ..faces import backend as face_backend
 from ..faces import fiqa
+from ..gui import thumbs
 from ..pets import backend as pet_backend
 from ..pets.extract import scan_source as pet_scan_source
-from ..gui import thumbs
 
 
 @dataclass

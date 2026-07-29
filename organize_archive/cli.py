@@ -13,10 +13,10 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .config import Config, PROJECT_ROOT
+from .config import PROJECT_ROOT, Config
+from .db import database as db
 from .paths import app_data_dir, config_file
 from .runtime import tool as runtime_tool
-from .db import database as db
 from .scan import walker
 from .scan.progress import ScanProgress
 
@@ -229,7 +229,9 @@ def cmd_dedup(args, cfg: Config) -> int:
 
 
 def cmd_faces(args, cfg: Config) -> int:
-    from .faces import backend, extract as fx, cluster as fc
+    from .faces import backend
+    from .faces import cluster as fc
+    from .faces import extract as fx
 
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
@@ -382,7 +384,9 @@ def cmd_faces(args, cfg: Config) -> int:
 
 
 def cmd_pets(args, cfg: Config) -> int:
-    from .pets import backend, extract as px, cluster as pc
+    from .pets import backend
+    from .pets import cluster as pc
+    from .pets import extract as px
 
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa dedup")
@@ -455,8 +459,8 @@ def cmd_dates(args, cfg: Config) -> int:
 
 
 def cmd_gui(args, cfg: Config) -> int:
-    from .gui.server import serve
     from .gui import launcher
+    from .gui.server import serve
 
     httpd = serve(cfg, port=args.port)
     url = f"http://127.0.0.1:{args.port}/"

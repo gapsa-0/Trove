@@ -17,7 +17,8 @@ from .takeout import SidecarMatcher, parse_sidecar
 
 # exiftool is optional; without it we still resolve from Takeout/filename/mtime.
 try:
-    from .exiftool_reader import ExifReader, available as exif_available
+    from .exiftool_reader import ExifReader
+    from .exiftool_reader import available as exif_available
 except Exception:  # pragma: no cover
     ExifReader = None
 

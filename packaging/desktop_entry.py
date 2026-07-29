@@ -8,6 +8,5 @@ package context intact.
 
 from organize_archive.desktop import main
 
-
 if __name__ == "__main__":
     raise SystemExit(main())

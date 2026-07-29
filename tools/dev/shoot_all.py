@@ -369,8 +369,8 @@ def _compare_pair(path_a, path_b):
     that can happen short of the file vanishing, so it sorts above any
     percentage, and an identical pair sorts below every percentage. Imports
     Pillow lazily so plain shooting works without it installed."""
-    from PIL import Image
     import numpy as np
+    from PIL import Image
 
     img_a, img_b = Image.open(path_a), Image.open(path_b)
     if img_a.size != img_b.size:

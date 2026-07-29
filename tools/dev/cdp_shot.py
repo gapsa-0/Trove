@@ -14,7 +14,14 @@ Requires a headless Chrome already running with --remote-debugging-port, e.g.:
     --remote-debugging-port=9333 --remote-debugging-address=127.0.0.1 about:blank
 """
 
-import base64, json, socket, struct, sys, time, urllib.request, os
+import base64
+import json
+import os
+import socket
+import struct
+import sys
+import time
+import urllib.request
 
 CDP_HOST = "127.0.0.1"
 

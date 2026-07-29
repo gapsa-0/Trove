@@ -11,7 +11,6 @@ from organize_archive.faces import extract as face_extract
 from organize_archive.gui import queries
 from organize_archive.pets import backend, cluster, extract
 
-
 np = pytest.importorskip("numpy")
 
 

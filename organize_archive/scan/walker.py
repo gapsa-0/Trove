@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..config import (
-    Config,
     IGNORE_EXTENSIONS,
     IGNORE_FILENAMES,
     IGNORE_NAME_SUBSTRINGS,
+    Config,
 )
 from ..db import database as db
 from ..hashing import hasher

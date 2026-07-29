@@ -141,6 +141,7 @@ def main():
     args = ap.parse_args()
 
     import numpy as np
+
     from organize_archive.embeddings import backend as eb
 
     cfg = Config.load()

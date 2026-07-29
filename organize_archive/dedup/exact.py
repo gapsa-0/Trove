@@ -23,8 +23,8 @@ class DedupStats:
 def perceptual_available() -> bool:
     """Whether this installation can decode and fingerprint images."""
     try:
-        from PIL import Image  # noqa: F401
         import imagehash  # noqa: F401
+        from PIL import Image  # noqa: F401
     except ImportError:
         return False
     return True
@@ -115,8 +115,8 @@ def _perceptual_hashes(
     file must never prevent the rest of an archive from being grouped.
     """
     try:
-        from PIL import Image, ImageOps
         import imagehash
+        from PIL import Image, ImageOps
 
         try:
             import pillow_heif

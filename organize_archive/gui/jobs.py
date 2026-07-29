@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import time
 import traceback
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 
 from ..config import Config
 from ..db import database as db
@@ -178,6 +178,7 @@ class JobManager:
         "no idea" would show every stage as up to date on the first paint.
         """
         from pathlib import Path
+
         from ..scan.walker import count_files
 
         ttl = self._WALK_TTL if max_age is None else max_age
@@ -708,7 +709,7 @@ class JobManager:
         # (assign_unplaced), so named/pinned places and manual attachments persist.
         # Each archive is now its own database, so this only ever touches the
         # one this job belongs to.
-        from ..geo.clusters import cluster_places, assign_unplaced
+        from ..geo.clusters import assign_unplaced, cluster_places
 
         job.total, job.done = 1, 0
         has_places = conn.execute(
@@ -839,6 +840,7 @@ class JobManager:
     def _semantic_pass(self, job: Job, cancel, force: bool):
         """One snapshot pass. Returns (indexed, skipped, failed, rows_in_pass)."""
         from pathlib import Path
+
         from . import semantic
 
         # Snapshot candidates under a read-only connection. The API calls below

@@ -6,9 +6,7 @@ import pytest
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.faces import backend
-from organize_archive.faces import extract
-
+from organize_archive.faces import backend, extract
 
 np = pytest.importorskip("numpy")
 pytestmark = pytest.mark.skipif(backend.cv2 is None, reason="OpenCV is an optional face dependency")
