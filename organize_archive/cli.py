@@ -543,6 +543,11 @@ def cmd_config(args, cfg: Config) -> int:
 
             ZoneInfo(args.set_timezone)
         except Exception:
+            # Broad for the same reason as metadata/resolver.py's _tz: ZoneInfo
+            # can raise ZoneInfoNotFoundError, ValueError, or OSError from the
+            # tzdata lookup, and narrowing without proof of the full set would
+            # risk turning a bad-but-reportable input into an uncaught crash.
+            # The user is told directly below, so no log call is needed here.
             print(
                 f"Unknown timezone: {args.set_timezone!r} "
                 "(use an IANA name like America/Argentina/Buenos_Aires)"

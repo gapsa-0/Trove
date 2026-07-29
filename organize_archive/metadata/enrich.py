@@ -7,6 +7,7 @@ without a resolved date are processed, in batches.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,11 +15,17 @@ from ..config import Config
 from . import filename_dates, resolver
 from .takeout import SidecarMatcher, parse_sidecar
 
+logger = logging.getLogger(__name__)
+
 # exiftool is optional; without it we still resolve from Takeout/filename/mtime.
 try:
     from .exiftool_reader import ExifReader
     from .exiftool_reader import available as exif_available
 except Exception:  # pragma: no cover
+    # Broad on purpose: this wraps a native-tool binding (pyexiftool), which can
+    # fail in more ways than ImportError when exiftool itself is missing or
+    # broken. Running without exiftool is a supported configuration, so DEBUG.
+    logger.debug("exiftool reader unavailable; enrich will run without EXIF", exc_info=True)
     ExifReader = None
 
     def exif_available() -> bool:

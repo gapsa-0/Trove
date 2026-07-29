@@ -7,10 +7,13 @@ stable. Fully idempotent: a run rebuilds every duplicate group from scratch.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..db import database as db
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -167,11 +170,14 @@ def _perceptual_hashes(
             )
             hashes[row["id"]] = value
             computed += 1
-        except Exception:
+        except Exception as exc:
             # Corrupt/malformed images throw all sorts of things from deep
             # inside Pillow decoders (struct.error on a bad TIFF/EXIF offset,
             # zlib errors, etc.), not just OSError/ValueError. One bad file
             # must never abort the whole dedup run -- skip and keep going.
+            # No exc_info: this loop runs over ~150k files, a traceback per bad
+            # file would flood the rotated log until nothing useful survives.
+            logger.warning("phash failed for file_id=%s: %s", row["id"], exc)
             errors += 1
         if progress is not None and i % 100 == 0:
             progress.update(i, 0, row["rel_path"])

@@ -25,15 +25,22 @@ AdaFace and DINOv2 there is no ``tools/build/*_export.py`` to write or maintain.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import tempfile
 import threading
 import urllib.request
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 try:
     import numpy as np
 except Exception:  # pragma: no cover - optional dep
+    # Broad on purpose: a half-installed numpy can fail in more ways than
+    # ImportError (e.g. a missing shared library surfaces as OSError).
+    # Running without this optional dependency is supported, so DEBUG only.
+    logger.debug("numpy import failed; embeddings backend will report unavailable", exc_info=True)
     np = None
 
 # Identity of the vector space `semantic_embeddings` holds. Recorded per row via
@@ -108,6 +115,14 @@ def available() -> bool:
 
         return True
     except Exception:  # pragma: no cover - optional dep
+        # Broad on purpose: onnxruntime/tokenizers/Pillow can fail in more ways
+        # than ImportError (a mismatched onnxruntime build -> RuntimeError, a
+        # missing shared library -> OSError). Running without semantic search is
+        # a supported configuration, so DEBUG only.
+        logger.debug(
+            "onnxruntime/tokenizers/Pillow unavailable; semantic search disabled",
+            exc_info=True,
+        )
         return False
 
 
@@ -183,6 +198,9 @@ def _fetch(name: str, dest: Path, log=None) -> None:
             raise OSError(f"{name}: sha256 {actual} does not match {digest}")
         os.replace(tmp, dest)
     except Exception as exc:
+        # Wrap and re-raise with a message identifying which file/url failed;
+        # the caller reports or logs it -- no log call here, to avoid recording
+        # the same failure twice.
         raise OSError(f"could not download {name} from {url}: {exc}") from exc
     finally:
         if os.path.exists(tmp):

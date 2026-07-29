@@ -7,8 +7,11 @@ which source won so the choice stays auditable and tunable.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 _EXIF_FMTS = ("%Y:%m:%d %H:%M:%S", "%Y:%m:%d %H:%M:%S%z")
 
@@ -19,6 +22,13 @@ def _tz(name: str | None):
     try:
         return ZoneInfo(name)
     except Exception:
+        # Broad on purpose: ZoneInfoNotFoundError (unknown name, a KeyError
+        # subclass) and ValueError (malformed key) are expected, but the tzdata
+        # lookup can also raise OSError -- not certain that list is exhaustive,
+        # so stay broad rather than risk a config value crashing the caller.
+        # This is a pure fallback (caller treats None as "no zone"), so silence
+        # toward the caller is correct; just note what was rejected.
+        logger.debug("unusable timezone %r; falling back to no zone", name, exc_info=True)
         return None
 
 

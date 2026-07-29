@@ -263,6 +263,9 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
             conn.execute("DELETE FROM roots WHERE id=?", (owner,))
         conn.commit()
     except Exception:
+        # Roll back and re-raise deliberately: this is not silent, the caller
+        # (up to the cli.py boundary) logs the failure -- logging here too would
+        # record the same failure twice.
         conn.rollback()
         raise
     return True
