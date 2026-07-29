@@ -265,7 +265,9 @@ def timeline(
         where = [_NOT_HIDDEN, "d.best_datetime IS NOT NULL"]
         params: list = []
         if rc:
-            where.append(rc.lstrip(" AND "))
+            # removeprefix, not lstrip: lstrip strips any leading run of the
+            # given *characters* (space/A/N/D), not the literal " AND " prefix.
+            where.append(rc.removeprefix(" AND "))
             params += rp
         if year:
             where.append("substr(d.best_datetime,1,4) = ?")
@@ -921,7 +923,7 @@ def media(
         params: list = []
         rc, rp = _root_clause(root_id)
         if rc:
-            where.append(rc.lstrip(" AND "))
+            where.append(rc.removeprefix(" AND "))
             params += rp
         if mtype:
             where.append("f.media_type = ?")
@@ -1223,7 +1225,7 @@ def semantic_search(
         params: list = []
         rc, rp = _root_clause(root_id)
         if rc:
-            where.append(rc.lstrip(" AND "))
+            where.append(rc.removeprefix(" AND "))
             params += rp
         if mtype:
             where.append("f.media_type=?")
