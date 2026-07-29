@@ -101,9 +101,10 @@ def available() -> bool:
     if np is None:
         return False
     try:
-        import onnxruntime
-        import tokenizers
-        from PIL import Image
+        # Importing is the probe; the names are unused on purpose.
+        import onnxruntime  # noqa: F401
+        import tokenizers  # noqa: F401
+        from PIL import Image  # noqa: F401
 
         return True
     except Exception:  # pragma: no cover - optional dep

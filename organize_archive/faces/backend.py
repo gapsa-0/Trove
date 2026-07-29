@@ -76,8 +76,9 @@ def available() -> bool:
     if cv2 is None or np is None:
         return False
     try:
-        import insightface
-        import onnxruntime
+        # Importing is the probe; the names are unused on purpose.
+        import insightface  # noqa: F401
+        import onnxruntime  # noqa: F401
 
         return True
     except Exception:  # pragma: no cover - optional dep

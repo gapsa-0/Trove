@@ -22,9 +22,12 @@ class DedupStats:
 
 def perceptual_available() -> bool:
     """Whether this installation can decode and fingerprint images."""
+    # Importing is the probe, so the names go unused on purpose. Deliberately not
+    # importlib.util.find_spec: that only proves a module is on the path, and a
+    # half-installed native extension would pass it and then fail at real use.
     try:
-        import imagehash
-        from PIL import Image
+        import imagehash  # noqa: F401
+        from PIL import Image  # noqa: F401
     except ImportError:
         return False
     return True
