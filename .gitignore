@@ -11,8 +11,11 @@ __pycache__/
 venv/
 *.egg-info/
 .eggs/
-build/
-dist/
+# Anchored: these are the setuptools output directories at the repo root. Written
+# bare they also match tools/build/, so a new script added there was silently
+# invisible to `git add` -- and to ruff, which honours .gitignore.
+/build/
+/dist/
 
 # Env / editors
 .env
