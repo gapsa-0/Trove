@@ -7,15 +7,17 @@ touches the SQLite writer at a time (reads via the GUI stay concurrent).
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 import time
-import traceback
 from dataclasses import asdict, dataclass, field
 
 from ..config import Config
 from ..db import database as db
 from ..scan import walker
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -336,6 +338,7 @@ class JobManager:
             self._jobs[job.id] = job
             cancel = threading.Event()
             self._cancels[job.id] = cancel
+        logger.info("job start kind=%s root=%s job=%s force=%s", kind, root_id, job.id, force)
         t = threading.Thread(target=self._run, args=(job, cancel), daemon=True)
         t.start()
         return job.public()
@@ -373,6 +376,8 @@ class JobManager:
 
             migrate_adaface.run_if_needed(conn, self.cfg, db_path=self.cfg.archive_db_path(root_id))
         except Exception:
+            # Close then re-raise: not silent, and _run logs it with the job it
+            # belongs to. Logging here as well would record one failure twice.
             conn.close()
             raise
         return conn
@@ -414,10 +419,14 @@ class JobManager:
         """
         self._paused = bool(value)
         self.cfg.pipeline_paused = self._paused
+        logger.info("pipeline %s", "paused" if self._paused else "resumed")
         try:
             self.cfg.save()
         except OSError:
-            pass
+            # Deliberately not fatal, per the docstring: the in-memory flag is
+            # authoritative. Recorded because the consequence is silent and
+            # surprising -- the pause is honoured now but forgotten on restart.
+            logger.warning("could not persist the pipeline pause state", exc_info=True)
         if self._paused:
             # This is what actually stops the CPU load; jobs resume from
             # their last committed batch, same mechanism as close_archive.
@@ -441,10 +450,12 @@ class JobManager:
         else:
             self._paused_stages.discard(card)
         self.cfg.paused_stages = sorted(self._paused_stages)
+        logger.info("stage %s %s", card, "paused" if value else "resumed")
         try:
             self.cfg.save()
         except OSError:
-            pass
+            # Same reasoning as set_paused: honoured now, forgotten on restart.
+            logger.warning("could not persist the paused-stage set", exc_info=True)
         if value:
             self._cancel_running(pipeline.kinds_of(card))
         else:
@@ -456,6 +467,9 @@ class JobManager:
         with self._lock:
             for jid, job in self._jobs.items():
                 if job.status == "running" and (kinds is None or job.kind in kinds):
+                    logger.info(
+                        "job cancel requested kind=%s root=%s job=%s", job.kind, job.root_id, jid
+                    )
                     self._cancels[jid].set()
 
     def nudge(self):
@@ -472,7 +486,10 @@ class JobManager:
             try:
                 acted = self._auto_tick()
             except Exception:
-                traceback.print_exc()
+                # The scheduler thread must outlive any single bad tick, so this
+                # stays broad -- but an unlogged one made the whole pipeline look
+                # merely idle.
+                logger.exception("scheduler tick failed")
                 acted = False
             self._auto_interval = (
                 self._AUTO_MIN if acted else min(self._auto_interval * 1.5, self._AUTO_MAX)
@@ -491,16 +508,19 @@ class JobManager:
         a time, matching the single write lock.
         """
         if self._paused:
+            logger.debug("tick: skipped, pipeline is paused")
             return False
         from . import pipeline, queries
 
         open_root_id = self._open_root_id
         if open_root_id is None:
+            logger.debug("tick: skipped, no archive is open")
             return False
         archive = next(
             (a for a in queries.archives(self.cfg) if a["id"] == open_root_id and a["exists"]), None
         )
         if not archive:
+            logger.debug("tick: skipped, archive root=%s is missing or unregistered", open_root_id)
             return False
 
         states = pipeline.stage_states(
@@ -547,6 +567,19 @@ class JobManager:
             s["state"] in ("running", "queued", "blocked", "error") and not stalled[s["kind"]]
             for s in states
         )
+        # One line per tick, listing what the scheduler saw and what it did with
+        # it. "Why did the next stage not start?" is otherwise unanswerable: a
+        # tick that starts nothing looks identical to no tick at all. Guarded by
+        # isEnabledFor because this runs every 10s and the join is not free.
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "tick: root=%s acted=%s outstanding=%s states=%s stalled=%s",
+                open_root_id,
+                acted,
+                outstanding,
+                ",".join(f"{s['kind']}={s['state']}" for s in states),
+                ",".join(sorted(k for k, v in stalled.items() if v)) or "-",
+            )
         return acted or outstanding
 
     def _stalled_kinds(self, states: list[dict]) -> dict[str, bool]:
@@ -607,14 +640,43 @@ class JobManager:
             # _run_dedup), so a cancelled or errored dedup leaves no marker and
             # stays queued/retries next tick.
             self._error_at.pop((job.root_id, job.kind), None)
+            logger.info(
+                "job done kind=%s root=%s job=%s done=%s total=%s elapsed=%.1fs %s",
+                job.kind,
+                job.root_id,
+                job.id,
+                job.done,
+                job.total,
+                time.time() - job.started_at,
+                job.message,
+            )
         except KeyboardInterrupt:
             job.status = "cancelled"
             job.message = "cancelled; progress saved"
+            # Not a failure: this is the pause/close/switch-archive path, which
+            # cancels at a batch checkpoint. Recorded so a log that ends mid-run
+            # can be told apart from one where the job was stopped on purpose.
+            logger.info(
+                "job cancelled kind=%s root=%s job=%s done=%s total=%s elapsed=%.1fs",
+                job.kind,
+                job.root_id,
+                job.id,
+                job.done,
+                job.total,
+                time.time() - job.started_at,
+            )
         except Exception as e:
             job.status = "error"
             job.message = f"{e}"
             self._error_at[(job.root_id, job.kind)] = time.monotonic()
-            traceback.print_exc()
+            logger.error(
+                "job failed kind=%s root=%s job=%s after=%.1fs",
+                job.kind,
+                job.root_id,
+                job.id,
+                time.time() - job.started_at,
+                exc_info=True,
+            )
         finally:
             job.finished_at = time.time()
             # A finished scan changed what's on disk-vs-indexed; drop the cached
@@ -899,6 +961,11 @@ class JobManager:
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
+                # One line, no exc_info: this loop covers every file in the
+                # archive (~150k), so a traceback each would fill the rotated log
+                # before anything useful survived. The reason is also persisted
+                # per row by _save_semantic_outcome, which the GUI surfaces.
+                logger.warning("semantic indexing failed for file_id=%s: %s", row["id"], exc)
                 self._save_semantic_outcome(job.root_id, row, None, None, str(exc))
                 failed += 1
             job.done = already + offset + 1
