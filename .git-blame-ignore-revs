@@ -1,0 +1,10 @@
+# Revisions to skip in `git blame` — bulk reformattings that touched every line
+# without changing any behaviour. Without this, blame on most of the codebase
+# points at the formatter instead of the person and the reason that wrote the
+# line, which is exactly what you need when debugging.
+#
+# Enable it once per clone:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format the Python sources with ruff (no behaviour change)
+bbb545800bd4ada513f8c4717427775e270ed97b
