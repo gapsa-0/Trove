@@ -569,6 +569,16 @@
       font-size: 12px;
     }
 
+    /* Same bars on the Duplicates page; the last legend shouldn't add a gap
+       above the group list. */
+    .dup-breakdown {
+      margin-bottom: 16px;
+    }
+
+    .dup-breakdown .type-summary-legend:last-child {
+      margin-bottom: 0;
+    }
+
     .type-summary-key {
       display: inline-block;
       width: 10px;
@@ -7498,6 +7508,7 @@
       <div class="stat"><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Reclaimable</div><div class="v">${fmtBytes(ds.reclaimable)}</div></div>
     </div>
+    ${dupBreakdownPanel(ds)}
     <div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>
     <div id="dupgroups"></div>
     <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
@@ -7513,6 +7524,36 @@
           groups.forEach(g => wrap.appendChild(dupGroupRow(g)));
         },
       });
+    }
+    // What the redundant copies actually ARE (things_to_fix #35). "27,318
+    // duplicates" hides two things worth knowing: how many are byte-identical
+    // (safe, boring) versus only visually the same (a re-compressed export,
+    // where the kept copy is a judgement call), and whether the space is going
+    // to photos or to a much smaller number of videos. Same bar/legend
+    // vocabulary as the Overview's storage panel, and the media colours are the
+    // shared TYPE_COL so a hue means the same thing on every screen.
+    const DUP_MATCH_LABEL = { identical: "Identical copies", visual: "Visual matches" };
+    const DUP_MATCH_COL = { identical: "#30d158", visual: "#5b8cff" };
+    function dupBreakdownPanel(ds) {
+      const rows = [
+        { label: "By match", items: ds.by_match,
+          name: k => DUP_MATCH_LABEL[k] || k, colour: k => DUP_MATCH_COL[k] || "#8e8e93" },
+        { label: "By media", items: ds.by_media,
+          name: k => typeLabel(k), colour: k => TYPE_COL[k] || TYPE_COL.other },
+      ].filter(r => (r.items || []).length);
+      if (!rows.length) return "";       // older payload, or nothing to break down
+      const total = ds.duplicates || 1;
+      const section = r => `<div class="type-bar-row">
+      <span class="type-bar-label">${r.label}</span>
+      <div class="type-summary-bar">${r.items.map(i =>
+        `<div class="type-summary-segment" style="width:${100 * i.count / total}%;background:${r.colour(i.key)}" title="${r.name(i.key)}: ${i.count.toLocaleString()} · ${fmtBytes(i.bytes)}"></div>`
+      ).join("")}</div></div>
+    <div class="type-summary-legend">${r.items.map(i =>
+        `<span><span class="type-summary-key" style="background:${r.colour(i.key)}"></span>${r.name(i.key)} <span class="muted">· ${i.count.toLocaleString()} (${(100 * i.count / total).toFixed(1)}%) · ${fmtBytes(i.bytes)}</span></span>`
+      ).join("")}</div>`;
+      return `<div class="panel dup-breakdown"><div class="panel-heading"><div>
+      <h3>What the copies are</h3><p>Every redundant copy, split two ways</p></div></div>
+    ${rows.map(section).join("")}</div>`;
     }
     function dupGroupRow(g) {
       const row = document.createElement("div"); row.className = "dupgroup";

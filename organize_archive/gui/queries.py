@@ -1176,8 +1176,53 @@ def dup_summary(db_path: str, root_id=None) -> dict:
                 FROM dup_groups g
                 JOIN files f ON f.id=g.canonical_file_id
                 WHERE 1=1{rc}""", rp).fetchone()
+        # Breakdown of the redundant copies (things_to_fix #35): "24,102
+        # duplicates" says nothing about what they are. Two cuts of the same
+        # rows, so both add up to `duplicates`/`reclaimable` exactly:
+        #
+        # * by match -- byte-identical to the kept copy, or only visually the
+        #   same (a re-compressed export). Decided per MEMBER, not by the
+        #   group's `method`: a perceptual group routinely also contains exact
+        #   copies, and this is the same rule the duplicate tiles label
+        #   themselves with, so the panel can never contradict them.
+        # * by media type -- a hundred redundant videos and a hundred redundant
+        #   thumbnails are not the same news.
+        #
+        # `f` is the canonical here, same as in the count above, so the shared
+        # _root_clause keeps filtering on the root the group belongs to; `d` is
+        # the redundant copy being described.
+        by_match, by_media = {}, {}
+        for r in conn.execute(
+            f"""SELECT CASE WHEN d.sha256 IS NOT NULL AND d.sha256 = f.sha256
+                            THEN 'identical' ELSE 'visual' END AS match_type,
+                       d.media_type AS media_type,
+                       COUNT(*) AS n, COALESCE(SUM(d.size), 0) AS bytes
+                FROM dup_members m
+                JOIN dup_groups g ON g.id = m.group_id
+                JOIN files f ON f.id = g.canonical_file_id
+                JOIN files d ON d.id = m.file_id
+                WHERE m.role = 'duplicate'{rc}
+                GROUP BY match_type, d.media_type""", rp
+        ):
+            for bucket, key in ((by_match, r["match_type"]),
+                                (by_media, r["media_type"] or "other")):
+                acc = bucket.setdefault(key, {"count": 0, "bytes": 0})
+                acc["count"] += r["n"]
+                acc["bytes"] += r["bytes"]
+
+        def _ranked(bucket, order=None):
+            items = [{"key": k, **v} for k, v in bucket.items()]
+            if order:            # fixed order where one exists (identical first)
+                items.sort(key=lambda i: order.index(i["key"])
+                           if i["key"] in order else len(order))
+            else:
+                items.sort(key=lambda i: (-i["count"], i["key"]))
+            return items
+
         return {"groups": row["groups"], "duplicates": row["dups"],
-                "reclaimable": row["bytes"]}
+                "reclaimable": row["bytes"],
+                "by_match": _ranked(by_match, ["identical", "visual"]),
+                "by_media": _ranked(by_media)}
     finally:
         conn.close()
 
