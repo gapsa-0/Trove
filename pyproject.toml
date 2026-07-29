@@ -40,7 +40,7 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # transformers or torch — a 64-token tokenizer does not justify reversing the
 # torch exclusion in packaging/organize-archive.spec.
 semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 oa = "organize_archive.cli:main"
@@ -58,3 +58,33 @@ include = ["organize_archive*"]
 # and collecting them fails the run before any real test executes.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100          # matches the style already in the files
+target-version = "py313"
+# Same reasoning as testpaths above: desktop/ and build/ hold packaged output,
+# including vendored third-party Python that is not ours to lint or format.
+extend-exclude = ["desktop/", "build/", ".venv/"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W",   # pycodestyle    — whitespace, line length, obvious layout errors
+  "F",        # pyflakes       — unused imports/variables, undefined names
+  "I",        # isort          — import order (stdlib / third-party / local)
+  "B",        # bugbear        — mutable defaults, loop-variable capture, broad except
+  "UP",       # pyupgrade      — modernises to 3.13 idioms
+  "C4",       # comprehensions — needless list()/dict() wrapping
+  "SIM",      # simplify       — collapsible ifs, redundant bool conversion
+  "RUF",      # ruff's own     — mutable class attrs, unused noqa
+]
+ignore = [
+  "E501",     # line length: the formatter owns this; a long SQL string is not a bug
+  "B008",     # function call in default arg — used deliberately in a few places
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*"  = ["B011"]          # bare assert is the point of a test
+"tools/*"  = ["T201"]          # dev scripts may print
+
+[tool.ruff.format]
+quote-style = "double"          # matches the existing code
