@@ -14,6 +14,7 @@ the same region is what tells the fused detect stage it is a human, not a pet.
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 import urllib.request
@@ -22,10 +23,17 @@ from pathlib import Path
 
 from .. import runtime
 
+logger = logging.getLogger(__name__)
+
 try:
     import cv2
     import numpy as np
 except Exception:  # pragma: no cover - optional dependency
+    # Deliberately broad, not just ImportError: a half-installed OpenCV/NumPy can
+    # fail in more ways than "not found" -- a missing shared library surfaces as
+    # OSError, a mismatched binary wheel as RuntimeError. Any of those must
+    # degrade to "pets unavailable" (see `available()`) rather than crash import
+    # of this module.
     cv2 = None
     np = None
 
@@ -216,6 +224,11 @@ def _load_dinov2(cache_dir: str):
     try:
         import onnxruntime as ort
     except Exception as e:  # pragma: no cover - optional dep
+        # Deliberately broad, like the cv2/numpy import above: a broken
+        # onnxruntime install can fail with more than ImportError (e.g. a
+        # mismatched native build raising RuntimeError). Not logged here --
+        # re-raised with a clear message instead, and the caller logs it once
+        # rather than twice.
         raise RuntimeError(
             f"pet re-ID needs onnxruntime (pip install onnxruntime); import failed: {e}"
         ) from e
@@ -280,6 +293,13 @@ class PetBackend:
 
             pillow_heif.register_heif_opener()
         except Exception:
+            # HEIF support is optional: pillow_heif not being installed, or its
+            # native libheif failing to load, just means .heic files cannot be
+            # decoded here. Broad on purpose -- a partial native install fails
+            # in more ways than ImportError -- and not logged even at debug:
+            # this runs once per image processed (~150k times across the
+            # archive) and the outcome never changes for the life of the
+            # process, so a log line here would be pure filler.
             pass
         with Image.open(path) as image:
             image = ImageOps.exif_transpose(image).convert("RGB")

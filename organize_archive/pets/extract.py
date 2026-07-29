@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
 from . import backend
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -162,6 +165,11 @@ def extract(
                     )
                 count = len(detections)
             except Exception as error:
+                # One line, no traceback: this loop runs over the whole archive
+                # (~150k files) and a per-file exc_info would flood the rotated
+                # log before anything useful survives it. error_samples still
+                # keeps the first few failures verbatim for the CLI summary.
+                logger.warning("pet extraction failed for %s: %s", path.name, error)
                 stats.errors += 1
                 if len(stats.error_samples) < 5:
                     stats.error_samples.append(f"{path.name}: {error}")
