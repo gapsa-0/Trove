@@ -526,6 +526,107 @@
       border-bottom: 1px solid var(--line);
     }
 
+    /* Storage panel: numbers belong in the table, not floating over the bar. */
+    table.types th {
+      padding: 0 4px 7px;
+      color: var(--faint);
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      text-align: right;
+    }
+
+    table.types th:first-child,
+    table.types td:first-child {
+      text-align: left;
+    }
+
+    table.types td {
+      text-align: right;
+    }
+
+    table.types .swatch {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    table.types .share {
+      color: var(--muted);
+    }
+
+    /* Size / Files switch in the panel heading: one bar at a time, so the two
+       readings never compete for the same strip of pixels. */
+    .metric-switch {
+      display: flex;
+      gap: 2px;
+      margin-left: auto;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+    }
+
+    .metric-switch button {
+      padding: 3px 11px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 620;
+      cursor: pointer;
+    }
+
+    .metric-switch button.on {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .storage-bar {
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .storage-bar .type-summary-bar {
+      height: 13px;
+    }
+
+    .storage-bar .type-summary-segment {
+      cursor: default;
+    }
+
+    /* Per-type detail on hover instead of a permanent legend. */
+    .storage-tip {
+      position: absolute;
+      z-index: 5;
+      top: 21px;
+      padding: 7px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      background: var(--panel2);
+      box-shadow: var(--shadow-md);
+      font-size: 11.5px;
+      white-space: nowrap;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .storage-tip[hidden] {
+      display: none;
+    }
+
+    .storage-tip .swatch {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 7px;
+    }
+
     .type-summary-bar {
       display: flex;
       height: 14px;
@@ -539,9 +640,8 @@
       transition: width .2s;
     }
 
-    /* Two bars over the same colours: how many files each type is, and how much
-       of the disk it takes. They rarely agree -- a handful of videos can outweigh
-       tens of thousands of photos -- which is the whole reason both are shown. */
+    /* A labelled bar row: used by the Duplicates page to show one set of copies
+       cut two ways (by match, by media type) over the same colours. */
     .type-bar-row {
       display: flex;
       align-items: center;
@@ -3358,7 +3458,7 @@
 
     /* Search reach: how much of the library the description search can currently
        find, broken down by media type. Colored keys match the Overview's
-       "Storage by type" legend so a hue means the same type everywhere. */
+       Storage panel so a hue means the same type everywhere. */
     .search-reach {
       display: flex;
       flex-wrap: wrap;
@@ -5773,54 +5873,100 @@
         <p class="pause-note" id="pause-note" style="display:none">Paused — background processing is stopped.</p>
         <div id="syncstatus"></div><div id="jobarea"></div>
       </div>
-      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage by type</h3><p id="ov-storage-caption">${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div></div>
-        <div id="typebar"></div><table class="types" id="typetbl"></table>
+      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage</h3><p id="ov-storage-caption">${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div><div class="metric-switch" id="storage-switch"></div></div>
+        <div class="storage-bar" id="typebar"></div><table class="types" id="typetbl"></table>
       </div>
     </div>`;
-      renderStoragePanel(s);
       S.summary = s;
+      renderStoragePanel(s);   // reads S.summary back when the metric switch flips
       renderHealthCards();   // paint immediately from the last snapshot (if any)
       startPoll();           // single poller: /api/pipeline drives every status surface
     }
 
-    // Fills the "Storage by type" panel (byte total + bars + table) from an
+    // Fills the "Storage" panel (byte total + one bar + table) from an
     // /api/summary payload. Called from renderOverview on first paint AND from
     // refreshPipeline on every poll tick while the pipeline is busy, so bytes
     // reclaimed/added by scan+dedup show up live instead of only at the
-    // busy→idle edge (the caption, bars and table share stable ids for this).
+    // busy→idle edge (the caption, switch, bar and table share stable ids).
+    //
+    // Files and size are two readings of the same breakdown and they disagree
+    // sharply -- in a photo archive the videos are a rounding error by count and
+    // most of the disk. Showing both at once meant two bars and a legend of
+    // percentages nobody asked for. One bar answers whichever question the
+    // switch is set to; the exact numbers live in the table, where numbers
+    // belong, and the per-type detail appears on hover.
+    const STORAGE_METRICS = {
+      size: {
+        label: "Size", of: "of size",
+        value: t => t.size || 0,
+        text: t => fmtBytes(t.size || 0),
+      },
+      files: {
+        label: "Files", of: "of files",
+        value: t => t.count,
+        text: t => `${t.count.toLocaleString()} file${t.count === 1 ? "" : "s"}`,
+      },
+    };
+    function storageMetric() {
+      return STORAGE_METRICS[S.storageMetric] ? S.storageMetric : "size";
+    }
+    function setStorageMetric(metric) {
+      S.storageMetric = metric;
+      if (S.summary) renderStoragePanel(S.summary);
+    }
     function renderStoragePanel(s) {
       const cap = document.getElementById("ov-storage-caption");
       if (cap) cap.textContent = `${fmtBytes(s.size)} across ${s.total.toLocaleString()} items`;
-      const types = s.types.filter(t => t.count > 0);
-      const totalCount = types.reduce((sum, t) => sum + t.count, 0) || 1;
-      const totalSize = types.reduce((sum, t) => sum + (t.size || 0), 0) || 1;
+      const key = storageMetric(), metric = STORAGE_METRICS[key];
       const colour = t => TYPE_COL[t.type] || TYPE_COL.other;
-      const pct = (value, total) => 100 * value / total;
-      // Two readings of the same breakdown. A count bar alone is misleading in
-      // a photo archive: the videos are a rounding error by file count and
-      // routinely most of the disk.
-      const bar = (label, total, value, title) => `<div class="type-bar-row">
-      <span class="type-bar-label">${label}</span>
-      <div class="type-summary-bar">${types.map(t =>
-        `<div class="type-summary-segment" style="width:${pct(value(t), total)}%;background:${colour(t)}" title="${title(t)}"></div>`
-      ).join("")}</div></div>`;
+      // Sorted by the metric on screen, so the bar and the table below it read
+      // in the same order whichever way the switch is set.
+      const types = s.types.filter(t => t.count > 0)
+        .sort((a, b) => metric.value(b) - metric.value(a));
+      const total = types.reduce((sum, t) => sum + metric.value(t), 0) || 1;
+      // A type can be a real part of the archive and still round to 0.0%
+      // (30 files, 98.7 GB): "<0.1%" is honest where "0.0%" reads as nothing.
+      const share = t => {
+        const p = 100 * metric.value(t) / total;
+        return p > 0 && p < 0.1 ? "<0.1%" : `${p.toFixed(1)}%`;
+      };
+
+      const sw = document.getElementById("storage-switch");
+      if (sw) sw.innerHTML = Object.entries(STORAGE_METRICS).map(([id, m]) =>
+        `<button type="button" class="${id === key ? "on" : ""}"
+        onclick="setStorageMetric('${id}')">${m.label}</button>`).join("");
+
       const typebar = document.getElementById("typebar");
-      if (typebar) typebar.innerHTML =
-        bar("By files", totalCount, t => t.count,
-            t => `${typeLabel(t.type)}: ${t.count.toLocaleString()} file${t.count === 1 ? "" : "s"} · ${pct(t.count, totalCount).toFixed(1)}%`)
-        + bar("By size", totalSize, t => t.size || 0,
-              t => `${typeLabel(t.type)}: ${fmtBytes(t.size || 0)} · ${pct(t.size || 0, totalSize).toFixed(1)}%`)
-        + `<div class="type-summary-legend">${types.map(t =>
-        `<span><span class="type-summary-key" style="background:${colour(t)}"></span>${typeLabel(t.type)} <span class="muted">· ${pct(t.count, totalCount).toFixed(1)}% of files · ${pct(t.size || 0, totalSize).toFixed(1)}% of size</span></span>`
-      ).join("")}</div>`;
+      if (typebar) {
+        typebar.innerHTML = `<div class="type-summary-bar">${types.map((t, i) =>
+          `<div class="type-summary-segment" data-i="${i}" style="width:${100 * metric.value(t) / total}%;background:${colour(t)}"></div>`
+        ).join("")}</div><div class="storage-tip" hidden></div>`;
+        const tip = typebar.querySelector(".storage-tip");
+        typebar.querySelectorAll(".type-summary-segment").forEach(seg => {
+          seg.onmouseenter = () => {
+            const t = types[+seg.dataset.i];
+            tip.innerHTML = `<span class="swatch" style="background:${colour(t)}"></span>${typeLabel(t.type)} <span class="muted">· ${metric.text(t)} · ${share(t)} ${metric.of}</span>`;
+            // Centred on the segment, then held inside the panel so a sliver at
+            // either end doesn't push the tooltip off the edge.
+            const mid = seg.offsetLeft + seg.offsetWidth / 2;
+            tip.hidden = false;
+            const half = tip.offsetWidth / 2;
+            tip.style.left =
+              Math.max(half, Math.min(typebar.clientWidth - half, mid)) + "px";
+          };
+          seg.onmouseleave = () => { tip.hidden = true; };
+        });
+      }
+
       const tbl = document.getElementById("typetbl");
       if (!tbl) return;
-      tbl.innerHTML = "";
+      tbl.innerHTML = `<tr><th>Type</th><th>Files</th><th>Size</th><th>Share</th></tr>`;
       types.forEach(t => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${typeLabel(t.type)}</td>
+        tr.innerHTML = `<td><span class="swatch" style="background:${colour(t)}"></span>${typeLabel(t.type)}</td>
       <td class="num">${t.count.toLocaleString()}</td>
-      <td class="num">${fmtBytes(t.size)}</td>`;
+      <td class="num">${fmtBytes(t.size)}</td>
+      <td class="num share">${share(t)}</td>`;
         tbl.appendChild(tr);
       });
     }
