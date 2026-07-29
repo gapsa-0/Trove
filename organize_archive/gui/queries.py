@@ -10,6 +10,7 @@ has the one root anyway).
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import shutil
@@ -18,6 +19,8 @@ from pathlib import Path
 
 from ..db import database as db
 from ..paths import archive_dir as archive_dir_path
+
+logger = logging.getLogger(__name__)
 
 # Analytics (summary, timeline, map, counts) describe the whole archive, so they
 # count every present file. Only Browse hides non-canonical duplicates.
@@ -151,6 +154,7 @@ def add_archive(cfg, path: str) -> dict:
         finally:
             conn.close()
     except Exception as exc:
+        logger.warning("could not prepare catalog for %s", resolved, exc_info=True)
         shutil.rmtree(archive_dir_path(aid), ignore_errors=True)
         return {"error": f"Could not prepare a catalog for that folder: {exc}"}
     entry = cfg.register_archive(aid, resolved)

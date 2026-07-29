@@ -22,12 +22,15 @@ were never in the same space.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 from pathlib import Path
 
 from ..db import database as db
 from ..embeddings import backend as eb
 from . import thumbs
+
+logger = logging.getLogger(__name__)
 
 # Bumped whenever the vector space changes. Mirrors embeddings.EMBEDDER_VERSION;
 # kept as its own constant because pending_rows/work_counts compare it per row.
@@ -82,7 +85,9 @@ def warm_text_model(cfg) -> None:
     try:
         backend(cfg).load_text()
     except Exception:
-        pass
+        # Invisible to the caller by design (see docstring); recorded here so
+        # the failure isn't lost outright if warmup is what actually broke.
+        logger.debug("text tower warmup failed", exc_info=True)
 
 
 def embed_query(cfg, query: str) -> list[float]:

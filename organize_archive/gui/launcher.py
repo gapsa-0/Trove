@@ -7,6 +7,7 @@ program. Falls back to a normal browser tab when none is found.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ import sys
 import webbrowser
 
 from ..runtime import no_window
+
+logger = logging.getLogger(__name__)
 
 # Names to try on PATH (Linux/macOS, and Windows where present).
 _NAMES = [
@@ -72,6 +75,10 @@ def open_app_window(url: str) -> bool:
         )
         return True
     except Exception:
+        # Falling back to another browser (webbrowser.open, below) is normal
+        # operation here, not a fault -- DEBUG keeps it out of the way while
+        # still being there if "why did app-mode not open" needs answering.
+        logger.debug("could not open app-mode window with %s", browser, exc_info=True)
         return False
 
 

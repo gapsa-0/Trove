@@ -7,6 +7,7 @@ never taken from the request), so there is no path-traversal surface.
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -19,6 +20,8 @@ from ..config import Config, discard_superseded_secrets
 from ..db import database as db
 from . import icons, queries, thumbs
 from .jobs import JobManager
+
+logger = logging.getLogger(__name__)
 
 _INDEX = Path(__file__).with_name("index.html")
 _CHUNK = 256 * 1024
@@ -448,9 +451,12 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, BrokenPipeError):
             pass
         except Exception as e:
+            logger.exception("unhandled error serving %s %s", self.command, self.path)
             try:
                 self._json({"error": str(e)}, 500)
             except Exception:
+                # The client is already gone (broken pipe, closed tab): there is
+                # nowhere left to report this failure to, so stay silent.
                 pass
 
     # -- POST -------------------------------------------------------------
@@ -727,6 +733,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             self._json({"error": str(e)}, 400)
         except Exception as e:
+            logger.exception("unhandled error serving %s %s", self.command, self.path)
             self._json({"error": str(e)}, 500)
 
     # -- media serving ----------------------------------------------------

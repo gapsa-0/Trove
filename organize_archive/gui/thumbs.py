@@ -8,10 +8,13 @@ present on the system. Read-only over originals.
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
 from ..runtime import no_window, tool
+
+logger = logging.getLogger(__name__)
 
 _HEIF_REGISTERED = False
 
@@ -61,6 +64,11 @@ def _try_pillow():
 
             pillow_heif.register_heif_opener()
         except Exception:
+            # pillow_heif is optional (HEIC support only) and wraps a native
+            # libheif binding, so a broken/partial install can fail in more ways
+            # than ImportError. Silent on purpose, matching faces/backend.py,
+            # pets/backend.py and detect/extract.py: without HEIC support these
+            # files simply fail to decode later like any other unreadable file.
             pass
         _HEIF_REGISTERED = True
     return Image, ImageOps
@@ -89,7 +97,14 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
             timeout=20,
             **no_window(),
         )
-    except Exception:
+    except Exception as exc:
+        # Includes subprocess.TimeoutExpired (the 20s timeout above) as well as
+        # ffmpeg being missing outright -- tool() returns None then, which makes
+        # subprocess.run raise TypeError. Either way there is no frame.
+        # One line, no exc_info: frames_for() calls this once per offset per
+        # video, so a machine without ffmpeg would otherwise write a traceback
+        # for every offset of every one of ~6k videos.
+        logger.warning("ffmpeg frame extraction failed for %s at %s: %s", src, offset, exc)
         return False
     return tp.exists() and tp.stat().st_size > 0
 
@@ -250,6 +265,7 @@ def face_thumb_for(
             crop.save(tp, "JPEG", quality=82)
         return tp
     except Exception:
+        logger.warning("face thumbnail failed for face_id=%s src=%s", face_id, src, exc_info=True)
         return None
 
 
@@ -273,6 +289,7 @@ def thumb_for(
             im.convert("RGB").save(tp, "JPEG", quality=80)
         return tp
     except Exception:
+        logger.warning("thumbnail failed for fid=%s src=%s", fid, src, exc_info=True)
         return None
 
 
@@ -305,4 +322,5 @@ def upright_for(
             im.convert("RGB").save(tp, "JPEG", quality=90)
         return tp
     except Exception:
+        logger.warning("upright render failed for fid=%s src=%s", fid, src, exc_info=True)
         return None
