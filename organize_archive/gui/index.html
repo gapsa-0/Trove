@@ -539,6 +539,28 @@
       transition: width .2s;
     }
 
+    /* Two bars over the same colours: how many files each type is, and how much
+       of the disk it takes. They rarely agree -- a handful of videos can outweigh
+       tens of thousands of photos -- which is the whole reason both are shown. */
+    .type-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 7px;
+    }
+
+    .type-bar-label {
+      width: 74px;
+      flex: none;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .type-bar-row .type-summary-bar {
+      flex: 1;
+      min-width: 0;
+    }
+
     .type-summary-legend {
       display: flex;
       gap: 18px;
@@ -5751,21 +5773,35 @@
       startPoll();           // single poller: /api/pipeline drives every status surface
     }
 
-    // Fills the "Storage by type" panel (byte total + bar + table) from an
+    // Fills the "Storage by type" panel (byte total + bars + table) from an
     // /api/summary payload. Called from renderOverview on first paint AND from
     // refreshPipeline on every poll tick while the pipeline is busy, so bytes
     // reclaimed/added by scan+dedup show up live instead of only at the
-    // busy→idle edge (the caption, bar and table share stable ids for this).
+    // busy→idle edge (the caption, bars and table share stable ids for this).
     function renderStoragePanel(s) {
       const cap = document.getElementById("ov-storage-caption");
       if (cap) cap.textContent = `${fmtBytes(s.size)} across ${s.total.toLocaleString()} items`;
       const types = s.types.filter(t => t.count > 0);
-      const totalTypes = types.reduce((sum, t) => sum + t.count, 0) || 1;
+      const totalCount = types.reduce((sum, t) => sum + t.count, 0) || 1;
+      const totalSize = types.reduce((sum, t) => sum + (t.size || 0), 0) || 1;
+      const colour = t => TYPE_COL[t.type] || TYPE_COL.other;
+      const pct = (value, total) => 100 * value / total;
+      // Two readings of the same breakdown. A count bar alone is misleading in
+      // a photo archive: the videos are a rounding error by file count and
+      // routinely most of the disk.
+      const bar = (label, total, value, title) => `<div class="type-bar-row">
+      <span class="type-bar-label">${label}</span>
+      <div class="type-summary-bar">${types.map(t =>
+        `<div class="type-summary-segment" style="width:${pct(value(t), total)}%;background:${colour(t)}" title="${title(t)}"></div>`
+      ).join("")}</div></div>`;
       const typebar = document.getElementById("typebar");
-      if (typebar) typebar.innerHTML = `<div class="type-summary-bar">${types.map(t =>
-        `<div class="type-summary-segment" style="width:${100 * t.count / totalTypes}%;background:${TYPE_COL[t.type] || TYPE_COL.other}" title="${typeLabel(t.type)}: ${t.count.toLocaleString()} files"></div>`
-      ).join("")}</div><div class="type-summary-legend">${types.map(t =>
-        `<span><span class="type-summary-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span>${typeLabel(t.type)} <span class="muted">, ${(100 * t.count / totalTypes).toFixed(1)}%</span></span>`
+      if (typebar) typebar.innerHTML =
+        bar("By files", totalCount, t => t.count,
+            t => `${typeLabel(t.type)}: ${t.count.toLocaleString()} file${t.count === 1 ? "" : "s"} · ${pct(t.count, totalCount).toFixed(1)}%`)
+        + bar("By size", totalSize, t => t.size || 0,
+              t => `${typeLabel(t.type)}: ${fmtBytes(t.size || 0)} · ${pct(t.size || 0, totalSize).toFixed(1)}%`)
+        + `<div class="type-summary-legend">${types.map(t =>
+        `<span><span class="type-summary-key" style="background:${colour(t)}"></span>${typeLabel(t.type)} <span class="muted">· ${pct(t.count, totalCount).toFixed(1)}% of files · ${pct(t.size || 0, totalSize).toFixed(1)}% of size</span></span>`
       ).join("")}</div>`;
       const tbl = document.getElementById("typetbl");
       if (!tbl) return;
