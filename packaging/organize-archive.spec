@@ -27,8 +27,11 @@ hiddenimports = []
 # faiss is in this list for its bundled native library (collect_dynamic_libs):
 # the Python package is a thin SWIG wrapper over libfaiss, and without the
 # shared object the packaged app imports faiss and then fails at index creation.
+# `tokenizers` is here for the same reason as faiss: the Python package is a thin
+# wrapper over a Rust extension module, and the app only imports it lazily inside
+# the semantic backend, so the native library has to be collected explicitly.
 for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklearn",
-                "numpy", "faiss"):
+                "numpy", "faiss", "tokenizers"):
     hiddenimports += collect_submodules(package)
     binaries += collect_dynamic_libs(package)
 # insightface supplies the buffalo_l model-zoo loader and the face_align helpers.

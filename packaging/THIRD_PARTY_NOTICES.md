@@ -27,5 +27,15 @@ Do not publish a release while any entry is incomplete.
   buffalo_l above. Unlike buffalo_l this file is bundled and re-hosted by this
   project as a release asset, which is redistribution rather than a first-run
   download; confirm the terms still permit that before any commercial use.
+- SigLIP 2 base/16 @256 search model (vision and text towers) — Apache-2.0 —
+  downloaded at first indexing, not bundled. Weights are Google's
+  https://huggingface.co/google/siglip2-base-patch16-256; the ONNX exports this
+  app actually fetches are https://huggingface.co/onnx-community/siglip2-base-patch16-256-ONNX
+  at a pinned revision. Unlike buffalo_l and AdaFace this carries no
+  non-commercial clause.
+- Gemma SentencePiece tokenizer (`tokenizer.json`, shipped inside the SigLIP 2
+  repository above) — Gemma Terms of Use —
+  https://ai.google.dev/gemma/terms — used only to turn a typed search query
+  into token ids for the SigLIP 2 text tower.
 - Bundled Python packages — [generated package/version/licence inventory from
   packaging/requirements-desktop.txt]

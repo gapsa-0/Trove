@@ -71,17 +71,21 @@ _RUN_TEXT = {
 }
 _UNAVAILABLE_TEXT = {
     "detect": "Detection unavailable",
-    "semantic": "No Voyage API key",
+    "semantic": "Semantic indexing unavailable",
 }
 
 
 def _availability(cfg: Config) -> dict[str, bool]:
     from ..detect import extract as dx
     from . import semantic
+    # Both of these ask "are the dependencies importable", never "are the model
+    # weights on disk": an unavailable stage is never queued, and it is the
+    # stage itself that downloads its weights, so gating on the files would be
+    # a deadlock.
     return {
         SCAN: True, ENRICH: True, DEDUP: True, PLACES: True,
         DETECT: dx.available(),
-        SEMANTIC: semantic.api_key_available(),
+        SEMANTIC: semantic.available(),
     }
 
 

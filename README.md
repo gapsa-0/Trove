@@ -78,36 +78,26 @@ jobs stop at their next checkpoint, and the pause survives a restart, which is
 useful when the machine is needed for something else. The sidebar lists every stage
 currently running, not just one.
 
-## Privacy and optional embeddings
+## Privacy
 
-The normal catalogue is local-first. Scanning, hashing, metadata extraction,
-duplicates, thumbnails, place clustering, face detection, face embeddings, face
-clustering, and the SQLite catalogue all stay on the machine. Trove has no telemetry
-and does not modify source media. Enabling the map's street-map layer fetches public
-map tiles online, which discloses the viewed coordinates but never uploads photos.
+Everything is local. Scanning, hashing, metadata extraction, duplicates,
+thumbnails, place clustering, face detection and clustering, search by
+description, and the SQLite catalogue all stay on the machine. Trove has no
+telemetry, no accounts, no API keys, and does not modify source media.
 
-Optional multimodal embedding is the one exception. If `VOYAGE_API_KEY` is available,
-Trove automatically indexes compatible canonical media with Voyage Multimodal and
-stores the returned vectors locally in SQLite. It sends a downscaled cached JPEG for
-images where possible, or the original compatible MP4 video; it never sends an
-original image merely because a thumbnail was available. Audio, PDFs, other document
-formats, and non-MP4 video are recorded as skipped. Text queries sent to the semantic
-endpoint also leave the machine. Do not set this key unless that data transfer is
-appropriate for the archive.
+**The map's street-map layer is the only outbound network call in the app.**
+Turning it on fetches public map tiles, which discloses the coordinates you are
+looking at — never the photos themselves. It is a toggle, and switching it off
+leaves a fully offline plot.
 
-In the desktop app, paste the key into **Settings**. It is written to a
-`secrets.json` in the application-data folder with owner-only permissions and loaded
-into the app process at startup. From a source checkout you can instead put it in a
-project-root `.env` file, or set it in the environment before launching:
-
-```text
-VOYAGE_API_KEY=...
-```
-
-The key is deliberately kept out of Trove's `config.json`, which is otherwise
-readable configuration. Embedding is resumable, does not process hidden duplicates,
-and can run alongside the local pipeline. Remove the key and indexing simply stops;
-vectors already stored stay searchable.
+Search by description works by embedding your media and your query with
+[SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-256) (Apache-2.0),
+which runs on this machine like every other model here. The model downloads
+itself once, about 690 MB, the first time an archive is indexed; after that
+nothing is fetched. Photos are embedded through the same cached thumbnails the
+app already displays, videos through a few sampled frames. Audio and documents
+are recorded as skipped — the model has no audio tower. Indexing is resumable,
+skips hidden duplicates, and runs alongside the rest of the pipeline.
 
 ## Install
 

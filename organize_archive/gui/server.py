@@ -10,11 +10,12 @@ import json
 import mimetypes
 import os
 import re
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from ..config import Config
+from ..config import Config, discard_superseded_secrets
 from ..db import database as db
 from . import queries, thumbs, icons
 from .jobs import JobManager
@@ -168,8 +169,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/archives":
                 self._json({"archives": queries.archives(self.cfg)})
             elif path == "/api/settings":
-                from . import semantic
-                self._json({"voyage": semantic.api_key_status()})
+                self._json({})
             elif path == "/api/summary":
                 rid = one("root", int)
                 self._json(queries.summary(self._db(rid), rid))
@@ -264,12 +264,18 @@ class Handler(BaseHTTPRequestHandler):
                     limit=min(one("limit", int, 60), 200), offset=one("offset", int, 0)))
             elif path == "/api/media":
                 rid = one("root", int)
+                # Absent means "no filter"; only the two explicit values narrow
+                # the grid, so a stray ?indexed=maybe cannot silently hide media
+                # the user asked to see.
+                indexed = {"yes": True, "no": False}.get(one("indexed"))
+                located = {"yes": True, "no": False}.get(one("located"))
                 self._json(queries.media(
                     self._db(rid), root_id=rid,
                     year=one("year"), month=one("month"), mtype=one("type"),
                     person_ids=many("person"), cluster_id=one("place", int),
                     sort="oldest" if one("sort") == "oldest" else "newest",
-                    limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0)))
+                    limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0),
+                    indexed=indexed, located=located))
             elif path == "/api/browse/filters":
                 rid = one("root", int)
                 self._json(queries.browse_filters(self._db(rid), rid))
@@ -281,7 +287,9 @@ class Handler(BaseHTTPRequestHandler):
                 from . import semantic
                 rid = one("root", int)
                 status = queries.semantic_summary(self._db(rid), rid)
-                status["configured"] = semantic.api_key_available()
+                # Nothing left to configure — the stage runs as soon as the
+                # dependencies are importable, and downloads its own weights.
+                status["configured"] = semantic.available()
                 self._json(status)
             elif path == "/api/browse/semantic/search":
                 search_queries = []
@@ -298,17 +306,22 @@ class Handler(BaseHTTPRequestHandler):
                     from . import semantic
                     rid = one("root", int)
                     db_path = self._db(rid)
-                    vectors = semantic.embed_queries(self.cfg, search_queries, db_path)
+                    vectors = semantic.embed_queries(self.cfg, search_queries)
                     self._json(queries.semantic_search(
                         db_path, vectors[0], root_id=rid,
                         year=one("year"), month=one("month"), mtype=one("type"),
                         person_ids=many("person"), cluster_id=one("place", int),
                         min_similarity=max(-1.0, min(1.0, float(
                             self.cfg.semantic_search_min_similarity))),
+                        relative_floor=max(0.0, min(1.0, float(
+                            self.cfg.semantic_search_relative_floor))),
                         sort=(one("sort") if one("sort") in ("newest", "oldest")
                               else "relevance"),
                         limit=min(one("limit", int, 120), 500), offset=one("offset", int, 0),
-                        alternate_vectors=[(vector, 0.01) for vector in vectors[1:]]))
+                        located={"yes": True, "no": False}.get(one("located")),
+                        alternate_vectors=[
+                            (vector, queries.ALTERNATE_VECTOR_PENALTY)
+                            for vector in vectors[1:]]))
             elif path.startswith("/api/item/"):
                 rid = self.jobs.current_root_id()
                 it = queries.item(self._db(rid), int(path.rsplit("/", 1)[1]),
@@ -382,12 +395,6 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     res = queries.remove_archive(self.cfg, root_id)
                     self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/settings/voyage-key":
-                from . import semantic
-                if body.get("clear"):
-                    self._json({"voyage": semantic.clear_api_key()})
-                else:
-                    self._json({"voyage": semantic.store_api_key(body.get("key", ""))})
             elif path == "/api/pipeline/pause":
                 paused = body.get("paused")
                 if not isinstance(paused, bool):
@@ -621,10 +628,13 @@ def serve(cfg: Config, host="127.0.0.1", port=8756):
     # (queries.add_archive) or opened for the first time by the scheduler.
     cfg.ensure_dirs()
     cfg.migrate_legacy_archive()
-    # Activate a locally stored Voyage key (Settings drawer) before serving, so the
-    # pipeline and status endpoints see it from the first request. A real env var wins.
+    discard_superseded_secrets()
     from . import semantic
-    semantic.load_stored_key()
+    # Loading the 283 MB text tower takes a second or two. Do it off the serving
+    # thread now so the user's first search doesn't wait for it; a search that
+    # arrives sooner simply blocks on the same lock and gets the warmed session.
+    threading.Thread(target=semantic.warm_text_model, args=(cfg,),
+                     name="semantic-warm", daemon=True).start()
     jm = JobManager(cfg)
     handler = type("BoundHandler", (Handler,), {"cfg": cfg, "jobs": jm})
     return ThreadingHTTPServer((host, port), handler)

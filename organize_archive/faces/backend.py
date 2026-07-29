@@ -286,7 +286,7 @@ class FaceBackend:
                  assessor=None, log=None, **_ignored):
         if not available():
             raise RuntimeError(
-                "face backend unavailable; install the 'ai' extra "
+                "face backend unavailable; install the 'faces' extra "
                 "(insightface + onnxruntime) and a modern opencv-python.")
         from insightface.model_zoo import get_model
         d = ensure_models(cache_dir, log=log)

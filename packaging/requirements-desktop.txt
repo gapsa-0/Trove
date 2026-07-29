@@ -16,6 +16,10 @@ scikit-learn==1.9.0
 # buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
 # zoo loader and face_align helpers, inference itself runs on onnxruntime.
 insightface==1.0.1
+# Query tokenizer for local semantic search (SigLIP 2's Gemma SentencePiece
+# vocabulary). A Rust extension, but its wheels are cp310-abi3 for both
+# manylinux x86_64 and win_amd64, so cp313 installs one without a compiler.
+tokenizers==0.23.1
 PyInstaller==6.21.0
 # ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
 # (packaging/tools/manifest.json). ML model weights are staged separately too

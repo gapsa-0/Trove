@@ -467,9 +467,12 @@ CREATE TABLE IF NOT EXISTS takeout_sidecar (
 
 -- ---- Phase 7: multimodal semantic search ---------------------------------
 
--- Remote semantic-embedding vectors are normalized float32 arrays stored locally.
--- One row also records skipped/failed inputs, making an indexing run resumable
--- without silently uploading the same unsupported file over and over.
+-- Semantic-embedding vectors: normalized float32 arrays, computed locally by the
+-- SigLIP 2 towers (organize_archive/embeddings). One row also records
+-- skipped/failed inputs, making an indexing run resumable without re-deriving
+-- the same unsupported file over and over. indexer_version identifies the vector
+-- space: rows from an earlier embedder are not comparable to a current query,
+-- which is why the Browse grid checks it before calling a file searchable.
 CREATE TABLE IF NOT EXISTS semantic_embeddings (
     file_id       INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
     source_sha256 TEXT NOT NULL,

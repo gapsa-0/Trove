@@ -1,26 +1,27 @@
-"""Semantic video indexing: frame-sampled inputs instead of raw video bytes.
+"""Semantic video indexing: frame sampling, frame averaging, permanent skips.
 
-Base64-encoding a whole video file busts Voyage's 32K-token context window on
-anything but a tiny clip (root cause C in the background-pipeline-reliability
-plan): a 5MB mp4 already fails with "exceed the model's context window of
-32000 tokens", identically forever. Worse, jobs.py used to force every video
-into its own single-item group, so the failed batch's per-item isolation
-retry then re-issued the *exact same* doomed request a second time.
+A video is never embedded as a whole file. ``media_part`` samples a handful of
+frames spread across the clip, each frame is embedded on its own, and the unit
+vectors are averaged back into one -- so a clip lands in the same space as a
+photo and is comparable under the same cosine threshold, instead of being
+represented by whichever single frame happened to be first.
 
-These cover the fix: media_part() sends a handful of sampled frames as one
-multi-image input instead of raw bytes; a group that was already down to one
-item is recorded directly rather than retried (it can only repeat the same
-failure); and an oversize/context-window 400 is a permanent "skipped", not a
-retryable "error".
+These cover that contract plus the failure taxonomy around it: a video ffmpeg
+cannot decode is a *permanent skip* (nothing will ever change by retrying),
+while a genuinely unexpected failure stays a retryable error, and one bad file
+costs one file rather than the whole pass.
 """
 
 from __future__ import annotations
 
-import base64
 import threading
+
+import numpy as np
+import pytest
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
+from organize_archive.embeddings import backend as eb
 from organize_archive.gui import jobs as jobs_mod, semantic, thumbs
 
 
@@ -41,31 +42,48 @@ def _archive_db(tmp_path, sha256="abc", media_type="video"):
 
 
 # ---------------------------------------------------------------------------
-# media_part(): frames, not raw bytes
+# media_part(): sampled frames, as file paths
 # ---------------------------------------------------------------------------
 
-def test_video_media_part_sends_sampled_frames_not_raw_bytes(tmp_path, monkeypatch):
+def test_video_media_part_returns_sampled_frame_paths(tmp_path, monkeypatch):
     frames = []
-    for i, payload in enumerate((b"frame-a", b"frame-b", b"frame-c")):
+    for i in range(3):
         fp = tmp_path / f"frame{i}.jpg"
-        fp.write_bytes(payload)
+        fp.write_bytes(b"jpeg")
         frames.append(fp)
-    monkeypatch.setattr(
-        thumbs, "video_frames_for",
-        lambda cache_dir, fid, src, offsets, size=1024, sha256=None, rotate=0: frames)
+    seen = {}
+
+    def fake_frames(cache_dir, fid, src, offsets, size=1024, sha256=None, rotate=0):
+        seen["offsets"] = offsets
+        seen["size"] = size
+        return frames
+
+    monkeypatch.setattr(thumbs, "video_frames_for", fake_frames)
 
     part, kind, reason = semantic.media_part(
         Config(), tmp_path / "clip.mp4", "mp4", "video", str(tmp_path / "cache"),
         rotate=0, duration_s=12.0)
 
     assert reason is None
-    assert kind == "video_frames"          # not the old "video" (video_base64)
-    contents = part["content"]
-    assert len(contents) == 3              # one Voyage input, several images
-    assert all(c["type"] == "image_base64" for c in contents)
-    assert all("video_base64" not in c for c in contents)
-    decoded = [base64.b64decode(c["image_base64"].split(",", 1)[1]) for c in contents]
-    assert decoded == [b"frame-a", b"frame-b", b"frame-c"]
+    assert kind == "video_frames"
+    assert part == frames
+    # Spread across the clip, and pulled in from both ends where title cards and
+    # black frames live.
+    assert len(seen["offsets"]) == 3
+    assert seen["offsets"][0] > "00:00:00.000"
+
+
+def test_image_media_part_returns_one_cached_thumbnail(tmp_path, monkeypatch):
+    thumb = tmp_path / "thumb.jpg"
+    thumb.write_bytes(b"jpeg")
+    monkeypatch.setattr(
+        thumbs, "thumb_for",
+        lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: thumb)
+
+    part, kind, reason = semantic.media_part(
+        Config(), tmp_path / "photo.jpg", "jpg", "image", str(tmp_path / "cache"))
+
+    assert (part, kind, reason) == ([thumb], "thumbnail", None)
 
 
 def test_no_extractable_frames_is_a_clean_permanent_skip(tmp_path, monkeypatch):
@@ -84,20 +102,74 @@ def test_no_extractable_frames_is_a_clean_permanent_skip(tmp_path, monkeypatch):
     assert semantic._is_permanent_skip(reason)
 
 
+def test_undecodable_image_is_a_clean_permanent_skip(tmp_path, monkeypatch):
+    """The thumbnailer is the only decoder, so what it refuses cannot be indexed."""
+    monkeypatch.setattr(
+        thumbs, "thumb_for",
+        lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: None)
+
+    part, kind, reason = semantic.media_part(
+        Config(), tmp_path / "photo.xyz", "xyz", "image", str(tmp_path / "cache"))
+
+    assert part is None
+    assert semantic._is_permanent_skip(reason)
+
+
 # ---------------------------------------------------------------------------
-# save_outcome(): oversize/context-window 400 -> skipped, not error
+# Frame averaging
 # ---------------------------------------------------------------------------
 
-def test_context_window_400_is_recorded_as_skipped(tmp_path):
+class _FakeVisionBackend(eb.SiglipBackend):
+    """Only the model call is faked; normalisation and averaging stay real."""
+
+    def __init__(self, vectors):
+        self._vectors = [np.asarray(v, dtype=np.float32) for v in vectors]
+        self.calls = 0
+
+    def embed_images(self, items):
+        items = list(items)
+        self.calls += 1
+        if not items:
+            return np.zeros((0, 3), dtype=np.float32)
+        return self._normalize(np.stack(self._vectors[:len(items)]))
+
+
+def test_video_vector_is_the_renormalised_mean_of_its_frames():
+    backend = _FakeVisionBackend([
+        [3.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 5.0]])
+
+    vector = backend.embed_frames_mean(["a", "b", "c"])
+
+    # Each frame contributes as a *unit* vector, so the differing raw magnitudes
+    # above must not weight one frame over another.
+    assert vector == pytest.approx(np.full(3, 1 / np.sqrt(3)), abs=1e-6)
+    assert float(np.linalg.norm(vector)) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_a_single_readable_frame_still_produces_a_unit_vector():
+    backend = _FakeVisionBackend([[0.0, 2.0, 0.0]])
+
+    vector = backend.embed_frames_mean(["only-frame"])
+
+    assert vector == pytest.approx(np.array([0.0, 1.0, 0.0]), abs=1e-6)
+
+
+def test_no_frames_at_all_yields_no_vector():
+    assert _FakeVisionBackend([]).embed_frames_mean([]) is None
+
+
+# ---------------------------------------------------------------------------
+# save_outcome(): the skip/error split
+# ---------------------------------------------------------------------------
+
+def test_an_undecodable_source_is_recorded_as_skipped(tmp_path):
     db_path = _archive_db(tmp_path)
     conn = db.connect(db_path)
-    cfg = Config()
     row = {"id": 1, "sha256": "abc"}
-    voyage_400 = (
-        "Voyage returned HTTP 400: {\"detail\":\"the inputs at indices [0] "
-        "exceed the model's context window of 32000 tokens\"}")
 
-    semantic.save_outcome(conn, cfg, row, None, "video_frames", voyage_400)
+    semantic.save_outcome(
+        conn, Config(), row, None, "video_frames",
+        "unsupported video: could not extract any frames (ffmpeg missing or unreadable video)")
     conn.commit()
 
     status = conn.execute(
@@ -110,10 +182,10 @@ def test_an_ordinary_failure_still_records_as_error(tmp_path):
     is still "error", not swallowed into "skipped"."""
     db_path = _archive_db(tmp_path)
     conn = db.connect(db_path)
-    cfg = Config()
     row = {"id": 1, "sha256": "abc"}
 
-    semantic.save_outcome(conn, cfg, row, None, "video_frames", "Could not reach Voyage: timed out")
+    semantic.save_outcome(conn, Config(), row, None, "video_frames",
+                          "OSError: cannot identify image file")
     conn.commit()
 
     status = conn.execute(
@@ -122,7 +194,7 @@ def test_an_ordinary_failure_still_records_as_error(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# JobManager._semantic_pass(): a lone group is never retried
+# JobManager._semantic_pass(): one bad file costs one file
 # ---------------------------------------------------------------------------
 
 def _job_manager(tmp_path, monkeypatch):
@@ -131,57 +203,52 @@ def _job_manager(tmp_path, monkeypatch):
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))
-    jm = jobs_mod.JobManager(Config())
-    return jm
+    return jobs_mod.JobManager(Config())
 
 
-def test_single_item_group_failure_is_recorded_without_a_retry(tmp_path, monkeypatch):
+def test_a_failing_file_is_recorded_once_and_never_retried(tmp_path, monkeypatch):
+    """Local inference has no batch to isolate from.
+
+    The old code sent batches over HTTP, so a failure had to be re-issued per
+    item to find the culprit. Here a file either decodes or it does not: it must
+    be embedded exactly once, and its failure recorded without a second attempt.
+    """
     _archive_db(tmp_path)
     jm = _job_manager(tmp_path, monkeypatch)
     try:
         row = {"id": 1, "rel_path": "clip.mp4", "ext": "mp4", "media_type": "video",
-              "sha256": "abc", "root_path": "/x", "rotate_deg": 0, "duration_s": 5.0}
+               "sha256": "abc", "root_path": "/x", "rotate_deg": 0, "duration_s": 5.0}
         monkeypatch.setattr(semantic, "pending_rows", lambda conn, root_id, force=False: [row])
         monkeypatch.setattr(semantic, "work_counts", lambda conn, root_id, force=False: (1, 0))
         monkeypatch.setattr(
             semantic, "media_part",
             lambda cfg, path, ext, media_type, cache_dir, rotate, duration_s:
-                ({"content": [{"type": "image_base64", "image_base64": "x"}]},
-                 "video_frames", None))
+                ([tmp_path / "frame.jpg"], "video_frames", None))
         calls = []
 
-        def fake_embed_parts(cfg, parts):
-            calls.append(list(parts))
-            raise semantic.VoyageEmbeddingError(
-                "Voyage returned HTTP 400: exceed the model's context window of 32000 tokens")
+        def fake_embed_part(cfg, part, kind):
+            calls.append((list(part), kind))
+            raise OSError("broken frame")
 
-        monkeypatch.setattr(semantic, "embed_parts", fake_embed_parts)
+        monkeypatch.setattr(semantic, "embed_part", fake_embed_part)
 
         job = jobs_mod.Job(id=1, kind="semantic", root_id=1, root_path="/x")
-        cancel = threading.Event()
+        indexed, skipped, failed, total = jm._semantic_pass(
+            job, threading.Event(), force=False)
 
-        indexed, skipped, failed, total = jm._semantic_pass(job, cancel, force=False)
-
-        # The lone group's request failed once -- and was never re-issued in
-        # isolation, since it already *was* the isolated request.
         assert len(calls) == 1
         assert (indexed, skipped, failed, total) == (0, 0, 1, 1)
 
         conn = db.connect(tmp_path / "archive.db")
-        row_out = conn.execute(
-            "SELECT status, input_kind FROM semantic_embeddings WHERE file_id=1"
-        ).fetchone()
-        # Context-window 400 on the one-and-only attempt: permanent skip.
-        assert row_out["status"] == "skipped"
-        assert row_out["input_kind"] == "video_frames"
+        stored = conn.execute(
+            "SELECT status, error FROM semantic_embeddings WHERE file_id=1").fetchone()
+        assert stored["status"] == "error"
+        assert "broken frame" in stored["error"]
     finally:
         jm.shutdown(timeout=2.0)
 
 
-def test_multi_item_group_still_isolates_the_bad_item(tmp_path, monkeypatch):
-    """Guard against a regression in the surrounding retry logic: a batch of
-    several items that fails as a whole must still fall back to individual
-    calls, so one bad source doesn't discard its good neighbours."""
+def test_one_bad_file_does_not_take_its_neighbours_down(tmp_path, monkeypatch):
     _archive_db(tmp_path, sha256="abc")
     conn = db.connect(tmp_path / "archive.db")
     conn.execute(
@@ -205,27 +272,25 @@ def test_multi_item_group_still_isolates_the_bad_item(tmp_path, monkeypatch):
         monkeypatch.setattr(
             semantic, "media_part",
             lambda cfg, path, ext, media_type, cache_dir, rotate, duration_s:
-                ({"content": [{"type": "image_base64", "image_base64": "x"}]},
-                 "video_frames" if media_type == "video" else "image", None))
+                ([tmp_path / "x.jpg"],
+                 "video_frames" if media_type == "video" else "thumbnail", None))
 
-        batch_calls, solo_calls = [], []
+        def fake_embed_part(cfg, part, kind):
+            if kind == "video_frames":
+                raise OSError("broken frame")
+            return [0.1, 0.2]
 
-        def fake_embed_parts(cfg, parts):
-            if len(parts) > 1:
-                batch_calls.append(list(parts))
-                raise semantic.VoyageEmbeddingError("boom")
-            solo_calls.append(list(parts))
-            return [[0.1, 0.2]]
-
-        monkeypatch.setattr(semantic, "embed_parts", fake_embed_parts)
+        monkeypatch.setattr(semantic, "embed_part", fake_embed_part)
 
         job = jobs_mod.Job(id=1, kind="semantic", root_id=1, root_path="/x")
-        cancel = threading.Event()
+        indexed, skipped, failed, total = jm._semantic_pass(
+            job, threading.Event(), force=False)
 
-        indexed, skipped, failed, total = jm._semantic_pass(job, cancel, force=False)
+        assert (indexed, skipped, failed, total) == (1, 0, 1, 2)
 
-        assert len(batch_calls) == 1        # one combined attempt first
-        assert len(solo_calls) == 2         # then isolated per item
-        assert (indexed, skipped, failed, total) == (2, 0, 0, 2)
+        conn = db.connect(tmp_path / "archive.db")
+        rows_out = {r["file_id"]: r["status"] for r in conn.execute(
+            "SELECT file_id, status FROM semantic_embeddings")}
+        assert rows_out == {1: "error", 2: "indexed"}
     finally:
         jm.shutdown(timeout=2.0)

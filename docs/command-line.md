@@ -12,7 +12,7 @@ package with the extras appropriate to the features you want:
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-pip install -e '.[cli,media,faces,pets]'
+pip install -e '.[cli,media,faces,pets,semantic]'
 ```
 
 `exiftool` and `ffmpeg`/`ffprobe` are recommended system tools. The core scanner works

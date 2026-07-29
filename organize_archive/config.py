@@ -17,8 +17,40 @@ from pathlib import Path
 # Project layout ------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 from .paths import (app_data_dir, config_file, default_cache_dir,
-                    default_db_path, ensure_app_data_dirs,
+                    default_db_path, ensure_app_data_dirs, secrets_file,
                     archives_dir, archive_dir, archive_db_path, archive_cache_dir)
+
+# Credentials this application no longer has any use for. Semantic search became
+# local (organize_archive/embeddings), so nothing can spend a Voyage key any
+# more -- and a live credential left readable on disk for a feature that no
+# longer exists is a privacy wart, not merely dead data.
+_SUPERSEDED_SECRETS = ("voyage_api_key",)
+
+
+def discard_superseded_secrets() -> None:
+    """Remove retired credentials from ``secrets.json``, and the file with them.
+
+    Idempotent and silent: this runs at every start, and a missing or unreadable
+    secrets file simply means there is nothing to clean up.
+    """
+    path = secrets_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict) or not any(k in data for k in _SUPERSEDED_SECRETS):
+        return
+    for key in _SUPERSEDED_SECRETS:
+        data.pop(key, None)
+    try:
+        if data:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+        else:
+            path.unlink()
+    except OSError:
+        pass
 
 
 def _now_iso() -> str:
@@ -88,15 +120,33 @@ class Config:
     # paused background pipeline stays paused across an app restart.
     pipeline_paused: bool = False
 
-    # Semantic Browse search (Voyage Multimodal 3.5). The API key is deliberately
-    # not a config field: put VOYAGE_API_KEY in the ignored project-root .env
-    # file (or process environment), never data/config.json.
-    semantic_embedding_model: str = "voyage-multimodal-3.5"
-    semantic_embedding_dimensions: int = 1024
-    semantic_inline_max_bytes: int = 20 * 1024 * 1024
-    # Hide weak semantic matches. This is cosine similarity, so valid values
-    # range from -1 to 1; tune it upward for fewer, more precise results.
-    semantic_search_min_similarity: float = 0.25
+    # Semantic Browse search, run locally by organize_archive/embeddings. These
+    # two are provenance, recorded on every row of semantic_embeddings; they are
+    # not knobs. Changing them without changing the model would mislabel every
+    # vector written afterwards.
+    semantic_embedding_model: str = "siglip2-base-patch16-256"
+    semantic_embedding_dimensions: int = 768
+    # Two cuts decide which semantic matches are shown, because one absolute
+    # number provably cannot. Measured on this archive: the local embedder's
+    # cosines are compressed (median 0.05, best-in-archive ~0.15 for a query it
+    # answers well) AND shift per query -- the best "fireworks" match scores
+    # 0.097 while the best "selfie" scores 0.150. Worse, a subject the archive
+    # does not contain at all ("an underwater submarine") still tops out around
+    # 0.10, inside the range of genuine queries. So no absolute value separates
+    # relevant from irrelevant.
+    #
+    # min_similarity is therefore only a floor against noise. At the relative
+    # floor below it binds on nothing -- results are identical anywhere from
+    # 0.00 to 0.06 -- and exists purely to stop a query the archive cannot
+    # answer at all from promoting its own near-random best matches. Retune it
+    # with tools/semantic_calibrate.py, not by intuition.
+    semantic_search_min_similarity: float = 0.05
+    # ... and this is the cut that actually decides relevance: keep results
+    # within this fraction of the *query's own* best score, so the bar travels
+    # with the query instead of assuming a fixed scale. 0.80 keeps roughly the
+    # top ~1% of an archive for a query it answers well, and collapses to a
+    # handful for one it does not.
+    semantic_search_relative_floor: float = 0.80
 
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter
@@ -343,15 +393,31 @@ class Config:
     # regardless of this flag; this is only the tie-break fallback.
     filename_date_day_first: bool = True
 
+    # Semantic settings written by a pre-SigLIP install. config.json persists
+    # every field, so a saved value shadows the dataclass default forever --
+    # which would have the app writing 768-d SigLIP vectors while recording
+    # `dimensions: 1024`, and filtering them at a threshold tuned for a
+    # completely different similarity scale, so every search returned nothing.
+    # Unlike the catalogue itself, config.json is not discarded on upgrade, so
+    # these three have to be actively reset.
+    _SUPERSEDED_SEMANTIC = (
+        "semantic_embedding_model", "semantic_embedding_dimensions",
+        "semantic_search_min_similarity", "semantic_search_relative_floor")
+
     @classmethod
     def load(cls) -> "Config":
         cfg = cls()
         path = config_file()
         if path.exists():
             data = json.loads(path.read_text())
+            superseded = str(data.get("semantic_embedding_model", "")).startswith("voyage")
             for k, v in data.items():
+                if superseded and k in cls._SUPERSEDED_SEMANTIC:
+                    continue
                 if hasattr(cfg, k):
                     setattr(cfg, k, v)
+            if superseded:
+                cfg.save()
         return cfg
 
     def save(self) -> None:

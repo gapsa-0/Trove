@@ -746,74 +746,44 @@ class JobManager:
         if not rows:
             return (0, 0, 0, 0)
         indexed = skipped = failed = 0
-        # Voyage accepts up to 1,000 inputs per call. Keep requests deliberately
-        # smaller: a few original high-resolution images can otherwise exceed
-        # its 320K-token request ceiling. A failed multi-item request falls
-        # back to individual requests, so one malformed source never holds up
-        # the rest of an archive.
-        batch_size = 20
-        for start in range(0, len(rows), batch_size):
+        # A straight loop, one file at a time. The old batch-then-isolate retry
+        # ladder existed because a single malformed input could 400 an entire
+        # Voyage request and take its innocent neighbours down with it. Local
+        # inference has no such failure mode: a file either decodes or it does
+        # not, and media_part has already decided that. Batching would not even
+        # pay for itself — on this CPU a batch of four costs four single
+        # forwards — while one-at-a-time keeps the progress card truthful.
+        # Per-item error capture stays: a truncated JPEG can still raise inside
+        # PIL, and that must cost one file, not the pass.
+        cache_dir = self.cfg.archive_cache_dir(job.root_id)
+        for offset, row in enumerate(rows):
             if cancel.is_set():
                 raise KeyboardInterrupt
-            group = rows[start:start + batch_size]
-            job.current = f"Preparing {len(group)} media files…"
-            prepared = []
-            for offset, row in enumerate(group):
-                job.current = row["rel_path"]
+            job.current = row["rel_path"]
+            try:
                 part, kind, reason = semantic.media_part(
                     self.cfg, Path(row["root_path"]) / row["rel_path"],
-                    row["ext"], row["media_type"],
-                    self.cfg.archive_cache_dir(job.root_id), row["rotate_deg"],
-                    row["duration_s"])
+                    row["ext"], row["media_type"], cache_dir,
+                    row["rotate_deg"], row["duration_s"])
                 if reason:
                     self._save_semantic_outcome(job.root_id, row, None, kind, reason)
                     skipped += 1
-                    job.done = already + start + offset + 1
                 else:
-                    prepared.append((row, part, kind, offset))
-            # Video is now a handful of sampled frames (gui/semantic.py), not
-            # the raw file, so it stays within the same small token budget as
-            # a photo thumbnail and can batch with everything else.
-            api_groups = [prepared[n:n + batch_size] for n in range(0, len(prepared), batch_size)]
-            for api_group in api_groups:
-                if len(api_group) == 1:
-                    job.current = f"Sending {api_group[0][0]['rel_path']}"
-                else:
-                    job.current = f"Sending {len(api_group)} prepared media files to Voyage…"
-                try:
-                    vectors = semantic.embed_parts(self.cfg, [p[1] for p in api_group])
-                    outcomes = zip(api_group, vectors)
-                except Exception as batch_exc:
-                    if len(api_group) == 1:
-                        # A lone item IS the failing request; isolating it
-                        # again would only repeat it (this is exactly how a
-                        # video used to get uploaded twice for the same
-                        # context-window 400 before frame-sampling).
-                        item = api_group[0]
+                    values = semantic.embed_part(self.cfg, part, kind)
+                    if values is None:
                         self._save_semantic_outcome(
-                            job.root_id, item[0], None, item[2], str(batch_exc))
-                        failed += 1
-                        job.done = already + start + item[3] + 1
-                        outcomes = []
+                            job.root_id, row, None, kind,
+                            f"unsupported {row['media_type']}: no frame could be decoded")
+                        skipped += 1
                     else:
-                        # Fall back to isolated calls; this identifies and
-                        # records a bad source without discarding good
-                        # neighbours.
-                        outcomes = []
-                        for item in api_group:
-                            try:
-                                job.current = f"Retrying: {item[0]['rel_path']}"
-                                outcomes.append(
-                                    (item, semantic.embed_parts(self.cfg, [item[1]])[0]))
-                            except Exception as exc:
-                                self._save_semantic_outcome(
-                                    job.root_id, item[0], None, item[2], str(exc))
-                                failed += 1
-                                job.done = already + start + item[3] + 1
-                for (row, _part, kind, offset), values in outcomes:
-                    self._save_semantic_outcome(job.root_id, row, values, kind, None)
-                    indexed += 1
-                    job.done = already + start + offset + 1
+                        self._save_semantic_outcome(job.root_id, row, values, kind, None)
+                        indexed += 1
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                self._save_semantic_outcome(job.root_id, row, None, None, str(exc))
+                failed += 1
+            job.done = already + offset + 1
         return (indexed, skipped, failed, len(rows))
 
     def _save_semantic_outcome(self, root_id, row, values, kind, reason):
@@ -831,7 +801,7 @@ class JobManager:
         from . import semantic
         conn = db.connect(self.cfg.archive_db_path(root_id))
         try:
-            # Dedup may have completed while Voyage was processing this item.
+            # Dedup may have completed while this item was being embedded.
             # Only keep an outcome if this exact source remains canonical.
             current = conn.execute(
                 "SELECT hidden, sha256 FROM files WHERE id=?", (row["id"],)

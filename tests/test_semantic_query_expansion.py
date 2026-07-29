@@ -1,5 +1,7 @@
 import struct
 
+import numpy as np
+
 from organize_archive.db import database as db
 from organize_archive.gui import queries, semantic
 
@@ -50,19 +52,23 @@ def test_semantic_search_merges_alternate_query_vector(tmp_path):
     assert expanded["items"][1]["score"] == 0.99
 
 
-def test_embed_queries_uses_one_multimodal_request(monkeypatch):
+def test_embed_queries_uses_one_forward_pass(monkeypatch):
+    """Both formulations of a search go through the text tower together.
+
+    The original wording and its local translation are embedded in a single
+    call, not one apiece: the tower is ~283 MB of int8 weights and the second
+    row is nearly free once it is loaded.
+    """
     calls = []
 
-    def fake_embed(cfg, inputs, *, input_type):
-        calls.append((inputs, input_type))
-        return [[1.0], [2.0]]
+    class FakeBackend:
+        def embed_texts(self, texts):
+            calls.append(list(texts))
+            return np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
 
-    monkeypatch.setattr(semantic, "_embed", fake_embed)
+    monkeypatch.setattr(semantic, "backend", lambda cfg, log=None: FakeBackend())
 
-    assert semantic.embed_queries(object(), ["lago", "lake"], "unused.db") == [
-        [1.0], [2.0]
+    assert semantic.embed_queries(object(), ["lago", "lake"]) == [
+        [1.0, 0.0], [0.0, 1.0]
     ]
-    assert calls == [([
-        {"content": [{"type": "text", "text": "lago"}]},
-        {"content": [{"type": "text", "text": "lake"}]},
-    ], "query")]
+    assert calls == [["lago", "lake"]]

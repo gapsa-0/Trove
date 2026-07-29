@@ -1,202 +1,102 @@
-"""Voyage Multimodal client and local semantic-index helpers.
+"""Semantic-index orchestration over the local SigLIP 2 embedder.
 
-The archive index uses Voyage's multimodal endpoint for image and video
-retrieval. A video is never sent as its raw bytes -- a few MB of video easily
-busts the endpoint's 32K-token context window, so every video failed
-identically forever. Instead a handful of frames sampled across the clip are
-sent as one input holding several ``image_base64`` contents, which stays
-token-sized like a photo and works for any container ffmpeg can decode, not
-only mp4. Vectors remain in SQLite; only source media sent for indexing and
-the user's search query leave the machine. Voyage's Batch API does not yet
-support its multimodal model, so this module uses the endpoint's regular
-multi-input requests instead.
+This layer decides *what* gets embedded and how the result is recorded; the
+model itself lives in ``organize_archive/embeddings/backend.py``. It used to
+call Voyage's multimodal API, which made semantic search the one feature that
+sent photos and search queries off this machine. Nothing here reaches the
+network any more except the one-time model download.
+
+The archive is never read at full resolution: an image is embedded through the
+same 1024px cached thumbnail the GUI already renders (so HEIC/RAW decode and the
+archive's ``rotate_deg`` are handled once, and retrieval sees the photo the way
+up the user sees it), and a video through a handful of frames sampled across the
+clip. A video's frames are embedded individually and averaged into one vector,
+which keeps a clip comparable to a photo under the same cosine threshold.
+
+Vectors live in the ``semantic_embeddings`` table. ``INDEXER_VERSION`` is the
+identity of that vector space: change the model or its preprocessing, bump it,
+and every archive re-indexes itself instead of silently comparing vectors that
+were never in the same space.
 """
 
 from __future__ import annotations
 
-import base64
 import hashlib
-import json
-import os
+import threading
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from ..db import database as db
-from ..paths import secrets_file
+from ..embeddings import backend as eb
 from . import thumbs
 
-_ENDPOINT = "https://api.voyageai.com/v1/multimodalembeddings"
-_IMAGE_MIMES = {
-    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-    "webp": "image/webp", "gif": "image/gif",
-}
-_MAX_INPUTS = 1_000
-INDEXER_VERSION = "voyage-mm-3.5-2"
+# Bumped whenever the vector space changes. Mirrors embeddings.EMBEDDER_VERSION;
+# kept as its own constant because pending_rows/work_counts compare it per row.
+INDEXER_VERSION = eb.EMBEDDER_VERSION
 
 # Frames sampled per video, and where in the clip: evenly spread but pulled in
 # from the very ends, where a title card or a black open/close frame sits more
 # often than a moment that actually represents the video.
 _VIDEO_FRAME_SIZE = 1024
 _VIDEO_FRAME_FRACTIONS = (0.15, 0.5, 0.85)
+_IMAGE_THUMB_SIZE = 1024
+
+# One backend for the whole process. The vision tower is 372 MB and takes a
+# couple of seconds to load, so rebuilding it per job (or per search) would be
+# pure waste; both towers inside it are still loaded lazily and independently,
+# so an indexing run never pays for the text tower and a search never pays for
+# the vision tower.
+_backend: eb.SiglipBackend | None = None
+_backend_lock = threading.Lock()
 
 
-class VoyageEmbeddingError(RuntimeError):
-    pass
+def available() -> bool:
+    """True when the embedding dependencies are importable.
+
+    Weights are *not* part of this: the indexing stage is what downloads them
+    (see ``embeddings.backend.available``).
+    """
+    return eb.available()
 
 
-def api_key_available() -> bool:
-    return bool(os.environ.get("VOYAGE_API_KEY", "").strip())
+def models_ready(cfg) -> bool:
+    """True when the indexing half (the vision tower) is already downloaded."""
+    return eb.vision_ready(cfg.cache_dir)
 
 
-def _api_key() -> str:
-    key = os.environ.get("VOYAGE_API_KEY", "").strip()
-    if not key:
-        raise VoyageEmbeddingError("VOYAGE_API_KEY is not set for this app process")
-    return key
+def backend(cfg, log=None) -> eb.SiglipBackend:
+    global _backend
+    if _backend is None:
+        with _backend_lock:
+            if _backend is None:
+                _backend = eb.SiglipBackend(cfg.cache_dir, log=log)
+    return _backend
 
 
-# ---- user-managed key storage --------------------------------------------
-# The rest of the app reads the key from ``os.environ`` (see ``api_key_available``
-# / ``_api_key`` above). To let users paste a key in the GUI without changing that
-# contract, we persist it to a local, owner-only ``secrets.json`` and inject it
-# into ``os.environ`` at startup. A real environment variable (shell export or the
-# project ``.env`` loaded by ``config._load_dotenv``) always wins and is never
-# overwritten or cleared, the UI shows such a key as read-only.
+def warm_text_model(cfg) -> None:
+    """Load the text tower now, so the first search does not wait for it.
 
-_SECRET_KEY = "voyage_api_key"
-_env_provided = False   # active key came from the real environment, not our store
-_loaded = False
-
-
-def _read_secrets() -> dict:
+    Best-effort: called from a background thread at server start, where the
+    weights may still need downloading and any failure must stay invisible —
+    the next search will simply load it then, or report the real error.
+    """
     try:
-        return json.loads(secrets_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def _write_secrets(data: dict) -> None:
-    path = secrets_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Owner-only from creation, the file holds a credential.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
+        backend(cfg).load_text()
+    except Exception:
         pass
 
 
-def load_stored_key() -> None:
-    """Activate a locally stored Voyage key at startup, unless the environment
-    already provides one (which always wins)."""
-    global _env_provided, _loaded
-    _loaded = True
-    if os.environ.get("VOYAGE_API_KEY", "").strip():
-        _env_provided = True
-        return
-    _env_provided = False
-    stored = str(_read_secrets().get(_SECRET_KEY, "")).strip()
-    if stored:
-        os.environ["VOYAGE_API_KEY"] = stored
+def embed_query(cfg, query: str) -> list[float]:
+    return embed_queries(cfg, [query])[0]
 
 
-def store_api_key(key: str) -> dict:
-    """Persist a user-supplied Voyage key and activate it for this process."""
-    global _env_provided
-    key = (key or "").strip()
-    if not key:
-        raise ValueError("An API key is required")
-    data = _read_secrets()
-    data[_SECRET_KEY] = key
-    _write_secrets(data)
-    os.environ["VOYAGE_API_KEY"] = key
-    _env_provided = False
-    return api_key_status()
+def embed_queries(cfg, queries: list[str]) -> list[list[float]]:
+    """Embed related search formulations together in one forward pass."""
+    vectors = backend(cfg).embed_texts(queries)
+    return [[float(v) for v in vector] for vector in vectors]
 
 
-def clear_api_key() -> dict:
-    """Forget the stored Voyage key. An environment-provided key is left untouched
-    (the UI presents it as read-only, so there is nothing to clear)."""
-    data = _read_secrets()
-    if _SECRET_KEY in data:
-        data.pop(_SECRET_KEY, None)
-        _write_secrets(data)
-    if not _env_provided:
-        os.environ.pop("VOYAGE_API_KEY", None)
-    return api_key_status()
-
-
-def api_key_status() -> dict:
-    """Non-secret description of the key state for the UI. Never returns the key
-    itself, only whether one is set, a last-4 hint, and where it came from
-    ('env' = read-only, 'stored' = managed here)."""
-    if not _loaded:
-        load_stored_key()
-    active = os.environ.get("VOYAGE_API_KEY", "").strip()
-    if not active:
-        return {"set": False, "hint": None, "source": None}
-    hint = active[-4:] if len(active) >= 4 else active
-    return {"set": True, "hint": hint, "source": "env" if _env_provided else "stored"}
-
-
-def _embed(cfg, inputs: list[dict], *, input_type: str) -> list[list[float]]:
-    if not inputs:
-        return []
-    if len(inputs) > _MAX_INPUTS:
-        raise ValueError(f"Voyage accepts at most {_MAX_INPUTS} inputs per request")
-    payload = {
-        "inputs": inputs,
-        "model": cfg.semantic_embedding_model,
-        "input_type": input_type,
-        "truncation": True,
-    }
-    request = Request(
-        _ENDPOINT,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {_api_key()}"},
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=180) as response:
-            body = json.loads(response.read())
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")[:500]
-        raise VoyageEmbeddingError(f"Voyage returned HTTP {exc.code}: {detail}") from exc
-    except URLError as exc:
-        raise VoyageEmbeddingError(f"Could not reach Voyage: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise VoyageEmbeddingError("Voyage embedding request timed out") from exc
-    try:
-        data = body["data"]
-        values = [item["embedding"] for item in sorted(data, key=lambda item: item["index"])]
-    except (KeyError, TypeError) as exc:
-        raise VoyageEmbeddingError("Voyage returned no embedding values") from exc
-    if len(values) != len(inputs):
-        raise VoyageEmbeddingError(f"Voyage returned {len(values)} embeddings for {len(inputs)} inputs")
-    for vector in values:
-        if len(vector) != cfg.semantic_embedding_dimensions:
-            raise VoyageEmbeddingError(
-                f"Voyage returned {len(vector)} dimensions, expected {cfg.semantic_embedding_dimensions}")
-    return [[float(v) for v in vector] for vector in values]
-
-
-def embed_query(cfg, query: str, _db_path: str) -> list[float]:
-    return embed_queries(cfg, [query], _db_path)[0]
-
-
-def embed_queries(cfg, queries: list[str], _db_path: str) -> list[list[float]]:
-    """Embed related search formulations together in one Voyage request."""
-    return _embed(cfg, [
-        {"content": [{"type": "text", "text": query}]} for query in queries
-    ], input_type="query")
-
-
-def embed_parts(cfg, parts: list[dict]) -> list[list[float]]:
-    """Embed prepared archive inputs together using Voyage's multi-input API."""
-    return _embed(cfg, parts, input_type="document")
+def _cache_id(path: Path) -> int:
+    return int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
 
 
 def _format_offset(secs: float) -> str:
@@ -229,91 +129,69 @@ def _video_frame_offsets(duration_s) -> list[str]:
 
 
 def _video_frames_part(path: Path, cache_dir: str, rotate: int, duration_s
-                        ) -> tuple[dict | None, str | None, str | None]:
-    """One Voyage input holding several sampled frames, instead of the whole
-    video file: a few MB of raw video easily busts the multimodal endpoint's
-    32K-token context window (every video failed identically on this
-    archive), while a few small JPEGs land around 2-6K tokens combined --
-    comfortably inside it, and one embedding still comes back per video.
+                       ) -> tuple[list[Path] | None, str | None, str | None]:
+    """A handful of frames sampled across the clip, instead of the whole video.
+
+    Each is embedded separately and the unit vectors averaged, so a clip lands
+    in the same space as a photo rather than being represented by whichever
+    single frame happened to be first.
     """
-    cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
     frames = thumbs.video_frames_for(
-        cache_dir, cache_id, path, _video_frame_offsets(duration_s),
+        cache_dir, _cache_id(path), path, _video_frame_offsets(duration_s),
         size=_VIDEO_FRAME_SIZE, rotate=rotate)
     if not frames:
         # "unsupported" prefix matches the other permanent-skip reasons below
         # (save_outcome/_is_permanent_skip): no ffmpeg, or a container it
         # can't read, is a clean permanent skip, not a retryable error.
-        return None, None, "unsupported video: could not extract any frames (ffmpeg missing or unreadable video)"
-    contents = []
-    for fp in frames:
-        try:
-            data = base64.b64encode(fp.read_bytes()).decode("ascii")
-        except OSError:
-            continue
-        contents.append({"type": "image_base64", "image_base64": f"data:image/jpeg;base64,{data}"})
-    if not contents:
-        return None, None, "unsupported video: could not read extracted frames"
-    return {"content": contents}, "video_frames", None
+        return None, None, ("unsupported video: could not extract any frames "
+                            "(ffmpeg missing or unreadable video)")
+    return frames, "video_frames", None
 
 
 def media_part(cfg, path: Path, ext: str, media_type: str,
                cache_dir: str, rotate: int = 0, duration_s=None
-               ) -> tuple[dict | None, str | None, str | None]:
-    """Create one Voyage multimodal input, or a non-fatal skip reason.
+               ) -> tuple[list[Path] | None, str | None, str | None]:
+    """The image files to embed for one archive item, or a non-fatal skip reason.
 
-    ``cache_dir`` is the calling archive's own cache, semantic indexing
-    thumbnails are content derived from that archive and never shared with
-    another one. ``rotate`` sends a sideways-stored photo the way up the app
-    shows it, so retrieval sees what the user sees. ``duration_s`` (from
+    Returns cached JPEGs, never the original: one 1024px thumbnail for a photo,
+    several sampled frames for a video. ``cache_dir`` is the calling archive's
+    own cache — these are content derived from that archive and are never shared
+    with another one. ``rotate`` renders a sideways-stored photo the way up the
+    app shows it, so retrieval sees what the user sees. ``duration_s`` (from
     ``media_meta``, already populated by enrich for every video) spaces a
     video's sampled frames across its length; unused for other media types.
     """
     ext = (ext or path.suffix.lstrip(".")).lower()
     if media_type == "video":
         return _video_frames_part(path, cache_dir, rotate, duration_s)
-    source, mime, kind = path, _IMAGE_MIMES.get(ext), "image"
-    content_type = "image_base64"
     if media_type == "image":
-        # A 1024px JPEG keeps every request small enough to batch efficiently,
-        # avoids sending private full-resolution originals, and remains ample
-        # for archive-level visual retrieval. It also converts HEIC/RAW/etc.
-        # to a format Voyage accepts.
-        cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-        thumb = thumbs.thumb_for(cache_dir, cache_id, path, size=1024,
-                                 rotate=rotate)
-        if thumb is not None:
-            source, mime, kind = thumb, "image/jpeg", "thumbnail"
-        elif mime is None:
+        # The thumbnailer is the only decoder involved, so whatever it can open
+        # is exactly what can be indexed: HEIC, RAW and friends included. If it
+        # returns nothing, no amount of retrying will help.
+        thumb = thumbs.thumb_for(cache_dir, _cache_id(path), path,
+                                 size=_IMAGE_THUMB_SIZE, rotate=rotate)
+        if thumb is None:
             return None, None, f"unsupported image format: .{ext or 'unknown'}"
-    elif media_type == "audio":
-        return None, None, "unsupported audio format (Voyage multimodal has no audio input)"
+        return [thumb], "thumbnail", None
+    if media_type == "audio":
+        return None, None, "unsupported audio format (the search model has no audio tower)"
+    return None, None, ("unsupported document format (only visual media is "
+                        "indexed, not PDFs directly)")
+
+
+def embed_part(cfg, part: list[Path], kind: str | None) -> list[float] | None:
+    """Embed one prepared item: a photo's thumbnail, or a video's frames.
+
+    Returns None only when nothing in ``part`` could be decoded, which the
+    caller records as a permanent skip.
+    """
+    model = backend(cfg)
+    if kind == "video_frames":
+        vector = model.embed_frames_mean(part)
     else:
-        return None, None, "unsupported document format (Voyage indexes visual document images, not PDFs directly)"
-    if source is None or mime is None:
-        return None, None, f"unsupported {media_type} format: .{ext or 'unknown'}"
-    try:
-        size = source.stat().st_size
-    except OSError as exc:
-        return None, None, f"cannot read media: {exc}"
-    if size > cfg.semantic_inline_max_bytes:
-        # A large photo can use a local JPEG thumbnail (video is handled
-        # separately, above, and never reaches this branch).
-        if media_type == "image" and source == path:
-            cache_id = int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
-            source = thumbs.thumb_for(cache_dir, cache_id, path, size=1024,
-                                      rotate=rotate)
-            if source is not None and source.stat().st_size <= cfg.semantic_inline_max_bytes:
-                mime, kind, content_type = "image/jpeg", "thumbnail", "image_base64"
-            else:
-                return None, None, f"media exceeds inline limit ({size / 1024 / 1024:.1f} MB)"
-        else:
-            return None, None, f"media exceeds inline limit ({size / 1024 / 1024:.1f} MB)"
-    try:
-        data = base64.b64encode(source.read_bytes()).decode("ascii")
-    except OSError as exc:
-        return None, None, f"cannot read media: {exc}"
-    return {"content": [{content_type: f"data:{mime};base64,{data}", "type": content_type}]}, kind, None
+        vectors = model.embed_images(part)
+        vector = vectors[0] if len(vectors) else None
+    return None if vector is None else [float(v) for v in vector]
 
 
 def embed_media(cfg, path: Path, ext: str, media_type: str, cache_dir: str,
@@ -325,7 +203,10 @@ def embed_media(cfg, path: Path, ext: str, media_type: str, cache_dir: str,
         cfg, path, ext, media_type, cache_dir, rotate, duration_s)
     if skip_reason:
         return None, kind, skip_reason
-    return _embed(cfg, [part], input_type="document")[0], kind, None
+    values = embed_part(cfg, part, kind)
+    if values is None:
+        return None, kind, f"unsupported {media_type}: no frame could be decoded"
+    return values, kind, None
 
 
 def pending_rows(conn, root_id: int | None, force: bool = False):
@@ -340,7 +221,7 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
         params.append(INDEXER_VERSION)
     # rotate_deg: index the photo the way up the app shows it. Detection runs
     # alongside this stage rather than before it, so a photo indexed first is
-    # sent as stored; it is re-indexed only if its bytes change. duration_s
+    # embedded as stored; it is re-indexed only if its bytes change. duration_s
     # (populated by enrich for every video) spaces a video's sampled frames
     # across its length with no extra ffprobe call needed here.
     return conn.execute(
@@ -371,15 +252,12 @@ def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, in
 
 def _is_permanent_skip(error: str | None) -> bool:
     """An outcome nothing should ever promise to retry: the input itself is the
-    problem (unsupported format, too large, or -- an oversize/context-window
-    400 -- too many tokens for the model), not a transient network/auth/server
-    issue. Resending identical bytes would only reproduce the same failure.
+    problem (an unsupported or undecodable format), not a transient failure.
+    Re-reading identical bytes would only reproduce the same result.
     """
     if not error:
         return False
-    if error.startswith(("unsupported", "media exceeds")):
-        return True
-    return "context window" in error.lower()
+    return error.startswith(("unsupported", "media exceeds"))
 
 
 def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) -> None:

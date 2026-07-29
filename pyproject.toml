@@ -33,8 +33,13 @@ faces = ["insightface>=1.0", "onnxruntime>=1.20", "opencv-python>=4.8", "scikit-
 # ONNX has no upstream URL: packaged builds bundle it, and a source checkout
 # exports it once with tools/dinov2_pet_export.py.
 pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
-# Later phases (local models only).
-ai = ["sentence-transformers", "sqlite-vec"]
+# Local semantic search: the SigLIP 2 base/16@256 vision and text towers on
+# onnxruntime, plus the Gemma SentencePiece tokenizer for query text. `tokenizers`
+# is a Rust extension but publishes cp310-abi3 wheels for manylinux x86_64 and
+# win_amd64, so it needs no compiler on the release runners. Deliberately NOT
+# transformers or torch — a 64-token tokenizer does not justify reversing the
+# torch exclusion in packaging/organize-archive.spec.
+semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
 dev = ["pytest>=8"]
 
 [project.scripts]

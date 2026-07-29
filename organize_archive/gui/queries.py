@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import json
 import math
-import struct
 import shutil
 from collections import Counter
 from pathlib import Path
@@ -24,6 +23,28 @@ from ..paths import archive_dir as archive_dir_path
 # count every present file. Only Browse hides non-canonical duplicates.
 _VISIBLE = "f.present = 1"
 _NOT_HIDDEN = "f.present = 1 AND f.hidden = 0"
+
+# "This file has a location." One definition for both the 📍 tile badge and the
+# "Show only files with a location" box, so the badge and the filter can never
+# disagree about what counts. A file has a location iff it has a geo row: the
+# resolver already declines to write 0/0/0 (Takeout's "no location"), so there
+# are no null-island rows to exclude here.
+_HAS_LOCATION = "EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id)"
+
+# How much a locally translated rewording of a search is discounted against the
+# words the user actually typed, so the two only swap places on a clear win.
+# Sized against the *embedder's* similarity scale: SigLIP's cosines are far more
+# compressed than a retrieval-tuned cloud model's, so the 0.01 that was a
+# rounding error before would now be a real handicap. Kept at roughly the same
+# fraction of semantic_search_min_similarity as it was then.
+ALTERNATE_VECTOR_PENALTY = 0.002
+
+# How many stored vectors semantic_search scores per round trip. The relative
+# floor means *every* candidate has to be scored before anything can be cut, so
+# this is a memory knob, not a shortcut: at archive scale the embedding column is
+# ~200 MB, and reading it all in at once alongside the matrix built from it is
+# the one part of search that would actually strain a small machine.
+_SCORE_CHUNK = 4096
 
 
 def _quality_ok(alias: str = "fa") -> str:
@@ -705,9 +726,42 @@ def place_merge_preview(db_path: str, id_a, id_b, warn_km: float) -> dict:
 
 # -- media grid + detail ----------------------------------------------------
 
+def _indexed_exists(alias: str = "f") -> str:
+    """SQL for "this file carries a *current* description-search vector".
+
+    Deliberately the same three conditions semantic_summary counts as `indexed`,
+    so the grid's markers and the reach note above it can never disagree:
+
+    - ``status='indexed'`` — a skipped or failed file has a row too, and cannot
+      answer a query,
+    - ``source_sha256=f.sha256`` — the vector describes the bytes the file has
+      *now*; if the content changed underneath it, it is stale,
+    - ``indexer_version`` — a vector from a previous model does not live in the
+      same space as today's query, so it is not findable even though it exists.
+
+    That last one is why an archive mid-migration shows every tile unmarked
+    rather than falsely marked: 69,726 Voyage-era rows are still on disk here.
+    Takes one parameter, the current indexer version.
+    """
+    return (f"EXISTS(SELECT 1 FROM semantic_embeddings se "
+            f"WHERE se.file_id={alias}.id AND se.source_sha256={alias}.sha256 "
+            f"AND COALESCE(se.indexer_version,'')=? AND se.status='indexed')")
+
+
 def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
           person_id=None, person_ids=None, cluster_id=None, sort="newest",
-          limit=120, offset=0) -> dict:
+          limit=120, offset=0, indexed=None, located=None) -> dict:
+    """The Browse grid. ``indexed`` filters on description-search coverage: True
+    for media that can be found by describing it, False for what cannot (still
+    queued, skipped, or failed), None for everything.
+
+    ``located`` does the same for media that carries a location.
+
+    The GUI only ever asks for True on either ("Show only …" boxes) -- unchecked
+    means no filter at all. False is kept because the predicate is naturally
+    three-valued and because the two halves summing to the unfiltered grid is
+    the property worth testing."""
+    from . import semantic
     conn = db.open_readonly(db_path)
     try:
         where = [_NOT_HIDDEN]
@@ -751,6 +805,14 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
                 "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm "
                 "WHERE pcm.cluster_id=?)")
             params.append(cluster_id)
+        # file_id is semantic_embeddings' INTEGER PRIMARY KEY, so this EXISTS is
+        # a rowid lookup per file rather than a scan.
+        indexed_sql = _indexed_exists("f")
+        if indexed is not None:
+            where.append(indexed_sql if indexed else f"NOT {indexed_sql}")
+            params.append(semantic.INDEXER_VERSION)
+        if located is not None:
+            where.append(_HAS_LOCATION if located else f"NOT {_HAS_LOCATION}")
         clause = " AND ".join(where)
         total = conn.execute(
             f"""SELECT COUNT(*)
@@ -759,17 +821,20 @@ def media(db_path: str, *, root_id=None, year=None, month=None, mtype=None,
         rows = conn.execute(
             f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
                        d.date_source AS dsrc,
-                       EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps
+                       {_HAS_LOCATION} AS has_gps,
+                       {indexed_sql} AS indexed
                 FROM files f LEFT JOIN dates d ON d.file_id=f.id
                 WHERE {clause}
                 ORDER BY (d.best_datetime IS NULL),
                          d.best_datetime {'ASC' if sort == 'oldest' else 'DESC'}, f.id
-                LIMIT ? OFFSET ?""", (*params, limit, offset)).fetchall()
+                LIMIT ? OFFSET ?""",
+            (semantic.INDEXER_VERSION, *params, limit, offset)).fetchall()
         items = [{
             "id": r["id"], "type": r["media_type"],
             "name": os.path.basename(r["rel_path"]),
             "date": r["dt"], "date_source": r["dsrc"],
             "has_gps": bool(r["has_gps"]),
+            "indexed": bool(r["indexed"]),
         } for r in rows]
         return {
             "items": items, "offset": offset, "limit": limit,
@@ -814,8 +879,21 @@ def browse_filters(db_path: str, root_id=None) -> dict:
                    WHERE name IS NOT NULL AND root_id=?
                    ORDER BY name COLLATE NOCASE""", (root_id,))
         places = [{"id": r["id"], "name": r["name"]} for r in place_rows]
+        # Whether the "Searchable" filter has anything to offer yet. EXISTS, not
+        # COUNT: the filter bar only needs to know if the option is live, and on
+        # a fully indexed archive a count would walk every file to say "lots".
+        from . import semantic
+        indexed_any = bool(conn.execute(
+            f"""SELECT EXISTS(SELECT 1 FROM files f
+                              WHERE {_NOT_HIDDEN}{rc} AND {_indexed_exists('f')})""",
+            (*rp, semantic.INDEXER_VERSION)).fetchone()[0])
+        located_any = bool(conn.execute(
+            f"""SELECT EXISTS(SELECT 1 FROM files f
+                              WHERE {_NOT_HIDDEN}{rc} AND {_HAS_LOCATION})""",
+            rp).fetchone()[0])
         return {"periods": periods, "types": types,
-                "people": people, "places": places}
+                "people": people, "places": places,
+                "indexed_any": indexed_any, "located_any": located_any}
     finally:
         conn.close()
 
@@ -897,14 +975,26 @@ def semantic_pending(db_path: str, root_id=None) -> int:
 
 def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
                     year=None, month=None, mtype=None, person_id=None, person_ids=None,
-                    cluster_id=None, min_similarity=-1.0, sort="relevance",
-                    limit=120, offset=0, alternate_vectors=None) -> dict:
+                    cluster_id=None, min_similarity=-1.0, relative_floor=0.0,
+                    sort="relevance", limit=120, offset=0,
+                    alternate_vectors=None, located=None) -> dict:
     """Rank locally stored vectors against the original and optional expansions.
 
     Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score
     preserves strong matches from either wording; the small penalty keeps the
     words the user actually typed ahead when both formulations are equivalent.
-    Voyage is called only for the query vectors.
+    The penalty is in the units of the *embedder's* similarity scale, so it has
+    to be sized against that scale rather than carried over from another model
+    (see ``ALTERNATE_VECTOR_PENALTY``).
+
+    **Two cuts, because one absolute number cannot do this job.** The local
+    embedder's similarities are compressed *and* shift per query: measured on
+    this archive, the best match for "fireworks" scores 0.097 while the best for
+    "a selfie" scores 0.150 — and a subject the archive does not contain at all
+    still reaches ~0.10. So ``min_similarity`` is only a floor against noise,
+    and the cut that actually decides relevance is ``relative_floor``: a
+    fraction of *this query's own* best score, which travels with the query
+    instead of assuming every query lives on the same scale.
     """
     conn = db.open_readonly(db_path)
     try:
@@ -934,14 +1024,18 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
         if cluster_id:
             where.append("f.id IN (SELECT file_id FROM place_cluster_members WHERE cluster_id=?)")
             params.append(cluster_id)
-        rows = conn.execute(
-            f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
-                       d.date_source AS dsrc,
-                       EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps,
-                       e.embedding
-                FROM semantic_embeddings e JOIN files f ON f.id=e.file_id
-                LEFT JOIN dates d ON d.file_id=f.id
-                WHERE {' AND '.join(where)}""", params).fetchall()
+        # Unlike the indexed box -- which cannot narrow a set that is all indexed
+        # by definition -- a location filter is meaningful here, so a description
+        # search accepts it rather than making the box go dead while searching.
+        if located is not None:
+            where.append(_HAS_LOCATION if located else f"NOT {_HAS_LOCATION}")
+        sql = f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
+                         d.date_source AS dsrc,
+                         {_HAS_LOCATION} AS has_gps,
+                         e.embedding
+                  FROM semantic_embeddings e JOIN files f ON f.id=e.file_id
+                  LEFT JOIN dates d ON d.file_id=f.id
+                  WHERE {' AND '.join(where)}"""
         vectors = [(tuple(query_vector), 0.0)]
         vectors.extend((tuple(vector), float(penalty))
                        for vector, penalty in (alternate_vectors or []))
@@ -953,38 +1047,81 @@ def semantic_search(db_path: str, query_vector: list[float], *, root_id=None,
         if not prepared:
             return {"items": [], "offset": offset, "limit": limit,
                     "count": 0, "total": 0}
-        ranked = []
-        for row in rows:
-            try:
-                vector = struct.unpack(f"<{len(prepared[0][0])}f", row["embedding"])
-            except struct.error:
+        import numpy as np
+        dim = len(prepared[0][0])
+        blob_bytes = dim * 4
+        query_matrix = np.array([v for v, _n, _p in prepared], dtype=np.float32)
+        query_norms = np.array([n for _v, n, _p in prepared], dtype=np.float32)
+        penalties = np.array([p for _v, _n, p in prepared], dtype=np.float32)
+        # One matmul per chunk instead of a Python loop per row: the same
+        # arithmetic, but the inner product moves out of the interpreter. Each
+        # chunk is scored and dropped, so only the per-row metadata and one
+        # float32 score per row outlive the loop -- not the blobs themselves.
+        meta: list[dict] = []
+        blocks: list = []
+        cursor = conn.execute(sql, params)
+        while True:
+            batch = cursor.fetchmany(_SCORE_CHUNK)
+            if not batch:
+                break
+            block = np.empty((len(batch), dim), dtype=np.float32)
+            kept = 0
+            for row in batch:
+                blob = row["embedding"]
+                # A blob of a different width came from a different embedder, so
+                # it is not comparable to this query: skipped rather than scored.
+                # This is what lets an archive re-index itself in place after a
+                # model change, instead of needing its old vectors deleted first.
+                if blob is None or len(blob) != blob_bytes:
+                    continue
+                block[kept] = np.frombuffer(blob, dtype="<f4")
+                meta.append({
+                    "id": row["id"], "type": row["media_type"],
+                    "name": os.path.basename(row["rel_path"]), "date": row["dt"],
+                    "date_source": row["dsrc"], "has_gps": bool(row["has_gps"]),
+                })
+                kept += 1
+            if not kept:
                 continue
-            vector_norm = math.sqrt(math.sumprod(vector, vector))
-            if not vector_norm:
-                continue
-            score = max(
-                math.sumprod(query, vector) / (query_norm * vector_norm) - penalty
-                for query, query_norm, penalty in prepared
-            )
-            if score >= min_similarity:
-                ranked.append((score, row))
+            block = block[:kept]
+            norms = np.sqrt(np.einsum("ij,ij->i", block, block))
+            # A zero vector points nowhere, so there is no angle to measure.
+            # Dividing by 1 keeps the arithmetic finite and -inf then puts it
+            # below any finite min_similarity, matching the old explicit skip.
+            scores_block = block @ query_matrix.T
+            scores_block /= np.where(norms > 0.0, norms, np.float32(1.0))[:, None]
+            scores_block /= query_norms[None, :]
+            scores_block -= penalties[None, :]
+            best_per_row = scores_block.max(axis=1)
+            best_per_row[norms <= 0.0] = -np.inf
+            blocks.append(best_per_row)
+        scores = (np.concatenate(blocks) if blocks
+                  else np.zeros(0, dtype=np.float32))
+        keep = np.flatnonzero(scores >= min_similarity)
+        # The relative cut needs the best score, so it can only be applied once
+        # every candidate has been scored. Skipped when the best match is itself
+        # negative: scaling a negative number by a fraction *raises* the bar
+        # towards zero, which would throw away the whole (already poor) result
+        # set rather than trim it.
+        if relative_floor > 0.0 and keep.size:
+            best = float(scores[keep].max())
+            if best > 0.0:
+                keep = keep[scores[keep] >= relative_floor * best]
+        # Ascending index order, which is the SQL's order -- so the sorts below
+        # stay stable against it exactly as they were over the old scored list.
+        ranked = [(float(scores[i]), meta[i]) for i in keep]
         # Which matched is decided by similarity; how they are ordered is the
         # caller's choice.  A date sort still shows only what cleared
         # min_similarity -- it reorders the same result set, never widens it.
         # Undated files sort last either way, as in media().
         if sort == "oldest":
-            ranked.sort(key=lambda x: (x[1]["dt"] is None, x[1]["dt"] or "", x[1]["id"]))
+            ranked.sort(key=lambda x: (x[1]["date"] is None, x[1]["date"] or "", x[1]["id"]))
         elif sort == "newest":
-            ranked.sort(key=lambda x: (x[1]["dt"] or "", -x[1]["id"]), reverse=True)
+            ranked.sort(key=lambda x: (x[1]["date"] or "", -x[1]["id"]), reverse=True)
         else:
             ranked.sort(key=lambda x: x[0], reverse=True)
         page = ranked[offset:offset + limit]
-        items = [{
-            "id": row["id"], "type": row["media_type"],
-            "name": os.path.basename(row["rel_path"]), "date": row["dt"],
-            "date_source": row["dsrc"], "has_gps": bool(row["has_gps"]),
-            "score": round(score, 4),
-        } for score, row in page]
+        items = [{**item, "score": round(score, 4)} for score, item in page]
         return {"items": items, "offset": offset, "limit": limit,
                 "count": len(items), "total": len(ranked)}
     finally:
