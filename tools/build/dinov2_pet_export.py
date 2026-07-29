@@ -24,8 +24,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from organize_archive.config import Config
 from organize_archive.pets import backend as pb
@@ -35,15 +34,16 @@ HF_REPO = "AvitoTech/DINO-v2-small-for-animal-identification"
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--verify", action="store_true",
-                    help="check the exported ONNX matches the torch reference")
+    ap.add_argument(
+        "--verify", action="store_true", help="check the exported ONNX matches the torch reference"
+    )
     ap.add_argument("--opset", type=int, default=17)
     args = ap.parse_args()
 
     import torch
-    from transformers import Dinov2Model, Dinov2Config
     from huggingface_hub import hf_hub_download
     from safetensors.torch import load_file
+    from transformers import Dinov2Config, Dinov2Model
 
     cfg = Config.load()
     out = pb.dinov2_model_path(cfg.cache_dir)
@@ -60,20 +60,23 @@ def main():
     # The checkpoint stores the ViT under a `backbone.` prefix (the re-ID "head"
     # was just the CLS token), so a plain from_pretrained matches NONE of its keys
     # and silently random-initializes. Strip the prefix and load explicitly.
-    state = {k[len("backbone."):]: v for k, v in weights.items()
-             if k.startswith("backbone.")}
+    state = {k[len("backbone.") :]: v for k, v in weights.items() if k.startswith("backbone.")}
     missing, unexpected = model.load_state_dict(state, strict=False)
     # Only an unused pooler may be missing; if anything real is missing the
     # embeddings would be garbage, so fail loudly instead of exporting noise.
     real_missing = [k for k in missing if not k.startswith("pooler.")]
     assert not unexpected and not real_missing, (
-        f"state_dict mismatch: missing={real_missing[:4]} unexpected={unexpected[:4]}")
+        f"state_dict mismatch: missing={real_missing[:4]} unexpected={unexpected[:4]}"
+    )
     model.eval()
-    print(f"loaded {len(state)} tensors "
-          f"(missing pooler-only: {len(missing)}, unexpected: {len(unexpected)})")
+    print(
+        f"loaded {len(state)} tensors "
+        f"(missing pooler-only: {len(missing)}, unexpected: {len(unexpected)})"
+    )
 
     class Embed(torch.nn.Module):
         """Output the 384-d CLS-token embedding (the re-ID feature)."""
+
         def __init__(self, m):
             super().__init__()
             self.m = m
@@ -83,14 +86,22 @@ def main():
 
     print(f"exporting ONNX -> {out}")
     torch.onnx.export(
-        Embed(model).eval(), torch.randn(1, 3, 224, 224), str(out),
-        input_names=["input"], output_names=["embedding"],
+        Embed(model).eval(),
+        torch.randn(1, 3, 224, 224),
+        str(out),
+        input_names=["input"],
+        output_names=["embedding"],
         dynamic_axes={"input": {0: "b"}, "embedding": {0: "b"}},
-        opset_version=args.opset, do_constant_folding=True, dynamo=False)
+        opset_version=args.opset,
+        do_constant_folding=True,
+        dynamo=False,
+    )
     print(f"wrote {out}  ({out.stat().st_size / 1e6:.0f} MB)")
 
     if args.verify:
-        import numpy as np, onnxruntime as ort
+        import numpy as np
+        import onnxruntime as ort
+
         x = np.random.randn(4, 3, 224, 224).astype("float32")
         with torch.no_grad():
             t = Embed(model)(torch.from_numpy(x)).numpy()

@@ -24,8 +24,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from organize_archive.config import Config
 from organize_archive.faces import backend as fb
@@ -36,7 +35,8 @@ HF_FILE = "adaface_weights.ckpt"
 
 def _load_net():
     spec = importlib.util.spec_from_file_location(
-        "adaface_net", Path(__file__).resolve().parent / "adaface_net.py")
+        "adaface_net", Path(__file__).resolve().parent / "adaface_net.py"
+    )
     net = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(net)
     return net
@@ -44,8 +44,9 @@ def _load_net():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--verify", action="store_true",
-                    help="check the exported ONNX matches the torch reference")
+    ap.add_argument(
+        "--verify", action="store_true", help="check the exported ONNX matches the torch reference"
+    )
     ap.add_argument("--opset", type=int, default=17)
     args = ap.parse_args()
 
@@ -68,26 +69,39 @@ def main():
     assert not miss and not unexp, f"state_dict mismatch: {len(miss)}/{len(unexp)}"
 
     class Embed(torch.nn.Module):
-        def __init__(self, m): super().__init__(); self.m = m
-        def forward(self, x): return self.m(x)   # (embedding_512_l2, norm)
+        def __init__(self, m):
+            super().__init__()
+            self.m = m
+
+        def forward(self, x):
+            return self.m(x)  # (embedding_512_l2, norm)
 
     print(f"exporting ONNX -> {out}")
     torch.onnx.export(
-        Embed(model).eval(), torch.randn(1, 3, 112, 112), str(out),
-        input_names=["input"], output_names=["embedding", "norm"],
+        Embed(model).eval(),
+        torch.randn(1, 3, 112, 112),
+        str(out),
+        input_names=["input"],
+        output_names=["embedding", "norm"],
         dynamic_axes={"input": {0: "b"}, "embedding": {0: "b"}, "norm": {0: "b"}},
-        opset_version=args.opset, do_constant_folding=True, dynamo=False)
-    print(f"wrote {out}  ({out.stat().st_size/1e6:.0f} MB)")
+        opset_version=args.opset,
+        do_constant_folding=True,
+        dynamo=False,
+    )
+    print(f"wrote {out}  ({out.stat().st_size / 1e6:.0f} MB)")
 
     if args.verify:
-        import numpy as np, onnxruntime as ort
+        import numpy as np
+        import onnxruntime as ort
+
         x = np.random.randn(4, 3, 112, 112).astype("float32")
         with torch.no_grad():
-            t = np.stack([model(torch.from_numpy(x[i:i+1]))[0].numpy()[0]
-                          for i in range(len(x))])
+            t = np.stack(
+                [model(torch.from_numpy(x[i : i + 1]))[0].numpy()[0] for i in range(len(x))]
+            )
         s = ort.InferenceSession(str(out), providers=["CPUExecutionProvider"])
         o = s.run(None, {"input": x})[0]
-        cos = (t*o).sum(1) / (np.linalg.norm(t, axis=1)*np.linalg.norm(o, axis=1))
+        cos = (t * o).sum(1) / (np.linalg.norm(t, axis=1) * np.linalg.norm(o, axis=1))
         print(f"verify: torch vs onnx cosine min={cos.min():.6f} mean={cos.mean():.6f}")
     return 0
 

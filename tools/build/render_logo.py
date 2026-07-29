@@ -17,9 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from PIL import Image, ImageDraw          # noqa: E402
+from PIL import Image, ImageDraw
 
-from organize_archive.gui import icons    # noqa: E402
+from organize_archive.gui import icons
 
 BUILD = Path(__file__).resolve().parents[2] / "desktop" / "build"
 # The sizes Windows actually picks between; electron-builder wants them all in
@@ -35,9 +35,14 @@ def main() -> int:
     # downscale one bitmap: the facet lines are hairlines at 16px and survive a
     # dedicated supersampled render far better than a resize of the 256px one.
     largest = icons._render(Image, ImageDraw, max(ICO_SIZES))
-    largest.save(BUILD / "icon.ico", "ICO", sizes=[(s, s) for s in ICO_SIZES],
-                 append_images=[icons._render(Image, ImageDraw, s)
-                                for s in ICO_SIZES if s != max(ICO_SIZES)])
+    largest.save(
+        BUILD / "icon.ico",
+        "ICO",
+        sizes=[(s, s) for s in ICO_SIZES],
+        append_images=[
+            icons._render(Image, ImageDraw, s) for s in ICO_SIZES if s != max(ICO_SIZES)
+        ],
+    )
     print(f"wrote {png} and {BUILD / 'icon.ico'}")
     return 0
 
