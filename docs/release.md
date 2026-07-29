@@ -3,8 +3,11 @@
 Versions use SemVer and are declared once in `release-version.json`; public tags
 are `v<version>`. The CI version gate requires Python, Electron, and the canonical
 value to agree. After intentionally changing the canonical value, run
-`npm run sync:version` from `desktop/`, review its three generated updates, and
-commit them together. Candidate builds are native CI artifacts, never developer uploads.
+`npm run sync:version` from `desktop/`, review its four generated updates
+(`organize_archive/__init__.py`, `pyproject.toml`, `desktop/package.json` and
+`desktop/package-lock.json`), and commit them together. The lockfile is included
+because `npm ci` does not verify its version field, so a stale value passes CI and
+is then silently rewritten by whoever next runs `npm install`. Candidate builds are native CI artifacts, never developer uploads.
 
 ## Build inputs
 

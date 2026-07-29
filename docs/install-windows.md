@@ -21,13 +21,13 @@ entry in `SHA256SUMS.txt` on the release page.
 In **PowerShell** (Start menu → type "PowerShell"):
 
 ```powershell
-Get-FileHash 'Trove.Setup.0.1.1.exe' -Algorithm SHA256
+Get-FileHash 'Trove.Setup.0.1.2.exe' -Algorithm SHA256
 ```
 
 Or in **Command Prompt**, where `Get-FileHash` does not exist:
 
 ```
-certutil -hashfile "Trove.Setup.0.1.1.exe" SHA256
+certutil -hashfile "Trove.Setup.0.1.2.exe" SHA256
 ```
 
 Both print the hash in uppercase while `SHA256SUMS.txt` records it in lowercase.
