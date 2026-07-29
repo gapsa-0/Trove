@@ -43,6 +43,7 @@ originals. Clustering into people/pets is a separate step (faces/pets cluster.py
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -53,6 +54,8 @@ from ..faces import fiqa
 from ..gui import thumbs
 from ..pets import backend as pet_backend
 from ..pets.extract import scan_source as pet_scan_source
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -175,6 +178,7 @@ def make_backends(cfg: Config, log=None):
             # detector down with them: report and carry on pets-only.
             if log:
                 log(f"people detection unavailable: {e}")
+            logger.warning("people detection unavailable", exc_info=True)
     if pet_backend.available():
         try:
             pet_be = pet_backend.PetBackend(
@@ -190,6 +194,7 @@ def make_backends(cfg: Config, log=None):
         except Exception as e:
             if log:
                 log(f"pet detection unavailable: {e}")
+            logger.warning("pet detection unavailable", exc_info=True)
     return face_be, pet_be
 
 
@@ -210,12 +215,24 @@ def _load_bgr(path: str, max_side: int):
 
         pillow_heif.register_heif_opener()
     except Exception:
+        # pillow-heif is optional (HEIC support only) and wraps a native libheif
+        # binding, so a broken or partial install fails in more ways than
+        # ImportError -- a missing shared library surfaces as OSError. Broad on
+        # purpose: without HEIC support these files simply fail to decode below
+        # like any other unreadable file, which must never be fatal. Silent by
+        # design too: this runs per image decoded, so a log line here would be
+        # one per file, ~150k of them.
         pass
     with Image.open(path) as im:
         orig_side = max(im.size)
         try:
             im.draft("RGB", (max_side, max_side))
         except Exception:
+            # draft() is a decode-speed optimisation implemented only for a
+            # few formats; failing (or being a no-op) for the rest is normal,
+            # not an error -- the full decode below still succeeds. Silent by
+            # design: this runs per image decoded, so logging here would be a
+            # line per file, ~150k of them, for a non-event.
             pass
         im = ImageOps.exif_transpose(im).convert("RGB")
         w, h = im.size
@@ -841,6 +858,9 @@ def extract(
                 stats.errors += 1
                 if len(stats.error_samples) < 5:
                     stats.error_samples.append(f"{path.name}: {e}")
+                # No exc_info: ~150k files means a traceback per bad file would
+                # flood the log until rotation discards everything useful.
+                logger.warning("detection failed for %s: %s", path.name, e)
 
             # Both scan markers, always written together so the image is never
             # reprocessed for one detector while the other's row is stale.
