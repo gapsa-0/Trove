@@ -91,8 +91,6 @@ def cmd_scan(args, cfg: Config) -> int:
     # Pre-count for an accurate progress bar (fast: scandir only, no hashing).
     progress = None
     if not args.no_progress:
-        from pathlib import Path
-
         print("Counting files…", flush=True)
         total = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
         print(f"  {total} media files to check.")
@@ -158,7 +156,6 @@ def cmd_scan(args, cfg: Config) -> int:
 
 
 def cmd_enrich(args, cfg: Config) -> int:
-    from pathlib import Path
     from .metadata import enrich as enrich_mod
     from .metadata.exiftool_reader import available as exif_available
 
@@ -197,7 +194,6 @@ def cmd_enrich(args, cfg: Config) -> int:
 
 
 def cmd_dedup(args, cfg: Config) -> int:
-    from pathlib import Path
     from .dedup import exact
     from .scan.progress import ScanProgress
 
@@ -233,7 +229,6 @@ def cmd_dedup(args, cfg: Config) -> int:
 
 
 def cmd_faces(args, cfg: Config) -> int:
-    from pathlib import Path
     from .faces import backend, extract as fx, cluster as fc
 
     if not Path(cfg.db_path).exists():
@@ -426,8 +421,6 @@ def cmd_pets(args, cfg: Config) -> int:
 
 
 def cmd_dates(args, cfg: Config) -> int:
-    from pathlib import Path
-
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan")
         return 1
@@ -485,8 +478,6 @@ def cmd_gui(args, cfg: Config) -> int:
 
 
 def cmd_status(args, cfg: Config) -> int:
-    from pathlib import Path
-
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init")
         return 1
