@@ -92,15 +92,35 @@ def test_stderr_handler_is_optional(monkeypatch):
     )
 
 
-def test_unwritable_log_dir_still_configures(monkeypatch, tmp_path, capsys):
-    # A packaged app on a read-only data dir must degrade to stderr, not die.
+def test_configure_creates_nothing_on_disk(monkeypatch, tmp_path):
+    """Installing handlers must not materialise the app data directory.
+
+    The data dir is created by Config.ensure_dirs(), deliberately only by
+    operations that write -- a command that only reads, or that fails its
+    argument checks, leaves no trace. An eager mkdir here made every `oa`
+    invocation create it, which broke `oa migrate-data`'s ability to tell a
+    fresh target from an occupied one (test_app_data.py catches that).
+    """
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "fresh"))
+    logging_setup.configure()
+    assert not (tmp_path / "fresh").exists()
+
+
+def test_unwritable_log_dir_degrades_to_stderr(monkeypatch, tmp_path, capsys):
+    # A packaged app on a read-only data dir must keep running.
     blocker = tmp_path / "data"
     blocker.mkdir()
     (blocker / "logs").write_text("not a directory", encoding="utf-8")
-    monkeypatch.setenv("XDG_DATA_HOME", str(blocker.parent))
     monkeypatch.setattr(logging_setup, "app_data_dir", lambda: blocker)
-
     logging_setup.configure()
 
-    assert "could not open log file" in capsys.readouterr().err
-    assert _ours(logging.getLogger())  # the stderr handler is still there
+    logging.getLogger("organize_archive.test").warning("first")
+    logging.getLogger("organize_archive.test").warning("second")
+
+    err = capsys.readouterr().err
+    assert "could not write log file" in err
+    # Reported once, not once per record, and no logging traceback either.
+    assert err.count("could not write log file") == 1
+    assert "Traceback" not in err
+    # The stderr handler carried on alone.
+    assert "second" in err

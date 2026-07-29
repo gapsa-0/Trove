@@ -52,6 +52,41 @@ def log_file() -> Path:
     return app_data_dir() / "logs" / "trove.log"
 
 
+class _LazyRotatingFileHandler(RotatingFileHandler):
+    """A rotating file that touches the disk only when something is logged.
+
+    Two reasons this is not a plain ``RotatingFileHandler``:
+
+    *Lazy directory creation.* The application data directory is created by
+    ``Config.ensure_dirs()``, deliberately only by operations that write --
+    a command that only reads, or that fails its argument checks, leaves no
+    trace. Creating ``logs/`` eagerly in ``configure()`` broke that: every
+    ``oa`` invocation materialised the data dir, and ``oa migrate-data`` then
+    could not tell a fresh target from an occupied one.
+
+    *Survivable failure.* If the data dir is unwritable (read-only volume,
+    permissions) the default behaviour is a traceback on stderr for every
+    record logged for the rest of the process's life. This reports once and
+    then gets out of the way; the stderr handler carries on alone.
+    """
+
+    _broken = False
+
+    def _open(self):
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        return super()._open()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self._broken:
+            return
+        super().emit(record)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        self._broken = True
+        # Not a log call: the logging machinery is what just failed.
+        sys.stderr.write(f"could not write log file {self.baseFilename}; continuing without it\n")
+
+
 def configure(level: str | None = None, *, stderr: bool = True) -> None:
     """Install the app's log handlers. Idempotent; safe to call twice.
 
@@ -69,22 +104,13 @@ def configure(level: str | None = None, *, stderr: bool = True) -> None:
 
     formatter = logging.Formatter(LOG_FORMAT)
 
-    path = log_file()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            path, maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8"
-        )
-    except OSError as exc:
-        # A read-only or unwritable data dir must degrade to stderr-only, not
-        # prevent the app from running. Written straight to stderr -- the stream
-        # the desktop shell captures -- because no file handler exists to record
-        # it and this runs before any logger has somewhere to write.
-        sys.stderr.write(f"could not open log file {path}: {exc}\n")
-    else:
-        file_handler.setFormatter(formatter)
-        setattr(file_handler, _OURS, True)
-        root.addHandler(file_handler)
+    # delay=True: no file, and no logs/ directory, until the first record.
+    file_handler = _LazyRotatingFileHandler(
+        log_file(), maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8", delay=True
+    )
+    file_handler.setFormatter(formatter)
+    setattr(file_handler, _OURS, True)
+    root.addHandler(file_handler)
 
     if stderr:
         stream_handler = logging.StreamHandler()

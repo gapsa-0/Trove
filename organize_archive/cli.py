@@ -8,17 +8,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shutil
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import __version__, logging_setup
 from .config import PROJECT_ROOT, Config
 from .db import database as db
 from .paths import app_data_dir, config_file
 from .runtime import tool as runtime_tool
 from .scan import walker
 from .scan.progress import ScanProgress
+
+logger = logging.getLogger(__name__)
 
 
 def _preflight() -> list[str]:
@@ -724,6 +727,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    # One of the only two places in the codebase that may configure logging;
+    # every library module just does getLogger(__name__). Before Config.load(),
+    # so anything that load() has to report about a broken or migrating config
+    # is already being recorded.
+    logging_setup.configure()
+    logger.debug("oa %s", " ".join(argv if argv is not None else sys.argv[1:]))
     cfg = Config.load()
     if args.db:
         cfg.db_path = args.db
