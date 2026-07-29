@@ -63,10 +63,13 @@ duplicates don't inflate density.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from ..config import Config
 from ..db import database as db
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -111,6 +114,11 @@ def _faiss():
 
         return faiss
     except Exception:  # pragma: no cover - optional dep
+        # Broad on purpose: a half-installed native faiss build can fail in more
+        # ways than ImportError (e.g. OSError from a missing shared library, or a
+        # RuntimeError from an ABI mismatch). The blocked-GEMM fallback below is
+        # always correct, so any failure here should degrade, never crash.
+        logger.debug("faiss unavailable; falling back to the blocked-GEMM path", exc_info=True)
         return None
 
 

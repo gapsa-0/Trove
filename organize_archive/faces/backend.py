@@ -29,6 +29,7 @@ feature reports that instead of crashing.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import tempfile
@@ -39,10 +40,17 @@ from pathlib import Path
 
 from .. import runtime
 
+logger = logging.getLogger(__name__)
+
 try:
     import cv2
     import numpy as np
 except Exception:  # pragma: no cover - optional dep
+    # Broad on purpose: a half-installed OpenCV/numpy can fail in more ways than
+    # ImportError (e.g. a missing shared library surfaces as OSError). available()
+    # below is the single source of truth for "faces works here"; log at DEBUG
+    # only, since running without this optional dependency is supported.
+    logger.debug("cv2/numpy import failed; face backend will report unavailable", exc_info=True)
     cv2 = None
     np = None
 
@@ -82,6 +90,12 @@ def available() -> bool:
 
         return True
     except Exception:  # pragma: no cover - optional dep
+        # Broad on purpose: a half-installed insightface/onnxruntime can raise far
+        # more than ImportError (missing shared library -> OSError, mismatched
+        # onnxruntime build -> RuntimeError). Narrowing this would turn graceful
+        # degradation into a crash on a real user's machine. DEBUG only: "faces
+        # not installed" is a supported configuration, not a problem.
+        logger.debug("insightface/onnxruntime unavailable", exc_info=True)
         return False
 
 
@@ -379,6 +393,10 @@ class FaceBackend:
 
             pillow_heif.register_heif_opener()
         except Exception:
+            # pillow_heif is optional (HEIC support only) and wraps a native
+            # libheif binding, so a broken/partial install can fail in more ways
+            # than ImportError. Silent on purpose: this runs on every image load,
+            # and "HEIC unsupported" is not worth flagging per file.
             pass
         with Image.open(path) as im:
             orig_side = max(im.size)  # true on-disk size, before draft() shrinks it
@@ -391,6 +409,8 @@ class FaceBackend:
             try:
                 im.draft("RGB", (self.max_side, self.max_side))
             except Exception:
+                # Best-effort speedup only; fall back to a full decode below
+                # rather than aborting the whole file over a draft-only failure.
                 pass
             im = ImageOps.exif_transpose(im).convert("RGB")
             w, h = im.size

@@ -40,6 +40,7 @@ long, resumable, interruptible part:
 from __future__ import annotations
 
 import shutil
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -476,6 +477,9 @@ def pending(conn) -> bool:
         row = conn.execute(
             f"SELECT COUNT(*) FROM {_CARRY_FACES} WHERE new_face_id IS NULL"
         ).fetchone()
-    except Exception:
+    except sqlite3.OperationalError:
+        # Expected on any archive that has never gone through this migration:
+        # _ensure_carry_tables() only runs inside snapshot_and_wipe/reattach, so
+        # the carry table simply doesn't exist yet, which means nothing is pending.
         return False
     return bool(row and row[0])

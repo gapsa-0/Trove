@@ -10,12 +10,15 @@ the ``faces`` / ``face_scan`` tables.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
 from . import backend, fiqa
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -185,6 +188,10 @@ def calibrate_quality(conn, cfg: Config, limit: int = 100, be=None, progress=Non
             stats.errors += 1
             if len(stats.error_samples) < 5:
                 stats.error_samples.append(f"{path.name}: {e}")
+            # No exc_info: this loop runs over the whole archive (~150k files),
+            # so a traceback per bad file would flood the log until rotation
+            # discards anything useful.
+            logger.warning("face extraction failed for %s: %s", path.name, e)
         stats.processed += 1
         if progress is not None:
             progress.update(stats.processed, 0, path.name)
@@ -279,6 +286,9 @@ def extract(
                 stats.errors += 1
                 if len(stats.error_samples) < 5:
                     stats.error_samples.append(f"{path.name}: {e}")
+                # No exc_info here either, for the same reason as calibrate_quality
+                # above: one line per bad file, not a traceback per bad file.
+                logger.warning("face extraction failed for %s: %s", path.name, e)
 
             conn.execute(
                 """INSERT OR REPLACE INTO face_scan
