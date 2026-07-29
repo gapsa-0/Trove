@@ -6,7 +6,7 @@ confidence matches (to eyeball false positives), and clusters the *unmatched*
 names that contain a 6+ digit run (candidate missed date patterns).
 
 Usage:
-    python3 tools/analyze_filenames.py /path/to/archive
+    python3 tools/dev/analyze_filenames.py /path/to/archive
 
 Use it whenever new material arrives to decide if filename_dates.py needs new
 patterns. It only reads names (no file contents), so it is safe to run while a
@@ -20,7 +20,7 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from organize_archive.scan.walker import is_ignored          # noqa: E402
 from organize_archive.metadata import filename_dates as fd    # noqa: E402
 

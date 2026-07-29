@@ -144,7 +144,7 @@ class Config:
     # floor below it binds on nothing -- results are identical anywhere from
     # 0.00 to 0.06 -- and exists purely to stop a query the archive cannot
     # answer at all from promoting its own near-random best matches. Retune it
-    # with tools/semantic_calibrate.py, not by intuition.
+    # with tools/dev/semantic_calibrate.py, not by intuition.
     semantic_search_min_similarity: float = 0.05
     # ... and this is the cut that actually decides relevance: keep results
     # within this fraction of the *query's own* best score, so the bar travels

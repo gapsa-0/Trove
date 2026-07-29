@@ -5,7 +5,7 @@ PWA icon is generated on demand by ``gui/icons.py``, but electron-builder needs
 real files on disk. Rather than hand-drawing a third copy, render those files
 from the SAME ``icons._render`` geometry:
 
-    python tools/render_logo.py
+    python tools/build/render_logo.py
 
 Re-run it after any change to the mark, and commit the regenerated files.
 """
@@ -15,13 +15,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from PIL import Image, ImageDraw          # noqa: E402
 
 from organize_archive.gui import icons    # noqa: E402
 
-BUILD = Path(__file__).resolve().parents[1] / "desktop" / "build"
+BUILD = Path(__file__).resolve().parents[2] / "desktop" / "build"
 # The sizes Windows actually picks between; electron-builder wants them all in
 # the one .ico, and the taskbar/alt-tab ends are the small ones.
 ICO_SIZES = (16, 32, 48, 64, 128, 256)

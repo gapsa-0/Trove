@@ -42,7 +42,7 @@ hiddenimports += collect_submodules("insightface.utils")
 datas += collect_data_files("insightface")
 
 # Dev-only weight: torch and transformers exist in a full developer environment
-# for tools/dinov2_pet_export.py, and sklearn/scipy reach for torch through their
+# for tools/build/dinov2_pet_export.py, and sklearn/scipy reach for torch through their
 # array_api_compat shims. The app runs every model on onnxruntime and never
 # imports them, but without this the bundle silently grows by ~700 MB whenever
 # the build machine happens to have them installed.

@@ -10,7 +10,7 @@ once and the same identity showing up as several clusters is easy to spot.
 Read-only over originals: face crops are produced by the same cached crop path
 the GUI uses (thumbs.face_thumb_for). Run from the repo root:
 
-    python3 tools/faces_cluster_montage.py [out.png] [--per 4] [--crop 96] [--cols N]
+    python3 tools/dev/faces_cluster_montage.py [out.png] [--per 4] [--crop 96] [--cols N]
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from concurrent.futures import ProcessPoolExecutor
 from math import ceil, sqrt
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from organize_archive.config import Config          # noqa: E402
 from organize_archive.db import database as db       # noqa: E402

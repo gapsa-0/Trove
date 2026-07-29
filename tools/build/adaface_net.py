@@ -1,5 +1,5 @@
 # Vendored from AdaFace (https://github.com/mk-minchul/AdaFace), net.py — MIT
-# License, (c) 2022 Minchul Kim et al. Used only by tools/adaface_export.py to
+# License, (c) 2022 Minchul Kim et al. Used only by tools/build/adaface_export.py to
 # rebuild the runtime ONNX from the checkpoint; NOT imported at runtime (the app
 # embeds faces via onnxruntime, no torch). Only change from upstream: Flatten
 # uses .reshape instead of .view (identical result; .view fails on the

@@ -9,7 +9,7 @@ adjacent blobs of *different* colors — the geometry you wanted to see.
 Only assigned faces (person_id NOT NULL) are plotted by default. The 2D coords
 are cached to a .npz keyed by the face-id set, so re-styling the plot is instant.
 
-    python3 tools/faces_umap_plot.py [out.png] [--neighbors 15] [--min-dist 0.1]
+    python3 tools/dev/faces_umap_plot.py [out.png] [--neighbors 15] [--min-dist 0.1]
                                      [--label-top 40] [--svg] [--all]
 """
 
@@ -20,7 +20,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from organize_archive.config import Config          # noqa: E402
 from organize_archive.db import database as db       # noqa: E402

@@ -16,8 +16,8 @@ relevant from irrelevant at all. The relative floor is what does the work.
 This tool prints the evidence needed to re-tune both, on whatever is actually
 indexed:
 
-    python3 tools/semantic_calibrate.py                    # default archive 1
-    python3 tools/semantic_calibrate.py --archive 2 --sample 20000
+    python3 tools/dev/semantic_calibrate.py                    # default archive 1
+    python3 tools/dev/semantic_calibrate.py --archive 2 --sample 20000
 
 It reads the catalogue read-only and writes nothing. Add ``--queries FILE`` (one
 per line) to calibrate against your own searches rather than the built-in set —
@@ -34,7 +34,7 @@ import struct
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from organize_archive.config import Config          # noqa: E402
 from organize_archive.db import database as db      # noqa: E402

@@ -26,7 +26,7 @@ same tag produces the same bytes:
 The spec also carries an explicit `excludes` list. The app runs every model on
 onnxruntime and never imports torch or transformers, but scikit-learn and SciPy
 reach for torch through their `array_api_compat` shims — so on a machine that has
-torch installed (any developer who has run `tools/dinov2_pet_export.py`),
+torch installed (any developer who has run `tools/build/dinov2_pet_export.py`),
 PyInstaller would happily bundle ~700 MB of it. The exclusions keep the artifact
 the same size whoever builds it.
 
@@ -45,7 +45,7 @@ once**, after which everything is local and offline. No media ever leaves the
 machine — only the model downloads are network traffic.
 
 The DINOv2 pet re-identification model is the exception: it is exported from a
-Hugging Face checkpoint by `tools/dinov2_pet_export.py` (a dev-only tool needing
+Hugging Face checkpoint by `tools/build/dinov2_pet_export.py` (a dev-only tool needing
 torch + transformers) and has no upstream URL, so a packaged build carries it
 (~85 MB) and `organize_archive.runtime.bundled_model` prefers that copy.
 

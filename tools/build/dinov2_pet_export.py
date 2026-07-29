@@ -14,8 +14,8 @@ runtime: RGB crop resized to 224x224, /255, ImageNet mean/std normalization, NCH
 
 Requires torch + transformers + onnx (dev-only; not runtime deps).
 
-    python3 tools/dinov2_pet_export.py            # download + export onnx
-    python3 tools/dinov2_pet_export.py --verify   # also check ONNX == torch
+    python3 tools/build/dinov2_pet_export.py            # download + export onnx
+    python3 tools/build/dinov2_pet_export.py --verify   # also check ONNX == torch
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from organize_archive.config import Config

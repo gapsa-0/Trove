@@ -31,7 +31,7 @@ faces = ["insightface>=1.0", "onnxruntime>=1.20", "opencv-python>=4.8", "scikit-
 # Local YOLOX animal detection plus DINOv2 pet re-identification. Kept separate so
 # a catalogue that does not need Pets avoids another model download. The DINOv2
 # ONNX has no upstream URL: packaged builds bundle it, and a source checkout
-# exports it once with tools/dinov2_pet_export.py.
+# exports it once with tools/build/dinov2_pet_export.py.
 pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
 # Local semantic search: the SigLIP 2 base/16@256 vision and text towers on
 # onnxruntime, plus the Gemma SentencePiece tokenizer for query text. `tokenizers`

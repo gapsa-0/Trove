@@ -7,7 +7,7 @@ CLAUDE.md "Verifying GUI changes").
 Handles WS frame fragmentation and control frames per RFC 6455, and never
 blocks forever (socket timeout raises instead of hanging silently).
 
-Usage: python3 tools/cdp_shot.py <url> <outfile.png> [wait_seconds] [cdp_port]
+Usage: python3 tools/dev/cdp_shot.py <url> <outfile.png> [wait_seconds] [cdp_port]
 
 Requires a headless Chrome already running with --remote-debugging-port, e.g.:
   chromium-browser --headless=new --disable-gpu --no-sandbox \\

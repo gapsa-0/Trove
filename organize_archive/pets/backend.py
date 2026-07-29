@@ -39,7 +39,7 @@ MODEL_MIN_BYTES = 20_000_000
 # Individual-animal re-identification embedder: a self-exported ONNX of the
 # AvitoTech DINOv2-small model fine-tuned for cat/dog re-ID (384-d CLS token).
 # Not distributed via a URL like the OpenCV models — regenerate it with
-# tools/dinov2_pet_export.py if missing. Replaces the old hand-crafted HSV
+# tools/build/dinov2_pet_export.py if missing. Replaces the old hand-crafted HSV
 # colour/texture descriptor: a learned embedding groups the SAME animal across
 # poses/lighting far better than colour statistics.
 DINOV2_SUBDIR = "dinov2_pet"
@@ -156,7 +156,7 @@ def _load_dinov2(cache_dir: str):
     if not mp.is_file():
         raise RuntimeError(
             f"DINOv2 pet model missing at {mp}. Regenerate it with "
-            "tools/dinov2_pet_export.py.")
+            "tools/build/dinov2_pet_export.py.")
     so = ort.SessionOptions()
     so.intra_op_num_threads = os.cpu_count() or 4
     return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])

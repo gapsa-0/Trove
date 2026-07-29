@@ -13,8 +13,8 @@ was validated numerically exact against the torch reference (cosine 1.000000)
 and runs ~232 ms/face on a 4-thread CPU. Dynamic int8 quantization was tried and
 rejected: on a non-VNNI CPU it was both slower and less accurate.
 
-    python3 tools/adaface_export.py            # download ckpt + export onnx
-    python3 tools/adaface_export.py --verify   # also check ONNX == torch
+    python3 tools/build/adaface_export.py            # download ckpt + export onnx
+    python3 tools/build/adaface_export.py --verify   # also check ONNX == torch
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from organize_archive.config import Config

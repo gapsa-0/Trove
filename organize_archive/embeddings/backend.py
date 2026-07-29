@@ -19,7 +19,7 @@ weights are not even downloaded until the first search, so a first run blocks on
 372 MB rather than 689 MB.
 
 Apache-2.0 weights, official ONNX exports (``onnx-community/…-ONNX``), so unlike
-AdaFace and DINOv2 there is no ``tools/*_export.py`` to write or maintain.
+AdaFace and DINOv2 there is no ``tools/build/*_export.py`` to write or maintain.
 """
 
 from __future__ import annotations

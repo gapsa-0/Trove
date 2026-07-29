@@ -6,7 +6,7 @@ per face, fetched once from the buffalo_l pack into ``cache/models/insightface/`
 Each face is aligned to the standard 112x112 ArcFace template (the 5-point
 similarity transform, ``insightface.utils.face_align.norm_crop``) and embedded by
 **AdaFace ir101 / WebFace12M** into a 512-d vector — a self-exported ONNX in
-``cache/models/adaface/`` (see tools/adaface_export.py).
+``cache/models/adaface/`` (see tools/build/adaface_export.py).
 
 SCRFD replaced the old YuNet detector (far fewer sky/wall false positives, better
 small-face recall and landmarks) and is kept. The *embedder* moved back to AdaFace
@@ -59,7 +59,7 @@ _MIN_SIZES = {DET_MODEL: 10_000_000}
 
 # AdaFace embedder: a self-exported ONNX (from the WebFace12M checkpoint),
 # consumed by onnxruntime. Unlike buffalo_l it has no upstream download URL —
-# regenerate it with tools/adaface_export.py, or let a packaged build ship it
+# regenerate it with tools/build/adaface_export.py, or let a packaged build ship it
 # (packaging/models/manifest.json), exactly like the DINOv2 pet model.
 ADAFACE_SUBDIR = "adaface"
 ADAFACE_MODEL = "adaface_ir101_w12m.onnx"
@@ -318,7 +318,7 @@ class FaceBackend:
         if not adaface_ready(cache_dir):
             raise RuntimeError(
                 f"AdaFace model missing or truncated at {mp}. Regenerate it with "
-                "`python3 tools/adaface_export.py` (needs torch + huggingface_hub, "
+                "`python3 tools/build/adaface_export.py` (needs torch + huggingface_hub, "
                 "dev-only), or install a packaged build that ships it.")
         so = ort.SessionOptions()
         so.intra_op_num_threads = os.cpu_count() or 4
