@@ -23,9 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from organize_archive.config import Config  # noqa: E402
-from organize_archive.db import database as db  # noqa: E402
-from organize_archive.gui import thumbs  # noqa: E402
+from organize_archive.config import Config
+from organize_archive.db import database as db
+from organize_archive.gui import thumbs
 
 
 def _worker(args):

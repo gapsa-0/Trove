@@ -84,7 +84,7 @@ def cache_models_dir() -> Path | None:
     """The app's own ``cache/models`` directory, if this checkout can tell us."""
     try:
         sys.path.insert(0, str(ROOT))
-        from organize_archive.config import Config  # noqa: PLC0415
+        from organize_archive.config import Config
 
         return Path(Config().cache_dir) / "models"
     except Exception:

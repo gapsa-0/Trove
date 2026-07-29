@@ -23,8 +23,8 @@ class DedupStats:
 def perceptual_available() -> bool:
     """Whether this installation can decode and fingerprint images."""
     try:
-        import imagehash  # noqa: F401
-        from PIL import Image  # noqa: F401
+        import imagehash
+        from PIL import Image
     except ImportError:
         return False
     return True
