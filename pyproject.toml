@@ -64,7 +64,10 @@ line-length = 100          # matches the style already in the files
 target-version = "py313"
 # Same reasoning as testpaths above: desktop/ and build/ hold packaged output,
 # including vendored third-party Python that is not ours to lint or format.
-extend-exclude = ["desktop/", "build/", ".venv/"]
+# adaface_net.py is vendored verbatim from upstream AdaFace and carries exactly
+# one documented deviation; formatting or "fixing" it would make that claim
+# impossible to verify with a diff against upstream.
+extend-exclude = ["desktop/", "build/", ".venv/", "tools/build/adaface_net.py"]
 
 [tool.ruff.lint]
 select = [
