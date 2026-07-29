@@ -121,6 +121,11 @@ class JobManager:
         # current_root_id). Seeded from the persisted config so a pause
         # survives an app restart.
         self._paused = bool(getattr(cfg, "pipeline_paused", False))
+        # Per-stage pause, by display card id. Separate from the global flag
+        # above and only consulted while it is off (things_to_fix #32: pausing
+        # one stage is about letting the others keep going). Persisted the same
+        # way, so a stage the user stopped stays stopped across a restart.
+        self._paused_stages: set[str] = set(getattr(cfg, "paused_stages", None) or [])
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
@@ -265,6 +270,12 @@ class JobManager:
     def paused(self) -> bool:
         return self._paused
 
+    def paused_stages(self) -> set[str]:
+        return set(self._paused_stages)
+
+    def stage_paused(self, card: str) -> bool:
+        return card in self._paused_stages
+
     def _error_ready(self, root_id: int, kind: str) -> bool:
         """True once a kind's post-error cooldown has elapsed (or none is set)."""
         at = self._error_at.get((root_id, kind))
@@ -401,12 +412,41 @@ class JobManager:
         if self._paused:
             # This is what actually stops the CPU load; jobs resume from
             # their last committed batch, same mechanism as close_archive.
-            with self._lock:
-                for jid, job in self._jobs.items():
-                    if job.status == "running":
-                        self._cancels[jid].set()
+            self._cancel_running()
         else:
             self.nudge()
+
+    def set_stage_paused(self, card: str, value: bool) -> None:
+        """Pause/resume ONE stage card, leaving every other stage running.
+
+        Same mechanism as the whole-pipeline pause, scoped to the kinds that
+        card represents (``pipeline.kinds_of``): the in-memory set gates the
+        scheduler and is authoritative even if persisting it fails, and pausing
+        cancels that stage's running job at its next batch checkpoint so the
+        CPU actually frees up instead of only the *next* run being skipped.
+        """
+        from . import pipeline
+        if value:
+            self._paused_stages.add(card)
+        else:
+            self._paused_stages.discard(card)
+        self.cfg.paused_stages = sorted(self._paused_stages)
+        try:
+            self.cfg.save()
+        except OSError:
+            pass
+        if value:
+            self._cancel_running(pipeline.kinds_of(card))
+        else:
+            self.nudge()
+
+    def _cancel_running(self, kinds: frozenset[str] | None = None) -> None:
+        """Ask running jobs (of these kinds, or all) to stop at their next
+        checkpoint. Progress is committed in batches, so this loses no work."""
+        with self._lock:
+            for jid, job in self._jobs.items():
+                if job.status == "running" and (kinds is None or job.kind in kinds):
+                    self._cancels[jid].set()
 
     def nudge(self):
         """Wake the scheduler now after an archive has been opened."""
@@ -452,6 +492,7 @@ class JobManager:
 
         states = pipeline.stage_states(self.cfg, self, open_root_id, archive["path"],
                                        allow_walk=True)
+        stalled = self._stalled_kinds(states)
         lock_running = any(s["kind"] in pipeline.LOCK_KINDS and s["state"] == "running"
                            for s in states)
         acted = False
@@ -459,6 +500,10 @@ class JobManager:
         for s in states:
             kind, state = s["kind"], s["state"]
             if state not in ("queued", "error"):
+                continue
+            # A stage the user paused on its own is simply never started; its
+            # siblings are untouched, which is the whole point of #32.
+            if self.stage_paused(pipeline.card_of(kind)):
                 continue
             if state == "error" and not self._error_ready(open_root_id, kind):
                 continue
@@ -479,9 +524,29 @@ class JobManager:
                 if kind in pipeline.LOCK_KINDS:
                     started_lock = True
         # Keep polling promptly while anything is running or waiting to run.
+        # Work held back by a per-stage pause does not count -- neither the
+        # paused stage nor anything queued behind it can start until the user
+        # says so, and counting it would pin the scheduler (and its disk walk)
+        # to the fast interval indefinitely.
         outstanding = any(s["state"] in ("running", "queued", "blocked", "error")
-                          for s in states)
+                          and not stalled[s["kind"]] for s in states)
         return acted or outstanding
+
+    def _stalled_kinds(self, states: list[dict]) -> dict[str, bool]:
+        """Which stages cannot progress because of a per-stage pause: the paused
+        ones, plus everything waiting on a stage that is itself stalled.
+
+        ``states`` is in dependency order (pipeline.STAGES), so one forward pass
+        propagates the whole chain -- pausing Deduplication also stops the map,
+        detection and semantic stages that queue behind it.
+        """
+        from . import pipeline
+        stalled: dict[str, bool] = {}
+        for s in states:
+            blocker = s["blocker"]
+            stalled[s["kind"]] = (self.stage_paused(pipeline.card_of(s["kind"]))
+                                  or bool(blocker and stalled.get(blocker)))
+        return stalled
 
     # -- worker -----------------------------------------------------------
     def _run(self, job: Job, cancel: threading.Event):

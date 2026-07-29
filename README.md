@@ -73,10 +73,11 @@ metadata ┘                   ├─→ places
 
 Long stages commit progress in batches. Closing or switching archives asks current
 work to stop at a safe checkpoint; reopening resumes it rather than restarting. The
-whole pipeline can be paused and resumed from the library health panel — running
-jobs stop at their next checkpoint, and the pause survives a restart, which is
-useful when the machine is needed for something else. The sidebar lists every stage
-currently running, not just one.
+whole pipeline can be paused and resumed from the library health panel, and each
+stage has its own pause button for stopping just that one (say, people & pets)
+while the rest keeps going — running jobs stop at their next checkpoint, and both
+kinds of pause survive a restart, which is useful when the machine is needed for
+something else. The sidebar lists every stage currently running, not just one.
 
 ## Privacy
 

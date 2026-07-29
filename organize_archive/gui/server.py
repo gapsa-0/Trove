@@ -396,12 +396,23 @@ class Handler(BaseHTTPRequestHandler):
                     res = queries.remove_archive(self.cfg, root_id)
                     self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pipeline/pause":
+                # Without "stage" this is the whole-pipeline switch; with one it
+                # pauses that single card (scan/dedup/detect/places/semantic) and
+                # leaves the rest of the pipeline running.
+                from . import pipeline
                 paused = body.get("paused")
+                stage = body.get("stage")
                 if not isinstance(paused, bool):
                     self._json({"error": "paused (bool) is required"}, 400)
-                else:
+                elif stage is not None and stage not in pipeline.CARD_ORDER:
+                    self._json({"error": f"unknown stage: {stage}"}, 400)
+                elif stage is None:
                     self.jobs.set_paused(paused)
                     self._json({"paused": self.jobs.paused()})
+                else:
+                    self.jobs.set_stage_paused(stage, paused)
+                    self._json({"paused": self.jobs.paused(),
+                                "paused_stages": sorted(self.jobs.paused_stages())})
             # The mutations below act on an id (person, cluster, face, pet...)
             # rather than a file the caller already knows the root of, and the
             # frontend never sends one for them. They resolve against whichever

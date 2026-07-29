@@ -208,8 +208,17 @@ _STATE_RANK = {"running": 5, "error": 4, "queued": 3, "blocked": 2,
                "unavailable": 1, "up_to_date": 0}
 
 
-def cards(states: list[dict]) -> list[dict]:
-    """Roll per-stage states up into the display cards the GUI renders verbatim."""
+def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozenset()
+          ) -> list[dict]:
+    """Roll per-stage states up into the display cards the GUI renders verbatim.
+
+    ``paused_stages`` holds the card ids the user paused individually. A card
+    carries two flags for it: ``paused`` (this card's own toggle, what its
+    button reflects) and ``stalled`` (it cannot progress — either it is paused
+    or everything it waits on is). Only ``stalled`` may be used to decide that
+    no work is coming, since a card blocked behind a paused stage is just as
+    stopped as the paused one itself.
+    """
     by_card: dict[str, list[dict]] = {}
     for s in states:
         by_card.setdefault(s["card"], []).append(s)
@@ -286,10 +295,35 @@ def cards(states: list[dict]) -> list[dict]:
         if c["state"] == "blocked" and bc in running_cards:
             c["next"] = True
             c["message"] = f"Up next · after {CARD_LABEL[bc]}"
+
+    # Third pass, the pause flags. CARD_ORDER is dependency-ordered, so a card's
+    # blocker has already been resolved by the time we reach it and one forward
+    # walk is enough to propagate "stalled" down a chain.
+    stalled: dict[str, bool] = {}
+    for c in result:
+        bc = blocker_card.get(c["id"])
+        c["paused"] = c["id"] in paused_stages
+        c["stalled"] = c["paused"] or bool(bc and stalled.get(bc))
+        stalled[c["id"]] = c["stalled"]
     return result
 
 
 _CARD_OF = {sd.kind: sd.card for sd in STAGES}
+
+
+def card_of(kind: str) -> str:
+    """The display card a stage kind rolls up into (its own name if it has none).
+
+    Per-stage pause is expressed in card ids, because cards are what the user
+    sees and clicks; the scheduler works in kinds, so it resolves through here
+    (pausing "scan" stops the scan ∥ enrich pair the one card represents).
+    """
+    return _CARD_OF.get(kind, kind)
+
+
+def kinds_of(card: str) -> frozenset[str]:
+    """Every stage kind that rolls up into one display card."""
+    return frozenset(k for k, c in _CARD_OF.items() if c == card)
 
 
 def _message(card_id: str, state: str, pending, blocker, error) -> str | None:
@@ -338,6 +372,7 @@ def _extra_jobs(jobs, root_id: int) -> list[dict]:
             "state": "running", "pending": None, "counted": False,
             "progress": _progress(j), "next": False, "waiting_on": None,
             "message": f"{_EXTRA_JOB_LABEL.get(kind, kind)}…",
+            "paused": False, "stalled": False,
         })
     return out
 
@@ -351,26 +386,43 @@ def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
     client and scheduler both key off that); and ``overall`` becomes "paused"
     once nothing is actually still running.
 
+    Individually paused stages (``jobs.paused_stages()``) work the same way one
+    card at a time: their message becomes "Paused", and a card stuck behind one
+    says so too instead of promising work that can never start.
+
     ``extra`` carries running non-stage jobs (see _extra_jobs). They count
     toward ``overall`` -- reporting "idle" while a recluster holds the writer
     would be a lie -- but stay out of ``stages`` so the Overview grid is
     unaffected; only the ambient sidebar chip reads them.
     """
     states = stage_states(cfg, jobs, root_id, root_path)
-    card_list = cards(states)
-    extra = _extra_jobs(jobs, root_id)
     paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
-    if paused:
-        for c in card_list:
-            if c["state"] in ("queued", "error"):
-                c["message"] = "Paused"
+    per_stage = (frozenset(jobs.paused_stages())
+                 if hasattr(jobs, "paused_stages") else frozenset())
+    card_list = cards(states, per_stage)
+    extra = _extra_jobs(jobs, root_id)
+    for c in card_list:
+        if c["state"] not in ("queued", "blocked", "error"):
+            continue
+        if paused or c["paused"]:
+            c["next"] = False
+            c["message"] = "Paused"
+        elif c["stalled"]:
+            c["next"] = False
+            c["message"] = f"Waiting for {c['waiting_on'] or 'earlier steps'} (paused)"
     if extra or any(c["state"] == "running" for c in card_list):
         overall = "running"
     elif paused:
         overall = "paused"
-    elif any(c["state"] in ("queued", "blocked", "error") for c in card_list):
+    elif any(c["state"] in ("queued", "blocked", "error") and not c["stalled"]
+             for c in card_list):
         overall = "working"
+    elif any(c["state"] in ("queued", "blocked", "error") for c in card_list):
+        # Everything still outstanding is stopped by a per-stage pause; the
+        # pipeline is not idle, it is waiting on the user.
+        overall = "paused"
     else:
         overall = "idle"
     return {"root_id": root_id, "overall": overall, "stages": card_list,
-            "extra": extra, "paused": paused}
+            "extra": extra, "paused": paused,
+            "paused_stages": sorted(per_stage)}

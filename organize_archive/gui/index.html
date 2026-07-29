@@ -2980,6 +2980,61 @@
       font-weight: 680
     }
 
+    /* Per-stage pause/resume. Dimmed until the card is hovered or the stage is
+       already paused, so five of these never compete with the status text --
+       but never fully hidden, or nobody would find them. */
+    .health-task-btn {
+      margin-left: auto;
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      opacity: .4;
+      transition: opacity .12s ease, background .12s ease, color .12s ease
+    }
+
+    .health-task:hover .health-task-btn,
+    .health-task-btn:focus-visible,
+    .health-task.paused .health-task-btn {
+      opacity: 1
+    }
+
+    .health-task-btn:hover:not(:disabled) {
+      border-color: var(--line);
+      background: var(--panel);
+      color: var(--fg)
+    }
+
+    .health-task-btn:disabled {
+      cursor: default;
+      opacity: .2
+    }
+
+    .health-task-btn svg {
+      width: 12px;
+      height: 12px;
+      display: block
+    }
+
+    /* Stopped by a pause (this stage's own, or one it waits on): no accent, no
+       amber "about to run" cue -- it reads as deliberately parked. */
+    .health-task.paused {
+      border-style: dashed;
+      background: var(--panel2)
+    }
+
+    .health-task.paused .health-task-head {
+      color: var(--muted)
+    }
+
     .health-task-state {
       margin: 5px 0 0 14px;
       color: var(--muted);
@@ -5624,7 +5679,7 @@
       <button class="stat" onclick="showSection('dups')"><span class="metric-icon orange">${ICONS.dups}</span><div><div class="k">Duplicate copies</div><div class="v" id="ov-dups">${ds.duplicates.toLocaleString()}</div></div></button>
     </div>
     <div class="overview-grid">
-      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause</button></div>
+      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>
         <p class="pause-note" id="pause-note" style="display:none">Paused — background processing is stopped.</p>
         <div id="syncstatus"></div><div id="jobarea"></div>
       </div>
@@ -5702,15 +5757,16 @@
 
     function healthCard(stage) {
       const st = stage.state;
-      // Paused (queued/error) cards should read as stopped, not "about to
-      // run": swap the amber pending dot for the same neutral one blocked
-      // cards use. A genuinely still-running (winding-down) stage is
-      // untouched here -- its dot/spinner already come from `st`.
-      const paused = !!(S.pipeline && S.pipeline.paused) && (st === "queued" || st === "error");
-      const dot = stage.next ? "next" : (paused ? "check" : (HEALTH_DOT[st] || "check"));
-      const head = st === "running"
+      // Paused cards should read as stopped, not "about to run": swap the amber
+      // pending dot for the same neutral one blocked cards use. `stalled` covers
+      // both a stage the user paused and one queued behind a paused stage --
+      // neither is going to start. A genuinely still-running (winding-down)
+      // stage is untouched here -- its dot/spinner already come from `st`.
+      const stopped = (!!(S.pipeline && S.pipeline.paused) || stage.stalled) && st !== "running";
+      const dot = stage.next ? "next" : (stopped ? "check" : (HEALTH_DOT[st] || "check"));
+      const head = (st === "running"
         ? `<span class="spin"></span>${stage.label}`
-        : `<span class="dot ${dot}"></span>${stage.label}`;
+        : `<span class="dot ${dot}"></span>${stage.label}`) + stagePauseButton(stage);
       const message = st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || "");
       let prog = "";
       const p = stage.progress;
@@ -5719,14 +5775,54 @@
         prog = `<div class="job" style="margin-top:8px; border:none; padding:0; background:transparent"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
         <div class="cur" style="margin-top:4px">${pct}% · ${(p.done || 0).toLocaleString()}${p.total ? "/" + p.total.toLocaleString() : ""} · ${p.elapsed || 0}s${p.current ? " · " + p.current : ""}</div></div>`;
       }
-      // No card offers a call to action any more. Semantic indexing was the only
-      // one that did ("Add API key"), and it has nothing left to configure: it
-      // is unavailable only when the app was installed without its optional
-      // dependencies, which no button here could fix.
-      const cls = stage.next ? "next" : (HEALTH_CARDCLASS[st] || "");
+      // Beyond pause/resume no card offers a call to action. Semantic indexing
+      // was the only one that did ("Add API key"), and it has nothing left to
+      // configure: it is unavailable only when the app was installed without its
+      // optional dependencies, which no button here could fix.
+      const cls = stopped ? "paused" : (stage.next ? "next" : (HEALTH_CARDCLASS[st] || ""));
       return `<div class="health-task ${cls}">
       <div class="health-task-head">${head}</div>
       <div class="health-task-state">${message}${prog}</div></div>`;
+    }
+
+    // Per-stage pause/resume (things_to_fix #32). One button per card, on top of
+    // the whole-pipeline switch in the panel heading: it stops just this stage
+    // and lets the others carry on. Deliberately inert while the whole pipeline
+    // is paused -- nothing is running, so there is nothing here to stop.
+    const PAUSE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>';
+    const PLAY_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z" fill="currentColor"/></svg>';
+    function stagePauseButton(stage) {
+      // An unavailable stage has no work to pause (its backend isn't installed),
+      // and the non-stage jobs in `extra` are user-kicked one-offs, not stages.
+      if (stage.state === "unavailable" || !CARD_KIND[stage.id]) return "";
+      const globallyPaused = !!(S.pipeline && S.pipeline.paused);
+      const off = !!stage.paused;
+      const label = off ? `Resume ${stage.label}` : `Pause ${stage.label}`;
+      const title = globallyPaused
+        ? "All background processing is paused" : label;
+      return `<button type="button" class="health-task-btn" title="${title}"
+      aria-label="${label}" ${globallyPaused || S.pausing ? "disabled" : ""}
+      onclick="toggleStagePause('${stage.id}',event)">${off ? PLAY_GLYPH : PAUSE_GLYPH}</button>`;
+    }
+
+    async function toggleStagePause(id, event) {
+      if (event) event.stopPropagation();
+      if (!S.arch || S.pausing) return;
+      const stage = (S.pipeline && S.pipeline.stages || []).find(s => s.id === id);
+      if (!stage) return;
+      const next = !stage.paused;
+      // Paint the new state at once (the poll is up to 1.2s away), then let
+      // refreshPipeline replace it with whatever the server actually did.
+      stage.paused = next;
+      S.pausing = true;
+      renderHealthCards();
+      try {
+        const r = await jpost("/api/pipeline/pause", { paused: next, stage: id });
+        if (r && r.error) toast(r.error, true);
+      } catch {
+        toast(next ? "Could not pause this step." : "Could not resume this step.", true);
+      } finally { S.pausing = false; }
+      await refreshPipeline();
     }
 
     function renderHealthCards() {
@@ -5740,15 +5836,16 @@
       el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;
     }
 
-    // Whole-pipeline pause/resume (things_to_fix #19). Single button, no
-    // per-job controls: pausing cancels every running job at its next batch
-    // checkpoint (see JobManager.set_paused), and the scheduler simply stops
-    // starting new ones until resumed.
+    // Whole-pipeline pause/resume (things_to_fix #19): pausing cancels every
+    // running job at its next batch checkpoint (see JobManager.set_paused), and
+    // the scheduler simply stops starting new ones until resumed. Individual
+    // stages have their own buttons on the cards (stagePauseButton); this one
+    // outranks them, which is why it disables them while it is on.
     function renderPauseControl() {
       const btn = document.getElementById("pause-btn");
       const note = document.getElementById("pause-note");
       const paused = !!(S.pipeline && S.pipeline.paused);
-      if (btn) { btn.textContent = paused ? "Resume" : "Pause"; btn.disabled = !!S.pausing; }
+      if (btn) { btn.textContent = paused ? "Resume all" : "Pause all"; btn.disabled = !!S.pausing; }
       if (note) note.style.display = paused ? "" : "none";
     }
 
