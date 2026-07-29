@@ -218,7 +218,7 @@ def _load_dinov2(cache_dir: str):
     except Exception as e:  # pragma: no cover - optional dep
         raise RuntimeError(
             f"pet re-ID needs onnxruntime (pip install onnxruntime); import failed: {e}"
-        )
+        ) from e
     mp = dinov2_model_path(cache_dir)
     if not mp.is_file():
         raise RuntimeError(

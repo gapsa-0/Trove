@@ -768,7 +768,7 @@ class Handler(BaseHTTPRequestHandler):
         info = queries.face_crop_source(db_path, face_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256, box, rotate, frame_offset, media_type, file_id = info
+        src, sha256, box, rotate, frame_offset, _media_type, file_id = info
         if frame_offset is not None:
             # A video detection's box was measured in the extracted keyframe,
             # already upright (ffmpeg applies container rotation), so the
@@ -791,7 +791,7 @@ class Handler(BaseHTTPRequestHandler):
         info = queries.animal_crop_source(db_path, detection_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
-        src, sha256, box, rotate, frame_offset, media_type, file_id = info
+        src, sha256, box, rotate, frame_offset, _media_type, file_id = info
         if frame_offset is not None:
             frame = thumbs.detect_frame_for(
                 cache_dir, file_id, src, frame_offset, self.cfg.detect_video_frame_px, sha256=sha256

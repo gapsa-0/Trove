@@ -30,9 +30,9 @@ _NAMES = [
 
 
 def _windows_paths() -> list[str]:
-    pf = os.environ.get("ProgramFiles", r"C:\Program Files")
-    pfx86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-    local = os.environ.get("LocalAppData", "")
+    pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+    pfx86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+    local = os.environ.get("LOCALAPPDATA", "")
     out = [
         rf"{pf}\Google\Chrome\Application\chrome.exe",
         rf"{pfx86}\Google\Chrome\Application\chrome.exe",

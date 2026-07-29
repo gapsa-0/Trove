@@ -138,7 +138,6 @@ def test_offsets_for_known_duration_are_n_distinct_and_spread_across_it():
     assert len(set(offsets)) == 5
     # Spread but pulled in from the ends: neither endpoint offset should sit
     # right at the very start or very end of the clip.
-    first_secs = 0.0  # 00:00:00.xxx-ish
     assert offsets[0] not in ("00:00:00.000",)
     assert offsets != sorted(offsets, reverse=True)  # increasing order
 

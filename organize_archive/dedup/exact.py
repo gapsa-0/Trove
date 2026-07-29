@@ -270,7 +270,7 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     if progress is not None:
         progress.total = len(buckets)
 
-    group_rows, member_rows, canon_updates, dup_updates = [], [], [], []
+    member_rows, canon_updates, dup_updates = [], [], []
     done = 0
     for members in buckets.values():
         count = len(members)

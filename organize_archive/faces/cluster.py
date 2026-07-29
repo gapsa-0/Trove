@@ -235,10 +235,7 @@ def _apply_links(conn, cluster_list, face_ids):
     dsu = _DSU(len(cluster_list))
 
     def would_violate(ra, rb):
-        for ca, cb in cannot:
-            if {dsu.find(ca), dsu.find(cb)} == {ra, rb}:
-                return True
-        return False
+        return any({dsu.find(ca), dsu.find(cb)} == {ra, rb} for ca, cb in cannot)
 
     for ca, cb in same:
         ra, rb = dsu.find(ca), dsu.find(cb)
@@ -653,7 +650,7 @@ def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
     triples.sort(reverse=True)
     name_of: dict[int, str] = {}
     used: set[str] = set()
-    for ov, cand_name, ci in triples:
+    for _ov, cand_name, ci in triples:
         if cand_name in used or ci in name_of:
             continue
         name_of[ci] = cand_name

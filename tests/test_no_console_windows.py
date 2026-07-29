@@ -20,8 +20,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from organize_archive.runtime import no_window
 
 PACKAGE = Path(__file__).resolve().parent.parent / "organize_archive"

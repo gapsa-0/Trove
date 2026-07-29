@@ -186,7 +186,13 @@ def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats
     # Mutable working copies of existing places; a plain list is fine because the
     # unplaced backlog is small (this runs every pipeline tick).
     places = [
-        dict(lat=p["lat"], lon=p["lon"], count=p["member_count"], pinned=p["pinned"], id=p["id"])
+        {
+            "lat": p["lat"],
+            "lon": p["lon"],
+            "count": p["member_count"],
+            "pinned": p["pinned"],
+            "id": p["id"],
+        }
         for p in conn.execute(
             "SELECT id, lat, lon, member_count, pinned FROM place_clusters WHERE root_id=?",
             (root_id,),
@@ -224,7 +230,7 @@ def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats
             )
             cid = cur.lastrowid
             attach(cid, r["id"])
-            places.append(dict(lat=lat, lon=lon, count=1, pinned=0, id=cid))
+            places.append({"lat": lat, "lon": lon, "count": 1, "pinned": 0, "id": cid})
             stats.clusters += 1
 
     # Persist updated counts + drifted centroids for the auto places we touched.

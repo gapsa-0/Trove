@@ -140,7 +140,7 @@ def quality_summary(conn, root_id: int | None = None) -> dict:
     out.update(dict(accepted))
     # Per-tier counts make the FIQA gate auditable: LOW_QUALITY faces are hidden
     # from the GUI, so this summary is the place they remain visible at all.
-    out["tiers"] = {t: 0 for t in fiqa.TIERS}
+    out["tiers"] = dict.fromkeys(fiqa.TIERS, 0)
     out["tiers"]["UNTIERED"] = 0
     for r in conn.execute(
         f"""SELECT COALESCE(fc.quality_tier, 'UNTIERED') tier, COUNT(*) n

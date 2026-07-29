@@ -20,8 +20,6 @@ class PetClusterStats:
 
 def _clusters(vectors, threshold):
     """Greedy complete-link grouping; every member must match every other."""
-    import numpy as np
-
     groups = []
     for index, vector in enumerate(vectors):
         choices = []
@@ -88,10 +86,7 @@ def _apply_links(conn, groups, emb_rows):
         (same if link["kind"] == "same" else cannot).append((ga, gb))
 
     def would_violate(ra, rb):
-        for ga, gb in cannot:
-            if {find(ga), find(gb)} == {ra, rb}:
-                return True
-        return False
+        return any({find(ga), find(gb)} == {ra, rb} for ga, gb in cannot)
 
     for ga, gb in same:
         ra, rb = find(ga), find(gb)

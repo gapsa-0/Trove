@@ -224,10 +224,8 @@ class DetectionReport:
 
     faces: list[Face] = field(default_factory=list)
     candidates: int = 0
-    rejected: dict[str, int] = field(
-        default_factory=lambda: {reason: 0 for reason in _REJECTION_REASONS}
-    )
-    tiers: dict[str, int] = field(default_factory=lambda: {t: 0 for t in _QUALITY_TIERS})
+    rejected: dict[str, int] = field(default_factory=lambda: dict.fromkeys(_REJECTION_REASONS, 0))
+    tiers: dict[str, int] = field(default_factory=lambda: dict.fromkeys(_QUALITY_TIERS, 0))
 
 
 @dataclass(frozen=True)

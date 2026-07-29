@@ -14,8 +14,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-# Project layout ------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 from .paths import (
     app_data_dir,
     archive_cache_dir,
@@ -28,6 +26,9 @@ from .paths import (
     ensure_app_data_dirs,
     secrets_file,
 )
+
+# Project layout ------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Credentials this application no longer has any use for. Semantic search became
 # local (organize_archive/embeddings), so nothing can spend a Voyage key any

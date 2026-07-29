@@ -109,7 +109,7 @@ def _pending(
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
     from ..pets.extract import scan_source as pet_scan_source
-    from . import queries, semantic
+    from . import queries
 
     db_path = cfg.archive_db_path(root_id)
     # The disk walk is the expensive half and must happen outside the read

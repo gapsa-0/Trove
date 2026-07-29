@@ -239,12 +239,12 @@ def face_thumb_for(
             # edge.  Clamping each edge independently made those crops
             # rectangular, leaving visible side gutters in square UI slots.
             side = max(1, min(round(max(w, h) * 1.6), W, H))
-            l = max(0, min(round(cx - side / 2), W - side))
-            t = max(0, min(round(cy - side / 2), H - side))
-            r, b = l + side, t + side
-            if r <= l or b <= t:
+            left = max(0, min(round(cx - side / 2), W - side))
+            top = max(0, min(round(cy - side / 2), H - side))
+            right, bottom = left + side, top + side
+            if right <= left or bottom <= top:
                 return None
-            crop = im.crop((l, t, r, b))
+            crop = im.crop((left, top, right, bottom))
             resampling = getattr(Image, "Resampling", Image).LANCZOS
             crop = crop.resize((size, size), resampling)
             crop.save(tp, "JPEG", quality=82)

@@ -4,7 +4,9 @@ import pytest
 
 Image = pytest.importorskip("PIL.Image")
 
-from organize_archive.gui.thumbs import face_thumb_for, thumb_for, upright_for
+# Must stay below the importorskip above: this module must not be imported
+# when Pillow is absent.
+from organize_archive.gui.thumbs import face_thumb_for, thumb_for, upright_for  # noqa: E402
 
 
 def test_face_thumbnail_stays_square_at_image_edge(tmp_path: Path):
@@ -44,7 +46,7 @@ def test_a_sideways_photo_is_thumbnailed_upright(tmp_path: Path):
     assert result is not None
     with Image.open(result) as thumbnail:
         assert thumbnail.width < thumbnail.height  # landscape -> portrait
-        w, h = thumbnail.size
+        w, _h = thumbnail.size
         assert thumbnail.getpixel((w - 10, 10))[0] > 200  # red, now top-right
         assert thumbnail.getpixel((10, 10))[2] > 200  # blue, now top-left
 

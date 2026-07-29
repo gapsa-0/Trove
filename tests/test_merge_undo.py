@@ -146,8 +146,7 @@ def test_merge_pets_records_a_pet_merges_row(tmp_path):
 
 def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    ok = queries.merge_persons(str(db_path), 1, 2, name="Ana")
-    survivor_id = ok["person"]["id"]
+    queries.merge_persons(str(db_path), 1, 2, name="Ana")
 
     merge_row = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()
     merge_id = merge_row["id"]
@@ -173,7 +172,7 @@ def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
 
 def test_unmerge_persons_twice_errors_cleanly(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    ok = queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    queries.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
 
     first = queries.unmerge_persons(str(db_path), merge_id)
@@ -193,7 +192,7 @@ def test_recluster_after_undo_does_not_remerge(tmp_path):
     from organize_archive.faces.cluster import _apply_links
 
     db_path = _catalog_with_named_persons(tmp_path)
-    ok = queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    queries.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
     queries.unmerge_persons(str(db_path), merge_id)
 

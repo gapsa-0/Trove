@@ -126,7 +126,7 @@ def test_undecodable_image_is_a_clean_permanent_skip(tmp_path, monkeypatch):
         thumbs, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: None
     )
 
-    part, kind, reason = semantic.media_part(
+    part, _kind, reason = semantic.media_part(
         Config(), tmp_path / "photo.xyz", "xyz", "image", str(tmp_path / "cache")
     )
 

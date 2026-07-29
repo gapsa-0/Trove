@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
-from ..db import database as db
 from . import filename_dates, resolver
 from .takeout import SidecarMatcher, parse_sidecar
 

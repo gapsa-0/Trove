@@ -60,7 +60,7 @@ def test_the_cut_follows_the_querys_own_best_score():
         strong = _catalogue(Path(strong_dir), [0.150, 0.140, 0.125, 0.080, 0.040])
         weak = _catalogue(Path(weak_dir), [0.090, 0.084, 0.075, 0.048, 0.024])
 
-        kwargs = dict(root_id=1, min_similarity=-1.0, relative_floor=0.80)
+        kwargs = {"root_id": 1, "min_similarity": -1.0, "relative_floor": 0.80}
         strong_hits = queries.semantic_search(strong, [1.0, 0.0], **kwargs)
         weak_hits = queries.semantic_search(weak, [1.0, 0.0], **kwargs)
 

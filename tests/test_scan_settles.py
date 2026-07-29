@@ -43,7 +43,9 @@ def _catalog(tmp_path, rows: int):
 
 
 def _scan_pending(jm, tmp_path, on_disk):
-    monkey = lambda root_id, root_path, max_age=None, allow_walk=True: on_disk
+    def monkey(root_id, root_path, max_age=None, allow_walk=True):
+        return on_disk
+
     jm.disk_count = monkey
     states = pipeline_mod.stage_states(jm.cfg, jm, 1, "/media")
     return next(s for s in states if s["kind"] == "scan")

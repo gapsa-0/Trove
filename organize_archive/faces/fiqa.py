@@ -230,12 +230,12 @@ def retier_all(conn, cfg: Config) -> dict[str, int]:
     """
     calibration = load_calibration(conn, cfg.faces_fiqa_model)
     if calibration is None:
-        return {t: 0 for t in TIERS}
+        return dict.fromkeys(TIERS, 0)
     assessor = AdaFaceNormFIQA(
         calibration, h=cfg.faces_fiqa_h, high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low
     )
     fallback = CompositeFIQA(high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low)
-    counts = {t: 0 for t in TIERS}
+    counts = dict.fromkeys(TIERS, 0)
     updates = []
     for row in conn.execute(
         """SELECT id, fiqa_norm, det_score AS score, quality_score,
@@ -293,7 +293,7 @@ def recalibrate(conn, cfg: Config, log=None) -> dict[str, int]:
     """
     calibration = compute_calibration(conn, cfg)
     if calibration is None:
-        return {t: 0 for t in TIERS}
+        return dict.fromkeys(TIERS, 0)
     save_calibration(conn, calibration)
     counts = retier_all(conn, cfg)
     conn.commit()

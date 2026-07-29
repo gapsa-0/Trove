@@ -161,7 +161,7 @@ def main():
             va="center",
             weight="bold",
             path_effects=None,
-            bbox=dict(boxstyle="round,pad=0.15", fc=(0, 0, 0, 0.55), ec="none"),
+            bbox={"boxstyle": "round,pad=0.15", "fc": (0, 0, 0, 0.55), "ec": "none"},
         )
 
     n_clusters = len([c for c in counts if c >= 0])
