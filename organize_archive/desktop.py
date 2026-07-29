@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import signal
-import sys
 import threading
 
 from . import __version__, logging_setup
@@ -32,10 +31,10 @@ def main(argv: list[str] | None = None) -> int:
     logging_setup.configure()
     args = build_parser().parse_args(argv)
     if args.host != "127.0.0.1":
-        print("desktop backend may bind only to 127.0.0.1", file=sys.stderr)
+        logger.error("desktop backend may bind only to 127.0.0.1")
         return 2
     if not 0 <= args.port <= 65535:
-        print("port must be between 0 and 65535", file=sys.stderr)
+        logger.error("port must be between 0 and 65535")
         return 2
 
     httpd = serve(Config.load(), host=args.host, port=args.port)
@@ -63,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     # desktop shell blocks on (see validReady() in desktop/src/main.cjs, which
     # times out after 20s). Routing it through logging would send it to stderr
     # and hang every app launch.
-    print(f"READY {json.dumps({'port': actual_port, **build})}", flush=True)
+    print(f"READY {json.dumps({'port': actual_port, **build})}", flush=True)  # noqa: T201
     try:
         httpd.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:

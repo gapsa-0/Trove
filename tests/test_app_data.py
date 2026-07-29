@@ -162,7 +162,7 @@ def test_migrate_legacy_archive_preserves_a_pre_isolation_catalog(monkeypatch, t
     assert len(cfg2.archives) == 1
 
 
-def test_migrate_legacy_archive_skips_multi_root_catalogs(monkeypatch, tmp_path, capsys):
+def test_migrate_legacy_archive_skips_multi_root_catalogs(monkeypatch, tmp_path, caplog):
     """A legacy catalog with several roots mixed their data (shared dedup
     groups, etc.) in ways that can't be split apart automatically — skip it
     rather than guess, and latch so it's not retried forever."""
@@ -182,4 +182,6 @@ def test_migrate_legacy_archive_skips_multi_root_catalogs(monkeypatch, tmp_path,
 
     assert cfg.archives == []
     assert cfg.legacy_migrated is True
-    assert "Each archive now needs its own database" in capsys.readouterr().out
+    # Logged rather than printed: Config.load() runs inside the desktop backend
+    # too, where stdout is only scanned for the READY handshake and discarded.
+    assert "Each archive now needs its own database" in caplog.text

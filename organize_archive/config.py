@@ -7,6 +7,7 @@ Mutable state lives in the current user's application-data directory. An optiona
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -26,6 +27,8 @@ from .paths import (
     ensure_app_data_dirs,
     secrets_file,
 )
+
+logger = logging.getLogger(__name__)
 
 # Project layout ------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -579,11 +582,16 @@ class Config:
                         shutil.copytree(cache_src, archive_cache_dir(aid) / sub, dirs_exist_ok=True)
                 self.archives.append({"id": aid, "path": root_path, "added_at": _now_iso()})
             elif len(roots) > 1:
-                print(
-                    f"Note: {legacy_db} holds {len(roots)} roots from the previous "
-                    "shared-catalog design. Each archive now needs its own database, "
-                    "so automatic migration was skipped; re-add those folders as "
-                    "separate archives in the GUI."
+                # Logged, not printed: this runs inside Config.load(), which the
+                # desktop backend calls too, where a print goes to a stdout the
+                # shell only scans for the READY handshake and then discards.
+                logger.warning(
+                    "%s holds %d roots from the previous shared-catalog design. "
+                    "Each archive now needs its own database, so automatic "
+                    "migration was skipped; re-add those folders as separate "
+                    "archives in the GUI.",
+                    legacy_db,
+                    len(roots),
                 )
         finally:
             src.close()
