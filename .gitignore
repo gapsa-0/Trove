@@ -45,3 +45,7 @@ fast_tasks.md
 CLAUDE.md
 .claude/
 AGENTS.md
+
+# Obsidian's per-vault settings, including workspace.json, which records which
+# panes this machine happens to have open. Editor state, not project state.
+.obsidian/
