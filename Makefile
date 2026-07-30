@@ -4,9 +4,11 @@
 # the two cannot drift apart and "green locally, red in CI" stays abnormal.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt test test-fast gui shots check
+.PHONY: help setup lint lint-py lint-js fmt test test-fast gui shots check
 
-PY := .venv/bin/python
+# `?=` so CI can point this at the interpreter it already installed into:
+# the runner has no .venv, and sets PY=python in the job environment.
+PY ?= .venv/bin/python
 # The interpreter used to *create* the venv. Overridable, because a system
 # python3.13 is not universal yet: `make setup PYTHON=/path/to/python3.13`.
 PYTHON ?= python3.13
@@ -23,9 +25,16 @@ setup:           ## Create the venv and install everything for development
 	$(PY) -m pre_commit install
 	cd desktop && npm ci
 
-lint:            ## Static checks (fast — run this before every commit)
+# Split because CI runs the two halves in different jobs: the Python job has no
+# node and the electron job has no Python. Developers want both, so `lint` is
+# still the one-word answer.
+lint: lint-py lint-js  ## Static checks (fast — run this before every commit)
+
+lint-py:         ## Python static checks only (what CI's python job runs)
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
+
+lint-js:         ## JavaScript static checks only (what CI's electron job runs)
 	cd desktop && npm run lint
 
 fmt:             ## Autoformat
