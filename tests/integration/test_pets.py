@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import factories
 import pytest
 
 from organize_archive.config import Config
@@ -15,20 +16,13 @@ np = pytest.importorskip("numpy")
 
 
 def _catalog(tmp_path, count=1):
-    root = tmp_path / "photos"
-    root.mkdir()
-    conn = db.connect(tmp_path / "archive.db")
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')", (str(root),))
-    for file_id in range(1, count + 1):
-        name = f"{file_id}.jpg"
-        (root / name).write_bytes(b"fake")
-        conn.execute(
-            """INSERT INTO files
-               (id,root_id,rel_path,size,mtime,media_type,first_seen,last_seen)
-               VALUES(?,1,?,4,0,'image','2026-01-01','2026-01-01')""",
-            (file_id, name),
-        )
+    conn = factories.make_db(tmp_path)
+    for file_id in factories.add_files(conn, count):
+        # The rows must have real files behind them: extract() builds a path from
+        # root_path/rel_path and hands it to the backend. The fake backend here
+        # ignores it, but a fixture whose catalogue disagrees with the disk would
+        # make a future test pass for the wrong reason.
+        (tmp_path / "photos" / f"{file_id}.jpg").write_bytes(b"fake")
     conn.commit()
     return conn
 
@@ -75,7 +69,6 @@ def test_pet_extraction_is_resumable_and_persists_provenance(tmp_path, monkeypat
 
 def test_pet_clustering_is_species_separated_and_preserves_names(tmp_path):
     conn = _catalog(tmp_path, count=4)
-    now = db.now_iso()
     vectors = (
         ("cat", np.array([1, 0], dtype="float32")),
         ("cat", np.array([1, 0], dtype="float32")),
@@ -83,13 +76,7 @@ def test_pet_clustering_is_species_separated_and_preserves_names(tmp_path):
         ("dog", np.array([0, 1], dtype="float32")),
     )
     for file_id, (species, vector) in enumerate(vectors, 1):
-        conn.execute(
-            """INSERT INTO animal_detections
-               (file_id,species,box_x,box_y,box_w,box_h,det_score,embedding,
-                model_source,created_at)
-               VALUES(?,?,0,0,50,50,.9,?,'test',?)""",
-            (file_id, species, vector.tobytes(), now),
-        )
+        factories.add_animal_detection(conn, file_id, species=species, embedding=vector.tobytes())
     conn.commit()
     cfg = Config(pets_cluster_similarity=0.99, pets_min_detections=2)
 
@@ -136,12 +123,7 @@ class _FaceBackend:
 )
 def test_animal_overlap_filters_face_but_manual_review_can_restore_it(tmp_path, monkeypatch):
     conn = _catalog(tmp_path)
-    conn.execute(
-        """INSERT INTO animal_detections
-           (file_id,species,box_x,box_y,box_w,box_h,det_score,embedding,
-            model_source,created_at)
-           VALUES(1,'dog',0,0,100,100,.9,X'00','test','2026-01-01')"""
-    )
+    factories.add_animal_detection(conn, file_id=1, species="dog", box=(0, 0, 100, 100))
     conn.commit()
     monkeypatch.setattr(face_backend, "available", lambda: True)
     cfg = Config(pets_face_overlap=0.6)

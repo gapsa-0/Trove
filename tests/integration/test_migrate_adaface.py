@@ -2,42 +2,38 @@
 
 from __future__ import annotations
 
+import factories
+
 from organize_archive.config import Config
-from organize_archive.db import database as db
 from organize_archive.faces import migrate_adaface as mig
 
 
 def _catalog(tmp_path):
-    conn = db.connect(tmp_path / "archive.db")
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/r','2026-01-01')")
-    for fid in (1, 2):
-        conn.execute(
-            """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
-                                 first_seen,last_seen,present,hidden)
-               VALUES(?,1,?,1,0,'image','2026-01-01','2026-01-01',1,0)""",
-            (fid, f"{fid}.jpg"),
-        )
-    conn.execute(
-        """INSERT INTO persons(id,name,face_count,created_at)
-           VALUES(1,'Mari',2,'2026-01-01')"""
-    )
+    conn = factories.make_db(tmp_path)
+    factories.add_files(conn, 2)
+    factories.add_person(conn, name="Mari", person_id=1)
     # Two faces of Mari, one flagged doll, one ordinary auto-clustered face.
-    conn.execute(
-        """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,det_score,
-                             person_id,embedding,created_at)
-           VALUES(10,1,100,100,60,60,0.9,1,X'00','2026-01-01')"""
+    factories.add_face(
+        conn, file_id=1, face_id=10, box=(100, 100, 60, 60), det_score=0.9, person_id=1
     )
-    conn.execute(
-        """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,det_score,
-                             person_id,manual_person,embedding,created_at)
-           VALUES(11,2,20,20,50,50,0.8,1,'Mari',X'00','2026-01-01')"""
+    factories.add_face(
+        conn,
+        file_id=2,
+        face_id=11,
+        box=(20, 20, 50, 50),
+        det_score=0.8,
+        person_id=1,
+        manual_person="Mari",
     )
-    conn.execute(
-        """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,det_score,
-                             not_person,nonhuman_kind,nonhuman_source,
-                             embedding,created_at)
-           VALUES(12,1,300,300,40,40,0.7,1,'toy','manual',X'00','2026-01-01')"""
+    factories.add_face(
+        conn,
+        file_id=1,
+        face_id=12,
+        box=(300, 300, 40, 40),
+        det_score=0.7,
+        not_person=1,
+        nonhuman_kind="toy",
+        nonhuman_source="manual",
     )
     conn.execute(
         """INSERT INTO face_links(face_a,face_b,kind,created_at)
@@ -50,12 +46,7 @@ def _catalog(tmp_path):
 def _redetect(conn, boxes):
     """Stand in for the re-extract: fresh face rows with new ids, same boxes."""
     for file_id, (x, y, w, h) in boxes:
-        conn.execute(
-            """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
-                                 embedding,created_at)
-               VALUES(?,?,?,?,?,0.9,X'11','2026-02-01')""",
-            (file_id, x, y, w, h),
-        )
+        factories.add_face(conn, file_id=file_id, box=(x, y, w, h), det_score=0.9)
     conn.commit()
 
 

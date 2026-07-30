@@ -5,6 +5,7 @@ constraint each keys off DETECTION/FACE ids rather than the ephemeral group id).
 
 from __future__ import annotations
 
+import factories
 import pytest
 
 from organize_archive.config import Config
@@ -16,31 +17,21 @@ np = pytest.importorskip("numpy")
 
 
 def _catalog(tmp_path, count):
-    root = tmp_path / "photos"
-    root.mkdir()
-    conn = db.connect(tmp_path / "archive.db")
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')", (str(root),))
-    for file_id in range(1, count + 1):
-        name = f"{file_id}.jpg"
-        (root / name).write_bytes(b"fake")
-        conn.execute(
-            """INSERT INTO files
-               (id,root_id,rel_path,size,mtime,media_type,first_seen,last_seen)
-               VALUES(?,1,?,4,0,'image','2026-01-01','2026-01-01')""",
-            (file_id, name),
-        )
+    conn = factories.make_db(tmp_path)
+    for file_id in factories.add_files(conn, count):
+        (tmp_path / "photos" / f"{file_id}.jpg").write_bytes(b"fake")
     conn.commit()
     return conn
 
 
 def _insert_detection(conn, det_id, file_id, species, vector, score):
-    conn.execute(
-        """INSERT INTO animal_detections
-           (id,file_id,species,box_x,box_y,box_w,box_h,det_score,embedding,
-            model_source,created_at)
-           VALUES(?,?,?,0,0,50,50,?,?,'test','2026-01-01')""",
-        (det_id, file_id, species, score, vector.astype("float32").tobytes()),
+    factories.add_animal_detection(
+        conn,
+        file_id,
+        detection_id=det_id,
+        species=species,
+        det_score=score,
+        embedding=vector.astype("float32").tobytes(),
     )
 
 
@@ -118,40 +109,29 @@ def test_merge_pets_both_named_differently_requires_explicit_name(tmp_path):
 
 
 def _catalog_with_named_persons(tmp_path):
-    db_path = tmp_path / "archive.db"
-    conn = db.connect(db_path)
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/photos','2026-01-01')")
-    for file_id in (1, 2):
-        conn.execute(
-            """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
-                                 first_seen,last_seen)
-               VALUES(?,1,?,1,0,'image','2026-01-01','2026-01-01')""",
-            (file_id, f"{file_id}.jpg"),
-        )
-    now = db.now_iso()
-    conn.execute("INSERT INTO persons(id,name,face_count,created_at) VALUES(1,'Ana',1,?)", (now,))
-    conn.execute("INSERT INTO persons(id,name,face_count,created_at) VALUES(2,'Beto',1,?)", (now,))
+    conn = factories.make_db(tmp_path)
+    factories.add_file(conn, file_id=1)
+    factories.add_file(conn, file_id=2)
+    factories.add_person(conn, name="Ana", person_id=1)
+    factories.add_person(conn, name="Beto", person_id=2)
     # Both faces are manually pinned by name, so a merge that doesn't rewrite
     # the losing pin would let faces/cluster.py's _apply_manual_pins recreate
     # the merged-away person on the next recluster. Embeddings just need to be
     # valid float32 blobs -- merge_persons recomputes the centroid from them.
     vec = np.ones(2, dtype="float32").tobytes()
-    conn.execute(
-        """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,embedding,
-                             person_id,manual_person,created_at)
-           VALUES(1,1,0,0,1,1,?,1,'Ana',?)""",
-        (vec, now),
-    )
-    conn.execute(
-        """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,embedding,
-                             person_id,manual_person,created_at)
-           VALUES(2,2,0,0,1,1,?,2,'Beto',?)""",
-        (vec, now),
-    )
+    for face_id, (file_id, person_id, name) in enumerate([(1, 1, "Ana"), (2, 2, "Beto")], 1):
+        factories.add_face(
+            conn,
+            file_id=file_id,
+            face_id=face_id,
+            box=(0, 0, 1, 1),
+            embedding=vec,
+            person_id=person_id,
+            manual_person=name,
+        )
     conn.commit()
     conn.close()
-    return db_path
+    return tmp_path / "archive.db"
 
 
 def test_merge_persons_with_explicit_name_succeeds_and_rewrites_pins(tmp_path):

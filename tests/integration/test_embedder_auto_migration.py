@@ -2,27 +2,18 @@
 
 from __future__ import annotations
 
+import factories
+
 from organize_archive.config import Config
-from organize_archive.db import database as db
 from organize_archive.faces import backend
 from organize_archive.faces import migrate_adaface as mig
 
 
 def _catalog(tmp_path, with_faces=True):
-    conn = db.connect(tmp_path / "archive.db")
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id,path,added_at) VALUES(1,'/r','2026-01-01')")
-    conn.execute(
-        """INSERT INTO files(id,root_id,rel_path,size,mtime,media_type,
-                             first_seen,last_seen,present,hidden)
-           VALUES(1,1,'a.jpg',1,0,'image','2026-01-01','2026-01-01',1,0)"""
-    )
+    conn = factories.make_db(tmp_path)
+    factories.add_file(conn, file_id=1, rel_path="a.jpg")
     if with_faces:
-        conn.execute(
-            """INSERT INTO faces(id,file_id,box_x,box_y,box_w,box_h,det_score,
-                                 embedding,created_at)
-               VALUES(10,1,10,10,60,60,0.9,X'00','2026-01-01')"""
-        )
+        factories.add_face(conn, file_id=1, face_id=10, box=(10, 10, 60, 60), det_score=0.9)
         conn.execute(
             """INSERT INTO face_scan(file_id,n_faces,scanned_at)
                VALUES(1,1,'2026-01-01')"""
@@ -60,10 +51,8 @@ def test_valid_pet_data_is_not_destroyed(tmp_path):
     while the re-run proceeds."""
     cfg = Config()
     conn = _catalog(tmp_path)
-    conn.execute(
-        """INSERT INTO animal_detections(id,file_id,species,box_x,box_y,box_w,
-                                         box_h,det_score,model_source,created_at)
-           VALUES(1,1,'dog',0,0,50,50,0.9,'yolox','2026-01-01')"""
+    factories.add_animal_detection(
+        conn, file_id=1, detection_id=1, species="dog", model_source="yolox"
     )
     conn.commit()
 
@@ -97,11 +86,7 @@ def test_it_does_not_run_twice(tmp_path):
     assert mig.run_if_needed(conn, cfg) is not None
 
     # Simulate progress: some faces have been re-extracted with the new model.
-    conn.execute(
-        """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
-                             fiqa_norm,embedding,created_at)
-           VALUES(1,10,10,60,60,0.9,21.5,X'11','2026-02-01')"""
-    )
+    factories.add_face(conn, file_id=1, box=(10, 10, 60, 60), det_score=0.9)
     conn.execute("INSERT INTO face_scan(file_id,n_faces,scanned_at) VALUES(1,1,'2026-02-01')")
     conn.commit()
 
@@ -126,11 +111,7 @@ def test_bumping_the_embedder_version_re_arms_again(tmp_path, monkeypatch):
     cfg = Config()
     conn = _catalog(tmp_path)
     mig.run_if_needed(conn, cfg)
-    conn.execute(
-        """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
-                             embedding,created_at)
-           VALUES(1,10,10,60,60,0.9,X'11','2026-02-01')"""
-    )
+    factories.add_face(conn, file_id=1, box=(10, 10, 60, 60), det_score=0.9)
     conn.execute("INSERT INTO face_scan(file_id,n_faces,scanned_at) VALUES(1,1,'2026-02-01')")
     conn.commit()
 
@@ -151,11 +132,7 @@ def test_the_users_review_answers_survive_the_automatic_wipe(tmp_path):
     assert mig.pending(conn) is True
 
     # The pipeline re-detects the same face, then reattaches.
-    conn.execute(
-        """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
-                             fiqa_norm,embedding,created_at)
-           VALUES(1,10,10,60,60,0.9,21.5,X'11','2026-02-01')"""
-    )
+    factories.add_face(conn, file_id=1, box=(10, 10, 60, 60), det_score=0.9)
     conn.commit()
     mig.reattach(conn, cfg)
 

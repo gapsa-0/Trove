@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import factories
 import pytest
 
 from organize_archive.config import Config
-from organize_archive.db import database as db
 from organize_archive.faces import backend, extract
 
 np = pytest.importorskip("numpy")
@@ -36,20 +36,9 @@ def test_clipped_fraction_is_bounded_and_detects_partial_boxes():
 
 
 def _catalog(tmp_path):
-    root = tmp_path / "photos"
-    root.mkdir()
-    (root / "one.jpg").write_bytes(b"not decoded by the fake backend")
-    conn = db.connect(tmp_path / "archive.db")
-    db.init_db(conn)
-    conn.execute(
-        "INSERT INTO roots(id,path,added_at) VALUES(1,?,'2026-01-01')",
-        (str(root),),
-    )
-    conn.execute(
-        """INSERT INTO files(
-               id,root_id,rel_path,size,mtime,media_type,first_seen,last_seen
-           ) VALUES(1,1,'one.jpg',1,0,'image','2026-01-01','2026-01-01')"""
-    )
+    conn = factories.make_db(tmp_path)
+    (tmp_path / "photos" / "one.jpg").write_bytes(b"not decoded by the fake backend")
+    factories.add_file(conn, file_id=1, rel_path="one.jpg")
     conn.commit()
     return conn
 

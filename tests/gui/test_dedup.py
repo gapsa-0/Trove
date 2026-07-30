@@ -1,33 +1,16 @@
-import sqlite3
 import threading
 
+import factories
+
 from organize_archive.config import Config
-from organize_archive.db import database as db
 from organize_archive.dedup import exact
 from organize_archive.gui import jobs as jobs_mod
 
 
-def _db():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    db.init_db(conn)
-    root = db.get_or_create_root(conn, "/archive")
-    return conn, root
-
-
-def _file(conn, root, path, sha, size):
-    conn.execute(
-        """INSERT INTO files(root_id, rel_path, ext, size, mtime, media_type,
-                             sha256, first_seen, last_seen)
-           VALUES(?, ?, 'jpg', ?, 0, 'image', ?, 'now', 'now')""",
-        (root, path, size, sha),
-    )
-
-
 def test_exact_grouping_still_works_without_visual_dependencies():
-    conn, root = _db()
-    _file(conn, root, "one.jpg", "a" * 64, 10)
-    _file(conn, root, "two.jpg", "a" * 64, 10)
+    conn, root = factories.make_memory_db()
+    factories.add_file(conn, root_id=root, rel_path="one.jpg", sha256="a" * 64, size=10)
+    factories.add_file(conn, root_id=root, rel_path="two.jpg", sha256="a" * 64, size=10)
     conn.commit()
 
     stats = exact.run(conn)
@@ -37,10 +20,10 @@ def test_exact_grouping_still_works_without_visual_dependencies():
 
 
 def test_visual_match_merges_different_encodings_and_keeps_best_image(monkeypatch):
-    conn, root = _db()
-    _file(conn, root, "large.jpg", "a" * 64, 40)
-    _file(conn, root, "small.png", "b" * 64, 10)
-    _file(conn, root, "different.jpg", "c" * 64, 20)
+    conn, root = factories.make_memory_db()
+    factories.add_file(conn, root_id=root, rel_path="large.jpg", sha256="a" * 64, size=40)
+    factories.add_file(conn, root_id=root, rel_path="small.png", sha256="b" * 64, size=10)
+    factories.add_file(conn, root_id=root, rel_path="different.jpg", sha256="c" * 64, size=20)
     conn.executemany(
         "INSERT INTO media_meta(file_id, width, height) VALUES(?, ?, ?)",
         [(1, 100, 100), (2, 50, 50)],
@@ -69,9 +52,9 @@ def test_interrupted_regroup_leaves_previous_grouping_intact(monkeypatch):
     the connection without committing on error) restores the first run's
     grouping byte for byte, rather than leaving a half-cleared archive.
     """
-    conn, root = _db()
-    _file(conn, root, "one.jpg", "a" * 64, 10)
-    _file(conn, root, "two.jpg", "a" * 64, 10)
+    conn, root = factories.make_memory_db()
+    factories.add_file(conn, root_id=root, rel_path="one.jpg", sha256="a" * 64, size=10)
+    factories.add_file(conn, root_id=root, rel_path="two.jpg", sha256="a" * 64, size=10)
     conn.commit()
 
     exact.run(conn)  # establish the baseline ("previous") grouping
@@ -132,12 +115,9 @@ def test_dedup_needed_survives_a_restart(tmp_path, monkeypatch):
     "not needed" from a brand-new JobManager pointed at the same database --
     simulating an app restart -- instead of defaulting to dirty every time
     the process starts (the old bug: a full rebuild ran on every app start)."""
-    db_path = tmp_path / "archive.db"
-    conn = db.connect(db_path)
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/x', 'now')")
-    _file(conn, 1, "one.jpg", "a" * 64, 10)
-    _file(conn, 1, "two.jpg", "a" * 64, 10)
+    conn = factories.make_db(tmp_path)
+    factories.add_file(conn, rel_path="one.jpg", sha256="a" * 64, size=10)
+    factories.add_file(conn, rel_path="two.jpg", sha256="a" * 64, size=10)
     conn.commit()
 
     jm = _job_manager(tmp_path, monkeypatch)
@@ -165,11 +145,8 @@ def test_dedup_needed_true_again_after_new_files_arrive(tmp_path, monkeypatch):
     """A rebuild that covered N files must be considered stale once the
     catalog's present/hashed population changes (a scan added a file) --
     covering the count/max-id half of dedup_needed()'s derivation."""
-    db_path = tmp_path / "archive.db"
-    conn = db.connect(db_path)
-    db.init_db(conn)
-    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/x', 'now')")
-    _file(conn, 1, "one.jpg", "a" * 64, 10)
+    conn = factories.make_db(tmp_path)
+    factories.add_file(conn, rel_path="one.jpg", sha256="a" * 64, size=10)
     conn.commit()
 
     jm = _job_manager(tmp_path, monkeypatch)
@@ -178,7 +155,7 @@ def test_dedup_needed_true_again_after_new_files_arrive(tmp_path, monkeypatch):
         jm._run_dedup(conn, job, threading.Event())
         assert jm.dedup_needed(1) is False
 
-        _file(conn, 1, "two.jpg", "b" * 64, 5)
+        factories.add_file(conn, rel_path="two.jpg", sha256="b" * 64, size=5)
         conn.commit()
 
         assert jm.dedup_needed(1) is True
