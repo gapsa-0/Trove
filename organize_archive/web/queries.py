@@ -25,20 +25,18 @@ from ..paths import archive_dir as archive_dir_path
 
 # Re-export: defined in pets/ now, kept here for call sites not yet repointed.
 from ..pets.manual_tags import repair_manual_pet_files  # noqa: F401
+from ..services._common import (
+    _HAS_LOCATION,
+    _NOT_HIDDEN,
+    _QUALITY_OK,
+    _VISIBLE,
+    _indexed_exists,
+    _quality_ok,
+    _root_clause,
+)
 
 logger = logging.getLogger(__name__)
 
-# Analytics (summary, timeline, map, counts) describe the whole archive, so they
-# count every present file. Only Browse hides non-canonical duplicates.
-_VISIBLE = "f.present = 1"
-_NOT_HIDDEN = "f.present = 1 AND f.hidden = 0"
-
-# "This file has a location." One definition for both the 📍 tile badge and the
-# "Show only files with a location" box, so the badge and the filter can never
-# disagree about what counts. A file has a location iff it has a geo row: the
-# resolver already declines to write 0/0/0 (Takeout's "no location"), so there
-# are no null-island rows to exclude here.
-_HAS_LOCATION = "EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id)"
 
 # How much a locally translated rewording of a search is discounted against the
 # words the user actually typed, so the two only swap places on a clear win.
@@ -54,30 +52,6 @@ ALTERNATE_VECTOR_PENALTY = 0.002
 # ~200 MB, and reading it all in at once alongside the matrix built from it is
 # the one part of search that would actually strain a small machine.
 _SCORE_CHUNK = 4096
-
-
-def _quality_ok(alias: str = "fa") -> str:
-    """SQL predicate excluding faces the FIQA gate rejected (faces/fiqa.py).
-
-    LOW_QUALITY faces are kept in the database — never deleted, so the call stays
-    auditable and re-tierable — but they must not appear anywhere in the UI: not
-    in a photo's detected faces, not in a person's photo list, not in any count.
-    This predicate is that rule, in one place.
-
-    NULL-safe on purpose: a face extracted before the gate existed has no tier,
-    and an unknown quality must not make a face vanish. It reads as BORDERLINE,
-    which is exactly how faces/cluster.py treats it too.
-    """
-    return f"COALESCE({alias}.quality_tier, 'BORDERLINE') != 'LOW_QUALITY'"
-
-
-_QUALITY_OK = _quality_ok()
-
-
-def _root_clause(root_id):
-    if root_id is None:
-        return "", []
-    return " AND f.root_id = ?", [root_id]
 
 
 # -- archives ---------------------------------------------------------------
@@ -873,30 +847,6 @@ def place_merge_preview(db_path: str, id_a, id_b, warn_km: float) -> dict:
 
 
 # -- media grid + detail ----------------------------------------------------
-
-
-def _indexed_exists(alias: str = "f") -> str:
-    """SQL for "this file carries a *current* description-search vector".
-
-    Deliberately the same three conditions semantic_summary counts as `indexed`,
-    so the grid's markers and the reach note above it can never disagree:
-
-    - ``status='indexed'`` — a skipped or failed file has a row too, and cannot
-      answer a query,
-    - ``source_sha256=f.sha256`` — the vector describes the bytes the file has
-      *now*; if the content changed underneath it, it is stale,
-    - ``indexer_version`` — a vector from a previous model does not live in the
-      same space as today's query, so it is not findable even though it exists.
-
-    That last one is why an archive mid-migration shows every tile unmarked
-    rather than falsely marked: 69,726 Voyage-era rows are still on disk here.
-    Takes one parameter, the current indexer version.
-    """
-    return (
-        f"EXISTS(SELECT 1 FROM semantic_embeddings se "
-        f"WHERE se.file_id={alias}.id AND se.source_sha256={alias}.sha256 "
-        f"AND COALESCE(se.indexer_version,'')=? AND se.status='indexed')"
-    )
 
 
 def media(
