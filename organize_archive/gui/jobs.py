@@ -142,16 +142,36 @@ class JobManager:
         self._stopping.set()
         self._wake.set()
         with self._lock:
+            # Set every cancel directly rather than going through
+            # _cancel_running: on the way out, jobs of every kind and root stop.
+            running = [(j.kind, j.root_id) for j in self._jobs.values() if j.status == "running"]
             for cancel in self._cancels.values():
                 cancel.set()
+        logger.info(
+            "shutdown requested; cancelling %d running job(s): %s",
+            len(running),
+            ",".join(f"{kind}(root={root})" for kind, root in running) or "-",
+        )
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
                 active = any(job.status == "running" for job in self._jobs.values())
             if not active:
                 self._scheduler.join(timeout=max(0, deadline - time.monotonic()))
+                logger.info("shutdown complete; no job left running")
                 return True
             time.sleep(0.05)
+        # "The app takes forever to close" ends up here. A job only yields at a
+        # progress checkpoint, and the stages that load a model spend their first
+        # seconds with no checkpoint to reach -- so the timeout is survivable, but
+        # it must not be silent, and the kinds above say which stage was slow.
+        with self._lock:
+            stragglers = [j.kind for j in self._jobs.values() if j.status == "running"]
+        logger.warning(
+            "shutdown timed out after %.1fs; still running: %s",
+            timeout,
+            ",".join(stragglers) or "-",
+        )
         return False
 
     # -- introspection ----------------------------------------------------
@@ -260,7 +280,10 @@ class JobManager:
         try:
             db.write_with_retry(_write)
         except sqlite3.OperationalError:
-            pass
+            # Not fatal -- the next tick marks it again -- but not nothing either:
+            # while this keeps failing, dedup is not told the file set changed, so
+            # "duplicates never rebuilt after a scan" is traced from here.
+            logger.warning("could not mark dedup owed for root=%s", root_id, exc_info=True)
 
     def current_root_id(self) -> int | None:
         """Which single archive is open in the GUI right now, if any.

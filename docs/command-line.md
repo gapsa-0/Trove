@@ -32,7 +32,8 @@ oa faces
 oa gui
 ```
 
-Useful companion commands are `oa status`, `oa dates`, `oa config --show`, and
+Useful companion commands are `oa status`, `oa dates`, `oa config --show`,
+`oa logs` (the last 200 log lines; `--path` prints just the file's location), and
 `oa migrate-data` for copying an older project-local `data/` directory into the
 per-user data location. All long commands are designed to be re-run.
 

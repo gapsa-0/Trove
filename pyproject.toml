@@ -92,10 +92,14 @@ select = [
 ignore = [
   "E501",     # line length: the formatter owns this; a long SQL string is not a bug
   "B008",     # function call in default arg — used deliberately in a few places
-  # `try: ... except X: pass` sites are not `contextlib.suppress` candidates: they
-  # are the silent-failure population that the logging work converts into handlers
-  # that actually record what went wrong. Suppress() would only re-hide them more
-  # tidily. Left as-is deliberately, not overlooked.
+  # `try: ... except X: pass` was expected to disappear once the logging sweep
+  # turned those sites into handlers that record what went wrong. Most did. The
+  # five that remain are silent *correctly*, and each now carries a comment
+  # saying why: a client that has already disconnected, a decode-speed hint that
+  # did not apply, a directory that does not exist on a fresh install. They run
+  # per-request or per-image, so logging them would drown the log in non-events.
+  # Still not `contextlib.suppress` candidates -- suppress() has nowhere to put
+  # the comment that is the whole value of these handlers.
   "SIM105",
 ]
 # `×` is the multiplication sign in dimension strings ("1920×1080"), not a typo'd

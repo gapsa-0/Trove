@@ -21,7 +21,10 @@ from .runtime import tool as runtime_tool
 from .scan import walker
 from .scan.progress import ScanProgress
 
-logger = logging.getLogger(__name__)
+# Named explicitly, not __name__: `oa` reaches main() as an imported module but
+# `python -m organize_archive.cli` makes it "__main__", and a log line should
+# not change its origin depending on how the process was started.
+logger = logging.getLogger("organize_archive.cli")
 
 
 def _preflight() -> list[str]:
@@ -484,6 +487,31 @@ def cmd_gui(args, cfg: Config) -> int:
     return 0
 
 
+def cmd_logs(args, cfg: Config) -> int:
+    """Where the log is, or what it last said.
+
+    Exists to turn a support exchange from "navigate to your application data
+    folder, which is somewhere different on each OS" into one command. No
+    database is needed or touched.
+    """
+    path = logging_setup.log_file()
+    if args.path:
+        print(path)
+        return 0
+    if not path.is_file():
+        print(f"No log file yet at {path}")
+        print("It is created the first time something is logged.")
+        return 1
+    # Whole-file read: rotation caps this at 5 MB (logging_setup.MAX_BYTES), so
+    # there is no point in a seek-backwards tail. Rotated files (trove.log.1 and
+    # friends) sit next to it and are deliberately not merged in -- interleaving
+    # them correctly needs parsing, and this command is for "what just happened".
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in lines[-args.tail :] if args.tail > 0 else lines:
+        print(line)
+    return 0
+
+
 def cmd_status(args, cfg: Config) -> int:
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init")
@@ -704,6 +732,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("status", help="Show catalog summary")
     sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("logs", help="Print the last lines of the log, or where it lives")
+    sp.add_argument("--path", action="store_true", help="Print the log file's path and exit")
+    sp.add_argument(
+        "--tail",
+        type=int,
+        default=200,
+        metavar="N",
+        help="Print the last N lines (default 200; 0 for the whole file)",
+    )
+    sp.set_defaults(func=cmd_logs)
 
     sp = sub.add_parser("config", help="Show or modify configuration")
     sp.add_argument("--show", action="store_true", help="Print current config")

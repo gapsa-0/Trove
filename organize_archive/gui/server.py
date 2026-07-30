@@ -75,6 +75,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
+            # The client went away mid-response -- a cancelled image load, a
+            # closed tab. Routine enough that logging it would be noise, and
+            # there is nobody left to send an error to.
             pass
 
     def _send_file(self, path: Path, content_type=None, cache_control=None):

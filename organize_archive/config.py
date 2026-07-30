@@ -483,6 +483,8 @@ class Config:
                 int(d.name) for d in archives_dir().iterdir() if d.is_dir() and d.name.isdigit()
             }
         except OSError:
+            # No archives/ directory yet, on a fresh install: the registry above
+            # is then the whole truth. Correct silence, not a swallowed failure.
             pass
         return max(used, default=0) + 1
 

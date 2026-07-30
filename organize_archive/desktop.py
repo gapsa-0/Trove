@@ -13,7 +13,12 @@ from . import __version__, logging_setup
 from .config import Config
 from .gui.server import serve
 
-logger = logging.getLogger(__name__)
+# Named explicitly, not __name__: this module is the console-script entry point
+# (organize-archive-backend) in a packaged build but `python -m
+# organize_archive.desktop` in a source run, where __name__ is "__main__". The
+# logger name is meant to say where a line came from, so it must not depend on
+# how the process was started.
+logger = logging.getLogger("organize_archive.desktop")
 
 
 def build_parser() -> argparse.ArgumentParser:
