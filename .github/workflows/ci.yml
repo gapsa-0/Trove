@@ -17,7 +17,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.13', cache: pip }
-      - run: python -m pip install -e '.[dev]'
+      # The same install `make setup` performs, so a green run here and a green
+      # run on a developer machine mean the same thing. Installing only `.[dev]`
+      # was cheaper but tested almost nothing: without numpy the semantic and
+      # detection suites either skip or fail, and CI had been reporting a red
+      # build over a *collection* error for a day without running one test.
+      # `transformers` is deliberately absent -- it is a dev-only reference
+      # dependency for tests/test_siglip_preprocessing.py that drags in torch,
+      # and that module skips itself cleanly without it.
+      - run: python -m pip install -e '.[dev,cli,media,faces,pets,semantic]' -c constraints.txt
       # Lint before testing: it finishes in under a second, so a style failure
       # reports immediately instead of behind the whole suite.
       - run: ruff check --output-format=github .
