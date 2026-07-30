@@ -26,13 +26,22 @@ from ..services._common import (
     _HAS_LOCATION,
     _NOT_HIDDEN,
     _QUALITY_OK,
-    _indexed_exists,
     _quality_ok,
     _root_clause,
 )
 
 # Re-export: defined in services/archives.py now, kept here for call sites not yet repointed.
 from ..services.archives import add_archive, archives, remove_archive  # noqa: F401
+
+# Re-export: defined in services/browse.py now, kept here for call sites not yet repointed.
+from ..services.browse import (  # noqa: F401
+    browse_filters,
+    folders,
+    item,
+    media,
+    media_source,
+    set_date,
+)
 
 # Re-export: defined in services/dups.py now, kept here for call sites not yet repointed.
 from ..services.dups import dup_groups, dup_summary  # noqa: F401
@@ -44,10 +53,7 @@ from ..services.overview import date_sources, summary, timeline  # noqa: F401
 from ..services.pending import detect_pending, faces_pending, pets_pending  # noqa: F401
 
 # Re-export: defined in services/places.py now, kept here for call sites not yet repointed.
-# _PLACE_EXEMPT is not part of that facade: it is private, and item() -- still here,
-# still building it into a join -- is its only remaining user. It goes when item() does.
 from ..services.places import (  # noqa: F401
-    _PLACE_EXEMPT,
     clear_place,
     create_place,
     merge_place_clusters,
@@ -75,233 +81,6 @@ ALTERNATE_VECTOR_PENALTY = 0.002
 # ~200 MB, and reading it all in at once alongside the matrix built from it is
 # the one part of search that would actually strain a small machine.
 _SCORE_CHUNK = 4096
-
-
-# -- media grid + detail ----------------------------------------------------
-
-
-def media(
-    db_path: str,
-    *,
-    root_id=None,
-    year=None,
-    month=None,
-    mtype=None,
-    person_id=None,
-    person_ids=None,
-    cluster_id=None,
-    sort="newest",
-    limit=120,
-    offset=0,
-    indexed=None,
-    located=None,
-) -> dict:
-    """The Browse grid. ``indexed`` filters on description-search coverage: True
-    for media that can be found by describing it, False for what cannot (still
-    queued, skipped, or failed), None for everything.
-
-    ``located`` does the same for media that carries a location.
-
-    The GUI only ever asks for True on either ("Show only …" boxes) -- unchecked
-    means no filter at all. False is kept because the predicate is naturally
-    three-valued and because the two halves summing to the unfiltered grid is
-    the property worth testing."""
-    from ..services import semantic
-
-    conn = db.open_readonly(db_path)
-    try:
-        where = [_NOT_HIDDEN]
-        params: list = []
-        rc, rp = _root_clause(root_id)
-        if rc:
-            where.append(rc.removeprefix(" AND "))
-            params += rp
-        if mtype:
-            where.append("f.media_type = ?")
-            params.append(mtype)
-        if year:
-            where.append("substr(d.best_datetime,1,4) = ?")
-            params.append(str(year))
-        if month:
-            where.append("substr(d.best_datetime,1,7) = ?")
-            params.append(month)
-        # Person / place filter on set membership (IN, not a JOIN) so a photo
-        # where the same person or place appears twice still yields one grid
-        # tile, and the LEFT JOIN dates ordering below is untouched.
-        #
-        # Use `f.id IN (SELECT file_id ...)` rather than a correlated EXISTS:
-        # the subquery materialises the (small) set of the person's/place's
-        # file_ids once up front. A correlated EXISTS instead makes SQLite scan
-        # every present file (~150k) and re-run the subquery per row, and for
-        # the person case it picked idx_faces_person, pulling *all* of that
-        # person's faces on each of the 150k iterations, which pushed the
-        # request past 120s and left the grid stuck on a bare "Load more".
-        selected_people = list(dict.fromkeys(person_ids or ([person_id] if person_id else [])))
-        for selected_person in selected_people:
-            # UNION of two `SELECT file_id` subqueries inside the same IN, so
-            # manually tagged files (person_files, for media with no detected
-            # face) match the filter too, without reshaping this into the
-            # correlated-EXISTS shape the comment above warns off.
-            where.append(
-                f"f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
-                f"AND {_QUALITY_OK} "
-                "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)"
-            )
-            params.append(selected_person)
-            params.append(selected_person)
-        if cluster_id:
-            where.append(
-                "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm WHERE pcm.cluster_id=?)"
-            )
-            params.append(cluster_id)
-        # file_id is semantic_embeddings' INTEGER PRIMARY KEY, so this EXISTS is
-        # a rowid lookup per file rather than a scan.
-        indexed_sql = _indexed_exists("f")
-        if indexed is not None:
-            where.append(indexed_sql if indexed else f"NOT {indexed_sql}")
-            params.append(semantic.INDEXER_VERSION)
-        if located is not None:
-            where.append(_HAS_LOCATION if located else f"NOT {_HAS_LOCATION}")
-        clause = " AND ".join(where)
-        total = conn.execute(
-            f"""SELECT COUNT(*)
-                FROM files f LEFT JOIN dates d ON d.file_id=f.id
-                WHERE {clause}""",
-            params,
-        ).fetchone()[0]
-        rows = conn.execute(
-            f"""SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
-                       d.date_source AS dsrc,
-                       {_HAS_LOCATION} AS has_gps,
-                       {indexed_sql} AS indexed
-                FROM files f LEFT JOIN dates d ON d.file_id=f.id
-                WHERE {clause}
-                ORDER BY (d.best_datetime IS NULL),
-                         d.best_datetime {"ASC" if sort == "oldest" else "DESC"}, f.id
-                LIMIT ? OFFSET ?""",
-            (semantic.INDEXER_VERSION, *params, limit, offset),
-        ).fetchall()
-        items = [
-            {
-                "id": r["id"],
-                "type": r["media_type"],
-                "name": os.path.basename(r["rel_path"]),
-                "date": r["dt"],
-                "date_source": r["dsrc"],
-                "has_gps": bool(r["has_gps"]),
-                "indexed": bool(r["indexed"]),
-            }
-            for r in rows
-        ]
-        return {
-            "items": items,
-            "offset": offset,
-            "limit": limit,
-            "count": len(items),
-            "total": total,
-        }
-    finally:
-        conn.close()
-
-
-def browse_filters(db_path: str, root_id=None) -> dict:
-    """Options for the Browse filter bar: which year/months, media types, named
-    people and named places actually occur in this archive. Scoped to the
-    default browse view (_NOT_HIDDEN), so the choices match what the grid shows.
-
-    Only *named* people/places are offered, an unnamed auto-cluster is not a
-    label a user would filter by, and naming is how they become meaningful."""
-    conn = db.open_readonly(db_path)
-    try:
-        rc, rp = _root_clause(root_id)
-        periods = [
-            r[0]
-            for r in conn.execute(
-                f"""SELECT DISTINCT substr(d.best_datetime,1,7) p
-                FROM files f JOIN dates d ON d.file_id=f.id
-                WHERE {_NOT_HIDDEN}{rc} AND d.best_datetime IS NOT NULL
-                ORDER BY p DESC""",
-                rp,
-            )
-        ]
-        types = [
-            r[0]
-            for r in conn.execute(
-                f"""SELECT DISTINCT media_type FROM files f
-                WHERE {_NOT_HIDDEN}{rc} ORDER BY media_type""",
-                rp,
-            )
-        ]
-        people = [
-            {"id": r["id"], "name": r["name"]}
-            for r in conn.execute(
-                f"""SELECT p.id, p.name, COUNT(DISTINCT fa.file_id) c
-                FROM persons p
-                JOIN faces fa ON fa.person_id=p.id
-                JOIN files f ON f.id=fa.file_id
-                WHERE p.name IS NOT NULL AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc}
-                GROUP BY p.id ORDER BY p.name COLLATE NOCASE""",
-                rp,
-            )
-        ]
-        if root_id is None:
-            place_rows = conn.execute(
-                """SELECT id, name FROM place_clusters
-                   WHERE name IS NOT NULL ORDER BY name COLLATE NOCASE"""
-            )
-        else:
-            place_rows = conn.execute(
-                """SELECT id, name FROM place_clusters
-                   WHERE name IS NOT NULL AND root_id=?
-                   ORDER BY name COLLATE NOCASE""",
-                (root_id,),
-            )
-        places = [{"id": r["id"], "name": r["name"]} for r in place_rows]
-        # Whether the "Searchable" filter has anything to offer yet. EXISTS, not
-        # COUNT: the filter bar only needs to know if the option is live, and on
-        # a fully indexed archive a count would walk every file to say "lots".
-        from ..services import semantic
-
-        indexed_any = bool(
-            conn.execute(
-                f"""SELECT EXISTS(SELECT 1 FROM files f
-                              WHERE {_NOT_HIDDEN}{rc} AND {_indexed_exists("f")})""",
-                (*rp, semantic.INDEXER_VERSION),
-            ).fetchone()[0]
-        )
-        located_any = bool(
-            conn.execute(
-                f"""SELECT EXISTS(SELECT 1 FROM files f
-                              WHERE {_NOT_HIDDEN}{rc} AND {_HAS_LOCATION})""",
-                rp,
-            ).fetchone()[0]
-        )
-        return {
-            "periods": periods,
-            "types": types,
-            "people": people,
-            "places": places,
-            "indexed_any": indexed_any,
-            "located_any": located_any,
-        }
-    finally:
-        conn.close()
-
-
-def folders(db_path: str, root_id: int | None, limit: int = 120) -> dict:
-    """Return the archive's source tree as a compact, browseable folder list."""
-    conn = db.open_readonly(db_path)
-    try:
-        rc, rp = _root_clause(root_id)
-        rows = conn.execute(f"SELECT rel_path FROM files f WHERE {_NOT_HIDDEN}{rc}", rp).fetchall()
-        grouped: dict[str, int] = {}
-        for row in rows:
-            folder = os.path.dirname(row["rel_path"]) or "/"
-            grouped[folder] = grouped.get(folder, 0) + 1
-        items = sorted(grouped.items(), key=lambda x: (-x[1], x[0].lower()))[:limit]
-        return {"folders": [{"path": p, "count": c} for p, c in items]}
-    finally:
-        conn.close()
 
 
 # -- semantic Browse search --------------------------------------------------
@@ -1201,50 +980,6 @@ def rename_person(db_path: str, person_id, name: str) -> dict:
 # -- in-panel edits (date / face / place) -----------------------------------
 
 
-def set_date(db_path: str, file_id, value: str) -> dict:
-    """Set a manual, variable-precision date. `value` is a YYYY, YYYY-MM or
-    YYYY-MM-DD prefix (stored as-is; the whole app groups/sorts by prefix)."""
-    if not file_id:
-        return {"error": "missing file_id"}
-    v = (value or "").strip()
-    parts = v.split("-")
-    ok = False
-    try:
-        if len(parts) == 1 and len(parts[0]) == 4:
-            y = int(parts[0])
-            ok = 1 <= y <= 9999
-        elif len(parts) == 2:
-            y, mo = int(parts[0]), int(parts[1])
-            ok = 1 <= y <= 9999 and 1 <= mo <= 12 and len(parts[1]) == 2
-        elif len(parts) == 3:
-            y, mo, da = int(parts[0]), int(parts[1]), int(parts[2])
-            ok = (
-                1 <= y <= 9999
-                and 1 <= mo <= 12
-                and 1 <= da <= 31
-                and len(parts[1]) == 2
-                and len(parts[2]) == 2
-            )
-    except ValueError:
-        ok = False
-    if not ok:
-        return {"error": "date must be YYYY, YYYY-MM or YYYY-MM-DD"}
-    conn = db.connect(db_path)
-    try:
-        if not conn.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
-            return {"error": "unknown file"}
-        conn.execute(
-            """INSERT OR REPLACE INTO dates(file_id, best_datetime, date_source,
-                                            date_confidence)
-               VALUES(?,?, 'manual', 1.0)""",
-            (file_id, v),
-        )
-        conn.commit()
-        return {"ok": True, "date": v, "date_source": "manual"}
-    finally:
-        conn.close()
-
-
 def _sync_person_stats(conn, pid):
     """Recompute one person's face_count + cover after a face moves in/out; drop
     it if it's now empty. Mirrors faces/cluster.py's _refresh_person_stats."""
@@ -2038,174 +1773,5 @@ def animal_crop_source(db_path: str, detection_id: int):
             row["media_type"],
             row["file_id"],
         )
-    finally:
-        conn.close()
-
-
-def item(db_path: str, fid: int, min_media: int = 10) -> dict | None:
-    conn = db.open_readonly(db_path)
-    try:
-        f = conn.execute(
-            """SELECT f.*, r.path AS root_path FROM files f
-               JOIN roots r ON r.id=f.root_id WHERE f.id=?""",
-            (fid,),
-        ).fetchone()
-        if not f:
-            return None
-        d = conn.execute("SELECT * FROM dates WHERE file_id=?", (fid,)).fetchone()
-        g = conn.execute("SELECT * FROM geo WHERE file_id=?", (fid,)).fetchone()
-        m = conn.execute("SELECT * FROM media_meta WHERE file_id=?", (fid,)).fetchone()
-        t = conn.execute("SELECT * FROM takeout_sidecar WHERE file_id=?", (fid,)).fetchone()
-        people = [
-            {
-                "person_id": r["person_id"],
-                "name": r["name"],
-                "face_id": r["face_id"],
-            }
-            for r in conn.execute(
-                f"""SELECT fa.id AS face_id, fa.person_id, p.name
-               FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id
-               WHERE fa.file_id=? AND fa.not_person=0 AND {_QUALITY_OK}
-               ORDER BY fa.det_score DESC""",
-                (fid,),
-            )
-        ]
-        animals = [
-            {
-                "detection_id": row["detection_id"],
-                "species": row["species"],
-                "pet_id": row["pet_id"],
-                "name": row["name"],
-                "score": row["det_score"],
-            }
-            for row in conn.execute(
-                """SELECT a.id detection_id,a.species,a.pet_id,p.name,a.det_score
-               FROM animal_detections a LEFT JOIN pets p ON p.id=a.pet_id
-               WHERE a.file_id=? AND a.species!='teddy bear'
-               ORDER BY a.det_score DESC""",
-                (fid,),
-            )
-        ]
-        # Current place membership (a file belongs to at most one place).
-        # A below-threshold, unnamed/unpinned cluster is not reported as a
-        # "place" here either (see place_min_media) — this file just has no
-        # location, matching what place_clusters() shows on the map.
-        place = conn.execute(
-            f"""SELECT pc.id, pc.name FROM place_cluster_members pcm
-               JOIN place_clusters pc ON pc.id=pcm.cluster_id
-               WHERE pcm.file_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
-               LIMIT 1""",
-            (fid, min_media),
-        ).fetchone()
-        # Pick-lists for in-panel editing: only *named* places (in this file's root)
-        # and *named* persons are offered as targets.
-        place_options = [
-            {"id": r["id"], "name": r["name"]}
-            for r in conn.execute(
-                """SELECT id, name FROM place_clusters
-               WHERE root_id=? AND name IS NOT NULL
-               ORDER BY name COLLATE NOCASE""",
-                (f["root_id"],),
-            )
-        ]
-        person_options = [
-            {"id": r["id"], "name": r["name"]}
-            for r in conn.execute(
-                """SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''
-               ORDER BY name COLLATE NOCASE"""
-            )
-        ]
-        pet_options = [
-            {"id": r["id"], "name": r["name"]}
-            for r in conn.execute(
-                """SELECT id, name FROM pets WHERE name IS NOT NULL AND name != ''
-               ORDER BY name COLLATE NOCASE"""
-            )
-        ]
-        # Manually tagged people/pets on this file (person_files/pet_files) --
-        # no face/detection exists for these, so there's no face_id/detection_id.
-        # Name resolves from the live persons/pets table; if the id has rotted
-        # (a re-cluster ran since and repair hasn't caught up yet) fall back to
-        # the name stored on the row itself.
-        manual_people = [
-            {
-                "person_id": r["person_id"],
-                "name": r["name"] or r["person_name"],
-            }
-            for r in conn.execute(
-                """SELECT pf.person_id, pf.person_name, p.name
-               FROM person_files pf LEFT JOIN persons p ON p.id=pf.person_id
-               WHERE pf.file_id=?
-               ORDER BY COALESCE(p.name, pf.person_name) COLLATE NOCASE""",
-                (fid,),
-            )
-        ]
-        manual_pets = [
-            {
-                "pet_id": r["pet_id"],
-                "name": r["name"] or r["pet_name"],
-            }
-            for r in conn.execute(
-                """SELECT pf.pet_id, pf.pet_name, p.name
-               FROM pet_files pf LEFT JOIN pets p ON p.id=pf.pet_id
-               WHERE pf.file_id=?
-               ORDER BY COALESCE(p.name, pf.pet_name) COLLATE NOCASE""",
-                (fid,),
-            )
-        ]
-        return {
-            "id": fid,
-            "name": os.path.basename(f["rel_path"]),
-            "rel_path": f["rel_path"],
-            "type": f["media_type"],
-            "size": f["size"],
-            "root_id": f["root_id"],
-            "date": d["best_datetime"] if d else None,
-            "date_source": d["date_source"] if d else None,
-            "date_confidence": d["date_confidence"] if d else None,
-            "gps": (
-                {"lat": g["lat"], "lon": g["lon"], "alt": g["alt"], "source": g["geo_source"]}
-                if g
-                else None
-            ),
-            "meta": (dict(m) if m else None),
-            "description": (t["description"] if t else None),
-            "people": people,
-            "animals": animals,
-            "place": ({"id": place["id"], "name": place["name"]} if place else None),
-            "place_options": place_options,
-            "person_options": person_options,
-            "pet_options": pet_options,
-            "manual_people": manual_people,
-            "manual_pets": manual_pets,
-        }
-    finally:
-        conn.close()
-
-
-def media_source(db_path: str, fid: int):
-    """(absolute path, content sha256, rotate_deg) for a file id, or None.
-
-    The sha256 is what the thumbnail cache is keyed on, so byte-identical
-    duplicates (rife in this cross-takeout archive) share one thumbnail and can
-    never disagree. Path is DB-derived, so no request-driven path traversal.
-    ``rotate_deg`` is the turn detection found this photo's pixels to be stored
-    at, on top of EXIF (0 whenever EXIF alone was right)."""
-    conn = db.open_readonly(db_path)
-    try:
-        r = conn.execute(
-            """SELECT r.path AS root, f.rel_path, f.sha256,
-                      COALESCE(o.rotate_deg, 0) AS rotate_deg
-               FROM files f JOIN roots r ON r.id=f.root_id
-               LEFT JOIN orientation o ON o.file_id=f.id
-               WHERE f.id=?""",
-            (fid,),
-        ).fetchone()
-        if not r:
-            return None
-        p = Path(r["root"]) / r["rel_path"]
-        if not p.is_file():
-            return None
-        return p, r["sha256"], r["rotate_deg"]
     finally:
         conn.close()
