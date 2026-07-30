@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.request import urlopen
 
+from helpers import serve_in_thread
+
 from organize_archive import paths
 from organize_archive.cli import main
 from organize_archive.config import Config
-from organize_archive.gui.server import serve
 
 
 def test_linux_app_data_path_uses_xdg_and_fallback(monkeypatch, tmp_path):
@@ -56,23 +57,22 @@ def test_gui_server_starts_cleanly_on_first_run(monkeypatch, tmp_path):
     No archive means no database anywhere yet: each archive only gets its own
     database once it's added (see test_archive_removal.py), so unlike the old
     shared-catalog design, server startup has no single db_path to create.
+
+    Uses the shared ``serve_in_thread`` lifecycle (tests/helpers.py) rather than
+    the single ``handle_request`` this test used to hand-roll -- the assertions
+    are unchanged, only how the server is stood up and torn down is now shared
+    with test_api_routes.py.
     """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "fresh-data"))
     cfg = Config.load()
-    httpd = serve(cfg, port=0)
-    try:
+    with serve_in_thread(cfg) as httpd:
+        # Inside the server's lifetime on purpose: serve() calls ensure_dirs(),
+        # and the claim is that *server startup* creates no database, not merely
+        # that Config.load() doesn't.
         assert not Path(cfg.db_path).exists()
         host, port = httpd.server_address
-        # Handle one request without a background server thread.
-        import threading
-
-        thread = threading.Thread(target=httpd.handle_request)
-        thread.start()
         with urlopen(f"http://{host}:{port}/api/archives", timeout=2) as response:
             assert response.read() == b'{"archives": []}'
-        thread.join(timeout=2)
-    finally:
-        httpd.server_close()
 
 
 def test_db_override_is_not_saved_as_the_default(monkeypatch, tmp_path):
