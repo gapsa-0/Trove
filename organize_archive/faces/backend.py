@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import runtime
+from ..errors import ModelUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +310,7 @@ class FaceBackend:
         **_ignored,
     ):
         if not available():
-            raise RuntimeError(
+            raise ModelUnavailableError(
                 "face backend unavailable; install the 'faces' extra "
                 "(insightface + onnxruntime) and a modern opencv-python."
             )
@@ -344,7 +345,7 @@ class FaceBackend:
 
         mp = adaface_model_path(cache_dir)
         if not adaface_ready(cache_dir):
-            raise RuntimeError(
+            raise ModelUnavailableError(
                 f"AdaFace model missing or truncated at {mp}. Regenerate it with "
                 "`python3 tools/build/adaface_export.py` (needs torch + huggingface_hub, "
                 "dev-only), or install a packaged build that ships it."

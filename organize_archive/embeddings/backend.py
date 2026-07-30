@@ -32,6 +32,8 @@ import threading
 import urllib.request
 from pathlib import Path
 
+from ..errors import ModelUnavailableError
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -284,7 +286,7 @@ class SiglipBackend:
 
     def __init__(self, cache_dir: str, *, threads: int | None = None, log=None):
         if not available():
-            raise RuntimeError(
+            raise ModelUnavailableError(
                 "semantic embedding backend unavailable; install the 'semantic' "
                 "extra (onnxruntime + tokenizers + Pillow + numpy)."
             )

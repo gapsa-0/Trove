@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import runtime
+from ..errors import ModelUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -229,12 +230,12 @@ def _load_dinov2(cache_dir: str):
         # mismatched native build raising RuntimeError). Not logged here --
         # re-raised with a clear message instead, and the caller logs it once
         # rather than twice.
-        raise RuntimeError(
+        raise ModelUnavailableError(
             f"pet re-ID needs onnxruntime (pip install onnxruntime); import failed: {e}"
         ) from e
     mp = dinov2_model_path(cache_dir)
     if not mp.is_file():
-        raise RuntimeError(
+        raise ModelUnavailableError(
             f"DINOv2 pet model missing at {mp}. Regenerate it with "
             "tools/build/dinov2_pet_export.py."
         )
@@ -260,7 +261,7 @@ class PetBackend:
         log=None,
     ):
         if not available():
-            raise RuntimeError("pet detection needs OpenCV DNN and NumPy")
+            raise ModelUnavailableError("pet detection needs OpenCV DNN and NumPy")
         self.min_score = float(min_score)
         self.min_px = int(min_px)
         self.max_side = int(max_side)
