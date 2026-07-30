@@ -171,7 +171,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         # was anything to clean up). Earlier runs embedded a video's raw bytes
         # wholesale (input_kind='video'), which busts Voyage's context window
         # on anything but a tiny clip and so failed identically forever.
-        # Frame-sampled video indexing (web/semantic.py) writes a new
+        # Frame-sampled video indexing (services/semantic.py) writes a new
         # input_kind ('video_frames'), so this DELETE only ever matches the
         # old rows; rows with input_kind='video' become pending again exactly
         # once, the first time a pre-12 database is opened.

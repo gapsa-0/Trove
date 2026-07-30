@@ -87,7 +87,7 @@ _UNAVAILABLE_TEXT = {
 
 def _availability(cfg: Config) -> dict[str, bool]:
     from ..detect import extract as dx
-    from . import semantic
+    from ..services import semantic
 
     # Both of these ask "are the dependencies importable", never "are the model
     # weights on disk": an unavailable stage is never queued, and it is the

@@ -941,7 +941,7 @@ class JobManager:
         """One snapshot pass. Returns (indexed, skipped, failed, rows_in_pass)."""
         from pathlib import Path
 
-        from . import semantic
+        from ..services import semantic
 
         # Snapshot candidates under a read-only connection. The API calls below
         # happen without the writer lock so local metadata/faces work continues.
@@ -1021,7 +1021,7 @@ class JobManager:
         a lock is not a stage failure, and the next semantic pass will retry it
         since no embedding was ever written for it.
         """
-        from . import semantic
+        from ..services import semantic
 
         conn = db.connect(self.cfg.archive_db_path(root_id))
         try:

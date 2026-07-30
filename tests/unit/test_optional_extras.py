@@ -149,7 +149,7 @@ def test_the_pipeline_still_offers_every_stage_that_needs_no_extras(monkeypatch,
     from organize_archive.web import pipeline
 
     monkeypatch.setattr("organize_archive.detect.extract.available", lambda: False)
-    monkeypatch.setattr("organize_archive.web.semantic.available", lambda: False)
+    monkeypatch.setattr("organize_archive.services.semantic.available", lambda: False)
 
     avail = pipeline._availability(Config(db_path=str(tmp_path / "archive.db")))
 

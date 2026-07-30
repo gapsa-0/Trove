@@ -362,7 +362,7 @@ class Handler(BaseHTTPRequestHandler):
                     queries.folders(self._db(rid), rid, limit=min(one("limit", int, 120), 500))
                 )
             elif path == "/api/browse/semantic/status":
-                from . import semantic
+                from ..services import semantic
 
                 rid = one("root", int)
                 status = queries.semantic_summary(self._db(rid), rid)
@@ -382,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not search_queries:
                     self._json({"error": "A search query is required"}, 400)
                 else:
-                    from . import semantic
+                    from ..services import semantic
 
                     rid = one("root", int)
                     db_path = self._db(rid)
@@ -837,7 +837,7 @@ def serve(cfg: Config, host="127.0.0.1", port=8756):
     cfg.ensure_dirs()
     cfg.migrate_legacy_archive()
     discard_superseded_secrets()
-    from . import semantic
+    from ..services import semantic
 
     # Loading the 283 MB text tower takes a second or two. Do it off the serving
     # thread now so the user's first search doesn't wait for it; a search that

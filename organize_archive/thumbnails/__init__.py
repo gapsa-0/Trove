@@ -118,7 +118,7 @@ def _thumb_video(tp: Path, src: Path, size: int) -> Path | None:
     return None
 
 
-# Frames used for semantic video indexing (see web/semantic.py): a handful of
+# Frames used for semantic video indexing (see services/semantic.py): a handful of
 # sampled frames sent to Voyage as one multi-image input, instead of the raw
 # video file, so a video's request stays token-sized like a photo. Cached the
 # same way as the grid thumbnail so a repeated semantic pass over an

@@ -875,7 +875,7 @@ def media(
     means no filter at all. False is kept because the predicate is naturally
     three-valued and because the two halves summing to the unfiltered grid is
     the property worth testing."""
-    from . import semantic
+    from ..services import semantic
 
     conn = db.open_readonly(db_path)
     try:
@@ -1029,7 +1029,7 @@ def browse_filters(db_path: str, root_id=None) -> dict:
         # Whether the "Searchable" filter has anything to offer yet. EXISTS, not
         # COUNT: the filter bar only needs to know if the option is live, and on
         # a fully indexed archive a count would walk every file to say "lots".
-        from . import semantic
+        from ..services import semantic
 
         indexed_any = bool(
             conn.execute(
@@ -1078,7 +1078,7 @@ def folders(db_path: str, root_id: int | None, limit: int = 120) -> dict:
 
 def semantic_summary(db_path: str, root_id=None) -> dict:
     """Index state for the Browse semantic-search controls."""
-    from . import semantic
+    from ..services import semantic
 
     conn = db.open_readonly(db_path)
     try:
@@ -1124,7 +1124,7 @@ def semantic_summary(db_path: str, root_id=None) -> dict:
 
 def semantic_pending(db_path: str, root_id=None) -> int:
     """Compatible media that needs a first (or revised) semantic embedding."""
-    from . import semantic
+    from ..services import semantic
 
     conn = db.open_readonly(db_path)
     try:

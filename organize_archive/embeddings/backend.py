@@ -46,7 +46,7 @@ except Exception:  # pragma: no cover - optional dep
     np = None
 
 # Identity of the vector space `semantic_embeddings` holds. Recorded per row via
-# web/semantic.py's INDEXER_VERSION; when it stops matching, every stored vector
+# services/semantic.py's INDEXER_VERSION; when it stops matching, every stored vector
 # was produced by a different model and is not comparable to a fresh query, so
 # the archive re-indexes itself. BUMP THIS whenever the model, the tower, or the
 # preprocessing below changes.

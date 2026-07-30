@@ -5,7 +5,7 @@ Covers the three pieces that don't need a real decode/ffmpeg to test:
 * the per-video collapse helpers, which fold the same person/animal seen in
   several sampled frames into one row (otherwise clustering would flood on
   duplicates and every count would be inflated);
-* keyframe offset generation, which mirrors web/semantic.py's spread-but-
+* keyframe offset generation, which mirrors services/semantic.py's spread-but-
   pulled-in-from-the-ends sampling, generalized to N frames;
 * pending-work counting honouring ``cfg.detect_video_frames`` -- 0 must
   behave exactly like today's images-only stage, so it reaches "up to date"

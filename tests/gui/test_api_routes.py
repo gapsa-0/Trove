@@ -43,7 +43,8 @@ from helpers import serve_in_thread
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.web import queries, semantic, server
+from organize_archive.services import semantic
+from organize_archive.web import queries, server
 
 # ---------------------------------------------------------------------------
 # HTTP helpers

@@ -122,7 +122,7 @@ def load_vectors(db_path, root_id, sample, seed=20260729):
 
 
 def _indexer_version():
-    from organize_archive.web import semantic
+    from organize_archive.services import semantic
 
     return semantic.INDEXER_VERSION
 
