@@ -40,7 +40,7 @@ from organize_archive.config import Config
 from organize_archive.db import database as db
 
 # English, because the GUI translates a Spanish query to English before
-# embedding (see gui/index.html localEnglishTranslation, and §0 for why that
+# embedding (see web/index.html localEnglishTranslation, and §0 for why that
 # survived the move to a multilingual model).
 DEFAULT_QUERIES = [
     "birthday cake",
@@ -122,7 +122,7 @@ def load_vectors(db_path, root_id, sample, seed=20260729):
 
 
 def _indexer_version():
-    from organize_archive.gui import semantic
+    from organize_archive.web import semantic
 
     return semantic.INDEXER_VERSION
 

@@ -22,8 +22,8 @@ from organize_archive import thumbnails
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.embeddings import backend as eb
-from organize_archive.gui import jobs as jobs_mod
-from organize_archive.gui import semantic
+from organize_archive.web import jobs as jobs_mod
+from organize_archive.web import semantic
 
 np = pytest.importorskip("numpy")
 

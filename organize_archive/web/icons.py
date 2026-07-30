@@ -28,7 +28,7 @@ def app_icon(cache_dir: str, size: int) -> bytes:
 
 
 # The Trove mark: a cut gem on a rounded, vertically graded tile. The SAME
-# geometry is drawn as inline SVG in gui/index.html (the `#trove-mark` symbol)
+# geometry is drawn as inline SVG in web/index.html (the `#trove-mark` symbol)
 # for the picker bar and the sidebar -- both are authored in this 28-unit
 # coordinate space, so a change to one must be mirrored in the other.
 _TILE = 28.0

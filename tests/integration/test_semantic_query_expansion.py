@@ -3,7 +3,7 @@ import struct
 import pytest
 
 from organize_archive.db import database as db
-from organize_archive.gui import queries, semantic
+from organize_archive.web import queries, semantic
 
 np = pytest.importorskip("numpy")
 

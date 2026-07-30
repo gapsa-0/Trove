@@ -4,7 +4,7 @@ import factories
 
 from organize_archive.config import Config
 from organize_archive.dedup import exact
-from organize_archive.gui import jobs as jobs_mod
+from organize_archive.web import jobs as jobs_mod
 
 
 def test_exact_grouping_still_works_without_visual_dependencies():
@@ -79,7 +79,7 @@ def test_interrupted_regroup_leaves_previous_grouping_intact(monkeypatch):
     except RuntimeError:
         raised = True
         # What a real caller effectively does on error: discard whatever this
-        # connection has not committed (gui/jobs.py's `_run` closes the
+        # connection has not committed (web/jobs.py's `_run` closes the
         # connection in a `finally` without an intervening commit on the
         # exception path; closing without committing rolls back).
         conn.rollback()

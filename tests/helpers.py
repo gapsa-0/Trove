@@ -25,7 +25,7 @@ def serve_in_thread(cfg):
     as a caller obligation that is easy to forget:
 
     * ``JobManager.__init__`` starts a scheduler thread immediately
-      (``gui/jobs.py``) which is free to pick up a registered archive and start
+      (``web/jobs.py``) which is free to pick up a registered archive and start
       really scanning, hashing and detecting it. Pausing first means a test that
       never thought about the pipeline still cannot start real background work.
     * ``serve()`` starts a thread loading the ~283 MB SigLIP text tower through
@@ -42,8 +42,8 @@ def serve_in_thread(cfg):
     """
     # Imported inside the function so the unit tier can use wait_until without
     # pulling in the HTTP server and its dependencies.
-    from organize_archive.gui import semantic
-    from organize_archive.gui.server import serve
+    from organize_archive.web import semantic
+    from organize_archive.web.server import serve
 
     cfg.pipeline_paused = True
     with mock.patch.object(semantic, "warm_text_model", lambda cfg: None):

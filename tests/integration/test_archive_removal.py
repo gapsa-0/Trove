@@ -3,7 +3,7 @@ from pathlib import Path
 from organize_archive import paths
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.gui.queries import add_archive, remove_archive
+from organize_archive.web.queries import add_archive, remove_archive
 
 
 def _seed_file(cfg, archive_id, rel_path, digest):

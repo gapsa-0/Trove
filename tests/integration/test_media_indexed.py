@@ -13,7 +13,7 @@ from __future__ import annotations
 import struct
 
 from organize_archive.db import database as db
-from organize_archive.gui import queries, semantic
+from organize_archive.web import queries, semantic
 
 CURRENT = semantic.INDEXER_VERSION
 

@@ -4,7 +4,7 @@ SCHEMA_VERSION 11 -> 12 bump that folds the old *unconditional*
 migration inside init_db().
 
 Before this fix, that DELETE ran on every single init_db() call regardless of
-schema version -- and init_db() runs at every job start (gui/jobs.py) -- so it
+schema version -- and init_db() runs at every job start (web/jobs.py) -- so it
 took the single writer's lock for a full-table scan on every job, whether or
 not there was ever a row to clean up. Gating it on `PRAGMA user_version` makes
 it run exactly once per database, same as any other migration here.

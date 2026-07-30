@@ -146,10 +146,10 @@ def test_the_pipeline_still_offers_every_stage_that_needs_no_extras(monkeypatch,
     deduplicating and placing an archive are the product's spine, and they run
     on the standard library. Only the two model-backed stages drop out.
     """
-    from organize_archive.gui import pipeline
+    from organize_archive.web import pipeline
 
     monkeypatch.setattr("organize_archive.detect.extract.available", lambda: False)
-    monkeypatch.setattr("organize_archive.gui.semantic.available", lambda: False)
+    monkeypatch.setattr("organize_archive.web.semantic.available", lambda: False)
 
     avail = pipeline._availability(Config(db_path=str(tmp_path / "archive.db")))
 

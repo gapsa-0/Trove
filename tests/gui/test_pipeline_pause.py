@@ -16,9 +16,9 @@ from __future__ import annotations
 import threading
 
 from organize_archive.config import Config
-from organize_archive.gui import jobs as jobs_mod
-from organize_archive.gui import pipeline as pipeline_mod
-from organize_archive.gui import queries as queries_mod
+from organize_archive.web import jobs as jobs_mod
+from organize_archive.web import pipeline as pipeline_mod
+from organize_archive.web import queries as queries_mod
 
 
 def _job_manager(tmp_path, monkeypatch):

@@ -1,14 +1,16 @@
 """The package's layering, as an executable rule rather than a convention.
 
 `organize_archive` started with the layout CLAUDE.md describes and grew a
-second, undeclared structure inside `gui/`, which is how a face-clustering
-algorithm ended up importing the web layer:
+second, undeclared structure inside the package now called `web/` — which is
+how a face-clustering algorithm ended up importing the web layer:
 
     detect/extract.py    from ..gui import thumbs
     faces/cluster.py     from ..gui.queries import repair_manual_person_files
 
-Both are gone now. This test is what stops them coming back, because a rule
-nobody checks is a rule that decays.
+(Those read `gui` because that is what `web/` was called when they existed.
+The misleading name is a large part of how four layers ended up in one
+folder.) Both imports are gone now. This test is what stops them coming
+back, because a rule nobody checks is a rule that decays.
 
 The rule: a module may import from its own layer or any layer BELOW it, never
 above. Four layers, lowest first:
@@ -17,7 +19,7 @@ above. Four layers, lowest first:
     L1 domain       scan hashing metadata media dedup geo detect faces pets
                     embeddings thumbnails
     L2 application  services pipeline
-    L3 delivery     gui cli desktop
+    L3 delivery     web cli desktop
 
 Two properties are checked, and the second is the one that is easy to get
 wrong: **function-local imports count**. A deferred import written inside a
@@ -68,7 +70,7 @@ LAYERS = {
     "services": 2,
     "pipeline": 2,
     # L3 delivery -- translates input to one service call and serialises out.
-    "gui": 3,
+    "web": 3,
     "cli": 3,
     "desktop": 3,
     "__main__": 3,  # `python -m organize_archive`, which is just cli.main

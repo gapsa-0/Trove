@@ -15,7 +15,7 @@ import math
 import struct
 
 from organize_archive.db import database as db
-from organize_archive.gui import queries
+from organize_archive.web import queries
 
 
 def _catalogue(tmp_path, scores):

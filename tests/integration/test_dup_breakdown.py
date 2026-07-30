@@ -12,7 +12,7 @@ never contradict the tiles below it.
 """
 
 from organize_archive.db import database as db
-from organize_archive.gui import queries
+from organize_archive.web import queries
 
 
 def _catalog_with_duplicates(tmp_path):

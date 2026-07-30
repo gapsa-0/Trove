@@ -11,7 +11,7 @@ import threading
 
 from . import __version__, logging_setup
 from .config import Config
-from .gui.server import serve
+from .web.server import serve
 
 # Named explicitly, not __name__: this module is the console-script entry point
 # (organize-archive-backend) in a packaged build but `python -m

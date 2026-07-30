@@ -1,7 +1,7 @@
 """Regenerate the packaged desktop icons from the one canonical Trove mark.
 
-The web app draws the mark inline (``#trove-mark`` in gui/index.html) and the
-PWA icon is generated on demand by ``gui/icons.py``, but electron-builder needs
+The web app draws the mark inline (``#trove-mark`` in web/index.html) and the
+PWA icon is generated on demand by ``web/icons.py``, but electron-builder needs
 real files on disk. Rather than hand-drawing a third copy, render those files
 from the SAME ``icons._render`` geometry:
 
@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from PIL import Image, ImageDraw
 
-from organize_archive.gui import icons
+from organize_archive.web import icons
 
 BUILD = Path(__file__).resolve().parents[2] / "desktop" / "build"
 # The sizes Windows actually picks between; electron-builder wants them all in

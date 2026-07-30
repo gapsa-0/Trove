@@ -146,7 +146,7 @@ class Config:
     # paused background pipeline stays paused across an app restart.
     pipeline_paused: bool = False
     # Per-stage pause, by display card id ("scan", "dedup", "detect", "places",
-    # "semantic" — see gui/pipeline.CARD_ORDER). Independent of the whole-pipeline
+    # "semantic" — see web/pipeline.CARD_ORDER). Independent of the whole-pipeline
     # flag above and only meaningful while it is off: a paused stage is skipped by
     # the scheduler while its siblings keep running. Persisted for the same reason.
     paused_stages: list[str] = field(default_factory=list)

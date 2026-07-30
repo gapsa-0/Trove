@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.gui import jobs as jobs_mod
-from organize_archive.gui import pipeline as pipeline_mod
+from organize_archive.web import jobs as jobs_mod
+from organize_archive.web import pipeline as pipeline_mod
 
 
 class _Stats:

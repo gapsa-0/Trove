@@ -9,8 +9,8 @@ from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.faces import backend as face_backend
 from organize_archive.faces import extract as face_extract
-from organize_archive.gui import queries
 from organize_archive.pets import backend, cluster, extract
+from organize_archive.web import queries
 
 np = pytest.importorskip("numpy")
 

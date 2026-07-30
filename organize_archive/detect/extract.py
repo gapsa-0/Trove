@@ -503,7 +503,7 @@ def _resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float, a
 # Frames sampled per video and where in the clip: evenly spread but pulled in
 # from the very ends, where a title card or a black opening/closing frame sits
 # more often than a moment that actually represents the video. Same idea as
-# gui/semantic.py's _VIDEO_FRAME_FRACTIONS (0.15, 0.5, 0.85 for 3 frames),
+# web/semantic.py's _VIDEO_FRAME_FRACTIONS (0.15, 0.5, 0.85 for 3 frames),
 # generalized to any frame count with the same 0.15 margin on each end.
 _VIDEO_FRAME_MARGIN = 0.15
 
@@ -527,7 +527,7 @@ def _format_offset(secs: float) -> str:
 def _video_offsets(duration_s, n: int) -> list[str]:
     """ffmpeg ``-ss`` offsets for up to ``n`` frames spread across a video.
 
-    Mirrors ``gui.semantic._video_frame_offsets``: falls back to one fixed
+    Mirrors ``web.semantic._video_frame_offsets``: falls back to one fixed
     early offset when the duration is unknown (enrich hasn't run yet, or
     ffprobe couldn't read this container) rather than refusing to detect the
     video at all. Never returns a duplicate offset -- a very short clip whose

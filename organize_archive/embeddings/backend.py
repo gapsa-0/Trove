@@ -10,7 +10,7 @@ photos and search queries off the machine. Both towers of
 ``google/siglip2-base-patch16-256`` run here: the vision tower turns archive
 media into 768-d vectors during indexing, the text tower turns a typed query
 into a vector in the same space at search time. Cosine similarity between the
-two is the ranking signal (``gui/queries.py:semantic_search``).
+two is the ranking signal (``web/queries.py:semantic_search``).
 
 **Two towers, two lifetimes.** The sessions are created lazily and
 independently: an indexing job must never pay the ~1 s load and ~700 MB peak of
@@ -46,7 +46,7 @@ except Exception:  # pragma: no cover - optional dep
     np = None
 
 # Identity of the vector space `semantic_embeddings` holds. Recorded per row via
-# gui/semantic.py's INDEXER_VERSION; when it stops matching, every stored vector
+# web/semantic.py's INDEXER_VERSION; when it stops matching, every stored vector
 # was produced by a different model and is not comparable to a fresh query, so
 # the archive re-indexes itself. BUMP THIS whenever the model, the tower, or the
 # preprocessing below changes.
@@ -238,7 +238,7 @@ def default_threads() -> int:
     """One core fewer than the machine has.
 
     Every other backend here uses the full ``os.cpu_count()``, which is wrong for
-    this stage: semantic indexing is a PARALLEL_KINDS member (gui/pipeline.py) and
+    this stage: semantic indexing is a PARALLEL_KINDS member (web/pipeline.py) and
     runs *concurrently* with scan and enrich for several hours. Leaving a core
     free is the difference between a background job and an unusable machine.
     """

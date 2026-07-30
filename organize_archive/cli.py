@@ -465,8 +465,8 @@ def cmd_dates(args, cfg: Config) -> int:
 
 
 def cmd_gui(args, cfg: Config) -> int:
-    from .gui import launcher
-    from .gui.server import serve
+    from .web import launcher
+    from .web.server import serve
 
     httpd = serve(cfg, port=args.port)
     url = f"http://127.0.0.1:{args.port}/"

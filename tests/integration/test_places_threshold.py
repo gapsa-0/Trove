@@ -3,7 +3,7 @@ one: place_clusters rows are never deleted for falling short, they just stop
 being *reported*, except when named or pinned (see queries._PLACE_EXEMPT)."""
 
 from organize_archive.db import database as db
-from organize_archive.gui import queries
+from organize_archive.web import queries
 
 
 def _catalog_with_places(tmp_path):

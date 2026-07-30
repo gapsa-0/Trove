@@ -33,7 +33,7 @@ module.exports = [
     // zero files in one of the two cases. `basePath` removes that ambiguity.
     basePath: __dirname,
     ignores: [
-      "organize_archive/gui/vendor/**",
+      "organize_archive/web/vendor/**",
       "desktop/node_modules/**",
       "desktop/release/**",
       "desktop/dist/**",
@@ -71,13 +71,13 @@ module.exports = [
     rules: sharedRules,
   },
   {
-    // organize_archive/gui/static/js/** does not exist yet: Stage 10 of the repo
+    // organize_archive/web/static/js/** does not exist yet: Stage 10 of the repo
     // overhaul creates it by splitting the current 9,000-line index.html into
     // real modules. This block is declared ahead of time so Stage 10 only has to
     // add this glob to the `lint` script in desktop/package.json; the rules and
     // globals are already in place. Today the glob simply matches nothing.
     basePath: __dirname,
-    files: ["organize_archive/gui/static/js/**/*.js"],
+    files: ["organize_archive/web/static/js/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",

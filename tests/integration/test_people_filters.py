@@ -1,5 +1,5 @@
 from organize_archive.db import database as db
-from organize_archive.gui import queries
+from organize_archive.web import queries
 
 
 def _catalogue_with_people(tmp_path):

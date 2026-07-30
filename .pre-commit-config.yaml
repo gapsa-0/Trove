@@ -10,7 +10,7 @@
 # .js here is minified library output that nothing should be rewriting at all.
 exclude: |
   (?x)^(
-    organize_archive/gui/vendor/.*|
+    organize_archive/web/vendor/.*|
     tools/build/adaface_net\.py
   )$
 
@@ -32,7 +32,7 @@ repos:
       - id: check-toml
       - id: check-json
       - id: check-added-large-files
-        # gui/vendor/ already holds committed .wasm and translation models. Those
+        # web/vendor/ already holds committed .wasm and translation models. Those
         # are existing files, which the hook ignores; this only stops a *new*
         # multi-MB blob arriving by accident.
         args: [--maxkb=2048]

@@ -40,7 +40,7 @@ def _apply_links(conn, groups, emb_rows):
     into the automatic groups, mirroring ``faces/cluster.py``'s
     ``_apply_links`` (read that one first). Links are anchored to DETECTION
     ids rather than pet ids because ``cluster_pets`` deletes and rebuilds
-    every ``pets`` row after EVERY detect chunk (see ``gui/jobs.py``'s
+    every ``pets`` row after EVERY detect chunk (see ``web/jobs.py``'s
     ``cluster_pets`` call) -- a pet id from the run a link was recorded in no
     longer exists by the time this runs again, but its member detections do.
     Called on the flat, all-species group list *before*

@@ -1,4 +1,4 @@
-"""Route-existence coverage for organize_archive/gui/server.py.
+"""Route-existence coverage for organize_archive/web/server.py.
 
 ``server.py`` sits at 16% statement coverage: ``do_GET``/``do_POST`` are two
 long if-elif chains covering 66 routes (39 GET, 27 POST -- see
@@ -43,7 +43,7 @@ from helpers import serve_in_thread
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.gui import queries, semantic, server
+from organize_archive.web import queries, semantic, server
 
 # ---------------------------------------------------------------------------
 # HTTP helpers

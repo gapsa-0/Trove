@@ -51,7 +51,7 @@ include = ["organize_archive*"]
 
 [tool.setuptools.package-data]
 "organize_archive.db" = ["*.sql"]
-"organize_archive.gui" = ["*.html", "vendor/*", "*.png"]
+"organize_archive.web" = ["*.html", "vendor/*", "*.png"]
 
 # Without this, a bare `pytest` from the repo root walks build output too: a
 # packaged desktop build under desktop/ vendors whole third-party test suites,
@@ -81,7 +81,7 @@ markers = [
 # getters and punishes deleting dead code, both of which stages 06-11 do a lot of.
 [tool.coverage.run]
 source = ["organize_archive"]
-omit = ["*/gui/vendor/*", "*/__main__.py"]
+omit = ["*/web/vendor/*", "*/__main__.py"]
 
 [tool.coverage.report]
 skip_covered = false
