@@ -13,6 +13,7 @@ import json
 import os
 
 from ..db import database as db
+from ._common import reading, writing
 
 
 def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict:
@@ -39,57 +40,55 @@ def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict:
 _PLACE_EXEMPT = "(NULLIF(TRIM(pc.name), '') IS NOT NULL OR pc.pinned = 1)"
 
 
-def _read_place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict:
-    conn = db.open_readonly(db_path)
-    try:
-        clusters = conn.execute(
-            f"""SELECT pc.id, pc.name, pc.lat, pc.lon, pc.member_count
-               FROM place_clusters pc
-               WHERE pc.root_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
-               ORDER BY CASE WHEN NULLIF(TRIM(pc.name), '') IS NULL THEN 1 ELSE 0 END,
-                        pc.member_count DESC, pc.id""",
-            (root_id, min_media),
-        ).fetchall()
-        # Honest footnote for the frontend: how many below-threshold clusters
-        # (and how many member files) were excluded above, so a "places" count
-        # never silently disagrees with what a curious user can add up by hand.
-        hidden = conn.execute(
-            f"""SELECT COUNT(*), COALESCE(SUM(pc.member_count), 0)
-               FROM place_clusters pc
-               WHERE pc.root_id=? AND pc.member_count < ? AND NOT {_PLACE_EXEMPT}""",
-            (root_id, min_media),
-        ).fetchone()
-        members = conn.execute(
-            """SELECT pcm.cluster_id, pcm.file_id
-               FROM place_cluster_members pcm
-               JOIN place_clusters pc ON pc.id=pcm.cluster_id
-               WHERE pc.root_id=? ORDER BY pcm.cluster_id, pcm.file_id""",
-            (root_id,),
-        ).fetchall()
-        thumbs: dict[int, list] = {}
-        for m in members:
-            ids = thumbs.setdefault(m["cluster_id"], [])
-            if len(ids) < 4:
-                ids.append(m["file_id"])
-        return {
-            "clusters": [
-                {
-                    "id": c["id"],
-                    "name": c["name"],
-                    "lat": c["lat"],
-                    "lon": c["lon"],
-                    "count": c["member_count"],
-                    "thumb_ids": thumbs.get(c["id"], []),
-                }
-                for c in clusters
-            ],
-            "hidden": {"places": hidden[0], "files": hidden[1]},
-        }
-    finally:
-        conn.close()
+@reading
+def _read_place_clusters(conn, root_id: int, min_media: int = 10) -> dict:
+    clusters = conn.execute(
+        f"""SELECT pc.id, pc.name, pc.lat, pc.lon, pc.member_count
+           FROM place_clusters pc
+           WHERE pc.root_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
+           ORDER BY CASE WHEN NULLIF(TRIM(pc.name), '') IS NULL THEN 1 ELSE 0 END,
+                    pc.member_count DESC, pc.id""",
+        (root_id, min_media),
+    ).fetchall()
+    # Honest footnote for the frontend: how many below-threshold clusters
+    # (and how many member files) were excluded above, so a "places" count
+    # never silently disagrees with what a curious user can add up by hand.
+    hidden = conn.execute(
+        f"""SELECT COUNT(*), COALESCE(SUM(pc.member_count), 0)
+           FROM place_clusters pc
+           WHERE pc.root_id=? AND pc.member_count < ? AND NOT {_PLACE_EXEMPT}""",
+        (root_id, min_media),
+    ).fetchone()
+    members = conn.execute(
+        """SELECT pcm.cluster_id, pcm.file_id
+           FROM place_cluster_members pcm
+           JOIN place_clusters pc ON pc.id=pcm.cluster_id
+           WHERE pc.root_id=? ORDER BY pcm.cluster_id, pcm.file_id""",
+        (root_id,),
+    ).fetchall()
+    thumbs: dict[int, list] = {}
+    for m in members:
+        ids = thumbs.setdefault(m["cluster_id"], [])
+        if len(ids) < 4:
+            ids.append(m["file_id"])
+    return {
+        "clusters": [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "lat": c["lat"],
+                "lon": c["lon"],
+                "count": c["member_count"],
+                "thumb_ids": thumbs.get(c["id"], []),
+            }
+            for c in clusters
+        ],
+        "hidden": {"places": hidden[0], "files": hidden[1]},
+    }
 
 
-def place_points(db_path: str, root_id: int, min_media: int = 10) -> dict:
+@reading
+def place_points(conn, root_id: int, min_media: int = 10) -> dict:
     """Every geotagged file as its own point, for the map's un-clustered view.
 
     The clustered view answers "where do we keep going back to"; this one
@@ -105,81 +104,71 @@ def place_points(db_path: str, root_id: int, min_media: int = 10) -> dict:
     Coordinates are rounded to 5 decimals (~1 m), far finer than a screen pixel
     at any zoom and a third off the payload.
     """
-    conn = db.open_readonly(db_path)
-    try:
-        rows = conn.execute(
-            f"""SELECT g.lat, g.lon, f.id,
-                       CASE WHEN pc.id IS NOT NULL
-                                 AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
-                            THEN pc.id ELSE 0 END AS cluster_id
-                FROM files f
-                JOIN geo g ON g.file_id=f.id
-                LEFT JOIN place_cluster_members pcm ON pcm.file_id=f.id
-                LEFT JOIN place_clusters pc ON pc.id=pcm.cluster_id
-                WHERE f.present=1 AND f.root_id=? AND g.lat IS NOT NULL""",
-            (min_media, root_id),
-        ).fetchall()
-        points = [[round(r["lat"], 5), round(r["lon"], 5), r["cluster_id"], r["id"]] for r in rows]
-        unplaced = sum(1 for p in points if not p[2])
-        return {"points": points, "unplaced": unplaced}
-    finally:
-        conn.close()
+    rows = conn.execute(
+        f"""SELECT g.lat, g.lon, f.id,
+                   CASE WHEN pc.id IS NOT NULL
+                             AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
+                        THEN pc.id ELSE 0 END AS cluster_id
+            FROM files f
+            JOIN geo g ON g.file_id=f.id
+            LEFT JOIN place_cluster_members pcm ON pcm.file_id=f.id
+            LEFT JOIN place_clusters pc ON pc.id=pcm.cluster_id
+            WHERE f.present=1 AND f.root_id=? AND g.lat IS NOT NULL""",
+        (min_media, root_id),
+    ).fetchall()
+    points = [[round(r["lat"], 5), round(r["lon"], 5), r["cluster_id"], r["id"]] for r in rows]
+    unplaced = sum(1 for p in points if not p[2])
+    return {"points": points, "unplaced": unplaced}
 
 
-def recompute_place_clusters(db_path: str, root_id: int) -> dict:
+@writing
+def recompute_place_clusters(conn, root_id: int) -> dict:
     from ..geo.clusters import cluster_places
 
-    conn = db.connect(db_path)
-    try:
-        stats = cluster_places(conn, root_id)
-        return {"clusters": stats.clusters, "points": stats.points}
-    finally:
-        conn.close()
+    stats = cluster_places(conn, root_id)
+    return {"clusters": stats.clusters, "points": stats.points}
 
 
-def place_cluster_members(db_path: str, cluster_id: int, limit=120, offset=0) -> dict | None:
-    conn = db.open_readonly(db_path)
-    try:
-        c = conn.execute(
-            "SELECT id, name, lat, lon, member_count FROM place_clusters WHERE id=?", (cluster_id,)
-        ).fetchone()
-        if not c:
-            return None
-        rows = conn.execute(
-            """SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
-                      d.date_source AS dsrc,
-                      EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps
-               FROM place_cluster_members pcm
-               JOIN files f ON f.id=pcm.file_id
-               LEFT JOIN dates d ON d.file_id=f.id
-               WHERE pcm.cluster_id=?
-               ORDER BY (d.best_datetime IS NULL), d.best_datetime
-               LIMIT ? OFFSET ?""",
-            (cluster_id, limit, offset),
-        ).fetchall()
-        return {
-            "id": c["id"],
-            "name": c["name"],
-            "lat": c["lat"],
-            "lon": c["lon"],
-            "total": c["member_count"],
-            "members": [
-                {
-                    "id": r["id"],
-                    "type": r["media_type"],
-                    "name": os.path.basename(r["rel_path"]),
-                    "date": r["dt"],
-                    "date_source": r["dsrc"],
-                    "has_gps": bool(r["has_gps"]),
-                }
-                for r in rows
-            ],
-            "offset": offset,
-            "count": len(rows),
-            "merges": _place_merges_for(conn, cluster_id),
-        }
-    finally:
-        conn.close()
+@reading
+def place_cluster_members(conn, cluster_id: int, limit=120, offset=0) -> dict | None:
+    c = conn.execute(
+        "SELECT id, name, lat, lon, member_count FROM place_clusters WHERE id=?", (cluster_id,)
+    ).fetchone()
+    if not c:
+        return None
+    rows = conn.execute(
+        """SELECT f.id, f.media_type, f.rel_path, d.best_datetime AS dt,
+                  d.date_source AS dsrc,
+                  EXISTS(SELECT 1 FROM geo g WHERE g.file_id=f.id) AS has_gps
+           FROM place_cluster_members pcm
+           JOIN files f ON f.id=pcm.file_id
+           LEFT JOIN dates d ON d.file_id=f.id
+           WHERE pcm.cluster_id=?
+           ORDER BY (d.best_datetime IS NULL), d.best_datetime
+           LIMIT ? OFFSET ?""",
+        (cluster_id, limit, offset),
+    ).fetchall()
+    return {
+        "id": c["id"],
+        "name": c["name"],
+        "lat": c["lat"],
+        "lon": c["lon"],
+        "total": c["member_count"],
+        "members": [
+            {
+                "id": r["id"],
+                "type": r["media_type"],
+                "name": os.path.basename(r["rel_path"]),
+                "date": r["dt"],
+                "date_source": r["dsrc"],
+                "has_gps": bool(r["has_gps"]),
+            }
+            for r in rows
+        ],
+        "offset": offset,
+        "count": len(rows),
+        "merges": _place_merges_for(conn, cluster_id),
+    }
 
 
 def _place_merges_for(conn, cluster_id) -> list[dict]:
@@ -207,20 +196,15 @@ def _place_merges_for(conn, cluster_id) -> list[dict]:
     return out
 
 
-def rename_place_cluster(db_path: str, cluster_id, name: str) -> dict:
+@writing
+def rename_place_cluster(conn, cluster_id, name: str) -> dict:
     if not cluster_id:
         return {"error": "missing cluster_id"}
-    conn = db.connect(db_path)
-    try:
-        cur = conn.execute(
-            "UPDATE place_clusters SET name=? WHERE id=?", (name or None, cluster_id)
-        )
-        conn.commit()
-        if cur.rowcount == 0:
-            return {"error": "not found"}
-        return {"ok": True, "name": name or None}
-    finally:
-        conn.close()
+    cur = conn.execute("UPDATE place_clusters SET name=? WHERE id=?", (name or None, cluster_id))
+    conn.commit()
+    if cur.rowcount == 0:
+        return {"error": "not found"}
+    return {"ok": True, "name": name or None}
 
 
 # -- "same place?" merges (durable, true undo) ------------------------------
@@ -257,7 +241,8 @@ def _place_merge_survivor(pa, pb):
     return pb, pa
 
 
-def merge_place_clusters(db_path: str, id_a, id_b, name=None) -> dict:
+@writing
+def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
     """User confirmed two place clusters are the same location. Merge
     immediately: move every member of the losing side into the survivor and
     delete the losing row. Mirrors merge_persons/merge_pets in signature,
@@ -273,110 +258,107 @@ def merge_place_clusters(db_path: str, id_a, id_b, name=None) -> dict:
       mere size but still loses to an explicit name either side carries."""
     if not id_a or not id_b or id_a == id_b:
         return {"error": "need two distinct places"}
-    conn = db.connect(db_path)
-    try:
-        pa = conn.execute(
-            "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-            (id_a,),
-        ).fetchone()
-        pb = conn.execute(
-            "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-            (id_b,),
-        ).fetchone()
-        if not pa or not pb:
-            return {"error": "unknown place"}
-        if pa["root_id"] != pb["root_id"]:
-            return {"error": "cannot merge places from different archives"}
-        name = (name or "").strip() or None
-        if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
-            return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
-        # Survivor: named > pinned > larger member_count > lower id, same
-        # deterministic chain as merge_persons/merge_pets with `pinned`
-        # inserted (see docstring above). Shared with place_merge_preview via
-        # _place_merge_survivor so the two never disagree on the centre.
-        keep, drop = _place_merge_survivor(pa, pb)
-        now = db.now_iso()
-        # Captured before anything is mutated: unmerge_place_clusters needs
-        # the losing side's exact row (to re-INSERT it) and its member list
-        # with each file's original `source`, so a manual attachment comes
-        # back manual rather than being silently downgraded to auto.
-        drop_members = [
-            (r["file_id"], r["source"])
-            for r in conn.execute(
-                "SELECT file_id, source FROM place_cluster_members WHERE cluster_id=?",
-                (drop["id"],),
-            ).fetchall()
-        ]
-        survivor_lat_before, survivor_lon_before = keep["lat"], keep["lon"]
-        # `OR REPLACE`, not a plain UPDATE: the PK is (cluster_id, file_id),
-        # and nothing forbids a file already being a member of BOTH places
-        # (e.g. a manual attachment alongside an auto one) -- a plain UPDATE
-        # would hit a PK collision on that row instead of just collapsing it.
-        conn.execute(
-            "UPDATE OR REPLACE place_cluster_members SET cluster_id=? WHERE cluster_id=?",
-            (keep["id"], drop["id"]),
-        )
-        conn.execute("DELETE FROM place_clusters WHERE id=?", (drop["id"],))
-        # Coordinates: a pinned survivor's coordinate is a deliberate user
-        # pin and never moves. Otherwise, the merged centroid is the
-        # member-count weighted mean of the two inputs -- the same
-        # incremental-mean rule assign_unplaced uses when it rolls a new
-        # point into an existing place (geo/clusters.py:200-207), just
-        # applied to two existing centroids instead of one point.
-        if not keep["pinned"]:
-            n_keep = keep["member_count"] or 0
-            n_drop = drop["member_count"] or 0
-            total = n_keep + n_drop
-            if total:
-                new_lat = (keep["lat"] * n_keep + drop["lat"] * n_drop) / total
-                new_lon = (keep["lon"] * n_keep + drop["lon"] * n_drop) / total
-            else:
-                new_lat, new_lon = keep["lat"], keep["lon"]
+    pa = conn.execute(
+        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
+        (id_a,),
+    ).fetchone()
+    pb = conn.execute(
+        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
+        (id_b,),
+    ).fetchone()
+    if not pa or not pb:
+        return {"error": "unknown place"}
+    if pa["root_id"] != pb["root_id"]:
+        return {"error": "cannot merge places from different archives"}
+    name = (name or "").strip() or None
+    if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
+        return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
+    # Survivor: named > pinned > larger member_count > lower id, same
+    # deterministic chain as merge_persons/merge_pets with `pinned`
+    # inserted (see docstring above). Shared with place_merge_preview via
+    # _place_merge_survivor so the two never disagree on the centre.
+    keep, drop = _place_merge_survivor(pa, pb)
+    now = db.now_iso()
+    # Captured before anything is mutated: unmerge_place_clusters needs
+    # the losing side's exact row (to re-INSERT it) and its member list
+    # with each file's original `source`, so a manual attachment comes
+    # back manual rather than being silently downgraded to auto.
+    drop_members = [
+        (r["file_id"], r["source"])
+        for r in conn.execute(
+            "SELECT file_id, source FROM place_cluster_members WHERE cluster_id=?",
+            (drop["id"],),
+        ).fetchall()
+    ]
+    survivor_lat_before, survivor_lon_before = keep["lat"], keep["lon"]
+    # `OR REPLACE`, not a plain UPDATE: the PK is (cluster_id, file_id),
+    # and nothing forbids a file already being a member of BOTH places
+    # (e.g. a manual attachment alongside an auto one) -- a plain UPDATE
+    # would hit a PK collision on that row instead of just collapsing it.
+    conn.execute(
+        "UPDATE OR REPLACE place_cluster_members SET cluster_id=? WHERE cluster_id=?",
+        (keep["id"], drop["id"]),
+    )
+    conn.execute("DELETE FROM place_clusters WHERE id=?", (drop["id"],))
+    # Coordinates: a pinned survivor's coordinate is a deliberate user
+    # pin and never moves. Otherwise, the merged centroid is the
+    # member-count weighted mean of the two inputs -- the same
+    # incremental-mean rule assign_unplaced uses when it rolls a new
+    # point into an existing place (geo/clusters.py:200-207), just
+    # applied to two existing centroids instead of one point.
+    if not keep["pinned"]:
+        n_keep = keep["member_count"] or 0
+        n_drop = drop["member_count"] or 0
+        total = n_keep + n_drop
+        if total:
+            new_lat = (keep["lat"] * n_keep + drop["lat"] * n_drop) / total
+            new_lon = (keep["lon"] * n_keep + drop["lon"] * n_drop) / total
         else:
             new_lat, new_lon = keep["lat"], keep["lon"]
-        # Recompute member_count from place_cluster_members rather than
-        # summing the two prior counts: the OR REPLACE above may have
-        # collapsed a file that was a member of both, so a plain sum could
-        # overcount.
-        new_count = conn.execute(
-            "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (keep["id"],)
-        ).fetchone()[0]
-        survivor_name = name or keep["name"] or drop["name"]
-        conn.execute(
-            "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
-            (survivor_name, new_lat, new_lon, new_count, keep["id"]),
-        )
-        # Recorded so this merge can be undone later (see
-        # unmerge_place_clusters): the losing row in full, its members with
-        # their original source, and the survivor's centroid BEFORE this
-        # merge (so undo can put it back exactly, not just approximately).
-        conn.execute(
-            """INSERT INTO place_merges(survivor_id, survivor_name, survivor_name_before,
-                                         dropped_name, dropped_lat, dropped_lon,
-                                         dropped_pinned, survivor_lat, survivor_lon,
-                                         file_ids, created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                keep["id"],
-                survivor_name,
-                keep["name"],
-                drop["name"],
-                drop["lat"],
-                drop["lon"],
-                drop["pinned"],
-                survivor_lat_before,
-                survivor_lon_before,
-                json.dumps(drop_members),
-                now,
-            ),
-        )
-        conn.commit()
-        return {"ok": True, "place": {"id": keep["id"], "name": survivor_name, "count": new_count}}
-    finally:
-        conn.close()
+    else:
+        new_lat, new_lon = keep["lat"], keep["lon"]
+    # Recompute member_count from place_cluster_members rather than
+    # summing the two prior counts: the OR REPLACE above may have
+    # collapsed a file that was a member of both, so a plain sum could
+    # overcount.
+    new_count = conn.execute(
+        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (keep["id"],)
+    ).fetchone()[0]
+    survivor_name = name or keep["name"] or drop["name"]
+    conn.execute(
+        "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
+        (survivor_name, new_lat, new_lon, new_count, keep["id"]),
+    )
+    # Recorded so this merge can be undone later (see
+    # unmerge_place_clusters): the losing row in full, its members with
+    # their original source, and the survivor's centroid BEFORE this
+    # merge (so undo can put it back exactly, not just approximately).
+    conn.execute(
+        """INSERT INTO place_merges(survivor_id, survivor_name, survivor_name_before,
+                                     dropped_name, dropped_lat, dropped_lon,
+                                     dropped_pinned, survivor_lat, survivor_lon,
+                                     file_ids, created_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            keep["id"],
+            survivor_name,
+            keep["name"],
+            drop["name"],
+            drop["lat"],
+            drop["lon"],
+            drop["pinned"],
+            survivor_lat_before,
+            survivor_lon_before,
+            json.dumps(drop_members),
+            now,
+        ),
+    )
+    conn.commit()
+    return {"ok": True, "place": {"id": keep["id"], "name": survivor_name, "count": new_count}}
 
 
-def unmerge_place_clusters(db_path: str, merge_id) -> dict:
+@writing
+def unmerge_place_clusters(conn, merge_id) -> dict:
     """Undo a drag-merge recorded by merge_place_clusters.
 
     Because places are durable (see the module-level comment above), this is
@@ -406,92 +388,87 @@ def unmerge_place_clusters(db_path: str, merge_id) -> dict:
     than raising."""
     if not merge_id:
         return {"error": "missing merge_id"}
-    conn = db.connect(db_path)
-    try:
-        m = conn.execute("SELECT * FROM place_merges WHERE id=?", (merge_id,)).fetchone()
-        if not m:
-            return {"error": "merge not found"}
-        survivor = conn.execute(
-            "SELECT id, root_id, name, member_count FROM place_clusters WHERE id=?",
-            (m["survivor_id"],),
-        ).fetchone()
-        if not survivor:
-            return {"error": "survivor place no longer exists"}
-        now = db.now_iso()
-        cur = conn.execute(
-            """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
-                                          pinned, created_at)
-               VALUES(?,?,?,?,0,?,?)""",
-            (
-                survivor["root_id"],
-                m["dropped_name"],
-                m["dropped_lat"],
-                m["dropped_lon"],
-                m["dropped_pinned"],
-                now,
-            ),
-        )
-        restored_id = cur.lastrowid
-        file_ids = json.loads(m["file_ids"])
-        for file_id, source in file_ids:
-            # The merge's UPDATE left this file's membership row pointing at
-            # the survivor (cluster_id=survivor["id"]); that row must be
-            # removed here, or the file would end up double-counted -- a
-            # member of both the restored place AND the survivor -- since an
-            # INSERT into place_cluster_members alone has a different PK
-            # (restored_id, file_id) and so cannot collide with (and
-            # replace) the survivor's (survivor_id, file_id) row.
-            conn.execute(
-                "DELETE FROM place_cluster_members WHERE cluster_id=? AND file_id=?",
-                (survivor["id"], file_id),
-            )
-            # INSERT OR REPLACE, not plain INSERT: if the file rejoined the
-            # restored side under some other path since the merge, this
-            # undo still wins it back for the restored place, matching what
-            # the merge itself did to a doubly-attached file.
-            conn.execute(
-                "INSERT OR REPLACE INTO place_cluster_members(cluster_id, file_id, source) "
-                "VALUES(?,?,?)",
-                (restored_id, file_id, source),
-            )
-        restored_count = conn.execute(
-            "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (restored_id,)
-        ).fetchone()[0]
+    m = conn.execute("SELECT * FROM place_merges WHERE id=?", (merge_id,)).fetchone()
+    if not m:
+        return {"error": "merge not found"}
+    survivor = conn.execute(
+        "SELECT id, root_id, name, member_count FROM place_clusters WHERE id=?",
+        (m["survivor_id"],),
+    ).fetchone()
+    if not survivor:
+        return {"error": "survivor place no longer exists"}
+    now = db.now_iso()
+    cur = conn.execute(
+        """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
+                                      pinned, created_at)
+           VALUES(?,?,?,?,0,?,?)""",
+        (
+            survivor["root_id"],
+            m["dropped_name"],
+            m["dropped_lat"],
+            m["dropped_lon"],
+            m["dropped_pinned"],
+            now,
+        ),
+    )
+    restored_id = cur.lastrowid
+    file_ids = json.loads(m["file_ids"])
+    for file_id, source in file_ids:
+        # The merge's UPDATE left this file's membership row pointing at
+        # the survivor (cluster_id=survivor["id"]); that row must be
+        # removed here, or the file would end up double-counted -- a
+        # member of both the restored place AND the survivor -- since an
+        # INSERT into place_cluster_members alone has a different PK
+        # (restored_id, file_id) and so cannot collide with (and
+        # replace) the survivor's (survivor_id, file_id) row.
         conn.execute(
-            "UPDATE place_clusters SET member_count=? WHERE id=?", (restored_count, restored_id)
+            "DELETE FROM place_cluster_members WHERE cluster_id=? AND file_id=?",
+            (survivor["id"], file_id),
         )
-        # Restore the survivor's pre-merge centroid verbatim (see docstring
-        # for why this isn't recomputed) and its member_count from what
-        # actually remains after the moves above.
-        survivor_count = conn.execute(
-            "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (survivor["id"],)
-        ).fetchone()[0]
-        # ...and its name, but only if nothing has renamed it since the merge.
-        # Merging two differently-named places takes an explicit `name` that
-        # OVERWRITES the survivor's own name, so without this the loser's name
-        # comes back on the restored place while the survivor keeps the chosen
-        # one -- the pre-merge pair "A"/"B" would undo to "A"/"A", quietly
-        # losing a name the user had typed. Conditional (not unconditional)
-        # for the same reason unmerge_persons guards its manual_person
-        # restore: a rename made deliberately after the merge outranks this
-        # bookkeeping and must not be clobbered.
-        survivor_name = (
-            m["survivor_name_before"]
-            if survivor["name"] == m["survivor_name"]
-            else survivor["name"]
-        )
+        # INSERT OR REPLACE, not plain INSERT: if the file rejoined the
+        # restored side under some other path since the merge, this
+        # undo still wins it back for the restored place, matching what
+        # the merge itself did to a doubly-attached file.
         conn.execute(
-            "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
-            (survivor_name, m["survivor_lat"], m["survivor_lon"], survivor_count, survivor["id"]),
+            "INSERT OR REPLACE INTO place_cluster_members(cluster_id, file_id, source) "
+            "VALUES(?,?,?)",
+            (restored_id, file_id, source),
         )
-        conn.execute("DELETE FROM place_merges WHERE id=?", (merge_id,))
-        conn.commit()
-        return {"ok": True, "place_id": restored_id}
-    finally:
-        conn.close()
+    restored_count = conn.execute(
+        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (restored_id,)
+    ).fetchone()[0]
+    conn.execute(
+        "UPDATE place_clusters SET member_count=? WHERE id=?", (restored_count, restored_id)
+    )
+    # Restore the survivor's pre-merge centroid verbatim (see docstring
+    # for why this isn't recomputed) and its member_count from what
+    # actually remains after the moves above.
+    survivor_count = conn.execute(
+        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (survivor["id"],)
+    ).fetchone()[0]
+    # ...and its name, but only if nothing has renamed it since the merge.
+    # Merging two differently-named places takes an explicit `name` that
+    # OVERWRITES the survivor's own name, so without this the loser's name
+    # comes back on the restored place while the survivor keeps the chosen
+    # one -- the pre-merge pair "A"/"B" would undo to "A"/"A", quietly
+    # losing a name the user had typed. Conditional (not unconditional)
+    # for the same reason unmerge_persons guards its manual_person
+    # restore: a rename made deliberately after the merge outranks this
+    # bookkeeping and must not be clobbered.
+    survivor_name = (
+        m["survivor_name_before"] if survivor["name"] == m["survivor_name"] else survivor["name"]
+    )
+    conn.execute(
+        "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
+        (survivor_name, m["survivor_lat"], m["survivor_lon"], survivor_count, survivor["id"]),
+    )
+    conn.execute("DELETE FROM place_merges WHERE id=?", (merge_id,))
+    conn.commit()
+    return {"ok": True, "place_id": restored_id}
 
 
-def place_merge_preview(db_path: str, id_a, id_b, warn_km: float) -> dict:
+@reading
+def place_merge_preview(conn, id_a, id_b, warn_km: float) -> dict:
     """Read-only "how spread out would this merge be?" check, so the GUI can
     warn before a drag-to-merge is confirmed rather than after it's already
     committed. Mirrors merge_place_clusters' validation and survivor/centre
@@ -508,96 +485,87 @@ def place_merge_preview(db_path: str, id_a, id_b, warn_km: float) -> dict:
     archive without a second thought."""
     if not id_a or not id_b or id_a == id_b:
         return {"error": "need two distinct places"}
-    conn = db.open_readonly(db_path)
-    try:
-        pa = conn.execute(
-            "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-            (id_a,),
-        ).fetchone()
-        pb = conn.execute(
-            "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-            (id_b,),
-        ).fetchone()
-        if not pa or not pb:
-            return {"error": "unknown place"}
-        if pa["root_id"] != pb["root_id"]:
-            return {"error": "cannot merge places from different archives"}
-        keep, drop = _place_merge_survivor(pa, pb)
-        # Same rule merge_place_clusters applies when it actually writes the
-        # merged row: a pinned survivor's coordinate is a deliberate user pin
-        # and never moves; otherwise the centre is the member-count weighted
-        # mean of the two centroids (geo/clusters.py's incremental-mean rule,
-        # applied to two existing centroids instead of one new point).
-        if keep["pinned"]:
-            centre_lat, centre_lon = keep["lat"], keep["lon"]
+    pa = conn.execute(
+        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
+        (id_a,),
+    ).fetchone()
+    pb = conn.execute(
+        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
+        (id_b,),
+    ).fetchone()
+    if not pa or not pb:
+        return {"error": "unknown place"}
+    if pa["root_id"] != pb["root_id"]:
+        return {"error": "cannot merge places from different archives"}
+    keep, drop = _place_merge_survivor(pa, pb)
+    # Same rule merge_place_clusters applies when it actually writes the
+    # merged row: a pinned survivor's coordinate is a deliberate user pin
+    # and never moves; otherwise the centre is the member-count weighted
+    # mean of the two centroids (geo/clusters.py's incremental-mean rule,
+    # applied to two existing centroids instead of one new point).
+    if keep["pinned"]:
+        centre_lat, centre_lon = keep["lat"], keep["lon"]
+    else:
+        n_keep = keep["member_count"] or 0
+        n_drop = drop["member_count"] or 0
+        total = n_keep + n_drop
+        if total:
+            centre_lat = (keep["lat"] * n_keep + drop["lat"] * n_drop) / total
+            centre_lon = (keep["lon"] * n_keep + drop["lon"] * n_drop) / total
         else:
-            n_keep = keep["member_count"] or 0
-            n_drop = drop["member_count"] or 0
-            total = n_keep + n_drop
-            if total:
-                centre_lat = (keep["lat"] * n_keep + drop["lat"] * n_drop) / total
-                centre_lon = (keep["lon"] * n_keep + drop["lon"] * n_drop) / total
-            else:
-                centre_lat, centre_lon = keep["lat"], keep["lon"]
-        from ..geo.clusters import _haversine_m
+            centre_lat, centre_lon = keep["lat"], keep["lon"]
+    from ..geo.clusters import _haversine_m
 
-        # Every geolocated member of BOTH clusters. Manually-attached members
-        # (place_cluster_members.source='manual') have no geo row and so are
-        # simply absent from this join -- correctly: a photo with no
-        # coordinate of its own can't be "far" from the centre, it has
-        # nothing to measure from.
-        points = conn.execute(
-            """SELECT g.lat, g.lon FROM place_cluster_members pcm
-               JOIN geo g ON g.file_id = pcm.file_id
-               WHERE pcm.cluster_id IN (?, ?) AND g.lat IS NOT NULL""",
-            (id_a, id_b),
-        ).fetchall()
-        span_km = 0.0
-        for p in points:
-            d_km = _haversine_m(centre_lat, centre_lon, p["lat"], p["lon"]) / 1000.0
-            if d_km > span_km:
-                span_km = d_km
-        return {"ok": True, "span_km": span_km, "threshold_km": warn_km, "warn": span_km >= warn_km}
-    finally:
-        conn.close()
+    # Every geolocated member of BOTH clusters. Manually-attached members
+    # (place_cluster_members.source='manual') have no geo row and so are
+    # simply absent from this join -- correctly: a photo with no
+    # coordinate of its own can't be "far" from the centre, it has
+    # nothing to measure from.
+    points = conn.execute(
+        """SELECT g.lat, g.lon FROM place_cluster_members pcm
+           JOIN geo g ON g.file_id = pcm.file_id
+           WHERE pcm.cluster_id IN (?, ?) AND g.lat IS NOT NULL""",
+        (id_a, id_b),
+    ).fetchall()
+    span_km = 0.0
+    for p in points:
+        d_km = _haversine_m(centre_lat, centre_lon, p["lat"], p["lon"]) / 1000.0
+        if d_km > span_km:
+            span_km = d_km
+    return {"ok": True, "span_km": span_km, "threshold_km": warn_km, "warn": span_km >= warn_km}
 
 
-def set_place(db_path: str, file_id, place_id) -> dict:
+@writing
+def set_place(conn, file_id, place_id) -> dict:
     """Attach a file to a place as a MANUAL member (membership only, no geo is
     written, so provenance stays honest). Replaces any existing membership."""
     if not file_id or not place_id:
         return {"error": "missing file_id or place_id"}
-    conn = db.connect(db_path)
-    try:
-        pc = conn.execute("SELECT id, name FROM place_clusters WHERE id=?", (place_id,)).fetchone()
-        if not pc:
-            return {"error": "unknown place"}
-        _detach_file_from_places(conn, file_id)
-        conn.execute(
-            "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
-            "VALUES(?,?, 'manual')",
-            (place_id, file_id),
-        )
-        _recount_place(conn, place_id)
-        conn.commit()
-        return {"ok": True, "place": {"id": pc["id"], "name": pc["name"]}}
-    finally:
-        conn.close()
+    pc = conn.execute("SELECT id, name FROM place_clusters WHERE id=?", (place_id,)).fetchone()
+    if not pc:
+        return {"error": "unknown place"}
+    _detach_file_from_places(conn, file_id)
+    conn.execute(
+        "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
+        "VALUES(?,?, 'manual')",
+        (place_id, file_id),
+    )
+    _recount_place(conn, place_id)
+    conn.commit()
+    return {"ok": True, "place": {"id": pc["id"], "name": pc["name"]}}
 
 
-def clear_place(db_path: str, file_id) -> dict:
+@writing
+def clear_place(conn, file_id) -> dict:
     if not file_id:
         return {"error": "missing file_id"}
-    conn = db.connect(db_path)
-    try:
-        _detach_file_from_places(conn, file_id)
-        conn.commit()
-        return {"ok": True, "place": None}
-    finally:
-        conn.close()
+    _detach_file_from_places(conn, file_id)
+    conn.commit()
+    return {"ok": True, "place": None}
 
 
-def create_place(db_path: str, root_id, name: str, lat, lon, file_id=None) -> dict:
+@writing
+def create_place(conn, root_id, name: str, lat, lon, file_id=None) -> dict:
     """Create a user-pinned place (fixed coordinate) and optionally attach a file
     to it in one call. The dropped map pin becomes the place's coordinate."""
     if root_id is None or lat is None or lon is None:
@@ -608,30 +576,26 @@ def create_place(db_path: str, root_id, name: str, lat, lon, file_id=None) -> di
         return {"error": "bad coordinates"}
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return {"error": "coordinates out of range"}
-    conn = db.connect(db_path)
-    try:
-        if not conn.execute("SELECT 1 FROM roots WHERE id=?", (root_id,)).fetchone():
-            return {"error": "unknown archive"}
-        cur = conn.execute(
-            """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
-                                          pinned, created_at)
-               VALUES(?,?,?,?,0,1,?)""",
-            (root_id, (name or "").strip() or None, lat, lon, db.now_iso()),
+    if not conn.execute("SELECT 1 FROM roots WHERE id=?", (root_id,)).fetchone():
+        return {"error": "unknown archive"}
+    cur = conn.execute(
+        """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
+                                      pinned, created_at)
+           VALUES(?,?,?,?,0,1,?)""",
+        (root_id, (name or "").strip() or None, lat, lon, db.now_iso()),
+    )
+    cid = cur.lastrowid
+    if file_id:
+        _detach_file_from_places(conn, file_id)
+        conn.execute(
+            "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, "
+            "source) VALUES(?,?, 'manual')",
+            (cid, file_id),
         )
-        cid = cur.lastrowid
-        if file_id:
-            _detach_file_from_places(conn, file_id)
-            conn.execute(
-                "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, "
-                "source) VALUES(?,?, 'manual')",
-                (cid, file_id),
-            )
-            _recount_place(conn, cid)
-        conn.commit()
-        pc = conn.execute("SELECT id, name FROM place_clusters WHERE id=?", (cid,)).fetchone()
-        return {"ok": True, "id": cid, "place": {"id": pc["id"], "name": pc["name"]}}
-    finally:
-        conn.close()
+        _recount_place(conn, cid)
+    conn.commit()
+    pc = conn.execute("SELECT id, name FROM place_clusters WHERE id=?", (cid,)).fetchone()
+    return {"ok": True, "id": cid, "place": {"id": pc["id"], "name": pc["name"]}}
 
 
 def _detach_file_from_places(conn, file_id):

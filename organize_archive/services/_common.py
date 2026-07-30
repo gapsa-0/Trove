@@ -7,6 +7,69 @@ agree on it, and the comments explain what breaks when they disagree.
 
 from __future__ import annotations
 
+import functools
+
+from ..db import database as db
+
+
+def reading(fn):
+    """Open a read-only connection, pass it to ``fn``, always close it.
+
+    A connection per call looks wasteful next to reusing one, but it is the
+    correct shape here: handlers run concurrently under ``ThreadingHTTPServer``,
+    a sqlite3 connection is not safe to share between threads, and opening one
+    against a local file is cheap -- there is no pool to warm. Sharing one
+    instead would not be slow, it would be a crash (or silent corruption) the
+    first time two requests land on it at once.
+
+    The wrapped function is called as ``fn(conn, *args, **kwargs)``, but the
+    decorated function keeps the public signature ``(db_path, *args,
+    **kwargs)`` -- callers never see the connection, and nothing about how
+    they invoke a service function changes.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(db_path, *args, **kwargs):
+        conn = db.open_readonly(db_path)
+        try:
+            return fn(conn, *args, **kwargs)
+        finally:
+            conn.close()
+
+    return wrapper
+
+
+def writing(fn):
+    """Open a read-write connection, pass it to ``fn``, always close it.
+
+    Same per-call-connection reasoning as ``@reading`` (see its docstring):
+    thread safety under ``ThreadingHTTPServer``, not a performance concern.
+
+    Two things this decorator deliberately does NOT do:
+
+    - **It does not commit.** ``fn`` still calls ``conn.commit()`` itself.
+      Where the transaction boundary falls -- one commit for the whole
+      function, or several -- is that function's business rule, not
+      something a generic wrapper should decide for it.
+    - **It does not retry on a locked database.** ``db.write_with_retry`` is
+      applied by the caller (``web/server.py`` wraps 21 mutation call sites
+      in it), one layer up from here. Retrying inside this decorator would
+      move where a lock gets handled without anyone deciding that on
+      purpose, and would retry a whole request handler rather than the one
+      write that actually needs it.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(db_path, *args, **kwargs):
+        conn = db.connect(db_path)
+        try:
+            return fn(conn, *args, **kwargs)
+        finally:
+            conn.close()
+
+    return wrapper
+
+
 # Analytics (summary, timeline, map, counts) describe the whole archive, so they
 # count every present file. Only Browse hides non-canonical duplicates.
 _VISIBLE = "f.present = 1"
