@@ -6,8 +6,8 @@ from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
-from ..scan.progress import ScanProgress
 from ._common import _fmt_bytes
+from .progress import ScanProgress
 
 
 def add_parser(sub) -> None:
