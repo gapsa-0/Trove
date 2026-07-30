@@ -68,6 +68,7 @@ from dataclasses import dataclass
 
 from ..config import Config
 from ..db import database as db
+from .manual_tags import repair_manual_person_files
 
 logger = logging.getLogger(__name__)
 
@@ -332,8 +333,6 @@ def _finalize(conn, stats, now, progress):
     longer carries its anchored name needs re-pointing at whichever person
     (if any) carries it now. This is the single choke point every return path
     goes through, so it's the one place that needs the call."""
-    from ..gui.queries import repair_manual_person_files
-
     repair_manual_person_files(conn)
     _refresh_person_stats(conn, _apply_manual_pins(conn, now))
     stats.people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]

@@ -216,9 +216,9 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -
     # view populated during the re-run instead of blanking it for hours.
     #
     # person_files is deliberately NOT cleared either: it is anchored by person
-    # NAME (person_files.person_name) and gui.queries.repair_manual_person_files
-    # re-points it after clustering, which is exactly the path a normal
-    # recluster already takes.
+    # NAME (person_files.person_name) and
+    # faces.manual_tags.repair_manual_person_files re-points it after
+    # clustering, which is exactly the path a normal recluster already takes.
     conn.execute("UPDATE faces SET person_id=NULL")
     conn.execute("DELETE FROM persons")
     conn.execute("DELETE FROM faces")

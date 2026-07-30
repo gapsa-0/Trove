@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ..config import Config
 from ..db import database as db
+from .manual_tags import repair_manual_pet_files
 
 
 @dataclass
@@ -132,7 +133,6 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     # because `pets` is rebuilt wholesale on every call, unlike persons this
     # isn't a defensive backstop -- pet ids are GUARANTEED to change every
     # chunk, so every return path below must repair before it commits.
-    from ..gui.queries import repair_manual_pet_files
 
     # One global embedding matrix (rather than per-species, as before) so a
     # pet_links merge (below) can union two groups formed in different
