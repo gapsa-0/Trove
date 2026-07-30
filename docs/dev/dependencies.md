@@ -98,7 +98,7 @@ dependency: it appears in no extra in `pyproject.toml`, no `make` target
 installs it, and the packaged app excludes it entirely (`docs/release.md`'s
 build-inputs section explains why scikit-learn and SciPy's `array_api_compat`
 shims make excluding it from the PyInstaller build worth doing explicitly).
-Its only consumer is `tests/test_siglip_preprocessing.py`, which checks the
+Its only consumer is `tests/unit/test_siglip_preprocessing.py`, which checks the
 project's from-scratch SigLIP preprocessing against `transformers`' own
 reference tokenizer — the load-bearing test for a class of bug (wrong resize,
 wrong normalisation) that costs retrieval quality silently, with every vector
@@ -110,7 +110,7 @@ whole module at collection time rather than failing.
 Concretely: on a machine that has `transformers` installed, the full suite
 collects 294 tests and reports `293 passed, 1 xfailed` (the xfail is
 unrelated — a pets test superseded by the fused detector, in
-`tests/test_pets.py`). Without `transformers`, the eight tests in
+`tests/integration/test_pets.py`). Without `transformers`, the eight tests in
 `test_siglip_preprocessing.py` collapse into a single collection-time skip:
 `285 passed, 1 xfailed, 1 skipped`. Both are green. If you want those eight
 preprocessing-parity tests to actually run, install `transformers` by hand and

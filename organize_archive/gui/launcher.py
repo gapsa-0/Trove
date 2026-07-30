@@ -66,7 +66,7 @@ def open_app_window(url: str) -> bool:
     try:
         # A no-op for a GUI-subsystem browser, which never gets a console
         # allocated anyway -- passed so the "every spawn suppresses a console"
-        # rule holds with no exceptions to remember (see tests/test_no_console_windows.py).
+        # rule holds with no exceptions to remember (see tests/unit/test_no_console_windows.py).
         subprocess.Popen(
             [browser, f"--app={url}", "--new-window"],
             stdout=subprocess.DEVNULL,

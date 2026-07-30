@@ -45,7 +45,7 @@ faiss-cpu==1.14.3
 
 # --- semantic extra ---
 # 0.23.1 is what the desktop build ships. Note that installing `transformers`
-# -- a dev-only reference dependency used by tests/test_siglip_preprocessing.py,
+# -- a dev-only reference dependency used by tests/unit/test_siglip_preprocessing.py,
 # in no extra and installed by no make target -- requires tokenizers<=0.23.0 and
 # will therefore hold this back on a developer machine. That is expected: the
 # packaged app excludes transformers entirely.

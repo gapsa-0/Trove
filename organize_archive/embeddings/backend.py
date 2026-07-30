@@ -254,7 +254,7 @@ class SiglipBackend:
     with one exact recipe, and a mismatch costs retrieval quality silently, with
     no error anywhere. Both halves below are pinned against
     ``preprocessor_config.json`` / ``tokenizer.json`` of the checkpoint and
-    covered by a parity test against ``transformers`` (tests/test_siglip_parity.py).
+    covered by a parity test against ``transformers`` (tests/unit/test_siglip_preprocessing.py).
 
     Images (``SiglipImageProcessor``, FixRes variant):
 
