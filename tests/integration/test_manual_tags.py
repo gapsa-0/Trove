@@ -1,5 +1,7 @@
 from organize_archive.db import database as db
-from organize_archive.web import queries
+from organize_archive.faces.manual_tags import repair_manual_person_files
+from organize_archive.pets.manual_tags import repair_manual_pet_files
+from organize_archive.services import browse, people, pets
 
 
 def _base_catalog(tmp_path):
@@ -48,7 +50,7 @@ def test_add_and_remove_person_round_trip(tmp_path):
     conn.commit()
     conn.close()
 
-    res = queries.add_person_to_file(db_path, 1, 1)
+    res = people.add_person_to_file(db_path, 1, 1)
     assert res["ok"]
     assert res["person"] == {"id": 1, "name": "Alice"}
 
@@ -57,7 +59,7 @@ def test_add_and_remove_person_round_trip(tmp_path):
     assert (row["person_id"], row["file_id"], row["person_name"]) == (1, 1, "Alice")
     check.close()
 
-    res2 = queries.remove_person_from_file(db_path, 1, 1)
+    res2 = people.remove_person_from_file(db_path, 1, 1)
     assert res2["ok"]
     check = db.open_readonly(db_path)
     assert check.execute("SELECT COUNT(*) FROM person_files").fetchone()[0] == 0
@@ -71,7 +73,7 @@ def test_add_person_unnamed_is_rejected(tmp_path):
     conn.commit()
     conn.close()
 
-    res = queries.add_person_to_file(db_path, 1, 1)
+    res = people.add_person_to_file(db_path, 1, 1)
     assert "error" in res
     check = db.open_readonly(db_path)
     assert check.execute("SELECT COUNT(*) FROM person_files").fetchone()[0] == 0
@@ -85,11 +87,11 @@ def test_add_and_remove_pet_round_trip(tmp_path):
     conn.commit()
     conn.close()
 
-    res = queries.add_pet_to_file(db_path, 1, 1)
+    res = pets.add_pet_to_file(db_path, 1, 1)
     assert res["ok"]
     assert res["pet"] == {"id": 1, "name": "Fido"}
 
-    res2 = queries.remove_pet_from_file(db_path, 1, 1)
+    res2 = pets.remove_pet_from_file(db_path, 1, 1)
     assert res2["ok"]
     check = db.open_readonly(db_path)
     assert check.execute("SELECT COUNT(*) FROM pet_files").fetchone()[0] == 0
@@ -103,7 +105,7 @@ def test_add_pet_unnamed_is_rejected(tmp_path):
     conn.commit()
     conn.close()
 
-    res = queries.add_pet_to_file(db_path, 1, 1)
+    res = pets.add_pet_to_file(db_path, 1, 1)
     assert "error" in res
 
 
@@ -116,7 +118,7 @@ def test_repair_manual_person_files_repoints_after_recluster(tmp_path):
     _add_person(conn, 1, "Alice")
     conn.commit()
     conn.close()
-    queries.add_person_to_file(db_path, 1, 1)
+    people.add_person_to_file(db_path, 1, 1)
 
     # Simulate a recluster: the old person row is gone, a NEW id carries the
     # same name (exactly what faces/cluster.py's DELETE+rebuild does).
@@ -125,7 +127,7 @@ def test_repair_manual_person_files_repoints_after_recluster(tmp_path):
     _add_person(conn, 2, "Alice")
     conn.commit()
 
-    queries.repair_manual_person_files(conn)
+    repair_manual_person_files(conn)
     conn.commit()
 
     row = conn.execute("SELECT person_id, person_name FROM person_files WHERE file_id=1").fetchone()
@@ -140,13 +142,13 @@ def test_repair_manual_person_files_leaves_untouched_when_name_gone(tmp_path):
     _add_person(conn, 1, "Alice")
     conn.commit()
     conn.close()
-    queries.add_person_to_file(db_path, 1, 1)
+    people.add_person_to_file(db_path, 1, 1)
 
     conn = db.connect(db_path)
     conn.execute("DELETE FROM persons WHERE id=1")  # no one carries "Alice" now
     conn.commit()
 
-    queries.repair_manual_person_files(conn)
+    repair_manual_person_files(conn)
     conn.commit()
 
     row = conn.execute("SELECT person_id, person_name FROM person_files WHERE file_id=1").fetchone()
@@ -165,8 +167,8 @@ def test_repair_manual_person_files_handles_pk_collision(tmp_path):
     _add_person(conn, 1, "Alice")
     conn.commit()
     conn.close()
-    queries.add_person_to_file(db_path, 1, 1)  # file 1 -> person 1 ("Alice")
-    queries.add_person_to_file(db_path, 1, 2)  # file 2 -> person 1 ("Alice")
+    people.add_person_to_file(db_path, 1, 1)  # file 1 -> person 1 ("Alice")
+    people.add_person_to_file(db_path, 1, 2)  # file 2 -> person 1 ("Alice")
 
     conn = db.connect(db_path)
     conn.execute("DELETE FROM persons WHERE id=1")
@@ -178,7 +180,7 @@ def test_repair_manual_person_files_handles_pk_collision(tmp_path):
     )
     conn.commit()
 
-    queries.repair_manual_person_files(conn)  # must not raise
+    repair_manual_person_files(conn)  # must not raise
     conn.commit()
 
     rows = {
@@ -195,14 +197,14 @@ def test_repair_manual_pet_files_repoints_after_recluster(tmp_path):
     _add_pet(conn, 1, "Fido")
     conn.commit()
     conn.close()
-    queries.add_pet_to_file(db_path, 1, 1)
+    pets.add_pet_to_file(db_path, 1, 1)
 
     conn = db.connect(db_path)
     conn.execute("DELETE FROM pets WHERE id=1")
     _add_pet(conn, 7, "Fido")
     conn.commit()
 
-    queries.repair_manual_pet_files(conn)
+    repair_manual_pet_files(conn)
     conn.commit()
 
     row = conn.execute("SELECT pet_id, pet_name FROM pet_files WHERE file_id=1").fetchone()
@@ -229,10 +231,10 @@ def test_face_person_manual_only_file_counted_once(tmp_path):
 
     # Manually tag Alice on file 2 (no face at all there) AND redundantly on
     # file 1 (where a face already exists) -- file 1 must still appear once.
-    queries.add_person_to_file(db_path, 1, 2)
-    queries.add_person_to_file(db_path, 1, 1)
+    people.add_person_to_file(db_path, 1, 2)
+    people.add_person_to_file(db_path, 1, 1)
 
-    result = queries.face_person(db_path, 1, root_id=1)
+    result = people.face_person(db_path, 1, root_id=1)
     assert result["photos"] == 2
     ids = sorted(item["id"] for item in result["items"])
     assert ids == [1, 2]
@@ -248,9 +250,9 @@ def test_media_person_filter_matches_manual_only_tag(tmp_path):
     conn.commit()
     conn.close()
 
-    queries.add_person_to_file(db_path, 1, 2)  # file 2 has no detected face
+    people.add_person_to_file(db_path, 1, 2)  # file 2 has no detected face
 
-    result = queries.media(db_path, root_id=1, person_ids=[1])
+    result = browse.media(db_path, root_id=1, person_ids=[1])
     assert [item["id"] for item in result["items"]] == [2]
     assert result["total"] == 1
 
@@ -267,8 +269,8 @@ def test_face_persons_grid_counts_include_manual_only_files(tmp_path):
     conn.commit()
     conn.close()
 
-    queries.add_person_to_file(db_path, 1, 2)
+    people.add_person_to_file(db_path, 1, 2)
 
-    result = queries.face_persons(db_path, root_id=1)
+    result = people.face_persons(db_path, root_id=1)
     person = next(p for p in result["people"] if p["id"] == 1)
     assert person["photos"] == 2

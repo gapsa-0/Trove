@@ -431,7 +431,7 @@ CREATE INDEX IF NOT EXISTS idx_pet_merges_survivor ON pet_merges(survivor_id);
 -- faces/cluster.py deletes and recreates persons rows, so an id alone would rot
 -- on the next pass. Only NAMED people can be tagged this way (the endpoint
 -- enforces it), which is what makes the name a usable anchor -- see
--- queries.repair_manual_person_files.
+-- faces/manual_tags.py's repair_manual_person_files.
 CREATE TABLE IF NOT EXISTS person_files (
     person_id   INTEGER NOT NULL,
     file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,

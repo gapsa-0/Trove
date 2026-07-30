@@ -10,7 +10,7 @@ from organize_archive.db import database as db
 from organize_archive.faces import backend as face_backend
 from organize_archive.faces import extract as face_extract
 from organize_archive.pets import backend, cluster, extract
-from organize_archive.web import queries
+from organize_archive.services import pets
 
 np = pytest.importorskip("numpy")
 
@@ -137,7 +137,7 @@ def test_animal_overlap_filters_face_but_manual_review_can_restore_it(tmp_path, 
     assert conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 0
     conn.close()
 
-    result = queries.review_nonhuman(str(tmp_path / "archive.db"), candidate["id"], "human")
+    result = pets.review_nonhuman(str(tmp_path / "archive.db"), candidate["id"], "human")
     assert result["ok"]
     check = db.open_readonly(tmp_path / "archive.db")
     assert check.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 1

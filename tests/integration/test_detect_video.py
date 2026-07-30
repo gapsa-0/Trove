@@ -25,7 +25,7 @@ from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.detect import extract as dx
 from organize_archive.pets.backend import AnimalDetection
-from organize_archive.web import queries
+from organize_archive.services import pending
 
 np = pytest.importorskip("numpy")
 
@@ -201,5 +201,5 @@ def test_detect_pending_query_includes_video_only_when_frames_enabled(tmp_path):
     conn.close()
     db_path = str(tmp_path / "archive.db")
 
-    assert queries.detect_pending(db_path, model_source="m", detect_video_frames=5) == 1
-    assert queries.detect_pending(db_path, model_source="m", detect_video_frames=0) == 0
+    assert pending.detect_pending(db_path, model_source="m", detect_video_frames=5) == 1
+    assert pending.detect_pending(db_path, model_source="m", detect_video_frames=0) == 0

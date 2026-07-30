@@ -11,7 +11,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.pets import cluster
-from organize_archive.web import queries
+from organize_archive.services import people, pets
 
 np = pytest.importorskip("numpy")
 
@@ -55,7 +55,7 @@ def test_merge_pets_survives_a_subsequent_full_recluster(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    merged = queries.merge_pets(str(db_path), pet_ids[0], pet_ids[1])
+    merged = pets.merge_pets(str(db_path), pet_ids[0], pet_ids[1])
     assert merged["ok"] is True
     assert merged["pet"]["detections"] == 4
 
@@ -95,11 +95,11 @@ def test_merge_pets_both_named_differently_requires_explicit_name(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    refused = queries.merge_pets(str(db_path), 1, 2)
+    refused = pets.merge_pets(str(db_path), 1, 2)
     assert "error" in refused
     assert "Fido" in refused["error"] and "Rex" in refused["error"]
 
-    ok = queries.merge_pets(str(db_path), 1, 2, name="Buddy")
+    ok = pets.merge_pets(str(db_path), 1, 2, name="Buddy")
     assert ok["ok"] is True
     assert ok["pet"]["name"] == "Buddy"
 
@@ -137,11 +137,11 @@ def _catalog_with_named_persons(tmp_path):
 def test_merge_persons_with_explicit_name_succeeds_and_rewrites_pins(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
 
-    refused = queries.merge_persons(str(db_path), 1, 2)
+    refused = people.merge_persons(str(db_path), 1, 2)
     assert "error" in refused
     assert "Ana" in refused["error"] and "Beto" in refused["error"]
 
-    ok = queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    ok = people.merge_persons(str(db_path), 1, 2, name="Ana")
     assert ok["ok"] is True
     assert ok["person"]["name"] == "Ana"
     assert ok["person"]["face_count"] == 2

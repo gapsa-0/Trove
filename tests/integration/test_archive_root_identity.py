@@ -11,7 +11,8 @@ from pathlib import Path
 from organize_archive import paths
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.web.queries import add_archive, remove_archive, summary
+from organize_archive.services.archives import add_archive, remove_archive
+from organize_archive.services.overview import summary
 
 
 def _seed(conn, root_id, rel_path):

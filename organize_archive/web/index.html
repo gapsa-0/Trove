@@ -8196,7 +8196,7 @@
       const res = await jpost(url, { merge_id: mergeId });
       if (!res || res.error) { toast((res && res.error) || "Couldn’t undo that merge.", true); return; }
       // People/pets requeue a background recluster, so their toast says so; a place
-      // merge is a direct row move/restore (queries.py's unmerge_place_clusters),
+      // merge is a direct row move/restore (places.py's unmerge_place_clusters),
       // nothing gets queued, so "Undone" alone is accurate here.
       toast(kind === "place" ? "Undone" : "Undone — regrouping in the background…");
       if (kind === "pet") { if (S.currentPet) showPet(S.currentPet.id); }

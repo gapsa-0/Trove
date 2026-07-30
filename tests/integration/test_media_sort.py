@@ -1,7 +1,7 @@
 import struct
 
 from organize_archive.db import database as db
-from organize_archive.web import queries
+from organize_archive.services import browse, search
 
 
 def _dated_catalogue(tmp_path):
@@ -42,8 +42,8 @@ def _dated_catalogue(tmp_path):
 def test_media_sorts_newest_first_by_default_and_oldest_on_request(tmp_path):
     db_path = _dated_catalogue(tmp_path)
 
-    newest = queries.media(db_path, root_id=1)
-    oldest = queries.media(db_path, root_id=1, sort="oldest")
+    newest = browse.media(db_path, root_id=1)
+    oldest = browse.media(db_path, root_id=1, sort="oldest")
 
     # The undated file trails both orderings rather than leading "oldest".
     assert [item["id"] for item in newest["items"]] == [1, 3, 2, 4]
@@ -53,10 +53,10 @@ def test_media_sorts_newest_first_by_default_and_oldest_on_request(tmp_path):
 def test_semantic_search_can_be_reordered_by_date(tmp_path):
     db_path = _dated_catalogue(tmp_path)
 
-    newest = queries.semantic_search(
+    newest = search.semantic_search(
         db_path, [1.0, 0.0], root_id=1, min_similarity=0.5, sort="newest"
     )
-    oldest = queries.semantic_search(
+    oldest = search.semantic_search(
         db_path, [1.0, 0.0], root_id=1, min_similarity=0.5, sort="oldest"
     )
 
@@ -75,7 +75,7 @@ def test_semantic_date_sort_does_not_admit_weak_matches(tmp_path):
     conn.commit()
     conn.close()
 
-    result = queries.semantic_search(
+    result = search.semantic_search(
         db_path, [1.0, 0.0], root_id=1, min_similarity=0.5, sort="newest"
     )
 

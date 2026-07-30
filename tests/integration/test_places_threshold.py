@@ -1,9 +1,9 @@
 """place_min_media is a READ-time floor (config.py), never a clustering-time
 one: place_clusters rows are never deleted for falling short, they just stop
-being *reported*, except when named or pinned (see queries._PLACE_EXEMPT)."""
+being *reported*, except when named or pinned (see places._PLACE_EXEMPT)."""
 
 from organize_archive.db import database as db
-from organize_archive.web import queries
+from organize_archive.services import browse, places
 
 
 def _catalog_with_places(tmp_path):
@@ -84,7 +84,7 @@ def _catalog_with_places(tmp_path):
 def test_below_threshold_cluster_is_hidden_but_named_and_pinned_are_not(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
-    result = queries.place_clusters(db_path, root_id=1, min_media=10)
+    result = places.place_clusters(db_path, root_id=1, min_media=10)
 
     ids = {c["id"] for c in result["clusters"]}
     assert ids == {2, 3, 4}  # cluster 1 (unnamed, below threshold) is excluded
@@ -95,7 +95,7 @@ def test_item_reports_no_place_for_a_hidden_membership(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
     # File 1's only place is cluster 1: unnamed, unpinned, below threshold.
-    it = queries.item(str(db_path), 1, min_media=10)
+    it = browse.item(str(db_path), 1, min_media=10)
 
     assert it["place"] is None
 
@@ -104,7 +104,7 @@ def test_item_still_reports_a_named_place_below_threshold(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
     # File 4's only place is cluster 2: named, below threshold -> exempt.
-    it = queries.item(str(db_path), 4, min_media=10)
+    it = browse.item(str(db_path), 4, min_media=10)
 
     assert it["place"] == {"id": 2, "name": "Home"}
 
@@ -119,7 +119,7 @@ def test_item_still_reports_a_named_place_below_threshold(tmp_path):
 def test_place_points_returns_every_geotagged_file(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
-    result = queries.place_points(str(db_path), root_id=1, min_media=10)
+    result = places.place_points(str(db_path), root_id=1, min_media=10)
 
     assert len(result["points"]) == 8  # every file with a geo row
     assert all(len(p) == 4 for p in result["points"])
@@ -128,7 +128,7 @@ def test_place_points_returns_every_geotagged_file(tmp_path):
 def test_place_points_flags_files_with_no_shown_place(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
-    result = queries.place_points(str(db_path), root_id=1, min_media=10)
+    result = places.place_points(str(db_path), root_id=1, min_media=10)
     by_file = {p[3]: p[2] for p in result["points"]}
 
     # Files 1-3 sit in the below-threshold, unnamed cluster 1, and file 8 is in
@@ -155,6 +155,6 @@ def test_place_points_ignores_files_from_another_root(tmp_path):
     conn.commit()
     conn.close()
 
-    result = queries.place_points(str(db_path), root_id=1, min_media=10)
+    result = places.place_points(str(db_path), root_id=1, min_media=10)
 
     assert 99 not in {p[3] for p in result["points"]}

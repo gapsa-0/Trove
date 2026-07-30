@@ -32,7 +32,7 @@ _SCORE_CHUNK = 4096
 
 def semantic_summary(db_path: str, root_id=None) -> dict:
     """Index state for the Browse semantic-search controls."""
-    from ..services import semantic
+    from . import semantic
 
     conn = db.open_readonly(db_path)
     try:
@@ -78,7 +78,7 @@ def semantic_summary(db_path: str, root_id=None) -> dict:
 
 def semantic_pending(db_path: str, root_id=None) -> int:
     """Compatible media that needs a first (or revised) semantic embedding."""
-    from ..services import semantic
+    from . import semantic
 
     conn = db.open_readonly(db_path)
     try:

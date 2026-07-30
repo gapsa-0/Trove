@@ -12,7 +12,7 @@ installation that *does* have it, which is the only way to exercise this on a
 developer machine or in CI -- both of which install everything.
 
 The one thing these tests deliberately do not claim: that every code path
-degrades. ``queries.semantic_search`` does not (it imports numpy outright);
+degrades. ``search.semantic_search`` does not (it imports numpy outright);
 docs/dev/dependencies.md records that gap.
 """
 

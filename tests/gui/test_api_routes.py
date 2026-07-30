@@ -43,8 +43,8 @@ from helpers import serve_in_thread
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.services import semantic
-from organize_archive.web import queries, server
+from organize_archive.services import archives, semantic
+from organize_archive.web import server
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
@@ -186,7 +186,7 @@ def _seed_archive(conn, root_id: int, source_dir: Path) -> dict:
     ids["pet_b"], ids["detection_b"] = _named_pet(conn, "Fido", ids["pet_b_photo"])
 
     # Places: two NAMED clusters (a name exempts a cluster from
-    # config.place_min_media, see queries._PLACE_EXEMPT), each with one
+    # config.place_min_media, see places._PLACE_EXEMPT), each with one
     # geotagged member so place_merge_preview has real coordinates to compare.
     place_a_photo = _file("place_a_photo", "places/home.jpg")
     factories.add_geo(conn, place_a_photo, lat=-41.13, lon=-71.31)
@@ -254,7 +254,7 @@ def live_server(tmp_path, monkeypatch):
     cfg = Config.load()
     source_dir = tmp_path / "source"
     source_dir.mkdir()
-    registered = queries.add_archive(cfg, str(source_dir))
+    registered = archives.add_archive(cfg, str(source_dir))
     assert "id" in registered, registered
     root_id = registered["id"]
 
@@ -280,7 +280,7 @@ def live_server(tmp_path, monkeypatch):
     # has it cached, so that would be a real network fetch. CLAUDE.md's
     # local-only rule (and this sandboxed test run) both forbid that, so only
     # the embedding step is stubbed to a fixed unit vector; the rest of the
-    # route (query parsing, queries.semantic_search against whatever's in
+    # route (query parsing, search.semantic_search against whatever's in
     # semantic_embeddings) still runs for real.
     monkeypatch.setattr(
         semantic, "embed_queries", lambda cfg, qs: [[1.0] + [0.0] * 767 for _ in qs]

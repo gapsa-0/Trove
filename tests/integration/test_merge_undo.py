@@ -16,7 +16,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.pets import cluster as pets_cluster
-from organize_archive.web import queries
+from organize_archive.services import people, pets, places
 
 np = pytest.importorskip("numpy")
 
@@ -88,7 +88,7 @@ def _catalog_with_named_persons(tmp_path):
 
 def test_merge_persons_records_a_person_merges_row(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    ok = queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    ok = people.merge_persons(str(db_path), 1, 2, name="Ana")
     assert ok["ok"] is True
 
     check = db.open_readonly(db_path)
@@ -126,7 +126,7 @@ def test_merge_pets_records_a_pet_merges_row(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    ok = queries.merge_pets(str(db_path), 1, 2)
+    ok = pets.merge_pets(str(db_path), 1, 2)
     assert ok["ok"] is True
 
     check = db.open_readonly(db_path)
@@ -146,12 +146,12 @@ def test_merge_pets_records_a_pet_merges_row(tmp_path):
 
 def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    people.merge_persons(str(db_path), 1, 2, name="Ana")
 
     merge_row = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()
     merge_id = merge_row["id"]
 
-    undo = queries.unmerge_persons(str(db_path), merge_id)
+    undo = people.unmerge_persons(str(db_path), merge_id)
     assert undo["ok"] is True
     assert undo["recluster"] is True
 
@@ -172,16 +172,16 @@ def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
 
 def test_unmerge_persons_twice_errors_cleanly(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    people.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
 
-    first = queries.unmerge_persons(str(db_path), merge_id)
+    first = people.unmerge_persons(str(db_path), merge_id)
     assert first["ok"] is True
-    second = queries.unmerge_persons(str(db_path), merge_id)
+    second = people.unmerge_persons(str(db_path), merge_id)
     assert "error" in second
 
     # a bogus id (never existed) is likewise a clean error, not a crash
-    assert "error" in queries.unmerge_persons(str(db_path), 999999)
+    assert "error" in people.unmerge_persons(str(db_path), 999999)
 
 
 def test_recluster_after_undo_does_not_remerge(tmp_path):
@@ -192,9 +192,9 @@ def test_recluster_after_undo_does_not_remerge(tmp_path):
     from organize_archive.faces.cluster import _apply_links
 
     db_path = _catalog_with_named_persons(tmp_path)
-    queries.merge_persons(str(db_path), 1, 2, name="Ana")
+    people.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
-    queries.unmerge_persons(str(db_path), merge_id)
+    people.unmerge_persons(str(db_path), merge_id)
 
     conn = db.connect(db_path)
     # Simulate the clusterer having (re)split the two faces into separate
@@ -231,10 +231,10 @@ def test_unmerge_pets_reverses_the_link(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    queries.merge_pets(str(db_path), 1, 2)
+    pets.merge_pets(str(db_path), 1, 2)
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM pet_merges").fetchone()["id"]
 
-    undo = queries.unmerge_pets(str(db_path), merge_id)
+    undo = pets.unmerge_pets(str(db_path), merge_id)
     assert undo["ok"] is True
     assert undo["recluster"] is True
 
@@ -245,7 +245,7 @@ def test_unmerge_pets_reverses_the_link(tmp_path):
     check.close()
 
     # calling it again is a clean error
-    assert "error" in queries.unmerge_pets(str(db_path), merge_id)
+    assert "error" in pets.unmerge_pets(str(db_path), merge_id)
 
 
 def test_pets_apply_links_honours_a_different_cannot_link(tmp_path):
@@ -321,7 +321,7 @@ def _catalog_for_detach(tmp_path):
 
 def test_detach_file_from_person_clears_face_and_writes_cannot_link(tmp_path):
     db_path = _catalog_for_detach(tmp_path)
-    res = queries.detach_file_from_person(str(db_path), 1, 2)
+    res = people.detach_file_from_person(str(db_path), 1, 2)
     assert res["ok"] is True
     assert res["detached_faces"] == 1
 
@@ -347,12 +347,12 @@ def test_detach_file_from_person_clears_face_and_writes_cannot_link(tmp_path):
 
 def test_detach_file_from_person_unknown_inputs_error_cleanly(tmp_path):
     db_path = _catalog_for_detach(tmp_path)
-    assert "error" in queries.detach_file_from_person(str(db_path), None, 2)
-    assert "error" in queries.detach_file_from_person(str(db_path), 1, None)
-    assert "error" in queries.detach_file_from_person(str(db_path), 999, 2)
+    assert "error" in people.detach_file_from_person(str(db_path), None, 2)
+    assert "error" in people.detach_file_from_person(str(db_path), 1, None)
+    assert "error" in people.detach_file_from_person(str(db_path), 999, 2)
     # file 1 has a face of person 1, but this asks about file 2's OTHER
     # (nonexistent) association -- wrong file/person pair with no matching face
-    assert "error" in queries.detach_file_from_person(str(db_path), 1, 999999)
+    assert "error" in people.detach_file_from_person(str(db_path), 1, 999999)
 
 
 # -- merge_place_clusters / unmerge_place_clusters ------------------------
@@ -414,7 +414,7 @@ def test_merge_place_clusters_records_a_place_merges_row(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    ok = queries.merge_place_clusters(str(db_path), 1, 2)
+    ok = places.merge_place_clusters(str(db_path), 1, 2)
     assert ok["ok"] is True
     assert ok["place"]["id"] == 1
     assert ok["place"]["name"] == "Home"
@@ -446,7 +446,7 @@ def test_merge_place_clusters_survivor_selection_order(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = queries.merge_place_clusters(str(db_path), 1, 2)
+    ok = places.merge_place_clusters(str(db_path), 1, 2)
     assert ok["place"]["id"] == 2 and ok["place"]["name"] == "Park"
 
     # pinned beats unpinned, both unnamed
@@ -458,7 +458,7 @@ def test_merge_place_clusters_survivor_selection_order(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok = queries.merge_place_clusters(str(db_path2), 1, 2)
+    ok = places.merge_place_clusters(str(db_path2), 1, 2)
     assert ok["place"]["id"] == 2  # pinned wins despite the smaller count
 
     # neither named nor pinned: larger member_count wins
@@ -470,7 +470,7 @@ def test_merge_place_clusters_survivor_selection_order(tmp_path):
     conn.commit()
     db_path3 = sub / "archive.db"
     conn.close()
-    ok = queries.merge_place_clusters(str(db_path3), 1, 2)
+    ok = places.merge_place_clusters(str(db_path3), 1, 2)
     assert ok["place"]["id"] == 2
 
     # tied on everything: lower id wins
@@ -482,7 +482,7 @@ def test_merge_place_clusters_survivor_selection_order(tmp_path):
     conn.commit()
     db_path4 = sub / "archive.db"
     conn.close()
-    ok = queries.merge_place_clusters(str(db_path4), 1, 2)
+    ok = places.merge_place_clusters(str(db_path4), 1, 2)
     assert ok["place"]["id"] == 1
 
     # two different names, no explicit name -> refused
@@ -494,7 +494,7 @@ def test_merge_place_clusters_survivor_selection_order(tmp_path):
     conn.commit()
     db_path5 = sub / "archive.db"
     conn.close()
-    err = queries.merge_place_clusters(str(db_path5), 1, 2)
+    err = places.merge_place_clusters(str(db_path5), 1, 2)
     assert "error" in err and "Casa" in err["error"] and "Depto" in err["error"]
 
 
@@ -512,7 +512,7 @@ def test_merge_place_clusters_weighted_centroid(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    queries.merge_place_clusters(str(db_path), 1, 2)
+    places.merge_place_clusters(str(db_path), 1, 2)
     check = db.open_readonly(db_path)
     row = check.execute("SELECT lat, lon FROM place_clusters WHERE id=1").fetchone()
     assert row["lat"] == pytest.approx(7.5)
@@ -528,7 +528,7 @@ def test_merge_place_clusters_pinned_survivor_coordinate_does_not_move(tmp_path)
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    queries.merge_place_clusters(str(db_path), 1, 2)
+    places.merge_place_clusters(str(db_path), 1, 2)
     check = db.open_readonly(db_path)
     row = check.execute("SELECT lat, lon FROM place_clusters WHERE id=1").fetchone()
     assert row["lat"] == 1.0 and row["lon"] == 2.0
@@ -543,7 +543,7 @@ def test_merge_place_clusters_refuses_cross_root(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    err = queries.merge_place_clusters(str(db_path), 1, 2)
+    err = places.merge_place_clusters(str(db_path), 1, 2)
     assert "error" in err
     # nothing moved: both places still exist
     check = db.open_readonly(db_path)
@@ -566,12 +566,12 @@ def test_unmerge_place_clusters_restores_the_dropped_place(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    ok = queries.merge_place_clusters(str(db_path), 1, 2)
+    ok = places.merge_place_clusters(str(db_path), 1, 2)
     assert ok["ok"] is True
     assert ok["place"]["id"] == 1  # the named side survives
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM place_merges").fetchone()["id"]
 
-    undo = queries.unmerge_place_clusters(str(db_path), merge_id)
+    undo = places.unmerge_place_clusters(str(db_path), merge_id)
     assert undo["ok"] is True
     assert "recluster" not in undo  # nothing queued: places need no rebuild
     restored_id = undo["place_id"]
@@ -616,11 +616,11 @@ def test_unmerge_place_clusters_restores_the_survivors_own_name(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    ok = queries.merge_place_clusters(str(db_path), 1, 2, name="Depto")
+    ok = places.merge_place_clusters(str(db_path), 1, 2, name="Depto")
     assert ok["place"]["id"] == 1 and ok["place"]["name"] == "Depto"
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM place_merges").fetchone()["id"]
 
-    undo = queries.unmerge_place_clusters(str(db_path), merge_id)
+    undo = places.unmerge_place_clusters(str(db_path), merge_id)
     restored_id = undo["place_id"]
     check = db.open_readonly(db_path)
     names = {r["id"]: r["name"] for r in check.execute("SELECT id, name FROM place_clusters")}
@@ -643,11 +643,11 @@ def test_unmerge_place_clusters_keeps_a_rename_made_after_the_merge(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    queries.merge_place_clusters(str(db_path), 1, 2, name="Depto")
+    places.merge_place_clusters(str(db_path), 1, 2, name="Depto")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM place_merges").fetchone()["id"]
-    queries.rename_place_cluster(str(db_path), 1, "Casa de la abuela")
+    places.rename_place_cluster(str(db_path), 1, "Casa de la abuela")
 
-    queries.unmerge_place_clusters(str(db_path), merge_id)
+    places.unmerge_place_clusters(str(db_path), merge_id)
     check = db.open_readonly(db_path)
     assert (
         check.execute("SELECT name FROM place_clusters WHERE id=1").fetchone()["name"]
@@ -666,14 +666,14 @@ def test_unmerge_place_clusters_twice_errors_cleanly(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    queries.merge_place_clusters(str(db_path), 1, 2)
+    places.merge_place_clusters(str(db_path), 1, 2)
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM place_merges").fetchone()["id"]
 
-    first = queries.unmerge_place_clusters(str(db_path), merge_id)
+    first = places.unmerge_place_clusters(str(db_path), merge_id)
     assert first["ok"] is True
-    second = queries.unmerge_place_clusters(str(db_path), merge_id)
+    second = places.unmerge_place_clusters(str(db_path), merge_id)
     assert "error" in second
-    assert "error" in queries.unmerge_place_clusters(str(db_path), 999999)
+    assert "error" in places.unmerge_place_clusters(str(db_path), 999999)
 
 
 def test_place_merge_survives_assign_unplaced(tmp_path):
@@ -694,7 +694,7 @@ def test_place_merge_survives_assign_unplaced(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    ok = queries.merge_place_clusters(str(db_path), 1, 2)
+    ok = places.merge_place_clusters(str(db_path), 1, 2)
     assert ok["ok"] is True
     merged_count = ok["place"]["count"]
 
@@ -748,7 +748,7 @@ def test_place_merge_preview_tight_cluster_does_not_warn(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    res = queries.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
+    res = places.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
     assert res["ok"] is True
     assert res["span_km"] == pytest.approx(0.0, abs=0.01)
     assert res["warn"] is False
@@ -774,7 +774,7 @@ def test_place_merge_preview_far_member_produces_expected_span_and_warns(tmp_pat
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    res = queries.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
+    res = places.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
     assert res["ok"] is True
     assert res["span_km"] == pytest.approx(111.2, abs=0.5)
     assert res["warn"] is True
@@ -798,7 +798,7 @@ def test_place_merge_preview_pinned_survivor_centre_is_the_pin(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    res = queries.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
+    res = places.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
     assert res["ok"] is True
     assert res["span_km"] == pytest.approx(55.6, abs=0.5)
     assert res["warn"] is True
@@ -819,7 +819,7 @@ def test_place_merge_preview_members_without_geo_are_ignored(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    res = queries.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
+    res = places.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
     assert res["ok"] is True
     assert res["span_km"] == 0.0
     assert res["warn"] is False
@@ -833,6 +833,6 @@ def test_place_merge_preview_rejects_same_errors_as_merge(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    assert "error" in queries.place_merge_preview(str(db_path), 1, 1, _WARN_KM)
-    assert "error" in queries.place_merge_preview(str(db_path), 1, 999999, _WARN_KM)
-    assert "error" in queries.place_merge_preview(str(db_path), 1, 2, _WARN_KM)
+    assert "error" in places.place_merge_preview(str(db_path), 1, 1, _WARN_KM)
+    assert "error" in places.place_merge_preview(str(db_path), 1, 999999, _WARN_KM)
+    assert "error" in places.place_merge_preview(str(db_path), 1, 2, _WARN_KM)

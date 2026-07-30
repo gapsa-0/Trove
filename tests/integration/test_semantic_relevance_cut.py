@@ -15,7 +15,7 @@ import math
 import struct
 
 from organize_archive.db import database as db
-from organize_archive.web import queries
+from organize_archive.services import search
 
 
 def _catalogue(tmp_path, scores):
@@ -61,8 +61,8 @@ def test_the_cut_follows_the_querys_own_best_score():
         weak = _catalogue(Path(weak_dir), [0.090, 0.084, 0.075, 0.048, 0.024])
 
         kwargs = {"root_id": 1, "min_similarity": -1.0, "relative_floor": 0.80}
-        strong_hits = queries.semantic_search(strong, [1.0, 0.0], **kwargs)
-        weak_hits = queries.semantic_search(weak, [1.0, 0.0], **kwargs)
+        strong_hits = search.semantic_search(strong, [1.0, 0.0], **kwargs)
+        weak_hits = search.semantic_search(weak, [1.0, 0.0], **kwargs)
 
     # Each keeps exactly its three near-best matches, on both scales.
     assert [i["id"] for i in strong_hits["items"]] == [1, 2, 3]
@@ -74,7 +74,7 @@ def test_totals_reflect_the_relative_cut(tmp_path):
     not just the page of items handed back."""
     db_path = _catalogue(tmp_path, [0.15, 0.14, 0.05, 0.04, 0.03])
 
-    hits = queries.semantic_search(
+    hits = search.semantic_search(
         db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0, relative_floor=0.80
     )
 
@@ -86,7 +86,7 @@ def test_the_absolute_floor_still_applies_underneath(tmp_path):
     near-random best matches promoted just because they are its best."""
     db_path = _catalogue(tmp_path, [0.030, 0.029, 0.028])
 
-    hits = queries.semantic_search(
+    hits = search.semantic_search(
         db_path, [1.0, 0.0], root_id=1, min_similarity=0.05, relative_floor=0.80
     )
 
@@ -96,7 +96,7 @@ def test_the_absolute_floor_still_applies_underneath(tmp_path):
 def test_relative_floor_off_by_default_keeps_every_scored_row(tmp_path):
     db_path = _catalogue(tmp_path, [0.15, 0.10, 0.06])
 
-    hits = queries.semantic_search(db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0)
+    hits = search.semantic_search(db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0)
 
     assert hits["total"] == 3
 
@@ -110,7 +110,7 @@ def test_an_all_negative_result_set_is_not_inverted_by_the_relative_cut(tmp_path
     """
     db_path = _catalogue(tmp_path, [-0.02, -0.05, -0.09])
 
-    hits = queries.semantic_search(
+    hits = search.semantic_search(
         db_path, [1.0, 0.0], root_id=1, min_similarity=-1.0, relative_floor=0.80
     )
 

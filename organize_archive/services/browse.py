@@ -42,7 +42,7 @@ def media(
     means no filter at all. False is kept because the predicate is naturally
     three-valued and because the two halves summing to the unfiltered grid is
     the property worth testing."""
-    from ..services import semantic
+    from . import semantic
 
     conn = db.open_readonly(db_path)
     try:
@@ -196,7 +196,7 @@ def browse_filters(db_path: str, root_id=None) -> dict:
         # Whether the "Searchable" filter has anything to offer yet. EXISTS, not
         # COUNT: the filter bar only needs to know if the option is live, and on
         # a fully indexed archive a count would walk every file to say "lots".
-        from ..services import semantic
+        from . import semantic
 
         indexed_any = bool(
             conn.execute(

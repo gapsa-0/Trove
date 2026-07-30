@@ -10,7 +10,7 @@ photos and search queries off the machine. Both towers of
 ``google/siglip2-base-patch16-256`` run here: the vision tower turns archive
 media into 768-d vectors during indexing, the text tower turns a typed query
 into a vector in the same space at search time. Cosine similarity between the
-two is the ranking signal (``web/queries.py:semantic_search``).
+two is the ranking signal (``services/search.py:semantic_search``).
 
 **Two towers, two lifetimes.** The sessions are created lazily and
 independently: an indexing job must never pay the ~1 s load and ~700 MB peak of

@@ -7,12 +7,12 @@ right above them on the page.
 The case that makes this non-trivial: a *perceptual* group routinely also
 contains byte-identical copies, so the split has to be decided per member from
 its sha256, not from the group's `method`. That is also the rule the duplicate
-tiles label themselves with (queries.dup_groups' match_type), so the panel can
+tiles label themselves with (dups.dup_groups' match_type), so the panel can
 never contradict the tiles below it.
 """
 
 from organize_archive.db import database as db
-from organize_archive.web import queries
+from organize_archive.services import dups
 
 
 def _catalog_with_duplicates(tmp_path):
@@ -70,7 +70,7 @@ def _catalog_with_duplicates(tmp_path):
 
 
 def test_breakdowns_reconcile_with_the_headline_numbers(tmp_path):
-    result = queries.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
+    result = dups.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
 
     assert (result["groups"], result["duplicates"]) == (3, 4)
     for cut in ("by_match", "by_media"):
@@ -79,7 +79,7 @@ def test_breakdowns_reconcile_with_the_headline_numbers(tmp_path):
 
 
 def test_identical_copies_inside_a_perceptual_group_count_as_identical(tmp_path):
-    result = queries.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
+    result = dups.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
 
     by_match = {i["key"]: i for i in result["by_match"]}
     # Files 2, 5 and 7 share their canonical's sha256; only file 4 does not.
@@ -92,7 +92,7 @@ def test_identical_copies_inside_a_perceptual_group_count_as_identical(tmp_path)
 
 
 def test_media_split_separates_the_few_heavy_videos(tmp_path):
-    result = queries.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
+    result = dups.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
 
     by_media = {i["key"]: i for i in result["by_media"]}
     assert by_media["image"] == {"key": "image", "count": 3, "bytes": 100 + 120 + 300}
@@ -109,7 +109,7 @@ def test_an_archive_with_no_duplicates_reports_empty_breakdowns(tmp_path):
     conn.commit()
     conn.close()
 
-    result = queries.dup_summary(str(db_path), root_id=1)
+    result = dups.dup_summary(str(db_path), root_id=1)
 
     assert result["duplicates"] == 0
     assert result["by_match"] == [] and result["by_media"] == []

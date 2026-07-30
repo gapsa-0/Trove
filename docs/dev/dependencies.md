@@ -120,8 +120,8 @@ or constraint to make that friction go away.
 ## A known gap
 
 The graceful-degradation story above is not universal. `semantic_search` in
-`organize_archive/web/queries.py` does `import numpy as np` partway through
-the function (around line 1280), with no `try`/`except` around it. Every other
+`organize_archive/services/search.py` does `import numpy as np` partway through
+the function body, with no `try`/`except` around it. Every other
 optional dependency in this codebase is probed through an `available()`-style
 check before it's used; this one isn't. Calling semantic search on an install
 that has embeddings already indexed but has since lost the `semantic`/`faces`

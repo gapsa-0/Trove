@@ -3,8 +3,7 @@ import struct
 import pytest
 
 from organize_archive.db import database as db
-from organize_archive.services import semantic
-from organize_archive.web import queries
+from organize_archive.services import search, semantic
 
 np = pytest.importorskip("numpy")
 
@@ -40,8 +39,8 @@ def _semantic_catalogue(tmp_path):
 def test_semantic_search_merges_alternate_query_vector(tmp_path):
     db_path = _semantic_catalogue(tmp_path)
 
-    original_only = queries.semantic_search(db_path, [1.0, 0.0], root_id=1, min_similarity=0.8)
-    expanded = queries.semantic_search(
+    original_only = search.semantic_search(db_path, [1.0, 0.0], root_id=1, min_similarity=0.8)
+    expanded = search.semantic_search(
         db_path,
         [1.0, 0.0],
         root_id=1,

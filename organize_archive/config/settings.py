@@ -154,11 +154,11 @@ class Config(ArchiveRegistryMixin):
     # filter, not a clustering-time one: place_clusters rows are never deleted
     # for falling short (places are durable, and incremental assignment
     # necessarily starts every new place at 1 member before it can ever grow),
-    # they simply stop being *reported* by queries.place_clusters() once below
-    # this floor. Below-threshold members show as having no location in the
-    # GUI — that's intended, not a bug ("orphan, no problem"). Named or pinned
-    # clusters are exempt (see queries.place_clusters): a user-named place, or
-    # one just created via create_place() with 0-1 members, is intentional.
+    # they simply stop being *reported* by services/places.py's place_clusters()
+    # once below this floor. Below-threshold members show as having no location
+    # in the GUI — that's intended, not a bug ("orphan, no problem"). Named or
+    # pinned clusters are exempt (same function): a user-named place, or one
+    # just created via create_place() with 0-1 members, is intentional.
     place_min_media: int = 10
 
     # Drag-to-merge confirmation threshold. The clustering radius above is

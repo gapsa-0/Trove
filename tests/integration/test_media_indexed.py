@@ -13,8 +13,7 @@ from __future__ import annotations
 import struct
 
 from organize_archive.db import database as db
-from organize_archive.services import semantic
-from organize_archive.web import queries
+from organize_archive.services import browse, search, semantic
 
 CURRENT = semantic.INDEXER_VERSION
 
@@ -60,7 +59,7 @@ def _archive(tmp_path, rows, located=()):
 
 
 def _flags(db_path, **kw):
-    return {i["id"]: i["indexed"] for i in queries.media(db_path, root_id=1, **kw)["items"]}
+    return {i["id"]: i["indexed"] for i in browse.media(db_path, root_id=1, **kw)["items"]}
 
 
 def test_only_a_current_vector_of_the_current_bytes_counts(tmp_path):
@@ -91,8 +90,8 @@ def test_a_stale_model_row_is_not_marked_indexed(tmp_path):
         ],
     )
     assert _flags(db_path) == {1: False, 2: False}
-    assert queries.media(db_path, root_id=1, indexed=True)["total"] == 0
-    assert queries.browse_filters(db_path, 1)["indexed_any"] is False
+    assert browse.media(db_path, root_id=1, indexed=True)["total"] == 0
+    assert browse.browse_filters(db_path, 1)["indexed_any"] is False
 
 
 def test_the_two_filters_partition_the_grid(tmp_path):
@@ -110,9 +109,9 @@ def test_the_two_filters_partition_the_grid(tmp_path):
             (4, "sha4", ("sha4", "voyage-mm-3.5-2", "indexed")),
         ],
     )
-    everything = queries.media(db_path, root_id=1)
-    yes = queries.media(db_path, root_id=1, indexed=True)
-    no = queries.media(db_path, root_id=1, indexed=False)
+    everything = browse.media(db_path, root_id=1)
+    yes = browse.media(db_path, root_id=1, indexed=True)
+    no = browse.media(db_path, root_id=1, indexed=False)
     assert yes["total"] + no["total"] == everything["total"] == 4
     assert sorted(i["id"] for i in yes["items"]) == [1, 3]
     assert sorted(i["id"] for i in no["items"]) == [2, 4]
@@ -126,7 +125,7 @@ def test_a_file_with_no_hash_yet_is_not_indexed(tmp_path):
     out of both halves of the filter."""
     db_path = _archive(tmp_path, [(1, None, ("sha1", CURRENT, "indexed"))])
     assert _flags(db_path) == {1: False}
-    assert queries.media(db_path, root_id=1, indexed=False)["total"] == 1
+    assert browse.media(db_path, root_id=1, indexed=False)["total"] == 1
 
 
 def test_coverage_composes_with_the_other_filters(tmp_path):
@@ -139,9 +138,9 @@ def test_coverage_composes_with_the_other_filters(tmp_path):
             (3, "sha3", None),
         ],
     )
-    both = queries.media(db_path, root_id=1, indexed=True, month="2026-01")
+    both = browse.media(db_path, root_id=1, indexed=True, month="2026-01")
     assert sorted(i["id"] for i in both["items"]) == [1, 2]
-    assert queries.media(db_path, root_id=1, indexed=True, month="2025-12")["total"] == 0
+    assert browse.media(db_path, root_id=1, indexed=True, month="2025-12")["total"] == 0
 
 
 def test_the_box_offers_itself_once_anything_is_indexed(tmp_path):
@@ -152,7 +151,7 @@ def test_the_box_offers_itself_once_anything_is_indexed(tmp_path):
             (2, "sha2", None),
         ],
     )
-    assert queries.browse_filters(db_path, 1)["indexed_any"] is True
+    assert browse.browse_filters(db_path, 1)["indexed_any"] is True
 
 
 # -- location coverage ------------------------------------------------------
@@ -174,10 +173,10 @@ def test_the_location_box_matches_the_pin_badge(tmp_path):
         ],
         located=[1, 3],
     )
-    everything = queries.media(db_path, root_id=1)
+    everything = browse.media(db_path, root_id=1)
     assert {i["id"]: i["has_gps"] for i in everything["items"]} == {1: True, 2: False, 3: True}
-    with_loc = queries.media(db_path, root_id=1, located=True)
-    without = queries.media(db_path, root_id=1, located=False)
+    with_loc = browse.media(db_path, root_id=1, located=True)
+    without = browse.media(db_path, root_id=1, located=False)
     assert sorted(i["id"] for i in with_loc["items"]) == [1, 3]
     assert sorted(i["id"] for i in without["items"]) == [2]
     assert with_loc["total"] + without["total"] == everything["total"] == 3
@@ -199,7 +198,7 @@ def test_the_two_boxes_are_independent(tmp_path):
     )
 
     def ids(**kw):
-        return sorted(i["id"] for i in queries.media(db_path, root_id=1, **kw)["items"])
+        return sorted(i["id"] for i in browse.media(db_path, root_id=1, **kw)["items"])
 
     assert ids(indexed=True, located=True) == [1]
     assert ids(indexed=True) == [1, 2]
@@ -209,11 +208,11 @@ def test_the_two_boxes_are_independent(tmp_path):
 
 def test_the_box_offers_itself_once_anything_has_a_location(tmp_path):
     db_path = _archive(tmp_path, [(1, "sha1", None), (2, "sha2", None)])
-    assert queries.browse_filters(db_path, 1)["located_any"] is False
+    assert browse.browse_filters(db_path, 1)["located_any"] is False
     second = tmp_path / "b"
     second.mkdir()
     db_path = _archive(second, [(1, "sha1", None)], located=[1])
-    assert queries.browse_filters(db_path, 1)["located_any"] is True
+    assert browse.browse_filters(db_path, 1)["located_any"] is True
 
 
 def test_a_description_search_can_be_narrowed_by_location(tmp_path):
@@ -228,8 +227,8 @@ def test_a_description_search_can_be_narrowed_by_location(tmp_path):
         located=[2],
     )
     query = [1.0, 0.0]
-    everything = queries.semantic_search(db_path, query, root_id=1)
+    everything = search.semantic_search(db_path, query, root_id=1)
     assert sorted(i["id"] for i in everything["items"]) == [1, 2]
-    narrowed = queries.semantic_search(db_path, query, root_id=1, located=True)
+    narrowed = search.semantic_search(db_path, query, root_id=1, located=True)
     assert [i["id"] for i in narrowed["items"]] == [2]
     assert narrowed["total"] == 1
