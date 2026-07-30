@@ -548,14 +548,16 @@ class JobManager:
         if self._paused:
             logger.debug("tick: skipped, pipeline is paused")
             return False
-        from . import pipeline, queries
+        from ..services import archives
+        from . import pipeline
 
         open_root_id = self._open_root_id
         if open_root_id is None:
             logger.debug("tick: skipped, no archive is open")
             return False
         archive = next(
-            (a for a in queries.archives(self.cfg) if a["id"] == open_root_id and a["exists"]), None
+            (a for a in archives.archives(self.cfg) if a["id"] == open_root_id and a["exists"]),
+            None,
         )
         if not archive:
             logger.debug("tick: skipped, archive root=%s is missing or unregistered", open_root_id)

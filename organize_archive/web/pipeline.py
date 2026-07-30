@@ -109,7 +109,12 @@ def _pending(
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
     from ..pets.extract import scan_source as pet_scan_source
-    from . import queries
+
+    # Imported unqualified rather than module-qualified (as in server.py):
+    # this function has local variables named `pending` below, which a
+    # `from ..services import pending` import would shadow.
+    from ..services.pending import detect_pending
+    from ..services.search import semantic_pending
 
     db_path = cfg.archive_db_path(root_id)
     # The disk walk is the expensive half and must happen outside the read
@@ -159,11 +164,11 @@ def _pending(
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
         DETECT: (
-            queries.detect_pending(db_path, root_id, pet_scan_source(cfg), cfg.detect_video_frames)
+            detect_pending(db_path, root_id, pet_scan_source(cfg), cfg.detect_video_frames)
             if avail[DETECT]
             else 0
         ),
-        SEMANTIC: (queries.semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
+        SEMANTIC: (semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
     }
 
 

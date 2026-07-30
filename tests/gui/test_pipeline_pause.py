@@ -16,9 +16,9 @@ from __future__ import annotations
 import threading
 
 from organize_archive.config import Config
+from organize_archive.services import archives as archives_mod
 from organize_archive.web import jobs as jobs_mod
 from organize_archive.web import pipeline as pipeline_mod
-from organize_archive.web import queries as queries_mod
 
 
 def _job_manager(tmp_path, monkeypatch):
@@ -52,7 +52,7 @@ def _rig_auto_tick(jm, monkeypatch, started):
     stage, and capture what it tries to start instead of really starting it."""
     jm._open_root_id = 1
     monkeypatch.setattr(
-        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+        archives_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
     )
     monkeypatch.setattr(
         pipeline_mod,
@@ -298,7 +298,7 @@ _QUEUED_SEMANTIC_STAGE = {
 def _rig_two_stages(jm, monkeypatch, started):
     jm._open_root_id = 1
     monkeypatch.setattr(
-        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+        archives_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
     )
     monkeypatch.setattr(
         pipeline_mod,
@@ -350,7 +350,7 @@ def test_pausing_the_scan_card_stops_enrich_too(tmp_path, monkeypatch):
     started = []
     jm._open_root_id = 1
     monkeypatch.setattr(
-        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+        archives_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
     )
     enrich = dict(_QUEUED_SCAN_STAGE, kind="enrich")
     monkeypatch.setattr(
@@ -400,7 +400,7 @@ def test_stages_blocked_behind_a_paused_stage_are_not_outstanding(tmp_path, monk
     jm = _job_manager(tmp_path, monkeypatch)
     jm._open_root_id = 1
     monkeypatch.setattr(
-        queries_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
+        archives_mod, "archives", lambda cfg: [{"id": 1, "path": "/fake", "exists": True}]
     )
     dedup = {
         "kind": "dedup",

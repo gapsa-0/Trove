@@ -19,7 +19,8 @@ from urllib.parse import parse_qs, urlparse
 from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
-from . import icons, queries
+from ..services import archives, browse, dups, overview, people, pets, places, search
+from . import icons
 from .jobs import JobManager
 
 logger = logging.getLogger(__name__)
@@ -190,16 +191,16 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._json({"error": "not found"}, 404)
             elif path == "/api/archives":
-                self._json({"archives": queries.archives(self.cfg)})
+                self._json({"archives": archives.archives(self.cfg)})
             elif path == "/api/settings":
                 self._json({})
             elif path == "/api/summary":
                 rid = one("root", int)
-                self._json(queries.summary(self._db(rid), rid))
+                self._json(overview.summary(self._db(rid), rid))
             elif path == "/api/timeline":
                 rid = one("root", int)
                 self._json(
-                    queries.timeline(
+                    overview.timeline(
                         self._db(rid),
                         root_id=rid,
                         bucket=one("bucket", str, "month"),
@@ -211,26 +212,26 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif path == "/api/dates/sources":
                 rid = one("root", int)
-                self._json(queries.date_sources(self._db(rid), rid))
+                self._json(overview.date_sources(self._db(rid), rid))
             elif path == "/api/map/clusters":
                 rid = one("root", int)
-                self._json(queries.place_clusters(self._db(rid), rid, self.cfg.place_min_media))
+                self._json(places.place_clusters(self._db(rid), rid, self.cfg.place_min_media))
             elif path == "/api/map/points":
                 # The un-clustered map view: one point per geotagged file.
                 rid = one("root", int)
-                self._json(queries.place_points(self._db(rid), rid, self.cfg.place_min_media))
+                self._json(places.place_points(self._db(rid), rid, self.cfg.place_min_media))
             elif path == "/api/map/cluster/merge-preview":
                 # GET, not POST: this mutates nothing, it only answers "how
                 # spread out would this merge be" so the GUI can decide
                 # whether to warn before the user confirms the drag-merge.
                 rid = one("root", int)
-                res = queries.place_merge_preview(
+                res = places.place_merge_preview(
                     self._db(rid), one("a", int), one("b", int), self.cfg.place_merge_warn_km
                 )
                 self._json(res, 400 if "error" in res else 200)
             elif path.startswith("/api/map/cluster/"):
                 rid = one("root", int)
-                c = queries.place_cluster_members(
+                c = places.place_cluster_members(
                     self._db(rid),
                     int(path.rsplit("/", 1)[1]),
                     limit=min(one("limit", int, 120), 500),
@@ -239,20 +240,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/summary":
                 rid = one("root", int)
-                self._json(queries.face_summary(self._db(rid), rid, self.cfg.detect_video_frames))
+                self._json(people.face_summary(self._db(rid), rid, self.cfg.detect_video_frames))
             elif path == "/api/pets/summary":
                 from ..pets.extract import scan_source as pet_scan_source
 
                 rid = one("root", int)
                 self._json(
-                    queries.pet_summary(
+                    pets.pet_summary(
                         self._db(rid), rid, pet_scan_source(self.cfg), self.cfg.detect_video_frames
                     )
                 )
             elif path == "/api/pets":
                 rid = one("root", int)
                 self._json(
-                    queries.pet_groups(
+                    pets.pet_groups(
                         self._db(rid),
                         rid,
                         limit=min(one("limit", int, 120), 500),
@@ -262,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/pet/detections":
                 rid = one("root", int)
                 self._json(
-                    queries.animal_gallery(
+                    pets.animal_gallery(
                         self._db(rid),
                         rid,
                         limit=min(one("limit", int, 120), 500),
@@ -273,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/nonhuman":
                 rid = one("root", int)
                 self._json(
-                    queries.nonhuman_review(
+                    pets.nonhuman_review(
                         self._db(rid),
                         rid,
                         limit=min(one("limit", int, 120), 500),
@@ -282,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif path.startswith("/api/pet/"):
                 rid = one("root", int)
-                result = queries.pet_group(
+                result = pets.pet_group(
                     self._db(rid),
                     int(path.rsplit("/", 1)[1]),
                     rid,
@@ -293,7 +294,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/faces/persons":
                 rid = one("root", int)
                 self._json(
-                    queries.face_persons(
+                    people.face_persons(
                         self._db(rid),
                         rid,
                         limit=min(one("limit", int, 120), 500),
@@ -303,13 +304,13 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/faces/suggestions":
                 rid = one("root", int)
                 self._json(
-                    queries.person_suggestions(
+                    people.person_suggestions(
                         self._db(rid), rid, limit=min(one("limit", int, 40), 200)
                     )
                 )
             elif path.startswith("/api/faces/person/"):
                 rid = one("root", int)
-                p2 = queries.face_person(
+                p2 = people.face_person(
                     self._db(rid),
                     int(path.rsplit("/", 1)[1]),
                     rid,
@@ -319,11 +320,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(p2) if p2 else self._json({"error": "not found"}, 404)
             elif path == "/api/dups/summary":
                 rid = one("root", int)
-                self._json(queries.dup_summary(self._db(rid), rid))
+                self._json(dups.dup_summary(self._db(rid), rid))
             elif path == "/api/dups":
                 rid = one("root", int)
                 self._json(
-                    queries.dup_groups(
+                    dups.dup_groups(
                         self._db(rid),
                         rid,
                         limit=min(one("limit", int, 60), 200),
@@ -338,7 +339,7 @@ class Handler(BaseHTTPRequestHandler):
                 indexed = {"yes": True, "no": False}.get(one("indexed"))
                 located = {"yes": True, "no": False}.get(one("located"))
                 self._json(
-                    queries.media(
+                    browse.media(
                         self._db(rid),
                         root_id=rid,
                         year=one("year"),
@@ -355,17 +356,17 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif path == "/api/browse/filters":
                 rid = one("root", int)
-                self._json(queries.browse_filters(self._db(rid), rid))
+                self._json(browse.browse_filters(self._db(rid), rid))
             elif path == "/api/folders":
                 rid = one("root", int)
                 self._json(
-                    queries.folders(self._db(rid), rid, limit=min(one("limit", int, 120), 500))
+                    browse.folders(self._db(rid), rid, limit=min(one("limit", int, 120), 500))
                 )
             elif path == "/api/browse/semantic/status":
                 from ..services import semantic
 
                 rid = one("root", int)
-                status = queries.semantic_summary(self._db(rid), rid)
+                status = search.semantic_summary(self._db(rid), rid)
                 # Nothing left to configure — the stage runs as soon as the
                 # dependencies are importable, and downloads its own weights.
                 status["configured"] = semantic.available()
@@ -388,7 +389,7 @@ class Handler(BaseHTTPRequestHandler):
                     db_path = self._db(rid)
                     vectors = semantic.embed_queries(self.cfg, search_queries)
                     self._json(
-                        queries.semantic_search(
+                        search.semantic_search(
                             db_path,
                             vectors[0],
                             root_id=rid,
@@ -410,14 +411,14 @@ class Handler(BaseHTTPRequestHandler):
                             offset=one("offset", int, 0),
                             located={"yes": True, "no": False}.get(one("located")),
                             alternate_vectors=[
-                                (vector, queries.ALTERNATE_VECTOR_PENALTY) for vector in vectors[1:]
+                                (vector, search.ALTERNATE_VECTOR_PENALTY) for vector in vectors[1:]
                             ],
                         )
                     )
             elif path.startswith("/api/item/"):
                 rid = self.jobs.current_root_id()
                 it = (
-                    queries.item(
+                    browse.item(
                         self._db(rid), int(path.rsplit("/", 1)[1]), self.cfg.place_min_media
                     )
                     if rid
@@ -431,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
                 from . import pipeline
 
                 rid = one("root", int)
-                arch = next((a for a in queries.archives(self.cfg) if a["id"] == rid), None)
+                arch = next((a for a in archives.archives(self.cfg) if a["id"] == rid), None)
                 if arch is None:
                     self._json({"error": "unknown archive"}, 404)
                 else:
@@ -470,14 +471,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._read_json_body()
             if path == "/api/archives":
-                res = queries.add_archive(self.cfg, body.get("path", ""))
+                res = archives.add_archive(self.cfg, body.get("path", ""))
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/archive/open":
                 root_id = body.get("root_id")
                 if not isinstance(root_id, int):
                     self._json({"error": "root_id is required"}, 400)
                 elif not any(
-                    a["id"] == root_id and a["exists"] for a in queries.archives(self.cfg)
+                    a["id"] == root_id and a["exists"] for a in archives.archives(self.cfg)
                 ):
                     self._json({"error": "archive not found or unavailable"}, 404)
                 else:
@@ -494,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif not self.jobs.stop_archive(root_id):
                     self._json({"error": "archive is still stopping; try again shortly"}, 409)
                 else:
-                    res = queries.remove_archive(self.cfg, root_id)
+                    res = archives.remove_archive(self.cfg, root_id)
                     self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pipeline/pause":
                 # Without "stage" this is the whole-pipeline switch; with one it
@@ -525,7 +526,7 @@ class Handler(BaseHTTPRequestHandler):
             # archive is currently open, same as thumbnail/original serving.
             elif path == "/api/map/cluster/rename":
                 res = db.write_with_retry(
-                    lambda: queries.rename_place_cluster(
+                    lambda: places.rename_place_cluster(
                         self._db(self.jobs.current_root_id()),
                         body.get("cluster_id"),
                         (body.get("name") or "").strip(),
@@ -534,7 +535,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/map/cluster/merge":
                 res = db.write_with_retry(
-                    lambda: queries.merge_place_clusters(
+                    lambda: places.merge_place_clusters(
                         self._db(self.jobs.current_root_id()),
                         body.get("a"),
                         body.get("b"),
@@ -549,14 +550,14 @@ class Handler(BaseHTTPRequestHandler):
                 # restore, not a "delete a constraint and recluster" that
                 # needs a background pass to finish the job.
                 res = db.write_with_retry(
-                    lambda: queries.unmerge_place_clusters(
+                    lambda: places.unmerge_place_clusters(
                         self._db(self.jobs.current_root_id()), body.get("merge_id")
                     )
                 )
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/person/rename":
                 res = db.write_with_retry(
-                    lambda: queries.rename_person(
+                    lambda: people.rename_person(
                         self._db(self.jobs.current_root_id()),
                         body.get("person_id"),
                         (body.get("name") or "").strip(),
@@ -565,7 +566,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/reassign":
                 res = db.write_with_retry(
-                    lambda: queries.reassign_face(
+                    lambda: people.reassign_face(
                         self._db(self.jobs.current_root_id()),
                         body.get("face_id"),
                         body.get("person_id"),
@@ -574,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/merge":
                 res = db.write_with_retry(
-                    lambda: queries.merge_persons(
+                    lambda: people.merge_persons(
                         self._db(self.jobs.current_root_id()),
                         body.get("a"),
                         body.get("b"),
@@ -584,7 +585,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/unmerge":
                 res = db.write_with_retry(
-                    lambda: queries.unmerge_persons(
+                    lambda: people.unmerge_persons(
                         self._db(self.jobs.current_root_id()), body.get("merge_id")
                     )
                 )
@@ -593,7 +594,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/detach":
                 res = db.write_with_retry(
-                    lambda: queries.detach_file_from_person(
+                    lambda: people.detach_file_from_person(
                         self._db(self.jobs.current_root_id()),
                         body.get("person_id"),
                         body.get("file_id"),
@@ -602,21 +603,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/different":
                 res = db.write_with_retry(
-                    lambda: queries.set_persons_different(
+                    lambda: people.set_persons_different(
                         self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")
                     )
                 )
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/skip":
                 res = db.write_with_retry(
-                    lambda: queries.set_persons_skip(
+                    lambda: people.set_persons_skip(
                         self._db(self.jobs.current_root_id()), body.get("a"), body.get("b")
                     )
                 )
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/faces/hide":
                 res = db.write_with_retry(
-                    lambda: queries.hide_person(
+                    lambda: people.hide_person(
                         self._db(self.jobs.current_root_id()),
                         body.get("person_id"),
                         body.get("kind", "false_detection"),
@@ -625,7 +626,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pet/rename":
                 res = db.write_with_retry(
-                    lambda: queries.rename_pet(
+                    lambda: pets.rename_pet(
                         self._db(self.jobs.current_root_id()),
                         body.get("pet_id"),
                         (body.get("name") or "").strip(),
@@ -634,7 +635,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pets/merge":
                 res = db.write_with_retry(
-                    lambda: queries.merge_pets(
+                    lambda: pets.merge_pets(
                         self._db(self.jobs.current_root_id()),
                         body.get("a"),
                         body.get("b"),
@@ -644,7 +645,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/pets/unmerge":
                 res = db.write_with_retry(
-                    lambda: queries.unmerge_pets(
+                    lambda: pets.unmerge_pets(
                         self._db(self.jobs.current_root_id()), body.get("merge_id")
                     )
                 )
@@ -653,7 +654,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/nonhuman/review":
                 res = db.write_with_retry(
-                    lambda: queries.review_nonhuman(
+                    lambda: pets.review_nonhuman(
                         self._db(self.jobs.current_root_id()),
                         body.get("detection_id"),
                         body.get("verdict", "confirmed"),
@@ -664,7 +665,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/date":
                 res = db.write_with_retry(
-                    lambda: queries.set_date(
+                    lambda: browse.set_date(
                         self._db(self.jobs.current_root_id()),
                         body.get("file_id"),
                         body.get("datetime"),
@@ -675,18 +676,16 @@ class Handler(BaseHTTPRequestHandler):
                 db_path = self._db(self.jobs.current_root_id())
                 if body.get("clear"):
                     res = db.write_with_retry(
-                        lambda: queries.clear_place(db_path, body.get("file_id"))
+                        lambda: places.clear_place(db_path, body.get("file_id"))
                     )
                 else:
                     res = db.write_with_retry(
-                        lambda: queries.set_place(
-                            db_path, body.get("file_id"), body.get("place_id")
-                        )
+                        lambda: places.set_place(db_path, body.get("file_id"), body.get("place_id"))
                     )
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/person/add":
                 res = db.write_with_retry(
-                    lambda: queries.add_person_to_file(
+                    lambda: people.add_person_to_file(
                         self._db(self.jobs.current_root_id()),
                         body.get("person_id"),
                         body.get("file_id"),
@@ -695,7 +694,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/person/remove":
                 res = db.write_with_retry(
-                    lambda: queries.remove_person_from_file(
+                    lambda: people.remove_person_from_file(
                         self._db(self.jobs.current_root_id()),
                         body.get("person_id"),
                         body.get("file_id"),
@@ -704,7 +703,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/pet/add":
                 res = db.write_with_retry(
-                    lambda: queries.add_pet_to_file(
+                    lambda: pets.add_pet_to_file(
                         self._db(self.jobs.current_root_id()),
                         body.get("pet_id"),
                         body.get("file_id"),
@@ -713,7 +712,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/item/pet/remove":
                 res = db.write_with_retry(
-                    lambda: queries.remove_pet_from_file(
+                    lambda: pets.remove_pet_from_file(
                         self._db(self.jobs.current_root_id()),
                         body.get("pet_id"),
                         body.get("file_id"),
@@ -722,7 +721,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, 400 if "error" in res else 200)
             elif path == "/api/places/create":
                 res = db.write_with_retry(
-                    lambda: queries.create_place(
+                    lambda: places.create_place(
                         self._db(body.get("root")),
                         body.get("root"),
                         body.get("name"),
@@ -753,7 +752,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_thumb(self, fid: int):
         db_path, cache_dir = self._open_db_and_cache()
-        info = queries.media_source(db_path, fid) if db_path else None
+        info = browse.media_source(db_path, fid) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, rotate = info
@@ -767,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.cfg.archive_path(root_id) is None:
             return self._json({"error": "not found"}, 404)
         db_path, cache_dir = self._db(root_id), self._cache(root_id)
-        info = queries.media_source(db_path, fid)
+        info = browse.media_source(db_path, fid)
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, rotate = info
@@ -776,7 +775,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_face_thumb(self, face_id: int):
         db_path, cache_dir = self._open_db_and_cache()
-        info = queries.face_crop_source(db_path, face_id) if db_path else None
+        info = people.face_crop_source(db_path, face_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, box, rotate, frame_offset, _media_type, file_id = info
@@ -799,7 +798,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_animal_thumb(self, detection_id: int):
         db_path, cache_dir = self._open_db_and_cache()
-        info = queries.animal_crop_source(db_path, detection_id) if db_path else None
+        info = pets.animal_crop_source(db_path, detection_id) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, box, rotate, frame_offset, _media_type, file_id = info
@@ -820,7 +819,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_original(self, fid: int):
         db_path, cache_dir = self._open_db_and_cache()
-        info = queries.media_source(db_path, fid) if db_path else None
+        info = browse.media_source(db_path, fid) if db_path else None
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, rotate = info
@@ -833,7 +832,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(cfg: Config, host="127.0.0.1", port=8756):
     # Only shared, non-archive resources (ML models, the app icon) live at the
     # top level now; each archive's own database is created when it's added
-    # (queries.add_archive) or opened for the first time by the scheduler.
+    # (archives.add_archive) or opened for the first time by the scheduler.
     cfg.ensure_dirs()
     cfg.migrate_legacy_archive()
     discard_superseded_secrets()
