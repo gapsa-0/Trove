@@ -20,9 +20,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import organize_archive
 from organize_archive.runtime import no_window
 
-PACKAGE = Path(__file__).resolve().parent.parent / "organize_archive"
+# Ask the package where it lives rather than counting directories up from this
+# file: the test then survives being moved between test tiers, and it scans the
+# package that is actually importable rather than one inferred from a path.
+PACKAGE = Path(organize_archive.__file__).resolve().parent
 
 # Everything in subprocess that starts a process.
 _SPAWNERS = {"run", "Popen", "call", "check_call", "check_output"}
