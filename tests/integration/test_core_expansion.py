@@ -41,6 +41,8 @@ def test_faiss_knn_matches_the_reference_gemm_exactly():
         assert np.abs(fs - gs).max() < 1e-5
 
 
+# 2-3s: the only test here that clusters enough vectors to cost real time.
+@pytest.mark.slow
 def test_bridge_vectors_cannot_fuse_two_identities():
     """The regression this whole design exists for.
 

@@ -44,8 +44,13 @@ fmt:             ## Autoformat
 test:            ## Full test suite
 	$(PY) -m pytest -q
 
-test-fast:       ## Unit tests only, skipping the slow ones
-	$(PY) -m pytest -q -m "not slow"
+# The per-save loop, and it only earns that name at ~2s. Naming the tier is not
+# redundant with -m "not slow": deselecting the slow marks alone still leaves
+# ~21s, because the suite's cost is not a few sleepers but ~300 tests each
+# paying to create a fresh SQLite schema. -m still matters here -- it drops the
+# 13s SigLIP module, which lives in the unit tier.
+test-fast:       ## Unit tier only, skipping the slow ones (the per-save loop)
+	$(PY) -m pytest -q -m "not slow" tests/unit
 
 # XDG_DATA_HOME is not optional here. Without it the GUI opens the *real*
 # archive in the user's home data dir -- 500 GB of family photos -- and its

@@ -41,9 +41,17 @@ transformers = pytest.importorskip(
 )
 PIL = pytest.importorskip("PIL")
 
-pytestmark = pytest.mark.skipif(
-    not eb.models_ready(_CACHE), reason="SigLIP 2 weights are not downloaded on this machine"
-)
+# Both marks are module-wide and both are earned. `models`: every test here
+# reads the checkpoint's own config files. `slow`: this one module is 13s of a
+# 31s suite, almost all of it the transformers reference tokenizer, so it is the
+# single biggest thing `-m "not slow"` buys back.
+pytestmark = [
+    pytest.mark.models,
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not eb.models_ready(_CACHE), reason="SigLIP 2 weights are not downloaded on this machine"
+    ),
+]
 
 
 def _fixture_images():

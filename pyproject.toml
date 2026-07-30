@@ -58,6 +58,19 @@ include = ["organize_archive*"]
 # and collecting them fails the run before any real test executes.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# --strict-markers turns a typo'd marker into a collection error. Without it
+# `@pytest.mark.slwo` is a silent no-op: the test stays in the fast tier forever
+# and nobody finds out.
+addopts = "--strict-markers"
+markers = [
+  # Applied from measurement, not from a guess about mechanism. "Spawns a
+  # thread" sounds like the better rule but is useless here: JobManager starts
+  # a scheduler thread in its constructor, so it would mark the whole gui tier
+  # -- which runs 57 tests in 1.5s, because those tests park the thread and
+  # drive the scheduler by hand. Re-measure with --durations before adding one.
+  "slow: measured over ~1s (re-check with --durations, don't assume)",
+  "models: needs ONNX weights or a tokenizer checkpoint on disk",
+]
 
 [tool.ruff]
 line-length = 100          # matches the style already in the files

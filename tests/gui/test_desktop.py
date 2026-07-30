@@ -6,7 +6,14 @@ import sys
 import time
 from urllib.request import urlopen
 
+import pytest
+
 import organize_archive
+
+# The only tests that start a real interpreter. Both spawn the backend as a
+# subprocess, so they pay a full process start plus its imports, and they are
+# the suite's one known flake (a SIGSEGV on SIGTERM, seen on CI and once here).
+pytestmark = pytest.mark.slow
 
 
 def _read_ready(process: subprocess.Popen) -> dict:
