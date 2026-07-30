@@ -1,5 +1,7 @@
 # Data: database, cache, thumbnails — never commit the catalog or media
 /data/
+# Throwaway XDG_DATA_HOME for `make gui`, so a dev run never opens the real archive.
+/.devdata/
 *.db
 *.db-wal
 *.db-shm
