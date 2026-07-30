@@ -210,9 +210,19 @@ path did not, so catalogues built by earlier versions keep working.
 
 ## Building from source
 
-Running Trove from a source checkout, using the `oa` command line, or building the
-desktop packages yourself is covered in
-[command line and development](docs/command-line.md).
+```bash
+git clone https://github.com/gapsa-0/Trove.git && cd Trove
+make setup          # venv + every extra, at the tested versions
+make check          # lint and the full test suite — what CI runs
+```
+
+`make` on its own lists the other targets. If your system has no `python3.13`,
+pass one: `make setup PYTHON=/path/to/python3.13`.
+
+Using the `oa` command line and building the desktop packages yourself are covered
+in [command line and development](docs/command-line.md); which optional extra
+enables what, and why each dependency was chosen, is in
+[dependencies](docs/dev/dependencies.md).
 
 ## License
 

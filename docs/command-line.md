@@ -6,14 +6,25 @@ building the desktop packages yourself. If you just want to use Trove, the
 
 ## Command line and source setup
 
-Trove requires Python 3.13 or newer. Create a virtual environment and install the
-package with the extras appropriate to the features you want:
+Trove requires Python 3.13 or newer. From a clone, `make setup` builds the
+virtualenv and installs every extra at the versions the project is tested against:
+
+```bash
+make setup          # add PYTHON=/path/to/python3.13 if there is no system one
+```
+
+To do it by hand, or to install only the extras for the features you want:
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-pip install -e '.[cli,media,faces,pets,semantic]'
+pip install -e '.[cli,media,faces,pets,semantic]' -c constraints.txt
 ```
+
+`-c constraints.txt` is what pins those extras to the tested versions; without it
+pip is free to resolve anything satisfying the open ranges in `pyproject.toml`.
+[dependencies](dev/dependencies.md) explains what each extra enables and what
+degrades without it.
 
 `exiftool` and `ffmpeg`/`ffprobe` are recommended system tools. The core scanner works
 without them, with reduced embedded-metadata and video support.
