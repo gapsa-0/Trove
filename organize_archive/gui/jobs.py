@@ -77,6 +77,21 @@ class _JobProgress:
         pass
 
 
+def _state_note(stage: dict) -> str:
+    """``running(1234/4213)`` for a stage with a live job, else just its state.
+
+    The counts are what make a repeated tick line useful: two ticks showing the
+    same state but a rising count mean progress, and the same count twice means
+    the stage is genuinely stuck -- which is the question the log exists to
+    answer and the one the state alone cannot.
+    """
+    progress = stage.get("progress") or {}
+    total = progress.get("total")
+    if stage["state"] == "running" and total:
+        return f"running({progress.get('done', 0)}/{total})"
+    return str(stage["state"])
+
+
 class JobManager:
     # Idle poll interval backs off (up to _AUTO_MAX) when a tick finds nothing
     # to do, so a quiet archive doesn't get walked every few seconds forever.
@@ -600,7 +615,7 @@ class JobManager:
                 open_root_id,
                 acted,
                 outstanding,
-                ",".join(f"{s['kind']}={s['state']}" for s in states),
+                ",".join(f"{s['kind']}={_state_note(s)}" for s in states),
                 ",".join(sorted(k for k, v in stalled.items() if v)) or "-",
             )
         return acted or outstanding
