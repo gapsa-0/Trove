@@ -20,6 +20,8 @@ from ..paths import app_data_dir, config_file
 from ..runtime import tool as runtime_tool
 from ..scan import walker
 from ..scan.progress import ScanProgress
+from . import dates, gui, logs, status
+from ._common import _fmt_bytes
 
 # Named explicitly, not __name__: `oa` reaches main() as an imported module but
 # `python -m organize_archive.cli` makes it "__main__", and a log line should
@@ -34,15 +36,6 @@ def _preflight() -> list[str]:
         if runtime_tool(name) is None:
             missing.append(name)
     return missing
-
-
-def _fmt_bytes(n: int) -> str:
-    f = float(n)
-    for unit in ("B", "KB", "MB", "GB", "TB", "PB"):
-        if f < 1024 or unit == "PB":
-            return f"{f:.1f} {unit}"
-        f /= 1024
-    return f"{f:.1f} PB"
 
 
 # -- commands ---------------------------------------------------------------
@@ -430,129 +423,6 @@ def cmd_pets(args, cfg: Config) -> int:
     return 0
 
 
-def cmd_dates(args, cfg: Config) -> int:
-    if not Path(cfg.db_path).exists():
-        print("No database yet. Run:  oa init  then  oa scan")
-        return 1
-    conn = db.open_readonly(cfg.db_path)
-
-    done = conn.execute("SELECT COUNT(*) FROM dates").fetchone()[0]
-    if not done:
-        print("No dates resolved yet. Run:  oa enrich")
-        return 0
-
-    print("Files per year:")
-    rows = conn.execute(
-        """SELECT substr(best_datetime,1,4) AS y, COUNT(*) c
-           FROM dates WHERE best_datetime IS NOT NULL
-           GROUP BY y ORDER BY y"""
-    ).fetchall()
-    peak = max((r["c"] for r in rows), default=1)
-    for r in rows:
-        bar = "█" * max(1, round(30 * r["c"] / peak))
-        print(f"  {r['y']}  {r['c']:>7}  {bar}")
-
-    print("\nDate source:")
-    for r in conn.execute(
-        "SELECT date_source, COUNT(*) c FROM dates GROUP BY date_source ORDER BY c DESC"
-    ):
-        print(f"  {r['date_source']:<14} {r['c']:>7}")
-
-    gps = conn.execute("SELECT COUNT(*) FROM geo").fetchone()[0]
-    print(f"\nWith GPS location: {gps}")
-    conn.close()
-    return 0
-
-
-def cmd_gui(args, cfg: Config) -> int:
-    from ..web import launcher
-    from ..web.server import serve
-
-    httpd = serve(cfg, port=args.port)
-    url = f"http://127.0.0.1:{args.port}/"
-    print(f"organize_archive GUI running at {url}")
-    print("Press Ctrl-C to stop.")
-    if not args.no_open:
-        how = launcher.open_url(url, app_mode=not args.tab)
-        if how == "app-window":
-            print("Opened in a standalone app window.")
-        elif not args.tab:
-            print("(No Chrome/Chromium/Edge found; opened a browser tab instead.)")
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopping.")
-    finally:
-        httpd.server_close()
-    return 0
-
-
-def cmd_logs(args, cfg: Config) -> int:
-    """Where the log is, or what it last said.
-
-    Exists to turn a support exchange from "navigate to your application data
-    folder, which is somewhere different on each OS" into one command. No
-    database is needed or touched.
-    """
-    path = logging_setup.log_file()
-    if args.path:
-        print(path)
-        return 0
-    if not path.is_file():
-        print(f"No log file yet at {path}")
-        print("It is created the first time something is logged.")
-        return 1
-    # Whole-file read: rotation caps this at 5 MB (logging_setup.MAX_BYTES), so
-    # there is no point in a seek-backwards tail. Rotated files (trove.log.1 and
-    # friends) sit next to it and are deliberately not merged in -- interleaving
-    # them correctly needs parsing, and this command is for "what just happened".
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    for line in lines[-args.tail :] if args.tail > 0 else lines:
-        print(line)
-    return 0
-
-
-def cmd_status(args, cfg: Config) -> int:
-    if not Path(cfg.db_path).exists():
-        print("No database yet. Run:  oa init")
-        return 1
-    conn = db.open_readonly(cfg.db_path)
-
-    total, present, hashed, missing, size = conn.execute(
-        """SELECT COUNT(*),
-                  SUM(present=1),
-                  SUM(sha256 IS NOT NULL),
-                  SUM(present=0),
-                  COALESCE(SUM(size), 0)
-           FROM files"""
-    ).fetchone()
-
-    print(f"organize_archive v{__version__}")
-    print(f"Database: {cfg.db_path}")
-    print(f"Roots:    {', '.join(cfg.roots)}")
-    print()
-    print(f"Files indexed : {total or 0}  (present {present or 0}, missing {missing or 0})")
-    print(f"Hashed        : {hashed or 0}")
-    print(f"Total size    : {_fmt_bytes(size or 0)}")
-
-    print("\nBy media type:")
-    rows = conn.execute(
-        """SELECT media_type, COUNT(*) c, COALESCE(SUM(size),0) s
-           FROM files WHERE present=1 GROUP BY media_type ORDER BY c DESC"""
-    ).fetchall()
-    for r in rows:
-        print(f"  {r['media_type']:<10} {r['c']:>8}   {_fmt_bytes(r['s'])}")
-
-    last = conn.execute(
-        "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
-    ).fetchone()
-    if last:
-        state = last["finished_at"] or "(unfinished)"
-        print(f"\nLast scan: {last['started_at']} → {state}")
-    conn.close()
-    return 0
-
-
 def cmd_config(args, cfg: Config) -> int:
     if args.show:
         from dataclasses import asdict
@@ -719,30 +589,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=cmd_pets)
 
-    sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
-    sp.set_defaults(func=cmd_dates)
+    dates.add_parser(sub)
 
-    sp = sub.add_parser("gui", help="Launch the local web UI (standalone window)")
-    sp.add_argument("--port", type=int, default=8756, help="Port (default 8756)")
-    sp.add_argument(
-        "--tab", action="store_true", help="Open a normal browser tab instead of an app window"
-    )
-    sp.add_argument("--no-open", action="store_true", help="Don't open anything")
-    sp.set_defaults(func=cmd_gui)
+    gui.add_parser(sub)
 
-    sp = sub.add_parser("status", help="Show catalog summary")
-    sp.set_defaults(func=cmd_status)
+    status.add_parser(sub)
 
-    sp = sub.add_parser("logs", help="Print the last lines of the log, or where it lives")
-    sp.add_argument("--path", action="store_true", help="Print the log file's path and exit")
-    sp.add_argument(
-        "--tail",
-        type=int,
-        default=200,
-        metavar="N",
-        help="Print the last N lines (default 200; 0 for the whole file)",
-    )
-    sp.set_defaults(func=cmd_logs)
+    logs.add_parser(sub)
 
     sp = sub.add_parser("config", help="Show or modify configuration")
     sp.add_argument("--show", action="store_true", help="Print current config")
