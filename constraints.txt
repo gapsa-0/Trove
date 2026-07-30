@@ -1,0 +1,67 @@
+# The versions this project is developed and tested against.
+#
+# Three files describe dependencies, and they answer three different questions:
+#
+#   pyproject.toml                    what is ALLOWED   (open >= ranges, library metadata)
+#   constraints.txt (this file)       what is TESTED    (exact pins, applied with -c)
+#   packaging/requirements-desktop.txt  what SHIPS      (the frozen desktop runtime)
+#
+# Install with the pins applied:
+#
+#   pip install -e '.[dev,cli,media,faces,pets,semantic]' -c constraints.txt
+#
+# or just `make setup`, which does exactly that. CI installs the same way, so a
+# green run here and a green run there mean the same thing. Every pin below that
+# also appears in requirements-desktop.txt carries the same number, deliberately:
+# a model backend that behaves differently under a new onnxruntime or opencv is
+# the class of bug this file exists to prevent.
+#
+# To bump something: change the pin, run the full suite AND the model-backed
+# tests, and commit it on its own with the reason. Never bump as a side effect of
+# another change.
+#
+# A constraint is not an install. Listing a package here pins it *if* something
+# asks for it; it never pulls it in on its own.
+
+# --- cli extra ---
+rich==15.0.0
+
+# --- media extra ---
+PyExifTool==0.5.6
+Pillow==12.3.0
+pillow-heif==1.5.0
+ImageHash==4.3.2
+
+# --- faces extra ---
+insightface==1.0.1
+onnxruntime==1.27.0
+opencv-python==5.0.0.93
+scikit-learn==1.9.0
+numpy==2.5.1
+faiss-cpu==1.14.3
+
+# --- pets extra ---
+# (onnxruntime, opencv-python, numpy, Pillow, pillow-heif — all pinned above)
+
+# --- semantic extra ---
+# 0.23.1 is what the desktop build ships. Note that installing `transformers`
+# -- a dev-only reference dependency used by tests/test_siglip_preprocessing.py,
+# in no extra and installed by no make target -- requires tokenizers<=0.23.0 and
+# will therefore hold this back on a developer machine. That is expected: the
+# packaged app excludes transformers entirely.
+tokenizers==0.23.1
+
+# --- dev extra ---
+pytest==9.1.1
+ruff==0.16.0
+pre-commit==4.6.1
+
+# --- transitive, but version-sensitive ---
+# Not imported directly by this project; pinned because they decide numerical
+# results or carry native code. scipy backs scikit-learn's clustering and
+# ImageHash's DCT. onnx and scikit-image are insightface's model-zoo and image
+# pipeline -- packaging/organize-archive.spec has a comment on why they look
+# dev-only and are not.
+scipy==1.18.0
+scikit-image==0.26.0
+onnx==1.22.0
