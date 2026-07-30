@@ -40,7 +40,7 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # transformers or torch — a 64-token tokenizer does not justify reversing the
 # torch exclusion in packaging/organize-archive.spec.
 semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
-dev = ["pytest>=8", "ruff>=0.6", "pre-commit>=3"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pre-commit>=3"]
 
 [project.scripts]
 oa = "organize_archive.cli:main"
@@ -75,6 +75,17 @@ markers = [
   "slow: measured over ~1s (re-check with --durations, don't assume)",
   "models: needs ONNX weights or a tokenizer checkpoint on disk",
 ]
+
+# Coverage is a map of where a refactor is flying blind, not a target. There is
+# deliberately no --cov-fail-under: a percentage gate rewards testing trivial
+# getters and punishes deleting dead code, both of which stages 06-11 do a lot of.
+[tool.coverage.run]
+source = ["organize_archive"]
+omit = ["*/gui/vendor/*", "*/__main__.py"]
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = true
 
 [tool.ruff]
 line-length = 100          # matches the style already in the files

@@ -18,6 +18,10 @@ venv/
 # invisible to `git add` -- and to ruff, which honours .gitignore.
 /build/
 /dist/
+# Coverage output. .coverage is a SQLite file, so the *.db rules above miss it.
+.coverage
+.coverage.*
+/htmlcov/
 
 # Env / editors
 .env
