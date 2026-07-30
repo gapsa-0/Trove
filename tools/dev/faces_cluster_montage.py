@@ -8,7 +8,7 @@ first and packed into a near-square grid, so the whole population is visible at
 once and the same identity showing up as several clusters is easy to spot.
 
 Read-only over originals: face crops are produced by the same cached crop path
-the GUI uses (thumbs.face_thumb_for). Run from the repo root:
+the GUI uses (thumbnails.face_thumb_for). Run from the repo root:
 
     python3 tools/dev/faces_cluster_montage.py [out.png] [--per 4] [--crop 96] [--cols N]
 """
@@ -23,16 +23,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from organize_archive import thumbnails
 from organize_archive.config import Config
 from organize_archive.db import database as db
-from organize_archive.gui import thumbs
 
 
 def _worker(args):
     """Generate (or reuse cached) one face crop; returns (face_id, path|None)."""
     cache_dir, face_id, src, box, sha = args
     try:
-        tp = thumbs.face_thumb_for(cache_dir, face_id, Path(src), box, sha256=sha, size=200)
+        tp = thumbnails.face_thumb_for(cache_dir, face_id, Path(src), box, sha256=sha, size=200)
         return face_id, (str(tp) if tp else None)
     except Exception:
         return face_id, None

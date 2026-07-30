@@ -47,11 +47,11 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .. import thumbnails
 from ..config import Config
 from ..db import database as db
 from ..faces import backend as face_backend
 from ..faces import fiqa
-from ..gui import thumbs
 from ..pets import backend as pet_backend
 from ..pets.extract import scan_source as pet_scan_source
 
@@ -645,7 +645,7 @@ def extract(
     backend there is simply no animal cross-check.
 
     ``cache_dir`` is where sampled video keyframes are extracted to and cached
-    (see ``gui.thumbs.detect_frame_for``); it defaults to ``cfg.cache_dir`` for
+    (see ``thumbnails.detect_frame_for``); it defaults to ``cfg.cache_dir`` for
     the CLI's single shared catalog, but the GUI's per-archive isolation means
     each archive has its OWN cache directory, so it must pass that archive's
     (``cfg.archive_cache_dir(root_id)``) explicitly rather than relying on the
@@ -712,7 +712,7 @@ def extract(
                     offsets = _video_offsets(row["duration_s"], cfg.detect_video_frames)
                     raw_faces, raw_animals = [], []
                     for offset in offsets:
-                        frame_path = thumbs.detect_frame_for(
+                        frame_path = thumbnails.detect_frame_for(
                             cache_dir,
                             fid,
                             path,

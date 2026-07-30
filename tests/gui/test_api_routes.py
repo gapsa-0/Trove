@@ -84,7 +84,7 @@ def _post(base_url: str, path: str, payload: dict) -> tuple[int, bytes]:
 
 def _write_jpeg(path: Path, color: tuple[int, int, int] = (120, 140, 160)) -> None:
     """A real, small, decodable JPEG on disk. Pillow is a hard dependency of
-    this project (thumbs.py, icons.py), so thumbnail/original-serving routes
+    this project (thumbnails/, icons.py), so thumbnail/original-serving routes
     can exercise their actual decode path here instead of only the
     can't-decode-so-serve-the-original fallback."""
     from PIL import Image

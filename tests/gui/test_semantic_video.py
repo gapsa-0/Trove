@@ -18,11 +18,12 @@ import threading
 
 import pytest
 
+from organize_archive import thumbnails
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.embeddings import backend as eb
 from organize_archive.gui import jobs as jobs_mod
-from organize_archive.gui import semantic, thumbs
+from organize_archive.gui import semantic
 
 np = pytest.importorskip("numpy")
 
@@ -62,7 +63,7 @@ def test_video_media_part_returns_sampled_frame_paths(tmp_path, monkeypatch):
         seen["size"] = size
         return frames
 
-    monkeypatch.setattr(thumbs, "video_frames_for", fake_frames)
+    monkeypatch.setattr(thumbnails, "video_frames_for", fake_frames)
 
     part, kind, reason = semantic.media_part(
         Config(),
@@ -87,7 +88,7 @@ def test_image_media_part_returns_one_cached_thumbnail(tmp_path, monkeypatch):
     thumb = tmp_path / "thumb.jpg"
     thumb.write_bytes(b"jpeg")
     monkeypatch.setattr(
-        thumbs, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: thumb
+        thumbnails, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: thumb
     )
 
     part, kind, reason = semantic.media_part(
@@ -101,7 +102,7 @@ def test_no_extractable_frames_is_a_clean_permanent_skip(tmp_path, monkeypatch):
     """No ffmpeg (or a container it can't read) must land as a permanent skip,
     same family as "unsupported format" -- never as a retryable error."""
     monkeypatch.setattr(
-        thumbs,
+        thumbnails,
         "video_frames_for",
         lambda cache_dir, fid, src, offsets, size=1024, sha256=None, rotate=0: [],
     )
@@ -124,7 +125,7 @@ def test_no_extractable_frames_is_a_clean_permanent_skip(tmp_path, monkeypatch):
 def test_undecodable_image_is_a_clean_permanent_skip(tmp_path, monkeypatch):
     """The thumbnailer is the only decoder, so what it refuses cannot be indexed."""
     monkeypatch.setattr(
-        thumbs, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: None
+        thumbnails, "thumb_for", lambda cache_dir, fid, src, size=320, sha256=None, rotate=0: None
     )
 
     part, _kind, reason = semantic.media_part(

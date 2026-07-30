@@ -26,9 +26,9 @@ import logging
 import threading
 from pathlib import Path
 
+from .. import thumbnails
 from ..db import database as db
 from ..embeddings import backend as eb
-from . import thumbs
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def _video_frames_part(
     in the same space as a photo rather than being represented by whichever
     single frame happened to be first.
     """
-    frames = thumbs.video_frames_for(
+    frames = thumbnails.video_frames_for(
         cache_dir,
         _cache_id(path),
         path,
@@ -185,7 +185,7 @@ def media_part(
         # The thumbnailer is the only decoder involved, so whatever it can open
         # is exactly what can be indexed: HEIC, RAW and friends included. If it
         # returns nothing, no amount of retrying will help.
-        thumb = thumbs.thumb_for(
+        thumb = thumbnails.thumb_for(
             cache_dir, _cache_id(path), path, size=_IMAGE_THUMB_SIZE, rotate=rotate
         )
         if thumb is None:

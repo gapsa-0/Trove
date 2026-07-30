@@ -16,9 +16,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
-from . import icons, queries, thumbs
+from . import icons, queries
 from .jobs import JobManager
 
 logger = logging.getLogger(__name__)
@@ -756,7 +757,7 @@ class Handler(BaseHTTPRequestHandler):
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, rotate = info
-        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
+        tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_archive_thumb(self, root_id: int, fid: int):
@@ -770,7 +771,7 @@ class Handler(BaseHTTPRequestHandler):
         if info is None:
             return self._json({"error": "not found"}, 404)
         src, sha256, rotate = info
-        tp = thumbs.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
+        tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_face_thumb(self, face_id: int):
@@ -784,16 +785,16 @@ class Handler(BaseHTTPRequestHandler):
             # already upright (ffmpeg applies container rotation), so the
             # crop is cut from that same re-derived frame, not the video file
             # itself, and never rotated again.
-            frame = thumbs.detect_frame_for(
+            frame = thumbnails.detect_frame_for(
                 cache_dir, file_id, src, frame_offset, self.cfg.detect_video_frame_px, sha256=sha256
             )
             if frame is None:
                 return self._json({"error": "frame unavailable"}, 404)
-            tp = thumbs.face_thumb_for(
+            tp = thumbnails.face_thumb_for(
                 cache_dir, face_id, frame, box, sha256=sha256, rotate=0, variant=frame_offset
             )
             return self._send_file(tp if tp else frame)
-        tp = thumbs.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256, rotate=rotate)
+        tp = thumbnails.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256, rotate=rotate)
         self._send_file(tp if tp else src)
 
     def _serve_animal_thumb(self, detection_id: int):
@@ -803,16 +804,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not found"}, 404)
         src, sha256, box, rotate, frame_offset, _media_type, file_id = info
         if frame_offset is not None:
-            frame = thumbs.detect_frame_for(
+            frame = thumbnails.detect_frame_for(
                 cache_dir, file_id, src, frame_offset, self.cfg.detect_video_frame_px, sha256=sha256
             )
             if frame is None:
                 return self._json({"error": "frame unavailable"}, 404)
-            tp = thumbs.face_thumb_for(
+            tp = thumbnails.face_thumb_for(
                 cache_dir, detection_id, frame, box, sha256=sha256, rotate=0, variant=frame_offset
             )
             return self._send_file(tp if tp else frame)
-        tp = thumbs.face_thumb_for(cache_dir, detection_id, src, box, sha256=sha256, rotate=rotate)
+        tp = thumbnails.face_thumb_for(
+            cache_dir, detection_id, src, box, sha256=sha256, rotate=rotate
+        )
         self._send_file(tp if tp else src)
 
     def _serve_original(self, fid: int):
@@ -823,7 +826,7 @@ class Handler(BaseHTTPRequestHandler):
         src, sha256, rotate = info
         # A photo stored sideways is served from an upright re-encode; every
         # other file is served as its own untouched bytes.
-        up = thumbs.upright_for(cache_dir, fid, src, rotate, sha256=sha256)
+        up = thumbnails.upright_for(cache_dir, fid, src, rotate, sha256=sha256)
         self._send_file(up if up else src)
 
 

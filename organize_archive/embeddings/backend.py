@@ -370,7 +370,7 @@ class SiglipBackend:
         if isinstance(item, (str, Path)):
             with Image.open(item) as im:
                 # No exif_transpose here: callers hand over cached thumbnails
-                # from gui/thumbs.py, which already applied EXIF orientation and
+                # from thumbnails/, which already applied EXIF orientation and
                 # the archive's own rotate_deg. Doing it twice would rotate a
                 # sideways photo away from the way the app displays it.
                 return self._pixels(im)
