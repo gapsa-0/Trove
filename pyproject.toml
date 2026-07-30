@@ -62,6 +62,10 @@ testpaths = ["tests"]
 # `@pytest.mark.slwo` is a silent no-op: the test stays in the fast tier forever
 # and nobody finds out.
 addopts = "--strict-markers"
+# tests/ is not importable on its own: with no __init__.py, pytest puts each test
+# file's *own* directory on sys.path, so tests/gui/ cannot see tests/helpers.py.
+# This is what lets all three tiers share helpers.py and factories.py.
+pythonpath = ["tests"]
 markers = [
   # Applied from measurement, not from a guess about mechanism. "Spawns a
   # thread" sounds like the better rule but is useless here: JobManager starts

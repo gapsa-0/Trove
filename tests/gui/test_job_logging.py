@@ -9,9 +9,9 @@ a start with no end (it is genuinely stuck, and where), or an error.
 from __future__ import annotations
 
 import logging
-import time
 
 import pytest
+from helpers import wait_until
 
 from organize_archive.config import Config
 from organize_archive.gui import jobs as jobs_mod
@@ -53,10 +53,11 @@ def _run_to_completion(manager, kind="dedup", timeout=5.0):
     started = manager.start(kind)
     assert "error" not in started, started
     job = manager._jobs[started["id"]]
-    deadline = time.monotonic() + timeout
-    while job.finished_at is None and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert job.finished_at is not None, f"job did not finish within {timeout}s"
+    wait_until(
+        lambda: job.finished_at is not None,
+        timeout=timeout,
+        what=f"the {kind} job to finish",
+    )
     return job
 
 
