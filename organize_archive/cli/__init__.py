@@ -13,13 +13,13 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, logging_setup
-from .config import PROJECT_ROOT, Config
-from .db import database as db
-from .paths import app_data_dir, config_file
-from .runtime import tool as runtime_tool
-from .scan import walker
-from .scan.progress import ScanProgress
+from .. import __version__, logging_setup
+from ..config import PROJECT_ROOT, Config
+from ..db import database as db
+from ..paths import app_data_dir, config_file
+from ..runtime import tool as runtime_tool
+from ..scan import walker
+from ..scan.progress import ScanProgress
 
 # Named explicitly, not __name__: `oa` reaches main() as an imported module but
 # `python -m organize_archive.cli` makes it "__main__", and a log line should
@@ -162,8 +162,8 @@ def cmd_scan(args, cfg: Config) -> int:
 
 
 def cmd_enrich(args, cfg: Config) -> int:
-    from .metadata import enrich as enrich_mod
-    from .metadata.exiftool_reader import available as exif_available
+    from ..metadata import enrich as enrich_mod
+    from ..metadata.exiftool_reader import available as exif_available
 
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan")
@@ -200,8 +200,8 @@ def cmd_enrich(args, cfg: Config) -> int:
 
 
 def cmd_dedup(args, cfg: Config) -> int:
-    from .dedup import exact
-    from .scan.progress import ScanProgress
+    from ..dedup import exact
+    from ..scan.progress import ScanProgress
 
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan")
@@ -235,9 +235,9 @@ def cmd_dedup(args, cfg: Config) -> int:
 
 
 def cmd_faces(args, cfg: Config) -> int:
-    from .faces import backend
-    from .faces import cluster as fc
-    from .faces import extract as fx
+    from ..faces import backend
+    from ..faces import cluster as fc
+    from ..faces import extract as fx
 
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa enrich")
@@ -246,7 +246,7 @@ def cmd_faces(args, cfg: Config) -> int:
     db.init_db(conn)
 
     if getattr(args, "migrate_adaface", False):
-        from .faces import migrate_adaface
+        from ..faces import migrate_adaface
 
         st = migrate_adaface.snapshot_and_wipe(conn, cfg, db_path=cfg.db_path, log=print)
         conn.close()
@@ -263,7 +263,7 @@ def cmd_faces(args, cfg: Config) -> int:
         return 0
 
     if getattr(args, "recalibrate_fiqa", False):
-        from .faces import fiqa
+        from ..faces import fiqa
 
         counts = fiqa.recalibrate(conn, cfg, log=print)
         conn.close()
@@ -332,7 +332,7 @@ def cmd_faces(args, cfg: Config) -> int:
         # vectors came from a different embedder, stage the migration here so the
         # detection below refills the archive from zero. Explicit
         # --migrate-adaface stays available for staging it without detecting.
-        from .faces import migrate_adaface
+        from ..faces import migrate_adaface
 
         migrate_adaface.run_if_needed(conn, cfg, db_path=cfg.db_path, log=print)
         pending = fx.pending_count(conn)
@@ -364,7 +364,7 @@ def cmd_faces(args, cfg: Config) -> int:
     # A staged AdaFace migration is completed here, once the re-extract that
     # follows it has produced the new faces to reattach the old identities to.
     # Idempotent, so running it on every clustering pass is harmless.
-    from .faces import migrate_adaface
+    from ..faces import migrate_adaface
 
     if migrate_adaface.pending(conn):
         print("\nRestoring names, pins and links onto the re-extracted faces …")
@@ -390,9 +390,9 @@ def cmd_faces(args, cfg: Config) -> int:
 
 
 def cmd_pets(args, cfg: Config) -> int:
-    from .pets import backend
-    from .pets import cluster as pc
-    from .pets import extract as px
+    from ..pets import backend
+    from ..pets import cluster as pc
+    from ..pets import extract as px
 
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan  then  oa dedup")
@@ -465,8 +465,8 @@ def cmd_dates(args, cfg: Config) -> int:
 
 
 def cmd_gui(args, cfg: Config) -> int:
-    from .web import launcher
-    from .web.server import serve
+    from ..web import launcher
+    from ..web.server import serve
 
     httpd = serve(cfg, port=args.port)
     url = f"http://127.0.0.1:{args.port}/"

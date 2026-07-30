@@ -138,11 +138,11 @@ allowed-confusables = ["×"]
 "tests/*"  = ["B011"]          # bare assert is the point of a test
 "tools/*"  = ["T201"]          # dev scripts may print
 "packaging/scripts/*" = ["T201"]   # build-time scripts, output is for the build log
-# cli.py *is* the user interface: printing is its job, and routing its output
+# cli/ *is* the user interface: printing is its job, and routing its output
 # through logging would timestamp and re-order the tables it prints. Every other
 # module in the library logs instead -- a library that prints cannot be silenced,
 # redirected, or given a severity, and writes nowhere inside the desktop app.
-"organize_archive/cli.py" = ["T201"]
+"organize_archive/cli/*.py" = ["T201"]
 
 [tool.ruff.format]
 quote-style = "double"          # matches the existing code
