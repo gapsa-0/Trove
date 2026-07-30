@@ -1,9 +1,11 @@
 import struct
 
-import numpy as np
+import pytest
 
 from organize_archive.db import database as db
 from organize_archive.gui import queries, semantic
+
+np = pytest.importorskip("numpy")
 
 
 def _semantic_catalogue(tmp_path):

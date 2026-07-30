@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import threading
 
-import numpy as np
 import pytest
 
 from organize_archive.config import Config
@@ -24,6 +23,8 @@ from organize_archive.db import database as db
 from organize_archive.embeddings import backend as eb
 from organize_archive.gui import jobs as jobs_mod
 from organize_archive.gui import semantic, thumbs
+
+np = pytest.importorskip("numpy")
 
 
 def _archive_db(tmp_path, sha256="abc", media_type="video"):

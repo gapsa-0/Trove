@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 
-import numpy as np
 import pytest
 
 from organize_archive.embeddings import backend as eb
@@ -36,6 +35,7 @@ from organize_archive.paths import default_cache_dir
 # models.
 _CACHE = str(default_cache_dir())
 
+np = pytest.importorskip("numpy")
 transformers = pytest.importorskip(
     "transformers", reason="transformers is a dev-only reference dependency"
 )
