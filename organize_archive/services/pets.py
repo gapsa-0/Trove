@@ -288,51 +288,45 @@ def nonhuman_review(conn, root_id=None, limit=120, offset=0) -> dict:
     }
 
 
-@writing
-def review_nonhuman(conn, detection_id, verdict: str) -> dict:
-    """Confirm a non-human candidate or restore it to People as unassigned."""
-    if verdict not in {"confirmed", "human"}:
-        return {"error": "verdict must be confirmed or human"}
-    row = conn.execute(
-        """SELECT n.*,f.root_id FROM nonhuman_detections n
-           JOIN files f ON f.id=n.file_id WHERE n.id=?""",
-        (detection_id,),
-    ).fetchone()
-    if not row:
-        return {"error": "unknown non-human detection"}
-    if verdict == "confirmed":
-        conn.execute(
-            "UPDATE nonhuman_detections SET review_status='confirmed' WHERE id=?",
-            (detection_id,),
-        )
-        conn.commit()
-        return {"ok": True, "status": "confirmed", "root_id": row["root_id"]}
-    if row["restored_face_id"]:
-        conn.execute(
-            """UPDATE faces SET not_person=0,nonhuman_kind=NULL,
-                                nonhuman_source=NULL
-               WHERE id=?""",
-            (row["restored_face_id"],),
-        )
-        conn.execute(
-            "UPDATE nonhuman_detections SET review_status='human' WHERE id=?", (detection_id,)
-        )
-        conn.execute(
-            """UPDATE face_scan SET n_faces=n_faces+1,
+def _bump_face_scan_after_restore(conn, file_id) -> None:
+    """Shared face_scan counter fix for both "verdict=human" paths below."""
+    conn.execute(
+        """UPDATE face_scan SET n_faces=n_faces+1,
                rejected_nonhuman=MAX(0,rejected_nonhuman-1)
-               WHERE file_id=?""",
-            (row["file_id"],),
-        )
-        conn.commit()
-        return {
-            "ok": True,
-            "status": "human",
-            "root_id": row["root_id"],
-            "face_id": row["restored_face_id"],
-        }
-    if not row["embedding"]:
-        return {"error": "candidate has no retained embedding; rescan is required"}
-    cursor = conn.execute(
+           WHERE file_id=?""",
+        (file_id,),
+    )
+
+
+def _restore_existing_face(conn, detection_id, row) -> dict:
+    """verdict=human, and the detection already has a restored_face_id.
+
+    Un-hide that existing face row, mark the detection human, fix the
+    face_scan counters.
+    """
+    conn.execute(
+        """UPDATE faces SET not_person=0,nonhuman_kind=NULL,
+                            nonhuman_source=NULL
+           WHERE id=?""",
+        (row["restored_face_id"],),
+    )
+    conn.execute("UPDATE nonhuman_detections SET review_status='human' WHERE id=?", (detection_id,))
+    _bump_face_scan_after_restore(conn, row["file_id"])
+    conn.commit()
+    return {
+        "ok": True,
+        "status": "human",
+        "root_id": row["root_id"],
+        "face_id": row["restored_face_id"],
+    }
+
+
+def _insert_face_from_detection(conn, row):
+    """INSERT a new faces row from a nonhuman_detections row's own columns.
+
+    Returns the cursor so the caller can read ``lastrowid``.
+    """
+    return conn.execute(
         """INSERT INTO faces
            (file_id,box_x,box_y,box_w,box_h,det_score,focus_score,brightness,
             extreme_fraction,clipped_fraction,quality_score,quality_source,
@@ -355,17 +349,24 @@ def review_nonhuman(conn, detection_id, verdict: str) -> dict:
             db.now_iso(),
         ),
     )
+
+
+def _create_face_from_detection(conn, detection_id, row) -> dict:
+    """verdict=human, with no restored_face_id yet.
+
+    Require a retained embedding, INSERT a new faces row from the
+    detection's columns, point the detection at it, fix the face_scan
+    counters.
+    """
+    if not row["embedding"]:
+        return {"error": "candidate has no retained embedding; rescan is required"}
+    cursor = _insert_face_from_detection(conn, row)
     conn.execute(
         """UPDATE nonhuman_detections
            SET review_status='human',restored_face_id=? WHERE id=?""",
         (cursor.lastrowid, detection_id),
     )
-    conn.execute(
-        """UPDATE face_scan SET n_faces=n_faces+1,
-               rejected_nonhuman=MAX(0,rejected_nonhuman-1)
-           WHERE file_id=?""",
-        (row["file_id"],),
-    )
+    _bump_face_scan_after_restore(conn, row["file_id"])
     conn.commit()
     return {
         "ok": True,
@@ -373,6 +374,30 @@ def review_nonhuman(conn, detection_id, verdict: str) -> dict:
         "root_id": row["root_id"],
         "face_id": cursor.lastrowid,
     }
+
+
+@writing
+def review_nonhuman(conn, detection_id, verdict: str) -> dict:
+    """Confirm a non-human candidate or restore it to People as unassigned."""
+    if verdict not in {"confirmed", "human"}:
+        return {"error": "verdict must be confirmed or human"}
+    row = conn.execute(
+        """SELECT n.*,f.root_id FROM nonhuman_detections n
+           JOIN files f ON f.id=n.file_id WHERE n.id=?""",
+        (detection_id,),
+    ).fetchone()
+    if not row:
+        return {"error": "unknown non-human detection"}
+    if verdict == "confirmed":
+        conn.execute(
+            "UPDATE nonhuman_detections SET review_status='confirmed' WHERE id=?",
+            (detection_id,),
+        )
+        conn.commit()
+        return {"ok": True, "status": "confirmed", "root_id": row["root_id"]}
+    if row["restored_face_id"]:
+        return _restore_existing_face(conn, detection_id, row)
+    return _create_face_from_detection(conn, detection_id, row)
 
 
 @writing
