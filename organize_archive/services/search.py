@@ -89,44 +89,8 @@ def semantic_pending(conn, root_id=None) -> int:
     ).fetchone()[0]
 
 
-@reading
-def semantic_search(
-    conn,
-    query_vector: list[float],
-    *,
-    root_id=None,
-    year=None,
-    month=None,
-    mtype=None,
-    person_id=None,
-    person_ids=None,
-    cluster_id=None,
-    min_similarity=-1.0,
-    relative_floor=0.0,
-    sort="relevance",
-    limit=120,
-    offset=0,
-    alternate_vectors=None,
-    located=None,
-) -> dict:
-    """Rank locally stored vectors against the original and optional expansions.
-
-    Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score
-    preserves strong matches from either wording; the small penalty keeps the
-    words the user actually typed ahead when both formulations are equivalent.
-    The penalty is in the units of the *embedder's* similarity scale, so it has
-    to be sized against that scale rather than carried over from another model
-    (see ``ALTERNATE_VECTOR_PENALTY``).
-
-    **Two cuts, because one absolute number cannot do this job.** The local
-    embedder's similarities are compressed *and* shift per query: measured on
-    this archive, the best match for "fireworks" scores 0.097 while the best for
-    "a selfie" scores 0.150 — and a subject the archive does not contain at all
-    still reaches ~0.10. So ``min_similarity`` is only a floor against noise,
-    and the cut that actually decides relevance is ``relative_floor``: a
-    fraction of *this query's own* best score, which travels with the query
-    instead of assuming every query lives on the same scale.
-    """
+def _search_where_clause(root_id, year, month, mtype, person_id, person_ids, cluster_id, located):
+    """Build the WHERE clause and SQL text for semantic_search's candidate query."""
     where = [_NOT_HIDDEN, "e.status='indexed'", "e.embedding IS NOT NULL"]
     params: list = []
     rc, rp = _root_clause(root_id)
@@ -168,14 +132,27 @@ def semantic_search(
               FROM semantic_embeddings e JOIN files f ON f.id=e.file_id
               LEFT JOIN dates d ON d.file_id=f.id
               WHERE {" AND ".join(where)}"""
+    return sql, params
+
+
+def _prepare_query_vectors(query_vector, alternate_vectors):
+    """Turn the query vector(s) into ``(vector, norm, penalty)`` triples, dropping
+    any that come out zero-norm."""
     vectors = [(tuple(query_vector), 0.0)]
     vectors.extend((tuple(vector), float(penalty)) for vector, penalty in (alternate_vectors or []))
     prepared = [
         (vector, math.sqrt(math.sumprod(vector, vector)), penalty) for vector, penalty in vectors
     ]
     prepared = [item for item in prepared if item[1]]
-    if not prepared:
-        return {"items": [], "offset": offset, "limit": limit, "count": 0, "total": 0}
+    return prepared
+
+
+def _score_candidates(conn, sql, params, prepared):
+    """Run the candidate query and score every row against ``prepared``.
+
+    Returns ``(scores, meta)``: a float32 array of best-of-``prepared`` scores
+    and the parallel per-row metadata dicts, both in the query's row order.
+    """
     import numpy as np
 
     dim = len(prepared[0][0])
@@ -231,6 +208,13 @@ def semantic_search(
         best_per_row[norms <= 0.0] = -np.inf
         blocks.append(best_per_row)
     scores = np.concatenate(blocks) if blocks else np.zeros(0, dtype=np.float32)
+    return scores, meta
+
+
+def _apply_similarity_cuts(scores, min_similarity, relative_floor):
+    """Return the indices of ``scores`` that clear the absolute and relative floors."""
+    import numpy as np
+
     keep = np.flatnonzero(scores >= min_similarity)
     # The relative cut needs the best score, so it can only be applied once
     # every candidate has been scored. Skipped when the best match is itself
@@ -241,6 +225,11 @@ def semantic_search(
         best = float(scores[keep].max())
         if best > 0.0:
             keep = keep[scores[keep] >= relative_floor * best]
+    return keep
+
+
+def _rank_and_paginate(scores, meta, keep, sort, offset, limit):
+    """Sort the kept candidates and slice out one page as the response dict."""
     # Ascending index order, which is the SQL's order -- so the sorts below
     # stay stable against it exactly as they were over the old scored list.
     ranked = [(float(scores[i]), meta[i]) for i in keep]
@@ -263,3 +252,52 @@ def semantic_search(
         "count": len(items),
         "total": len(ranked),
     }
+
+
+@reading
+def semantic_search(
+    conn,
+    query_vector: list[float],
+    *,
+    root_id=None,
+    year=None,
+    month=None,
+    mtype=None,
+    person_id=None,
+    person_ids=None,
+    cluster_id=None,
+    min_similarity=-1.0,
+    relative_floor=0.0,
+    sort="relevance",
+    limit=120,
+    offset=0,
+    alternate_vectors=None,
+    located=None,
+) -> dict:
+    """Rank locally stored vectors against the original and optional expansions.
+
+    Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score
+    preserves strong matches from either wording; the small penalty keeps the
+    words the user actually typed ahead when both formulations are equivalent.
+    The penalty is in the units of the *embedder's* similarity scale, so it has
+    to be sized against that scale rather than carried over from another model
+    (see ``ALTERNATE_VECTOR_PENALTY``).
+
+    **Two cuts, because one absolute number cannot do this job.** The local
+    embedder's similarities are compressed *and* shift per query: measured on
+    this archive, the best match for "fireworks" scores 0.097 while the best for
+    "a selfie" scores 0.150 — and a subject the archive does not contain at all
+    still reaches ~0.10. So ``min_similarity`` is only a floor against noise,
+    and the cut that actually decides relevance is ``relative_floor``: a
+    fraction of *this query's own* best score, which travels with the query
+    instead of assuming every query lives on the same scale.
+    """
+    sql, params = _search_where_clause(
+        root_id, year, month, mtype, person_id, person_ids, cluster_id, located
+    )
+    prepared = _prepare_query_vectors(query_vector, alternate_vectors)
+    if not prepared:
+        return {"items": [], "offset": offset, "limit": limit, "count": 0, "total": 0}
+    scores, meta = _score_candidates(conn, sql, params, prepared)
+    keep = _apply_similarity_cuts(scores, min_similarity, relative_floor)
+    return _rank_and_paginate(scores, meta, keep, sort, offset, limit)
