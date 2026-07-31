@@ -195,31 +195,6 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/dates/sources":
                 rid = one("root", int)
                 self._json(overview.date_sources(self._db(rid), rid))
-            elif path == "/api/map/clusters":
-                rid = one("root", int)
-                self._json(places.place_clusters(self._db(rid), rid, self.cfg.place_min_media))
-            elif path == "/api/map/points":
-                # The un-clustered map view: one point per geotagged file.
-                rid = one("root", int)
-                self._json(places.place_points(self._db(rid), rid, self.cfg.place_min_media))
-            elif path == "/api/map/cluster/merge-preview":
-                # GET, not POST: this mutates nothing, it only answers "how
-                # spread out would this merge be" so the GUI can decide
-                # whether to warn before the user confirms the drag-merge.
-                rid = one("root", int)
-                res = places.place_merge_preview(
-                    self._db(rid), one("a", int), one("b", int), self.cfg.place_merge_warn_km
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path.startswith("/api/map/cluster/"):
-                rid = one("root", int)
-                c = places.place_cluster_members(
-                    self._db(rid),
-                    int(path.rsplit("/", 1)[1]),
-                    limit=min(one("limit", int, 120), 500),
-                    offset=one("offset", int, 0),
-                )
-                self._json(c) if c else self._json({"error": "not found"}, 404)
             elif path == "/api/faces/summary":
                 rid = one("root", int)
                 self._json(people.face_summary(self._db(rid), rid, self.cfg.detect_video_frames))

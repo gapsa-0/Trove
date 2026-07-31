@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from . import browse, overview, static
+from . import browse, overview, places, static
 from ._request import NOT_FOUND, FileBody, Json, Raw, Request, ok_or_error
 
 __all__ = [
@@ -46,6 +46,9 @@ Handler = Callable[[Request], object]
 GET_ROUTES: dict[str, Handler] = {
     "/api/health": static.health,
     "/api/summary": overview.summary,
+    "/api/map/clusters": places.clusters,
+    "/api/map/points": places.points,
+    "/api/map/cluster/merge-preview": places.merge_preview,
     "/": static.index,
     "/index.html": static.index,
     "/manifest.webmanifest": static.manifest,
@@ -55,6 +58,7 @@ GET_ROUTES: dict[str, Handler] = {
 # Ordered: the first matching prefix wins. See the module docstring.
 GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
     ("/api/item/", browse.item),
+    ("/api/map/cluster/", places.cluster_members),
     ("/icon-", static.icon),
     ("/vendor/", static.vendor),
 )
