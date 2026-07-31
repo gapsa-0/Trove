@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from ..db import database as db
+from . import merging
 from ._common import _NOT_HIDDEN, _QUALITY_OK, _quality_ok, _root_clause, reading, writing
 
 
@@ -348,7 +349,7 @@ def detach_file_from_person(conn, person_id, file_id) -> dict:
     now = db.now_iso()
     face_ids = [r["id"] for r in faces]
     for fid in face_ids:
-        _record_link(conn, rep, fid, "different", now)
+        merging.record_link(conn, _PERSON, rep, fid, "different", now)
     marks = ",".join("?" for _ in face_ids)
     conn.execute(
         f"UPDATE faces SET person_id=NULL, manual_person=NULL WHERE id IN ({marks})", face_ids
@@ -393,6 +394,22 @@ def remove_person_from_file(conn, person_id, file_id) -> dict:
 
 # -- "same person?" review: merges + constraints ---------------------------
 
+_PERSON = merging.LinkedSpec(
+    entity=merging.EntitySpec(
+        singular="person",
+        plural="persons",
+        table="persons",
+        columns="id,name,cover_face_id,face_count",
+    ),
+    child_table="faces",
+    fk="person_id",
+    merge_table="person_merges",
+    child_ids_column="face_ids",
+    link_table="face_links",
+    link_a="face_a",
+    link_b="face_b",
+)
+
 
 def _rep_face(conn, pid, cover) -> int | None:
     """A stable representative face id for a person (its cover, or its sharpest
@@ -405,21 +422,6 @@ def _rep_face(conn, pid, cover) -> int | None:
         (pid,),
     ).fetchone()
     return r["id"] if r else None
-
-
-def _record_link(conn, fa, fb, kind: str, now: str) -> tuple[int, int] | None:
-    """Write a durable face_links constraint. Returns the (sorted) pair it
-    wrote, or None if there was nothing to link -- callers that need to record
-    exactly which link a merge produced (person_merges.link_a/link_b, for
-    undo) key off this return value rather than re-deriving the sort."""
-    if not fa or not fb or fa == fb:
-        return None
-    a, b = sorted((fa, fb))
-    conn.execute(
-        "INSERT OR REPLACE INTO face_links(face_a, face_b, kind, created_at) VALUES(?,?,?,?)",
-        (a, b, kind, now),
-    )
-    return (a, b)
 
 
 def _update_person_centroid(conn, pid) -> None:
@@ -439,57 +441,10 @@ def _update_person_centroid(conn, pid) -> None:
     conn.execute("UPDATE persons SET centroid=? WHERE id=?", (c.tobytes(), pid))
 
 
-@writing
-def merge_persons(conn, id_a, id_b, name=None) -> dict:
-    """User confirmed two clusters are the same person. Merge immediately (move
-    faces, keep the named/larger one) AND store a durable 'same' constraint so
-    the merge survives future re-clusters.
-
-    An explicit `name` picks the surviving NAME outright (it doesn't change
-    which person id survives -- that's still named/larger-cluster/id as
-    below). This is what lets two already-but-differently-named clusters
-    merge at all: normally that's refused because there's no automatic way to
-    choose between them."""
-    if not id_a or not id_b or id_a == id_b:
-        return {"error": "need two distinct persons"}
-    pa = conn.execute(
-        "SELECT id,name,cover_face_id,face_count FROM persons WHERE id=?", (id_a,)
-    ).fetchone()
-    pb = conn.execute(
-        "SELECT id,name,cover_face_id,face_count FROM persons WHERE id=?", (id_b,)
-    ).fetchone()
-    if not pa or not pb:
-        return {"error": "unknown person"}
-    name = (name or "").strip() or None
-    if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
-        return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
-    # keep the named one, else the larger cluster
-    if pa["name"] and not pb["name"]:
-        keep, drop = pa, pb
-    elif pb["name"] and not pa["name"]:
-        keep, drop = pb, pa
-    elif (pa["face_count"] or 0) >= (pb["face_count"] or 0):
-        keep, drop = pa, pb
-    else:
-        keep, drop = pb, pa
-    now = db.now_iso()
-    # Captured before the UPDATE below moves them: this is exactly the set
-    # unmerge_persons needs to know which faces to hand back to the losing
-    # side (see person_merges.face_ids).
-    drop_face_ids = [
-        r[0]
-        for r in conn.execute("SELECT id FROM faces WHERE person_id=?", (drop["id"],)).fetchall()
-    ]
-    link = _record_link(
-        conn,
-        _rep_face(conn, keep["id"], keep["cover_face_id"]),
-        _rep_face(conn, drop["id"], drop["cover_face_id"]),
-        "same",
-        now,
-    )
-    conn.execute("UPDATE faces SET person_id=? WHERE person_id=?", (keep["id"], drop["id"]))
-    conn.execute("DELETE FROM persons WHERE id=?", (drop["id"],))
-    survivor_name = name or keep["name"]
+def _finish_person_merge(conn, keep, survivor_name) -> None:
+    """The survivor bookkeeping merge_persons runs after moving drop's faces
+    onto keep and deleting drop: give the survivor its name, then recount and
+    recentre it."""
     if survivor_name:
         conn.execute("UPDATE persons SET name=? WHERE id=?", (survivor_name, keep["id"]))
         # Load-bearing, not cosmetic: faces/cluster.py's _apply_manual_pins
@@ -506,22 +461,44 @@ def merge_persons(conn, id_a, id_b, name=None) -> dict:
         )
     _sync_person_stats(conn, keep["id"])
     _update_person_centroid(conn, keep["id"])
-    # Recorded so this merge can be undone later (see unmerge_persons):
-    # which faces moved, what the losing side was called, and which
-    # face_links row to retract.
-    conn.execute(
-        """INSERT INTO person_merges(survivor_id, survivor_name, dropped_name,
-                                      face_ids, link_a, link_b, created_at)
-           VALUES(?,?,?,?,?,?,?)""",
-        (
-            keep["id"],
-            survivor_name,
-            drop["name"],
-            json.dumps(drop_face_ids),
-            link[0] if link else None,
-            link[1] if link else None,
-            now,
-        ),
+
+
+@writing
+def merge_persons(conn, id_a, id_b, name=None) -> dict:
+    """User confirmed two clusters are the same person. Merge immediately (move
+    faces, keep the named/larger one) AND store a durable 'same' constraint so
+    the merge survives future re-clusters.
+
+    An explicit `name` picks the surviving NAME outright (it doesn't change
+    which person id survives -- that's still named/larger-cluster/id as
+    below). This is what lets two already-but-differently-named clusters
+    merge at all: normally that's refused because there's no automatic way to
+    choose between them."""
+    pa, pb, err = merging.load_sides(conn, _PERSON.entity, id_a, id_b)
+    if err:
+        return err
+    name, err = merging.resolve_name(pa, pb, name)
+    if err:
+        return err
+    # keep the named one, else the larger cluster
+    if pa["name"] and not pb["name"]:
+        keep, drop = pa, pb
+    elif pb["name"] and not pa["name"]:
+        keep, drop = pb, pa
+    elif (pa["face_count"] or 0) >= (pb["face_count"] or 0):
+        keep, drop = pa, pb
+    else:
+        keep, drop = pb, pa
+    survivor_name = name or keep["name"]
+    merging.merge_linked(
+        conn,
+        _PERSON,
+        keep,
+        drop,
+        survivor_name=survivor_name,
+        rep=lambda c, side: _rep_face(c, side["id"], side["cover_face_id"]),
+        finish=_finish_person_merge,
+        now=db.now_iso(),
     )
     conn.commit()
     r = conn.execute("SELECT id,name,face_count FROM persons WHERE id=?", (keep["id"],)).fetchone()
@@ -531,50 +508,8 @@ def merge_persons(conn, id_a, id_b, name=None) -> dict:
     }
 
 
-@writing
-def unmerge_persons(conn, merge_id) -> dict:
-    """Undo a drag-merge recorded by merge_persons.
-
-    Deleting the 'same' face_links row it wrote is not enough on its own: if
-    the automatic clusterer would group these two faces back together anyway,
-    they'd silently re-merge on the very next recluster. So this also writes
-    a 'different' (cannot-link) row over the same pair -- _apply_links gives
-    cannot-link precedence over must-link, and it stays reversible (merging
-    them again writes 'same' back over it via INSERT OR REPLACE).
-
-    It also restores names: any recorded face whose manual_person currently
-    equals the survivor's name is pinned back to the dropped name (or NULL
-    if the dropped side was unnamed), or faces/cluster.py's _apply_manual_pins
-    would keep re-pinning it onto the survivor forever. See merge_persons'
-    "Load-bearing, not cosmetic" comment -- this undoes exactly that.
-
-    Known limitation: _apply_links only blocks the automatic pass from
-    UNIONING two of its own clusters; it never SPLITS a cluster the automatic
-    pass forms on its own. If the clusterer's embeddings alone would already
-    place these faces in one cluster, this cannot-link can't pull them back
-    apart -- that's pre-existing clustering behaviour, not something undo
-    can fix.
-
-    Safe to call twice: a stale/missing merge_id returns a clean error
-    rather than raising. Returns {"ok": True, "recluster": True} on success
-    so the caller knows to kick off a re-cluster (nothing here moves faces
-    back itself -- that's the recluster's job, honouring the restored pins
-    and the new cannot-link)."""
-    if not merge_id:
-        return {"error": "missing merge_id"}
-    m = conn.execute("SELECT * FROM person_merges WHERE id=?", (merge_id,)).fetchone()
-    if not m:
-        return {"error": "merge not found"}
-    now = db.now_iso()
-    if m["link_a"] and m["link_b"]:
-        conn.execute(
-            "DELETE FROM face_links WHERE face_a=? AND face_b=?", (m["link_a"], m["link_b"])
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO face_links(face_a, face_b, kind, created_at) "
-            "VALUES(?,?,'different',?)",
-            (m["link_a"], m["link_b"], now),
-        )
+def _restore_person_pins(conn, m) -> None:
+    """The name-restoration half of unmerge_persons; see its docstring."""
     survivor_name = m["survivor_name"]
     dropped_name = m["dropped_name"] or None
     face_ids = json.loads(m["face_ids"])
@@ -584,9 +519,21 @@ def unmerge_persons(conn, merge_id) -> dict:
             f"UPDATE faces SET manual_person=? WHERE id IN ({marks}) AND manual_person=?",
             (dropped_name, *face_ids, survivor_name),
         )
-    conn.execute("DELETE FROM person_merges WHERE id=?", (merge_id,))
-    conn.commit()
-    return {"ok": True, "recluster": True}
+
+
+@writing
+def unmerge_persons(conn, merge_id) -> dict:
+    """Undo a drag-merge recorded by merge_persons. See merging.unmerge_linked
+    for the cannot-link mechanism this writes, its known limitation, and the
+    "safe to call twice" / recluster-return contract.
+
+    People-specific: this also restores names. Any recorded face whose
+    manual_person currently equals the survivor's name is pinned back to the
+    dropped name (or NULL if the dropped side was unnamed), or
+    faces/cluster.py's _apply_manual_pins would keep re-pinning it onto the
+    survivor forever. See _finish_person_merge's "Load-bearing, not cosmetic"
+    comment -- this undoes exactly that."""
+    return merging.unmerge_linked(conn, _PERSON, merge_id, restore=_restore_person_pins)
 
 
 @writing
@@ -601,8 +548,9 @@ def _persons_link(conn, id_a, id_b, kind: str) -> dict:
     pb = conn.execute("SELECT id,cover_face_id FROM persons WHERE id=?", (id_b,)).fetchone()
     if not pa or not pb:
         return {"error": "unknown person"}
-    _record_link(
+    merging.record_link(
         conn,
+        _PERSON,
         _rep_face(conn, pa["id"], pa["cover_face_id"]),
         _rep_face(conn, pb["id"], pb["cover_face_id"]),
         kind,
