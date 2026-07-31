@@ -23,35 +23,23 @@ from ._common import (
 from .places import _PLACE_EXEMPT
 
 
-@reading
-def media(
-    conn,
+def _media_where(
     *,
-    root_id=None,
-    year=None,
-    month=None,
-    mtype=None,
-    person_id=None,
-    person_ids=None,
-    cluster_id=None,
-    sort="newest",
-    limit=120,
-    offset=0,
-    indexed=None,
-    located=None,
-) -> dict:
-    """The Browse grid. ``indexed`` filters on description-search coverage: True
-    for media that can be found by describing it, False for what cannot (still
-    queued, skipped, or failed), None for everything.
-
-    ``located`` does the same for media that carries a location.
-
-    The GUI only ever asks for True on either ("Show only …" boxes) -- unchecked
-    means no filter at all. False is kept because the predicate is naturally
-    three-valued and because the two halves summing to the unfiltered grid is
-    the property worth testing."""
-    from . import semantic
-
+    root_id,
+    mtype,
+    year,
+    month,
+    person_id,
+    person_ids,
+    cluster_id,
+    indexed,
+    located,
+    indexer_version,
+) -> tuple[str, list, str]:
+    """Build the Browse grid's WHERE clause and its bound params, plus the
+    ``indexed`` sub-select reused in the SELECT list. ``params`` is built up
+    positionally in the same order the clauses below are appended -- callers
+    bind it positionally, so that order is load-bearing."""
     where = [_NOT_HIDDEN]
     params: list = []
     rc, rp = _root_clause(root_id)
@@ -101,10 +89,54 @@ def media(
     indexed_sql = _indexed_exists("f")
     if indexed is not None:
         where.append(indexed_sql if indexed else f"NOT {indexed_sql}")
-        params.append(semantic.INDEXER_VERSION)
+        params.append(indexer_version)
     if located is not None:
         where.append(_HAS_LOCATION if located else f"NOT {_HAS_LOCATION}")
     clause = " AND ".join(where)
+    return clause, params, indexed_sql
+
+
+@reading
+def media(
+    conn,
+    *,
+    root_id=None,
+    year=None,
+    month=None,
+    mtype=None,
+    person_id=None,
+    person_ids=None,
+    cluster_id=None,
+    sort="newest",
+    limit=120,
+    offset=0,
+    indexed=None,
+    located=None,
+) -> dict:
+    """The Browse grid. ``indexed`` filters on description-search coverage: True
+    for media that can be found by describing it, False for what cannot (still
+    queued, skipped, or failed), None for everything.
+
+    ``located`` does the same for media that carries a location.
+
+    The GUI only ever asks for True on either ("Show only …" boxes) -- unchecked
+    means no filter at all. False is kept because the predicate is naturally
+    three-valued and because the two halves summing to the unfiltered grid is
+    the property worth testing."""
+    from . import semantic
+
+    clause, params, indexed_sql = _media_where(
+        root_id=root_id,
+        mtype=mtype,
+        year=year,
+        month=month,
+        person_id=person_id,
+        person_ids=person_ids,
+        cluster_id=cluster_id,
+        indexed=indexed,
+        located=located,
+        indexer_version=semantic.INDEXER_VERSION,
+    )
     total = conn.execute(
         f"""SELECT COUNT(*)
             FROM files f LEFT JOIN dates d ON d.file_id=f.id
@@ -279,19 +311,8 @@ def set_date(conn, file_id, value: str) -> dict:
     return {"ok": True, "date": v, "date_source": "manual"}
 
 
-@reading
-def item(conn, fid: int, min_media: int = 10) -> dict | None:
-    f = conn.execute(
-        """SELECT f.*, r.path AS root_path FROM files f
-           JOIN roots r ON r.id=f.root_id WHERE f.id=?""",
-        (fid,),
-    ).fetchone()
-    if not f:
-        return None
-    d = conn.execute("SELECT * FROM dates WHERE file_id=?", (fid,)).fetchone()
-    g = conn.execute("SELECT * FROM geo WHERE file_id=?", (fid,)).fetchone()
-    m = conn.execute("SELECT * FROM media_meta WHERE file_id=?", (fid,)).fetchone()
-    t = conn.execute("SELECT * FROM takeout_sidecar WHERE file_id=?", (fid,)).fetchone()
+def _item_detections(conn, fid):
+    """Detected people and animals for one file, as (people, animals)."""
     people = [
         {
             "person_id": r["person_id"],
@@ -322,17 +343,24 @@ def item(conn, fid: int, min_media: int = 10) -> dict | None:
             (fid,),
         )
     ]
+    return people, animals
+
+
+def _item_place(conn, fid, min_media):
     # Current place membership (a file belongs to at most one place).
     # A below-threshold, unnamed/unpinned cluster is not reported as a
     # "place" here either (see place_min_media) — this file just has no
     # location, matching what place_clusters() shows on the map.
-    place = conn.execute(
+    return conn.execute(
         f"""SELECT pc.id, pc.name FROM place_cluster_members pcm
            JOIN place_clusters pc ON pc.id=pcm.cluster_id
            WHERE pcm.file_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
            LIMIT 1""",
         (fid, min_media),
     ).fetchone()
+
+
+def _item_pick_lists(conn, root_id):
     # Pick-lists for in-panel editing: only *named* places (in this file's root)
     # and *named* persons are offered as targets.
     place_options = [
@@ -341,7 +369,7 @@ def item(conn, fid: int, min_media: int = 10) -> dict | None:
             """SELECT id, name FROM place_clusters
            WHERE root_id=? AND name IS NOT NULL
            ORDER BY name COLLATE NOCASE""",
-            (f["root_id"],),
+            (root_id,),
         )
     ]
     person_options = [
@@ -358,6 +386,10 @@ def item(conn, fid: int, min_media: int = 10) -> dict | None:
            ORDER BY name COLLATE NOCASE"""
         )
     ]
+    return place_options, person_options, pet_options
+
+
+def _item_manual_tags(conn, fid):
     # Manually tagged people/pets on this file (person_files/pet_files) --
     # no face/detection exists for these, so there's no face_id/detection_id.
     # Name resolves from the live persons/pets table; if the id has rotted
@@ -389,6 +421,26 @@ def item(conn, fid: int, min_media: int = 10) -> dict | None:
             (fid,),
         )
     ]
+    return manual_people, manual_pets
+
+
+@reading
+def item(conn, fid: int, min_media: int = 10) -> dict | None:
+    f = conn.execute(
+        """SELECT f.*, r.path AS root_path FROM files f
+           JOIN roots r ON r.id=f.root_id WHERE f.id=?""",
+        (fid,),
+    ).fetchone()
+    if not f:
+        return None
+    d = conn.execute("SELECT * FROM dates WHERE file_id=?", (fid,)).fetchone()
+    g = conn.execute("SELECT * FROM geo WHERE file_id=?", (fid,)).fetchone()
+    m = conn.execute("SELECT * FROM media_meta WHERE file_id=?", (fid,)).fetchone()
+    t = conn.execute("SELECT * FROM takeout_sidecar WHERE file_id=?", (fid,)).fetchone()
+    people, animals = _item_detections(conn, fid)
+    place = _item_place(conn, fid, min_media)
+    place_options, person_options, pet_options = _item_pick_lists(conn, f["root_id"])
+    manual_people, manual_pets = _item_manual_tags(conn, fid)
     return {
         "id": fid,
         "name": os.path.basename(f["rel_path"]),
