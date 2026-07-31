@@ -46,10 +46,18 @@ Handler = Callable[[Request], object]
 GET_ROUTES: dict[str, Handler] = {
     "/api/health": static.health,
     "/api/summary": overview.summary,
+    "/": static.index,
+    "/index.html": static.index,
+    "/manifest.webmanifest": static.manifest,
+    "/sw.js": static.service_worker,
 }
 
 # Ordered: the first matching prefix wins. See the module docstring.
-GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (("/api/item/", browse.item),)
+GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
+    ("/api/item/", browse.item),
+    ("/icon-", static.icon),
+    ("/vendor/", static.vendor),
+)
 
 POST_ROUTES: dict[str, Handler] = {}
 

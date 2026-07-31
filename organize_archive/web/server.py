@@ -19,37 +19,12 @@ from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
 from ..services import archives, browse, dups, overview, people, pets, places, search
-from . import icons, routes
+from . import routes
 from .jobs import JobManager
 
 logger = logging.getLogger(__name__)
 
-_INDEX = Path(__file__).with_name("index.html")
 _CHUNK = 256 * 1024
-
-_MANIFEST = {
-    "name": "Trove",
-    "short_name": "Trove",
-    "start_url": "/",
-    "scope": "/",
-    "display": "standalone",
-    "background_color": "#f5f5f7",
-    "theme_color": "#f5f5f7",
-    "icons": [
-        {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
-        {
-            "src": "/icon-512.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "any maskable",
-        },
-    ],
-}
-_SW = (
-    "self.addEventListener('install',e=>self.skipWaiting());\n"
-    "self.addEventListener('activate',e=>self.clients.claim());\n"
-    "self.addEventListener('fetch',e=>{});\n"
-)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -200,24 +175,6 @@ class Handler(BaseHTTPRequestHandler):
             )
             if handler is not None:
                 self._respond(handler(self._build_request("GET", {})))
-            elif path in ("/", "/index.html"):
-                # Never cache the app shell, so a server update takes effect on a
-                # plain reload (no hard-refresh needed to shake off stale JS).
-                self._send_file(_INDEX, "text/html; charset=utf-8", cache_control="no-store")
-            elif path == "/manifest.webmanifest":
-                self._bytes(json.dumps(_MANIFEST).encode(), "application/manifest+json")
-            elif path == "/sw.js":
-                self._bytes(_SW.encode(), "text/javascript")
-            elif path.startswith("/icon-"):
-                size = 512 if "512" in path else 192
-                self._bytes(icons.app_icon(self.cfg.cache_dir, size), "image/png")
-            elif path.startswith("/vendor/"):
-                name = path.rsplit("/", 1)[1]
-                vf = Path(__file__).with_name("vendor") / name
-                if vf.is_file() and ".." not in name:
-                    self._send_file(vf)
-                else:
-                    self._json({"error": "not found"}, 404)
             elif path == "/api/archives":
                 self._json({"archives": archives.archives(self.cfg)})
             elif path == "/api/settings":
