@@ -13,6 +13,7 @@ import json
 import os
 
 from ..db import database as db
+from . import merging
 from ._common import reading, writing
 
 
@@ -216,6 +217,13 @@ def rename_place_cluster(conn, cluster_id, name: str) -> dict:
 # true restore of the dropped row rather than "delete a constraint and hope
 # the next recluster sorts it out" -- see unmerge_place_clusters.
 
+_PLACE = merging.EntitySpec(
+    singular="place",
+    plural="places",
+    table="place_clusters",
+    columns="id,root_id,name,lat,lon,member_count,pinned",
+)
+
 
 def _place_merge_survivor(pa, pb):
     """Which of two place_clusters rows (each needing at least id, name, lat,
@@ -241,6 +249,55 @@ def _place_merge_survivor(pa, pb):
     return pb, pa
 
 
+def _merged_centre(keep, drop) -> tuple[float, float]:
+    # Coordinates: a pinned survivor's coordinate is a deliberate user
+    # pin and never moves. Otherwise, the merged centroid is the
+    # member-count weighted mean of the two inputs -- the same
+    # incremental-mean rule assign_unplaced uses when it rolls a new
+    # point into an existing place (geo/clusters.py:200-207), just
+    # applied to two existing centroids instead of one point.
+    if keep["pinned"]:
+        return keep["lat"], keep["lon"]
+    n_keep = keep["member_count"] or 0
+    n_drop = drop["member_count"] or 0
+    total = n_keep + n_drop
+    if not total:
+        return keep["lat"], keep["lon"]
+    return (
+        (keep["lat"] * n_keep + drop["lat"] * n_drop) / total,
+        (keep["lon"] * n_keep + drop["lon"] * n_drop) / total,
+    )
+
+
+def _record_place_merge(
+    conn, keep, drop, survivor_name, survivor_lat_before, survivor_lon_before, drop_members, now
+):
+    # Recorded so this merge can be undone later (see
+    # unmerge_place_clusters): the losing row in full, its members with
+    # their original source, and the survivor's centroid BEFORE this
+    # merge (so undo can put it back exactly, not just approximately).
+    conn.execute(
+        """INSERT INTO place_merges(survivor_id, survivor_name, survivor_name_before,
+                                     dropped_name, dropped_lat, dropped_lon,
+                                     dropped_pinned, survivor_lat, survivor_lon,
+                                     file_ids, created_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            keep["id"],
+            survivor_name,
+            keep["name"],
+            drop["name"],
+            drop["lat"],
+            drop["lon"],
+            drop["pinned"],
+            survivor_lat_before,
+            survivor_lon_before,
+            json.dumps(drop_members),
+            now,
+        ),
+    )
+
+
 @writing
 def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
     """User confirmed two place clusters are the same location. Merge
@@ -256,23 +313,14 @@ def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
       count (named > pinned > count > id): a pinned place is a coordinate
       the user deliberately dropped by hand, which outranks an auto-place's
       mere size but still loses to an explicit name either side carries."""
-    if not id_a or not id_b or id_a == id_b:
-        return {"error": "need two distinct places"}
-    pa = conn.execute(
-        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-        (id_a,),
-    ).fetchone()
-    pb = conn.execute(
-        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-        (id_b,),
-    ).fetchone()
-    if not pa or not pb:
-        return {"error": "unknown place"}
+    pa, pb, err = merging.load_sides(conn, _PLACE, id_a, id_b)
+    if err:
+        return err
     if pa["root_id"] != pb["root_id"]:
         return {"error": "cannot merge places from different archives"}
-    name = (name or "").strip() or None
-    if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
-        return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
+    name, err = merging.resolve_name(pa, pb, name)
+    if err:
+        return err
     # Survivor: named > pinned > larger member_count > lower id, same
     # deterministic chain as merge_persons/merge_pets with `pinned`
     # inserted (see docstring above). Shared with place_merge_preview via
@@ -300,23 +348,7 @@ def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
         (keep["id"], drop["id"]),
     )
     conn.execute("DELETE FROM place_clusters WHERE id=?", (drop["id"],))
-    # Coordinates: a pinned survivor's coordinate is a deliberate user
-    # pin and never moves. Otherwise, the merged centroid is the
-    # member-count weighted mean of the two inputs -- the same
-    # incremental-mean rule assign_unplaced uses when it rolls a new
-    # point into an existing place (geo/clusters.py:200-207), just
-    # applied to two existing centroids instead of one point.
-    if not keep["pinned"]:
-        n_keep = keep["member_count"] or 0
-        n_drop = drop["member_count"] or 0
-        total = n_keep + n_drop
-        if total:
-            new_lat = (keep["lat"] * n_keep + drop["lat"] * n_drop) / total
-            new_lon = (keep["lon"] * n_keep + drop["lon"] * n_drop) / total
-        else:
-            new_lat, new_lon = keep["lat"], keep["lon"]
-    else:
-        new_lat, new_lon = keep["lat"], keep["lon"]
+    new_lat, new_lon = _merged_centre(keep, drop)
     # Recompute member_count from place_cluster_members rather than
     # summing the two prior counts: the OR REPLACE above may have
     # collapsed a file that was a member of both, so a plain sum could
@@ -329,32 +361,84 @@ def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
         "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
         (survivor_name, new_lat, new_lon, new_count, keep["id"]),
     )
-    # Recorded so this merge can be undone later (see
-    # unmerge_place_clusters): the losing row in full, its members with
-    # their original source, and the survivor's centroid BEFORE this
-    # merge (so undo can put it back exactly, not just approximately).
-    conn.execute(
-        """INSERT INTO place_merges(survivor_id, survivor_name, survivor_name_before,
-                                     dropped_name, dropped_lat, dropped_lon,
-                                     dropped_pinned, survivor_lat, survivor_lon,
-                                     file_ids, created_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            keep["id"],
-            survivor_name,
-            keep["name"],
-            drop["name"],
-            drop["lat"],
-            drop["lon"],
-            drop["pinned"],
-            survivor_lat_before,
-            survivor_lon_before,
-            json.dumps(drop_members),
-            now,
-        ),
+    _record_place_merge(
+        conn, keep, drop, survivor_name, survivor_lat_before, survivor_lon_before, drop_members, now
     )
     conn.commit()
     return {"ok": True, "place": {"id": keep["id"], "name": survivor_name, "count": new_count}}
+
+
+def _restore_dropped_place(conn, m, survivor_root_id, now) -> int:
+    """Re-INSERT the place merge_place_clusters deleted. Returns its new id."""
+    cur = conn.execute(
+        """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
+                                      pinned, created_at)
+           VALUES(?,?,?,?,0,?,?)""",
+        (
+            survivor_root_id,
+            m["dropped_name"],
+            m["dropped_lat"],
+            m["dropped_lon"],
+            m["dropped_pinned"],
+            now,
+        ),
+    )
+    return cur.lastrowid
+
+
+def _move_members_back(conn, file_ids, survivor_id, restored_id) -> int:
+    """Move each recorded member off the survivor and back onto the restored
+    place, preserving its original `source` so a manual attachment stays
+    manual. Returns the restored place's resulting member_count."""
+    for file_id, source in file_ids:
+        # The merge's UPDATE left this file's membership row pointing at
+        # the survivor (cluster_id=survivor["id"]); that row must be
+        # removed here, or the file would end up double-counted -- a
+        # member of both the restored place AND the survivor -- since an
+        # INSERT into place_cluster_members alone has a different PK
+        # (restored_id, file_id) and so cannot collide with (and
+        # replace) the survivor's (survivor_id, file_id) row.
+        conn.execute(
+            "DELETE FROM place_cluster_members WHERE cluster_id=? AND file_id=?",
+            (survivor_id, file_id),
+        )
+        # INSERT OR REPLACE, not plain INSERT: if the file rejoined the
+        # restored side under some other path since the merge, this
+        # undo still wins it back for the restored place, matching what
+        # the merge itself did to a doubly-attached file.
+        conn.execute(
+            "INSERT OR REPLACE INTO place_cluster_members(cluster_id, file_id, source) "
+            "VALUES(?,?,?)",
+            (restored_id, file_id, source),
+        )
+    return conn.execute(
+        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (restored_id,)
+    ).fetchone()[0]
+
+
+def _restore_survivor(conn, survivor, m) -> None:
+    # Restore the survivor's pre-merge centroid verbatim (see docstring
+    # for why this isn't recomputed) and its member_count from what
+    # actually remains after the moves above.
+    survivor_count = conn.execute(
+        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (survivor["id"],)
+    ).fetchone()[0]
+    # ...and its name, but only if nothing has renamed it since the merge.
+    # Merging two differently-named places takes an explicit `name` that
+    # OVERWRITES the survivor's own name, so without this the loser's name
+    # comes back on the restored place while the survivor keeps the chosen
+    # one -- the pre-merge pair "A"/"B" would undo to "A"/"A", quietly
+    # losing a name the user had typed. Conditional (not unconditional)
+    # for the same reason unmerge_persons guards its manual_person
+    # restore: a rename made deliberately after the merge outranks this
+    # bookkeeping and must not be clobbered.
+    survivor_name = (
+        m["survivor_name_before"] if survivor["name"] == m["survivor_name"] else survivor["name"]
+    )
+    conn.execute(
+        "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
+        (survivor_name, m["survivor_lat"], m["survivor_lon"], survivor_count, survivor["id"]),
+    )
 
 
 @writing
@@ -397,71 +481,14 @@ def unmerge_place_clusters(conn, merge_id) -> dict:
     ).fetchone()
     if not survivor:
         return {"error": "survivor place no longer exists"}
-    now = db.now_iso()
-    cur = conn.execute(
-        """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
-                                      pinned, created_at)
-           VALUES(?,?,?,?,0,?,?)""",
-        (
-            survivor["root_id"],
-            m["dropped_name"],
-            m["dropped_lat"],
-            m["dropped_lon"],
-            m["dropped_pinned"],
-            now,
-        ),
+    restored_id = _restore_dropped_place(conn, m, survivor["root_id"], db.now_iso())
+    restored_count = _move_members_back(
+        conn, json.loads(m["file_ids"]), survivor["id"], restored_id
     )
-    restored_id = cur.lastrowid
-    file_ids = json.loads(m["file_ids"])
-    for file_id, source in file_ids:
-        # The merge's UPDATE left this file's membership row pointing at
-        # the survivor (cluster_id=survivor["id"]); that row must be
-        # removed here, or the file would end up double-counted -- a
-        # member of both the restored place AND the survivor -- since an
-        # INSERT into place_cluster_members alone has a different PK
-        # (restored_id, file_id) and so cannot collide with (and
-        # replace) the survivor's (survivor_id, file_id) row.
-        conn.execute(
-            "DELETE FROM place_cluster_members WHERE cluster_id=? AND file_id=?",
-            (survivor["id"], file_id),
-        )
-        # INSERT OR REPLACE, not plain INSERT: if the file rejoined the
-        # restored side under some other path since the merge, this
-        # undo still wins it back for the restored place, matching what
-        # the merge itself did to a doubly-attached file.
-        conn.execute(
-            "INSERT OR REPLACE INTO place_cluster_members(cluster_id, file_id, source) "
-            "VALUES(?,?,?)",
-            (restored_id, file_id, source),
-        )
-    restored_count = conn.execute(
-        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (restored_id,)
-    ).fetchone()[0]
     conn.execute(
         "UPDATE place_clusters SET member_count=? WHERE id=?", (restored_count, restored_id)
     )
-    # Restore the survivor's pre-merge centroid verbatim (see docstring
-    # for why this isn't recomputed) and its member_count from what
-    # actually remains after the moves above.
-    survivor_count = conn.execute(
-        "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (survivor["id"],)
-    ).fetchone()[0]
-    # ...and its name, but only if nothing has renamed it since the merge.
-    # Merging two differently-named places takes an explicit `name` that
-    # OVERWRITES the survivor's own name, so without this the loser's name
-    # comes back on the restored place while the survivor keeps the chosen
-    # one -- the pre-merge pair "A"/"B" would undo to "A"/"A", quietly
-    # losing a name the user had typed. Conditional (not unconditional)
-    # for the same reason unmerge_persons guards its manual_person
-    # restore: a rename made deliberately after the merge outranks this
-    # bookkeeping and must not be clobbered.
-    survivor_name = (
-        m["survivor_name_before"] if survivor["name"] == m["survivor_name"] else survivor["name"]
-    )
-    conn.execute(
-        "UPDATE place_clusters SET name=?, lat=?, lon=?, member_count=? WHERE id=?",
-        (survivor_name, m["survivor_lat"], m["survivor_lon"], survivor_count, survivor["id"]),
-    )
+    _restore_survivor(conn, survivor, m)
     conn.execute("DELETE FROM place_merges WHERE id=?", (merge_id,))
     conn.commit()
     return {"ok": True, "place_id": restored_id}
@@ -483,37 +510,13 @@ def place_merge_preview(conn, id_a, id_b, warn_km: float) -> dict:
     answer the same practical question -- "is this cluster absurdly spread
     out?" -- and the centre-based one scales to the largest place in the
     archive without a second thought."""
-    if not id_a or not id_b or id_a == id_b:
-        return {"error": "need two distinct places"}
-    pa = conn.execute(
-        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-        (id_a,),
-    ).fetchone()
-    pb = conn.execute(
-        "SELECT id,root_id,name,lat,lon,member_count,pinned FROM place_clusters WHERE id=?",
-        (id_b,),
-    ).fetchone()
-    if not pa or not pb:
-        return {"error": "unknown place"}
+    pa, pb, err = merging.load_sides(conn, _PLACE, id_a, id_b)
+    if err:
+        return err
     if pa["root_id"] != pb["root_id"]:
         return {"error": "cannot merge places from different archives"}
     keep, drop = _place_merge_survivor(pa, pb)
-    # Same rule merge_place_clusters applies when it actually writes the
-    # merged row: a pinned survivor's coordinate is a deliberate user pin
-    # and never moves; otherwise the centre is the member-count weighted
-    # mean of the two centroids (geo/clusters.py's incremental-mean rule,
-    # applied to two existing centroids instead of one new point).
-    if keep["pinned"]:
-        centre_lat, centre_lon = keep["lat"], keep["lon"]
-    else:
-        n_keep = keep["member_count"] or 0
-        n_drop = drop["member_count"] or 0
-        total = n_keep + n_drop
-        if total:
-            centre_lat = (keep["lat"] * n_keep + drop["lat"] * n_drop) / total
-            centre_lon = (keep["lon"] * n_keep + drop["lon"] * n_drop) / total
-        else:
-            centre_lat, centre_lon = keep["lat"], keep["lon"]
+    centre_lat, centre_lon = _merged_centre(keep, drop)
     from ..geo.clusters import _haversine_m
 
     # Every geolocated member of BOTH clusters. Manually-attached members
