@@ -36,7 +36,10 @@ imposes.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+
+from ..db import database as db
 
 
 @dataclass(frozen=True)
@@ -85,3 +88,141 @@ def resolve_name(pa, pb, name):
     if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
         return None, {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
     return name, None
+
+
+@dataclass(frozen=True)
+class LinkedSpec:
+    """An entity whose merge is made durable by a link between two *children*.
+
+    People and pets both have this shape. The clusterer rebuilds `persons` and
+    `pets` wholesale, so a merge recorded against an entity id would be undone
+    by the next pass; recorded against a face or a detection id, which the
+    rebuild does not touch, it survives. That is the whole reason the link
+    tables exist, and it is why every column below names a child rather than an
+    entity.
+    """
+
+    entity: EntitySpec
+    child_table: str
+    fk: str
+    merge_table: str
+    child_ids_column: str
+    link_table: str
+    link_a: str
+    link_b: str
+
+
+def record_link(conn, spec: LinkedSpec, child_a, child_b, kind: str, now: str):
+    """Write a durable link constraint between two child rows.
+
+    Returns the ``(sorted)`` pair it wrote, or ``None`` if there was nothing to
+    link -- callers that need to record exactly which link a merge produced
+    (``*_merges.link_a``/``link_b``, for undo) key off this return value rather
+    than re-deriving the sort.
+    """
+    if not child_a or not child_b or child_a == child_b:
+        return None
+    a, b = sorted((child_a, child_b))
+    conn.execute(
+        f"INSERT OR REPLACE INTO {spec.link_table}"
+        f"({spec.link_a}, {spec.link_b}, kind, created_at) VALUES(?,?,?,?)",
+        (a, b, kind, now),
+    )
+    return (a, b)
+
+
+def merge_linked(conn, spec: LinkedSpec, keep, drop, *, survivor_name, rep, finish, now: str):
+    """Move the loser's children onto the survivor and record how to undo it.
+
+    ``keep``/``drop`` are already chosen by the caller: survivor rules differ
+    per entity and stay where a reader of that entity can see them.
+    ``rep(conn, side)`` yields the child id that anchors that side's link.
+    ``finish(conn, keep, survivor_name)`` applies whatever bookkeeping the
+    entity does to a survivor afterwards -- recounting, a centroid, a name.
+
+    **Does not commit**, unlike ``unmerge_linked``, and the asymmetry is
+    deliberate: both callers read the survivor row back afterwards to build
+    their response, so the commit has to happen in the caller, between this
+    and that read. Undo has nothing to read back and so owns its own commit.
+    """
+    # Captured before the UPDATE below moves them: this is exactly the set the
+    # undo needs in order to know which children this merge folded in.
+    drop_children = [
+        r[0]
+        for r in conn.execute(
+            f"SELECT id FROM {spec.child_table} WHERE {spec.fk}=?", (drop["id"],)
+        ).fetchall()
+    ]
+    link = record_link(conn, spec, rep(conn, keep), rep(conn, drop), "same", now)
+    # foreign_keys=ON (see db.connect): the child's foreign key is
+    # ON DELETE SET NULL, so the UPDATE moving drop's children MUST run before
+    # the DELETE, or they would be orphaned instead of merged.
+    conn.execute(
+        f"UPDATE {spec.child_table} SET {spec.fk}=? WHERE {spec.fk}=?",
+        (keep["id"], drop["id"]),
+    )
+    conn.execute(f"DELETE FROM {spec.entity.table} WHERE id=?", (drop["id"],))
+    finish(conn, keep, survivor_name)
+    # Recorded so this merge can be undone later: which children moved, what
+    # the losing side was called, and which link row to retract.
+    conn.execute(
+        f"""INSERT INTO {spec.merge_table}(survivor_id, survivor_name, dropped_name,
+                        {spec.child_ids_column}, link_a, link_b, created_at)
+            VALUES(?,?,?,?,?,?,?)""",
+        (
+            keep["id"],
+            survivor_name,
+            drop["name"],
+            json.dumps(drop_children),
+            link[0] if link else None,
+            link[1] if link else None,
+            now,
+        ),
+    )
+
+
+def unmerge_linked(conn, spec: LinkedSpec, merge_id, *, restore=None) -> dict:
+    """Undo a merge recorded by ``merge_linked``.
+
+    ``restore(conn, merge_row)`` is the entity's own extra restoration, if it
+    has one; people re-pin face names, pets have nothing to put back.
+
+    Safe to call twice: a stale or missing ``merge_id`` returns a clean error
+    rather than raising. Returns ``recluster`` so the caller knows to re-run
+    the clusterer -- nothing here moves children back itself, because that is
+    the recluster's job, honouring the constraint written below.
+    """
+    if not merge_id:
+        return {"error": "missing merge_id"}
+    m = conn.execute(f"SELECT * FROM {spec.merge_table} WHERE id=?", (merge_id,)).fetchone()
+    if not m:
+        return {"error": "merge not found"}
+    now = db.now_iso()
+    # Deleting the 'same' link is not enough on its own: if the automatic
+    # clusterer would group these two back together anyway, they would silently
+    # re-merge on the very next pass. So this also writes a 'different'
+    # (cannot-link) row over the same pair -- both faces/cluster.py's and
+    # pets/cluster.py's `_apply_links` give cannot-link precedence over
+    # must-link, and it stays reversible (merging them again writes 'same'
+    # back over it via INSERT OR REPLACE).
+    #
+    # Known limitation: _apply_links only blocks the automatic pass from
+    # UNIONING two of its own clusters; it never SPLITS a cluster that pass
+    # forms on its own. If the embeddings alone would already place these
+    # children together, this cannot-link cannot pull them apart -- that is
+    # pre-existing clustering behaviour, not something undo can fix.
+    if m["link_a"] and m["link_b"]:
+        conn.execute(
+            f"DELETE FROM {spec.link_table} WHERE {spec.link_a}=? AND {spec.link_b}=?",
+            (m["link_a"], m["link_b"]),
+        )
+        conn.execute(
+            f"INSERT OR REPLACE INTO {spec.link_table}"
+            f"({spec.link_a}, {spec.link_b}, kind, created_at) VALUES(?,?,'different',?)",
+            (m["link_a"], m["link_b"], now),
+        )
+    if restore is not None:
+        restore(conn, m)
+    conn.execute(f"DELETE FROM {spec.merge_table} WHERE id=?", (merge_id,))
+    conn.commit()
+    return {"ok": True, "recluster": True}

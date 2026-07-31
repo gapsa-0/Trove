@@ -18,6 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 from ..db import database as db
+from . import merging
 from ._common import _NOT_HIDDEN, _root_clause, reading, writing
 
 # -- pets / non-human detections -------------------------------------------
@@ -452,19 +453,21 @@ def _rep_detection(conn, pid, cover) -> int | None:
 # side of this, and faces/cluster.py's `_apply_links` / `face_links` for the
 # original version of the same trick.
 
-
-def _record_pet_link(conn, det_a, det_b, now: str) -> tuple[int, int] | None:
-    """Write a durable 'same' pet_links constraint. Returns the (sorted) pair
-    it wrote, or None if there was nothing to link -- mirrors _record_link;
-    used by merge_pets to fill in pet_merges.link_a/link_b for undo."""
-    if not det_a or not det_b or det_a == det_b:
-        return None
-    a, b = sorted((det_a, det_b))
-    conn.execute(
-        "INSERT OR REPLACE INTO pet_links(det_a, det_b, kind, created_at) VALUES(?,?,'same',?)",
-        (a, b, now),
-    )
-    return (a, b)
+_PET = merging.LinkedSpec(
+    entity=merging.EntitySpec(
+        singular="pet",
+        plural="pets",
+        table="pets",
+        columns="id,name,cover_detection_id,detection_count",
+    ),
+    child_table="animal_detections",
+    fk="pet_id",
+    merge_table="pet_merges",
+    child_ids_column="det_ids",
+    link_table="pet_links",
+    link_a="det_a",
+    link_b="det_b",
+)
 
 
 def _refresh_pet_stats(conn, pet_id, name) -> None:
@@ -511,19 +514,12 @@ def merge_pets(conn, id_a, id_b, name=None) -> dict:
     (move detections, keep the named/larger one) AND store a durable 'same'
     pet_links constraint so the merge survives the next cluster_pets rebuild.
     Mirrors merge_persons; see its docstring for the explicit-`name` override."""
-    if not id_a or not id_b or id_a == id_b:
-        return {"error": "need two distinct pets"}
-    pa = conn.execute(
-        "SELECT id,name,cover_detection_id,detection_count FROM pets WHERE id=?", (id_a,)
-    ).fetchone()
-    pb = conn.execute(
-        "SELECT id,name,cover_detection_id,detection_count FROM pets WHERE id=?", (id_b,)
-    ).fetchone()
-    if not pa or not pb:
-        return {"error": "unknown pet"}
-    name = (name or "").strip() or None
-    if pa["name"] and pb["name"] and pa["name"] != pb["name"] and not name:
-        return {"error": f"both named ({pa['name']} / {pb['name']}); choose a name"}
+    pa, pb, err = merging.load_sides(conn, _PET.entity, id_a, id_b)
+    if err:
+        return err
+    name, err = merging.resolve_name(pa, pb, name)
+    if err:
+        return err
     # Survivor: the named one, else the larger detection_count, else the
     # lower id (deterministic tiebreak so repeated merges are stable).
     if pa["name"] and not pb["name"]:
@@ -538,42 +534,16 @@ def merge_pets(conn, id_a, id_b, name=None) -> dict:
         keep, drop = pa, pb
     else:
         keep, drop = pb, pa
-    now = db.now_iso()
-    # Captured before the UPDATE below moves them, mirroring merge_persons
-    # -- unmerge_pets needs to know which detections this merge folded in.
-    drop_det_ids = [
-        r[0]
-        for r in conn.execute(
-            "SELECT id FROM animal_detections WHERE pet_id=?", (drop["id"],)
-        ).fetchall()
-    ]
-    link = _record_pet_link(
-        conn,
-        _rep_detection(conn, keep["id"], keep["cover_detection_id"]),
-        _rep_detection(conn, drop["id"], drop["cover_detection_id"]),
-        now,
-    )
-    # foreign_keys=ON (see db.connect): animal_detections.pet_id is
-    # ON DELETE SET NULL, so the UPDATE moving drop's detections MUST run
-    # before DELETE FROM pets, or they'd be orphaned instead of merged.
-    conn.execute("UPDATE animal_detections SET pet_id=? WHERE pet_id=?", (keep["id"], drop["id"]))
-    conn.execute("DELETE FROM pets WHERE id=?", (drop["id"],))
     survivor_name = name or keep["name"] or drop["name"]
-    _refresh_pet_stats(conn, keep["id"], survivor_name)
-    # Recorded so this merge can be undone later (see unmerge_pets).
-    conn.execute(
-        """INSERT INTO pet_merges(survivor_id, survivor_name, dropped_name,
-                                   det_ids, link_a, link_b, created_at)
-           VALUES(?,?,?,?,?,?,?)""",
-        (
-            keep["id"],
-            survivor_name,
-            drop["name"],
-            json.dumps(drop_det_ids),
-            link[0] if link else None,
-            link[1] if link else None,
-            now,
-        ),
+    merging.merge_linked(
+        conn,
+        _PET,
+        keep,
+        drop,
+        survivor_name=survivor_name,
+        rep=lambda c, side: _rep_detection(c, side["id"], side["cover_detection_id"]),
+        finish=lambda c, keep_row, chosen: _refresh_pet_stats(c, keep_row["id"], chosen),
+        now=db.now_iso(),
     )
     conn.commit()
     r = conn.execute(
@@ -592,37 +562,16 @@ def merge_pets(conn, id_a, id_b, name=None) -> dict:
 
 @writing
 def unmerge_pets(conn, merge_id) -> dict:
-    """Undo a drag-merge recorded by merge_pets. Mirrors unmerge_persons: the
-    recorded 'same' pet_links row is deleted and replaced with a 'different'
-    (cannot-link) row over the same detection pair, so cluster_pets' next
-    rebuild can't silently re-form the merge (pets/cluster.py's _apply_links
-    now honours 'different' the same way faces/cluster.py's does).
+    """Undo a drag-merge recorded by merge_pets. See merging.unmerge_linked
+    for the shared mechanics (the cannot-link write and the safe-to-call-twice
+    contract).
 
     Simpler than the person version: pet names aren't pinned per-detection
     (animal_detections.manual_pet exists in the schema but nothing writes to
     it yet), so there's no name pin to restore -- cluster_pets' own
     name-carryover (best overlap with a still-named pet) sorts the dropped
-    name back out on the next rebuild by itself.
-
-    Safe to call twice: a stale/missing merge_id returns a clean error rather
-    than raising. Returns {"ok": True, "recluster": True} so the caller knows
-    to kick off cluster_pets."""
-    if not merge_id:
-        return {"error": "missing merge_id"}
-    m = conn.execute("SELECT * FROM pet_merges WHERE id=?", (merge_id,)).fetchone()
-    if not m:
-        return {"error": "merge not found"}
-    now = db.now_iso()
-    if m["link_a"] and m["link_b"]:
-        conn.execute("DELETE FROM pet_links WHERE det_a=? AND det_b=?", (m["link_a"], m["link_b"]))
-        conn.execute(
-            "INSERT OR REPLACE INTO pet_links(det_a, det_b, kind, created_at) "
-            "VALUES(?,?,'different',?)",
-            (m["link_a"], m["link_b"], now),
-        )
-    conn.execute("DELETE FROM pet_merges WHERE id=?", (merge_id,))
-    conn.commit()
-    return {"ok": True, "recluster": True}
+    name back out on the next rebuild by itself."""
+    return merging.unmerge_linked(conn, _PET, merge_id)
 
 
 @reading
