@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
-import os
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,7 +19,7 @@ from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
 from ..services import archives, browse, dups, overview, people, pets, places, search
-from . import icons
+from . import icons, routes
 from .jobs import JobManager
 
 logger = logging.getLogger(__name__)
@@ -143,6 +142,40 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("root is required")
         return self.cfg.archive_cache_dir(root_id)
 
+    # -- routing ------------------------------------------------------------
+    # The route tables in ``routes/`` are consulted first and the if/elif chains
+    # below are the fallback, so routes can move a domain at a time and the ones
+    # that have not moved keep working untouched.
+    #
+    # ⚠️ A prefix route may only move into ``GET_PREFIX_ROUTES`` together with
+    # every exact route that sits underneath it -- ``/api/map/cluster/`` with
+    # ``/api/map/cluster/merge-preview``, ``/api/pet/`` with
+    # ``/api/pet/detections``. Split them across two commits and the prefix
+    # swallows the exact route for one commit, which no test would catch because
+    # both answer 404.
+    def _build_request(self, method: str, body: dict) -> routes.Request:
+        u = urlparse(self.path)
+        return routes.Request(
+            method=method,
+            path=u.path,
+            query=parse_qs(u.query),
+            body=body,
+            cfg=self.cfg,
+            jobs=self.jobs,
+        )
+
+    def _respond(self, result) -> None:
+        """Serialise whatever a handler returned. A bare object is JSON 200;
+        the three wrappers exist for everything else."""
+        if isinstance(result, routes.FileBody):
+            self._send_file(result.path, result.content_type, result.cache_control)
+        elif isinstance(result, routes.Raw):
+            self._bytes(result.body, result.content_type, result.status, result.cache_control)
+        elif isinstance(result, routes.Json):
+            self._json(result.body, result.status)
+        else:
+            self._json(result)
+
     # -- GET --------------------------------------------------------------
     def do_GET(self):
         u = urlparse(self.path)
@@ -162,16 +195,11 @@ class Handler(BaseHTTPRequestHandler):
             return out
 
         try:
-            if path == "/api/health":
-                from .. import __version__
-
-                self._json(
-                    {
-                        "ok": True,
-                        "version": __version__,
-                        "commit": os.environ.get("ARCHIVE_BUILD_COMMIT", "dev"),
-                    }
-                )
+            handler = routes.GET_ROUTES.get(path) or routes.prefix_handler(
+                routes.GET_PREFIX_ROUTES, path
+            )
+            if handler is not None:
+                self._respond(handler(self._build_request("GET", {})))
             elif path in ("/", "/index.html"):
                 # Never cache the app shell, so a server update takes effect on a
                 # plain reload (no hard-refresh needed to shake off stale JS).
@@ -194,9 +222,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"archives": archives.archives(self.cfg)})
             elif path == "/api/settings":
                 self._json({})
-            elif path == "/api/summary":
-                rid = one("root", int)
-                self._json(overview.summary(self._db(rid), rid))
             elif path == "/api/timeline":
                 rid = one("root", int)
                 self._json(
@@ -415,16 +440,6 @@ class Handler(BaseHTTPRequestHandler):
                             ],
                         )
                     )
-            elif path.startswith("/api/item/"):
-                rid = self.jobs.current_root_id()
-                it = (
-                    browse.item(
-                        self._db(rid), int(path.rsplit("/", 1)[1]), self.cfg.place_min_media
-                    )
-                    if rid
-                    else None
-                )
-                self._json(it) if it else self._json({"error": "not found"}, 404)
             elif path == "/api/pipeline":
                 # Single source of truth for pipeline status: the same resolved
                 # stage list the scheduler acts on, so cards never disagree with

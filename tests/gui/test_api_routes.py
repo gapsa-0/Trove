@@ -818,8 +818,14 @@ def test_post_map_cluster_merge_then_unmerge_round_trips(live_server):
 
 
 # ---------------------------------------------------------------------------
-# Drift guard: the route literals server.py actually compares `path` against
-# must match this file's declared route lists.
+# Drift guard: the routes server.py actually serves must match this file's
+# declared route lists.
+#
+# Routes live in two places while stage 08's rewrite is under way: the tables in
+# ``web/routes/`` and whatever is left of do_GET/do_POST's if/elif chains. The
+# guard asserts against their *union*, so it stays exact from one end of the
+# rewrite to the other -- with the tables empty it is the original chain-scraping
+# check, and once the chains are gone it is a plain read of the tables.
 # ---------------------------------------------------------------------------
 
 # GET, exact (28: 24 /api + 4 non-api).
@@ -910,20 +916,38 @@ def _route_literals(chunk: str) -> set[str]:
     return literals
 
 
-def test_route_literals_match_server_py_exactly():
-    """Parses server.py's do_GET/do_POST and checks their route literals
-    against GET_EXACT/GET_PREFIX/POST_EXACT above -- so a route added to (or
-    dropped from) the if-elif chain without a matching update here fails a
-    test, instead of silently drifting out of what this file actually covers.
+def _chain_literals() -> tuple[set[str], set[str]]:
+    """(GET, POST) route literals still hard-coded in server.py's chains.
 
-    Verified to fail on a planted regression: commenting out either
-    ``"/api/health"`` from GET_EXACT or a whole elif branch in server.py
-    trips this assertion (checked by hand while writing this file, not
-    itself a test -- there is no supported way to mutate the shipped
-    server.py from within a test)."""
+    ``do_POST``'s chunk runs to end of file rather than to a named method: the
+    methods after it hold no route conditions, and anchoring on one of them
+    would make this guard fail for the wrong reason the day it moves.
+    """
     source = Path(server.__file__).read_text()
-    get_chunk = source[source.index("def do_GET") : source.index("def do_POST")]
-    post_chunk = source[source.index("def do_POST") : source.index("def _open_db_and_cache")]
+    return (
+        _route_literals(source[source.index("def do_GET") : source.index("def do_POST")]),
+        _route_literals(source[source.index("def do_POST") :]),
+    )
 
-    assert _route_literals(get_chunk) == GET_EXACT | GET_PREFIX
-    assert _route_literals(post_chunk) == POST_EXACT
+
+def test_route_literals_match_server_py_exactly():
+    """Checks every route server.py serves -- from the ``web/routes`` tables and
+    from what remains of the if/elif chains -- against GET_EXACT/GET_PREFIX/
+    POST_EXACT above, so a route added or dropped without a matching update here
+    fails a test instead of silently drifting out of what this file covers.
+
+    Verified to fail on a planted regression: dropping ``"/api/health"`` from
+    GET_EXACT, deleting an elif branch from server.py, or removing an entry from
+    ``routes.GET_ROUTES`` each trips this assertion (checked by hand -- there is
+    no supported way to mutate the shipped server from within a test)."""
+    get_chain, post_chain = _chain_literals()
+    get_table = set(server.routes.GET_ROUTES) | {p for p, _ in server.routes.GET_PREFIX_ROUTES}
+    post_table = set(server.routes.POST_ROUTES)
+
+    assert get_table | get_chain == GET_EXACT | GET_PREFIX
+    assert post_table | post_chain == POST_EXACT
+    # Nothing may be served twice: a route left in the chain *and* added to a
+    # table would answer from the table, making the chain branch dead code that
+    # still reads as live.
+    assert not (get_table & get_chain), "route in both the GET table and the GET chain"
+    assert not (post_table & post_chain), "route in both the POST table and the POST chain"
