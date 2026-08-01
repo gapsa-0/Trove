@@ -3,6 +3,47 @@
 Runs long operations (scan, enrich) in worker threads and exposes their live
 progress for polling. Write-tasks are serialized by a global lock so only one
 touches the SQLite writer at a time (reads via the GUI stay concurrent).
+
+Threading contract
+------------------
+This is the only module in the package that knows about threads, and these are
+the rules it keeps. They were true before they were written down; the point of
+writing them down is that the next change to this file can be checked against
+them.
+
+**Threads.** Three kinds touch a ``JobManager``: the HTTP threads (many, one
+per request), the scheduler thread (exactly one, started in ``__init__`` and
+stopped by ``shutdown``), and one worker thread per running job.
+
+**Who may start a job.** Only the scheduler thread, from ``_auto_tick``. An
+HTTP thread that wants work to begin calls ``nudge()``, which sets an event and
+returns; it never starts a job itself. Two mutations do call ``start()``
+directly (a re-cluster after an unmerge), and those are the exception that
+proves the rule -- they are one-shot jobs with no dependencies.
+
+**Locks.**
+
+* ``_lock`` guards the job registry: ``_jobs``, ``_cancels`` and ``_seq``.
+  Hold it briefly; never hold it while running a job or opening a database.
+* ``_write_lock`` serialises the stages that rewrite tables wholesale, so at
+  most one of them holds SQLite's writer at a time. A runner declares whether
+  it needs this (``Runner.takes_write_lock``); the manager, not the runner,
+  takes it.
+* ``_paused``, ``_paused_stages``, ``_walk_cache``, ``_walking`` and
+  ``_error_at`` are plain attributes read and written without ``_lock``. That
+  is deliberate and safe here: each is a single atomic rebind or a
+  ``dict``/``set`` mutation under the GIL, and no invariant spans two of them.
+
+**Connections.** A runner gets its own connection and must not share it with
+another thread -- SQLite connections are not safe across threads by default.
+The manager opens it, hands it over as ``ctx.conn``, and closes it afterwards.
+
+**Cancellation.** Every job has a ``threading.Event``. A runner **must** check
+it at each loop iteration -- via ``ctx.raise_if_cancelled()`` or by calling
+``ctx.progress().update()``, which raises on a set event -- and return
+promptly. A runner that ignores it makes the app un-quittable, because
+shutdown waits on the worker threads. Runners must also commit incrementally,
+so an interrupted job leaves usable partial progress rather than nothing.
 """
 
 from __future__ import annotations
@@ -11,70 +52,20 @@ import logging
 import sqlite3
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from contextlib import nullcontext
 
 from ..config import Config
 from ..db import database as db
 from ..scan import walker
+from .job import Job, JobContext, JobProgress, Runner
+from .runners import RUNNERS
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class Job:
-    id: int
-    kind: str  # "scan" | "enrich" | "dedup" | "places" | "detect" |
-    # "face_cluster" | "pet_cluster" | "semantic"
-    root_id: int | None
-    root_path: str | None
-    force: bool = False
-    status: str = "running"  # running | done | error | cancelled
-    total: int = 0
-    done: int = 0
-    current: str = ""
-    message: str = ""
-    started_at: float = field(default_factory=time.time)
-    finished_at: float | None = None
-
-    def public(self) -> dict:
-        d = asdict(self)
-        d["percent"] = round(100 * self.done / self.total, 1) if self.total else None
-        d["elapsed"] = round((self.finished_at or time.time()) - self.started_at, 1)
-        return d
-
-
-class _JobProgress:
-    """Adapter with the interface walker/enrich expect (.total, .update()).
-
-    ``base`` / ``fixed_total`` let a multi-pass job (faces: detect in chunks,
-    re-clustering between them) present one continuous bar: each pass reports
-    0..chunk offset by ``base``, while the grand ``total`` stays put instead of
-    being reset to the chunk size on every pass."""
-
-    def __init__(self, job: Job, cancel: threading.Event, base: int = 0, fixed_total: bool = False):
-        self.job = job
-        self._cancel = cancel
-        self.base = base
-        self._fixed_total = fixed_total
-
-    @property
-    def total(self):
-        return self.job.total
-
-    @total.setter
-    def total(self, v):
-        if not self._fixed_total:
-            self.job.total = v or 0
-
-    def update(self, done, _bytes=0, current=""):
-        if self._cancel.is_set():
-            raise KeyboardInterrupt
-        self.job.done = self.base + done
-        if current:
-            self.job.current = current
-
-    def close(self):
-        pass
+# Re-exported for the tests and callers that build a Job directly; the type
+# itself lives in job.py so that runners/ can use it without importing this
+# module, which imports them.
+__all__ = ["Job", "JobManager"]
 
 
 def _state_note(stage: dict) -> str:
@@ -639,9 +630,36 @@ class JobManager:
         return stalled
 
     # -- worker -----------------------------------------------------------
+    def _dispatch(self, runner: Runner, job: Job, cancel: threading.Event) -> None:
+        """Set a runner up the way it declared it needs, then call it.
+
+        The two flags on ``Runner`` are read here and nowhere else, so "which
+        stages serialise against each other" is answerable by reading the
+        registry rather than by reading every runner's body.
+        """
+
+        def context(conn):
+            return JobContext(cfg=self.cfg, job=job, cancel=cancel, conn=conn, log=logger)
+
+        if not runner.needs_connection:
+            return runner.run(context(None))
+        # The connection is opened *inside* the write lock for the stages that
+        # take it: _open_db can itself write (schema migration, root
+        # reconciliation), so opening it outside would put a writer ahead of
+        # the lock that exists to order writers.
+        with self._write_lock if runner.takes_write_lock else nullcontext():
+            conn = self._open_db(job.root_id)
+            try:
+                runner.run(context(conn))
+            finally:
+                conn.close()
+
     def _run(self, job: Job, cancel: threading.Event):
         try:
-            if job.kind == "semantic":
+            runner = RUNNERS.get(job.kind)
+            if runner is not None:
+                self._dispatch(runner, job, cancel)
+            elif job.kind == "semantic":
                 self._run_semantic(job, cancel)
             elif job.kind in ("scan", "enrich"):
                 # Scan and enrich each use their own connection and bypass the
@@ -661,8 +679,6 @@ class JobManager:
                     try:
                         if job.kind == "dedup":
                             self._run_dedup(conn, job, cancel)
-                        elif job.kind == "places":
-                            self._run_places(conn, job, cancel)
                         elif job.kind == "detect":
                             self._run_detect(conn, job, cancel)
                         elif job.kind == "face_cluster":
@@ -728,7 +744,7 @@ class JobManager:
     def _run_scan(self, conn, job: Job, cancel):
         from pathlib import Path
 
-        prog = _JobProgress(job, cancel)
+        prog = JobProgress(job, cancel)
         run_started = db.now_iso()
         # An archive database has exactly one root; job.root_path is always
         # supplied by the scheduler, this is just a defensive fallback.
@@ -767,7 +783,7 @@ class JobManager:
     def _run_enrich(self, conn, job: Job, cancel):
         from ..metadata import enrich as enrich_mod
 
-        prog = _JobProgress(job, cancel)
+        prog = JobProgress(job, cancel)
         root_ids = (job.root_id,) if job.root_id else None
         stats = enrich_mod.enrich(conn, self.cfg, progress=prog, root_ids=root_ids)
         job.message = (
@@ -779,7 +795,7 @@ class JobManager:
     def _run_dedup(self, conn, job: Job, cancel):
         from ..dedup import exact
 
-        prog = _JobProgress(job, cancel)
+        prog = JobProgress(job, cancel)
         stats = exact.run(conn, self.cfg, progress=prog, root_id=job.root_id)
         # Hidden files are duplicate copies. They must never consume semantic
         # storage or appear as a stale vector if a prior run overlapped dedup.
@@ -801,25 +817,6 @@ class JobManager:
             f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
             f"{stats.reclaimable_bytes / 1e9:.1f} GB reclaimable"
         )
-
-    def _run_places(self, conn, job: Job, cancel):
-        # Keep map places in sync WITHOUT ever destroying user edits. Places are
-        # durable entities: a root is clustered from scratch only the first time
-        # (bootstrap); afterwards new geotagged files are attached incrementally
-        # (assign_unplaced), so named/pinned places and manual attachments persist.
-        # Each archive is now its own database, so this only ever touches the
-        # one this job belongs to.
-        from ..geo.clusters import assign_unplaced, cluster_places
-
-        job.total, job.done = 1, 0
-        has_places = conn.execute(
-            "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (job.root_id,)
-        ).fetchone()
-        touched = assign_unplaced(conn, job.root_id).points if has_places else 0
-        if not has_places:
-            cluster_places(conn, job.root_id)
-        job.done = 1
-        job.message = f"{touched} new geotagged files placed"
 
     def _run_detect(self, conn, job: Job, cancel):
         # Part of the automatic pipeline (after dedup). ONE decode per image runs
@@ -847,7 +844,7 @@ class JobManager:
         while True:
             if cancel.is_set():
                 raise KeyboardInterrupt
-            prog = _JobProgress(job, cancel, base=already + processed, fixed_total=True)
+            prog = JobProgress(job, cancel, base=already + processed, fixed_total=True)
             st = dx.extract(
                 conn,
                 self.cfg,
