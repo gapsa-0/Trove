@@ -17,6 +17,7 @@ from typing import Any, cast
 from ..db import database as db
 from . import merging
 from ._common import reading, writing
+from .types import MediaItem
 
 
 def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict[str, Any]:
@@ -155,23 +156,24 @@ def place_cluster_members(
            LIMIT ? OFFSET ?""",
         (cluster_id, limit, offset),
     ).fetchall()
+    members: list[MediaItem] = [
+        {
+            "id": r["id"],
+            "type": r["media_type"],
+            "name": os.path.basename(r["rel_path"]),
+            "date": r["dt"],
+            "date_source": r["dsrc"],
+            "has_gps": bool(r["has_gps"]),
+        }
+        for r in rows
+    ]
     return {
         "id": c["id"],
         "name": c["name"],
         "lat": c["lat"],
         "lon": c["lon"],
         "total": c["member_count"],
-        "members": [
-            {
-                "id": r["id"],
-                "type": r["media_type"],
-                "name": os.path.basename(r["rel_path"]),
-                "date": r["dt"],
-                "date_source": r["dsrc"],
-                "has_gps": bool(r["has_gps"]),
-            }
-            for r in rows
-        ],
+        "members": members,
         "offset": offset,
         "count": len(rows),
         "merges": _place_merges_for(conn, cluster_id),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...services import search
+from ...services.types import MediaPage
 from ._request import Json, Request
 
 
@@ -18,7 +19,7 @@ def semantic_status(req: Request) -> dict:
     return status
 
 
-def semantic_search(req: Request) -> dict | Json:
+def semantic_search(req: Request) -> MediaPage | Json:
     """Free-text semantic search over the archive's media, ranked by embedding similarity."""
     search_queries = []
     for value in req.query.get("q", []):

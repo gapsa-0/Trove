@@ -11,9 +11,10 @@ from __future__ import annotations
 import math
 import os
 import sqlite3
-from typing import Any
+from typing import Any, cast
 
 from ._common import _HAS_LOCATION, _NOT_HIDDEN, _quality_ok, _root_clause, reading
+from .types import MediaItem, MediaPage
 
 # How much a locally translated rewording of a search is discounted against the
 # words the user actually typed, so the two only swap places on a clear win.
@@ -169,7 +170,7 @@ def _score_candidates(
     sql: str,
     params: list[Any],
     prepared: list[tuple[tuple[float, ...], float, float]],
-) -> tuple[Any, list[dict[str, Any]]]:
+) -> tuple[Any, list[MediaItem]]:
     """Run the candidate query and score every row against ``prepared``.
 
     Returns ``(scores, meta)``: a float32 array of best-of-``prepared`` scores
@@ -191,7 +192,7 @@ def _score_candidates(
     # arithmetic, but the inner product moves out of the interpreter. Each
     # chunk is scored and dropped, so only the per-row metadata and one
     # float32 score per row outlive the loop -- not the blobs themselves.
-    meta: list[dict[str, Any]] = []
+    meta: list[MediaItem] = []
     blocks: list[Any] = []
     cursor = conn.execute(sql, params)
     while True:
@@ -261,12 +262,12 @@ def _apply_similarity_cuts(scores: Any, min_similarity: float, relative_floor: f
 
 def _rank_and_paginate(
     scores: Any,
-    meta: list[dict[str, Any]],
+    meta: list[MediaItem],
     keep: Any,
     sort: str,
     offset: int,
     limit: int,
-) -> dict[str, Any]:
+) -> MediaPage:
     """Sort the kept candidates and slice out one page as the response dict.
 
     ``scores``/``keep`` are numpy arrays; see ``_score_candidates`` for why
@@ -286,7 +287,12 @@ def _rank_and_paginate(
     else:
         ranked.sort(key=lambda x: x[0], reverse=True)
     page = ranked[offset : offset + limit]
-    items = [{**item, "score": round(score, 4)} for score, item in page]
+    # mypy widens a TypedDict under **-unpacking to plain dict[str, Any], so it
+    # cannot see that this is still a MediaItem plus its one optional `score`.
+    # The cast says so rather than rebuilding each dict field by field.
+    items: list[MediaItem] = [
+        cast(MediaItem, {**item, "score": round(score, 4)}) for score, item in page
+    ]
     return {
         "items": items,
         "offset": offset,
@@ -315,7 +321,7 @@ def semantic_search(
     offset: int = 0,
     alternate_vectors: list[tuple[list[float], float]] | None = None,
     located: bool | None = None,
-) -> dict[str, Any]:
+) -> MediaPage:
     """Rank locally stored vectors against the original and optional expansions.
 
     Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score

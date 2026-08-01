@@ -22,6 +22,7 @@ from typing import Any, cast
 from ..db import database as db
 from . import merging
 from ._common import _NOT_HIDDEN, _root_clause, reading, writing
+from .types import MediaItem
 
 # -- pets / non-human detections -------------------------------------------
 
@@ -223,22 +224,23 @@ def pet_group(
                        WHERE a2.pet_id=?))""",
         (pet_id, *rp, pet_id, *rp, pet_id),
     ).fetchone()[0]
+    items: list[MediaItem] = [
+        {
+            "id": row["id"],
+            "name": os.path.basename(row["rel_path"]),
+            "date": row["dt"],
+            "detection_id": row["detection_id"],
+            "type": "image",
+            "has_gps": False,
+        }
+        for row in rows
+    ]
     return {
         "id": pet["id"],
         "name": pet["name"],
         "species": pet["species"],
         "photos": total,
-        "items": [
-            {
-                "id": row["id"],
-                "name": os.path.basename(row["rel_path"]),
-                "date": row["dt"],
-                "detection_id": row["detection_id"],
-                "type": "image",
-                "has_gps": False,
-            }
-            for row in rows
-        ],
+        "items": items,
         "offset": offset,
         "count": len(rows),
         "merges": _pet_merges_for(conn, pet_id, pet["name"]),

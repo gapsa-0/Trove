@@ -18,6 +18,7 @@ from typing import Any, cast
 from ..db import database as db
 from . import merging
 from ._common import _NOT_HIDDEN, _QUALITY_OK, _quality_ok, _root_clause, reading, writing
+from .types import MediaItem
 
 
 @reading
@@ -211,7 +212,7 @@ def face_person(
                        SELECT fa2.file_id FROM faces fa2 WHERE fa2.person_id=?))""",
         (person_id, *rp, person_id, *rp, person_id),
     ).fetchone()[0]
-    items = [
+    items: list[MediaItem] = [
         {
             "id": r["id"],
             "type": r["media_type"],

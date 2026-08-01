@@ -6,6 +6,7 @@ from typing import cast
 
 from ...db import database as db
 from ...services import browse
+from ...services.types import MediaPage
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
@@ -25,7 +26,7 @@ def item(req: Request) -> dict | Json:
     return it if it else NOT_FOUND
 
 
-def media(req: Request) -> dict:
+def media(req: Request) -> MediaPage:
     """The media grid: filtered, sorted and paginated files for the archive."""
     rid = req.root_id
     # Absent means "no filter"; only the two explicit values narrow

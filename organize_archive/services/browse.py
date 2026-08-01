@@ -23,6 +23,7 @@ from ._common import (
     writing,
 )
 from .places import _PLACE_EXEMPT
+from .types import MediaItem, MediaPage
 
 
 def _media_where(
@@ -114,7 +115,7 @@ def media(
     offset: int = 0,
     indexed: bool | None = None,
     located: bool | None = None,
-) -> dict[str, Any]:
+) -> MediaPage:
     """The Browse grid. ``indexed`` filters on description-search coverage: True
     for media that can be found by describing it, False for what cannot (still
     queued, skipped, or failed), None for everything.
@@ -157,7 +158,7 @@ def media(
             LIMIT ? OFFSET ?""",
         (semantic.INDEXER_VERSION, *params, limit, offset),
     ).fetchall()
-    items = [
+    items: list[MediaItem] = [
         {
             "id": r["id"],
             "type": r["media_type"],
