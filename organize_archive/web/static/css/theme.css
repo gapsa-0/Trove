@@ -1,0 +1,454 @@
+/* Light Photos library: the base visual language: a clean, Apple-style light
+ theme (with a dark variant below).  Keep the application dependency-free;
+ this is presentation, not a new frontend framework. */
+:root {
+  --bg: #f5f5f7;
+  --panel: #ffffff;
+  --panel2: #f0f0f2;
+  --line: #d9d9de;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --accent: #007aff;
+  --accent2: #0066d6;
+  --good: #34a853;
+  --focus: #007aff;
+}
+
+body {
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text)
+}
+
+body:before {
+  display: none
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -.025em
+}
+
+.btn {
+  border-radius: 8px;
+  background: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none
+}
+
+.btn:hover {
+  background: var(--accent2)
+}
+
+.btn.sec {
+  background: var(--panel);
+  color: var(--accent);
+  border-color: var(--line)
+}
+
+#picker {
+  max-width: 930px;
+  padding: 60px 28px;
+  align-items: flex-start
+}
+
+.welcome {
+  max-width: 760px;
+  margin: auto;
+  padding-top: 50px
+}
+
+.welcome .eyebrow,
+.eyebrow {
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 15px
+}
+
+.welcome h1 {
+  font-size: 48px;
+  line-height: 1.1;
+  margin: 8px 0 12px
+}
+
+.welcome .sub {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 21px;
+  color: var(--muted);
+  line-height: 1.35
+}
+
+.setup-form {
+  max-width: 700px;
+  margin: 30px 0 12px
+}
+
+.setup-form input {
+  background: #fff;
+  border-color: var(--line);
+  border-radius: 9px;
+  padding: 12px
+}
+
+.privacy-note {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--muted);
+  font-size: 13px
+}
+
+.archive-list-title {
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 17px;
+  color: var(--text);
+  margin-top: 42px;
+  font-weight: 600
+}
+
+.card {
+  border-radius: 12px;
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px #0000000a
+}
+
+.card:hover {
+  border-color: #a9a9af
+}
+
+.card.add {
+  border-radius: 12px
+}
+
+.remove-archive {
+  border-radius: 7px;
+  color: #d93025;
+  border-color: #f3c7c3
+}
+
+#app.on {
+  grid-template-columns: 248px minmax(0, 1fr);
+  background: var(--bg)
+}
+
+nav {
+  background: #fbfbfc;
+  border-right-color: var(--line);
+  padding: 18px 12px
+}
+
+nav .brand {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 18px;
+  letter-spacing: -.02em;
+  border: 0;
+  padding: 8px 10px 18px
+}
+
+nav .brand img {
+  filter: none
+}
+
+.navtoggle {
+  font-family: inherit
+}
+
+.arch {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  border-bottom-color: var(--line) !important;
+  padding-bottom: 14px !important
+}
+
+.navitem {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 7px;
+  padding: 9px 10px;
+  color: #3a3a3c
+}
+
+.navitem.active {
+  background: #e5e5ea;
+  color: var(--text)
+}
+
+.navitem.active:before {
+  display: none
+}
+
+.navitem:hover {
+  background: #ededf0
+}
+
+.gstat {
+  border-top-color: var(--line)
+}
+
+main {
+  padding: 34px 42px 70px;
+  background: var(--bg)
+}
+
+h2.sec {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 18px
+}
+
+.panel,
+.stat,
+.dupgroup,
+.pcard,
+.suggest {
+  border-radius: 12px;
+  border-color: var(--line);
+  background: var(--panel);
+  box-shadow: 0 1px 2px #00000008
+}
+
+.panel {
+  padding: 18px
+}
+
+.stat {
+  padding: 14px
+}
+
+.stat .k,
+.isec>.h {
+  color: var(--muted)
+}
+
+.stat .v {
+  font-size: 24px
+}
+
+.grid {
+  gap: 5px;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr))
+}
+
+.tile {
+  border-radius: 6px;
+  background: #e5e5ea;
+  outline: 0
+}
+
+.tile:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px
+}
+
+.date-heading {
+  /* A month heading is a row of its own, not a tile-sized cell. */
+  grid-column: 1/-1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 650;
+  border-bottom: 0;
+  padding: 28px 0 8px
+}
+
+.filterbar {
+  border-top: 0;
+  padding-top: 0
+}
+
+.fsel {
+  border-radius: 7px;
+  background: #fff;
+  border-color: var(--line)
+}
+
+.linkbtn {
+  color: var(--accent)
+}
+
+.modal {
+  background: #000b
+}
+
+.viewer {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000
+}
+
+.viewer .info {
+  background: #fff;
+  color: var(--text)
+}
+
+.viewer .media {
+  background: #000
+}
+
+.close {
+  color: #fff
+}
+
+.kv {
+  border-bottom-color: var(--line)
+}
+
+@media(max-width:800px) {
+  nav {
+    background: #fff
+  }
+
+  main {
+    padding: 24px 16px
+  }
+
+  .navitem {
+    font-size: 13px
+  }
+
+  .welcome {
+    padding-top: 12px
+  }
+
+  .welcome h1 {
+    font-size: 38px
+  }
+}
+
+/* Archive 3.0: a single, deliberate visual system inspired by the quiet,
+ photo-first restraint of native media libraries. This final layer supersedes
+ the earlier experiments while preserving every existing behavior. */
+:root {
+  color-scheme: light;
+  --bg: #f5f5f7;
+  --bg-elevated: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f2f2f7;
+  --sidebar: rgba(247, 247, 249, .82);
+  --line: rgba(60, 60, 67, .14);
+  --line-strong: rgba(60, 60, 67, .23);
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --faint: #8e8e93;
+  --accent: #007aff;
+  --accent2: #006ee6;
+  --accent-soft: rgba(0, 122, 255, .12);
+  --good: #28a745;
+  --bad: #d70015;
+  --warning: #c77c00;
+  --focus: #007aff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 16px rgba(0, 0, 0, .035);
+  --shadow-md: 0 18px 55px rgba(0, 0, 0, .14), 0 2px 10px rgba(0, 0, 0, .08);
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 22px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101014;
+  --bg-elevated: #1c1c1e;
+  --panel: #1c1c1e;
+  --panel2: #2c2c2e;
+  --sidebar: rgba(24, 24, 27, .82);
+  --line: rgba(255, 255, 255, .1);
+  --line-strong: rgba(255, 255, 255, .18);
+  --text: #f5f5f7;
+  --muted: #a1a1a6;
+  --faint: #7c7c80;
+  --accent: #0a84ff;
+  --accent2: #2997ff;
+  --accent-soft: rgba(10, 132, 255, .17);
+  --good: #30d158;
+  --bad: #ff453a;
+  --warning: #ffd60a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .24), 0 7px 22px rgba(0, 0, 0, .16);
+  --shadow-md: 0 22px 65px rgba(0, 0, 0, .5), 0 2px 12px rgba(0, 0, 0, .3);
+}
+
+html {
+  background: var(--bg);
+  scrollbar-color: var(--line-strong) transparent
+}
+
+body {
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-family: inherit;
+  letter-spacing: -.025em
+}
+
+a,
+.linkbtn {
+  color: var(--accent)
+}
+
+::selection {
+  background: var(--accent-soft)
+}
+
+.btn {
+  min-height: 36px;
+  padding: 8px 15px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  text-transform: none;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .06);
+  transition: transform .15s, background .15s, opacity .15s
+}
+
+.btn:hover {
+  background: var(--accent2);
+  transform: translateY(-1px)
+}
+
+.btn:active {
+  transform: translateY(0);
+  opacity: .84
+}
+
+.btn.sec {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: none
+}
+
+.btn.sec:hover {
+  background: var(--line);
+  border-color: var(--line-strong)
+}
+
+.btn:disabled {
+  background: var(--panel2);
+  border-color: var(--line);
+  color: var(--faint);
+  box-shadow: none
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--focus) 35%, transparent);
+  outline-offset: 2px
+}

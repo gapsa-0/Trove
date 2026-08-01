@@ -1,0 +1,128 @@
+/* Settings drawer */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, .32);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s, visibility .2s;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px)
+}
+
+.drawer-backdrop.open {
+  opacity: 1;
+  visibility: visible
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 41;
+  width: min(430px, 92vw);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  transform: translateX(100%);
+  transition: transform .24s cubic-bezier(.4, 0, .2, 1)
+}
+
+.drawer.open {
+  transform: translateX(0)
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line)
+}
+
+.drawer-head h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.02em
+}
+
+.drawer-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 8px;
+  cursor: pointer
+}
+
+.drawer-close:hover {
+  color: var(--text)
+}
+
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 22px;
+  overflow-y: auto
+}
+
+.drawer-section-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 650
+}
+
+.drawer-section-head p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5
+}
+
+.keycard {
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm)
+}
+
+.keycard-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px
+}
+
+.keycard-name {
+  font-weight: 650;
+  font-size: 14px
+}
+
+.keycard-desc {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5
+}
+
+
+.drawer-theme {
+  margin-top: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel)
+}
+
+.drawer-theme:hover {
+  background: var(--panel2)
+}

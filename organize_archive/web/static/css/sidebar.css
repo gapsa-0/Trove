@@ -1,0 +1,260 @@
+/* Shell and sidebar */
+#app.on {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--bg)
+}
+
+nav {
+  position: sticky;
+  top: 0;
+  width: auto;
+  height: 100vh;
+  padding: 18px 13px 12px;
+  overflow: auto;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px)
+}
+
+nav .brand {
+  height: 45px;
+  padding: 5px 8px 14px;
+  gap: 10px;
+  border: 0;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 720;
+  letter-spacing: -.025em
+}
+
+nav .brand .brandmark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .16)
+}
+
+/* The wordmark is the one place a heavier optical weight is wanted; the nav
+   items below it stay at 550 so the brand reads as the top of the hierarchy. */
+nav .brand .brandtxt {
+  font-size: 16.5px;
+  font-weight: 650;
+  letter-spacing: -.02em
+}
+
+nav .navtoggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 14px
+}
+
+nav .navtoggle:hover {
+  background: var(--line);
+  color: var(--text)
+}
+
+nav .back {
+  margin: 7px 2px 3px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 550
+}
+
+nav .back:hover {
+  background: var(--accent-soft)
+}
+
+.back-control,
+nav .back-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: 550 12px/1.2 inherit;
+  text-align: left;
+  cursor: pointer
+}
+
+.back-control svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+nav .arch {
+  margin: 0 2px 12px;
+  padding: 5px 8px 13px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+#navitems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px
+}
+
+.navitem {
+  min-height: 39px;
+  gap: 11px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 550;
+  letter-spacing: -.005em
+}
+
+.navitem:hover {
+  background: var(--line);
+  color: var(--text)
+}
+
+.navitem.active {
+  background: var(--accent-soft);
+  color: var(--accent)
+}
+
+.navitem.active:before {
+  display: none
+}
+
+.navicon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  flex: none
+}
+
+.navicon svg,
+.theme-icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 39px;
+  margin-top: auto;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: 550 13px/1.2 inherit;
+  text-align: left;
+  cursor: pointer
+}
+
+.theme-toggle:hover {
+  background: var(--line);
+  color: var(--text)
+}
+
+.theme-icon {
+  display: flex;
+  width: 19px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  flex: none
+}
+
+.gstat {
+  margin-top: 4px;
+  padding: 12px 9px 5px;
+  border-top: 1px solid var(--line);
+  font-size: 11px
+}
+
+.dot {
+  width: 7px;
+  height: 7px
+}
+
+.dot.ok {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 14%, transparent)
+}
+
+nav.collapsed {
+  width: 68px;
+  padding-left: 9px;
+  padding-right: 9px
+}
+
+nav.collapsed .brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0
+}
+
+/* Collapsed to 56px the brand row only has space for the expand toggle;
+   the mark would push it out of the rail. */
+nav.collapsed .brand .brandmark {
+  display: none
+}
+
+nav.collapsed .brandtxt,
+nav.collapsed .back,
+nav.collapsed .arch,
+nav.collapsed .navitem span:nth-of-type(2),
+nav.collapsed .navitem .tag,
+nav.collapsed .theme-label {
+  display: none
+}
+
+nav.collapsed .navtoggle {
+  margin: 0
+}
+
+nav.collapsed .navitem,
+nav.collapsed .theme-toggle {
+  justify-content: center;
+  padding: 8px
+}
+
+nav.collapsed .theme-toggle {
+  margin-top: auto
+}
+
+#app.on:has(nav.collapsed) {
+  grid-template-columns: 68px minmax(0, 1fr)
+}

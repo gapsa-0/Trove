@@ -1,0 +1,175 @@
+/* Archive selection */
+#picker {
+  max-width: 1040px;
+  min-height: 100vh;
+  padding: 72px 36px;
+  display: flex;
+  align-items: flex-start
+}
+
+.welcome {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding-top: 4vh
+}
+
+.welcome .eyebrow,
+.eyebrow {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+  letter-spacing: .01em;
+  text-transform: none
+}
+
+.welcome h1 {
+  font-size: clamp(42px, 6vw, 66px);
+  font-weight: 750;
+  line-height: 1.02;
+  letter-spacing: -.052em;
+  margin: 14px 0 16px;
+  max-width: 760px
+}
+
+.welcome .sub {
+  font: 400 clamp(18px, 2.3vw, 23px)/1.38 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -.018em;
+  color: var(--muted);
+  max-width: 720px
+}
+
+.setup-form {
+  display: flex;
+  gap: 10px;
+  max-width: 720px;
+  margin: 34px 0 12px;
+  padding: 7px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  box-shadow: var(--shadow-sm)
+}
+
+.setup-form input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  padding: 10px 11px;
+  font-size: 14px
+}
+
+.setup-form input:focus {
+  outline: 0
+}
+
+.privacy-note {
+  font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--muted);
+  max-width: 700px
+}
+
+.archive-list-title {
+  margin: 54px 0 14px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.025em;
+  color: var(--text)
+}
+
+.appearance-fab {
+  position: fixed;
+  top: 22px;
+  right: 24px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--sidebar);
+  color: var(--muted);
+  font: 600 12px/1 inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px)
+}
+
+.appearance-fab:hover {
+  color: var(--text);
+  border-color: var(--line-strong)
+}
+
+.appearance-fab .theme-icon,
+.appearance-fab .theme-icon svg {
+  width: 16px;
+  height: 16px
+}
+
+.cards {
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr))
+}
+
+.card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  transition: transform .18s, border-color .18s, box-shadow .18s
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .08)
+}
+
+.card h3 {
+  font-size: 16px;
+  font-weight: 650
+}
+
+.card .path {
+  margin-top: 5px;
+  color: var(--muted)
+}
+
+.card .stats {
+  margin-top: 14px
+}
+
+.card .cardfoot {
+  padding-top: 12px;
+  border-top: 1px solid var(--line)
+}
+
+.card.add {
+  min-height: 136px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  font-weight: 600
+}
+
+.remove-archive {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bad);
+  padding: 5px 8px
+}
+
+.remove-archive:hover {
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  color: var(--bad)
+}
