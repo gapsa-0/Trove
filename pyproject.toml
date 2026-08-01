@@ -118,8 +118,6 @@ ignore_missing_imports = true
 # list only when that package is clean, in the same commit that makes it strict.
 [[tool.mypy.overrides]]
 module = [
-  "organize_archive.config.*",
-  "organize_archive.db.*",
   "organize_archive.dedup.*",
   "organize_archive.detect.*",
   "organize_archive.embeddings.*",
@@ -139,6 +137,8 @@ module = [
   "organize_archive.paths",
   "organize_archive.errors",
   "organize_archive.metadata.*",
+  "organize_archive.config.*",
+  "organize_archive.db.*",
 ]
 ignore_errors = false
 disallow_untyped_defs = true

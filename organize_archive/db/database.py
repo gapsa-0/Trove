@@ -9,11 +9,28 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol, cast
 
 SCHEMA_VERSION = 13
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
+
+
+class _ScanStatsLike(Protocol):
+    """The subset of scan.walker.ScanStats this module reads.
+
+    A structural type instead of importing the real class: db/ is L0
+    (foundation) and scan/ is L1 (domain) in the package layering that
+    tests/unit/test_layering.py enforces, so db may not import from scan even
+    under TYPE_CHECKING.
+    """
+
+    seen: int
+    new: int
+    updated: int
+    bytes_hashed: int
 
 
 def now_iso() -> str:
@@ -38,7 +55,9 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
-def write_with_retry(fn, *, retries: int = 4, initial_delay: float = 0.25):
+def write_with_retry[T](
+    fn: Callable[[], T], *, retries: int = 4, initial_delay: float = 0.25
+) -> T | None:
     """Call ``fn()``, retrying with backoff if SQLite reports a locked writer.
 
     ``fn`` takes no arguments and performs one bounded write, including its own
@@ -60,6 +79,7 @@ def write_with_retry(fn, *, retries: int = 4, initial_delay: float = 0.25):
                 raise
             time.sleep(delay)
             delay *= 2
+    return None  # unreachable: the loop's last iteration always returns or raises
 
 
 def open_readonly(db_path: str | Path) -> sqlite3.Connection:
@@ -74,7 +94,7 @@ def open_readonly(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
-def _add_column_if_missing(conn, table, column, decl):
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
     cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
     if column not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
@@ -183,10 +203,12 @@ def init_db(conn: sqlite3.Connection) -> None:
 def get_or_create_root(conn: sqlite3.Connection, path: str) -> int:
     row = conn.execute("SELECT id FROM roots WHERE path=?", (path,)).fetchone()
     if row:
-        return row["id"]
+        return cast(int, row["id"])  # sqlite3.Row.__getitem__ is typed Any
     cur = conn.execute("INSERT INTO roots(path, added_at) VALUES(?, ?)", (path, now_iso()))
     conn.commit()
-    return cur.lastrowid
+    # An INSERT that didn't raise always sets lastrowid; typeshed only widens it
+    # to int | None because lastrowid is also read after non-INSERT statements.
+    return cast(int, cur.lastrowid)
 
 
 # Tables that key rows to a root directly, so a renumbered root takes them
@@ -283,17 +305,18 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
 # what these record and answer.
 
 
-def scan_run_start(conn: sqlite3.Connection, root_id: int, roots) -> int:
+def scan_run_start(conn: sqlite3.Connection, root_id: int, roots: Iterable[str]) -> int:
     cur = conn.execute(
         "INSERT INTO scan_runs(started_at, roots, root_id) VALUES(?,?,?)",
         (now_iso(), json.dumps(list(roots)), root_id),
     )
     conn.commit()
-    return cur.lastrowid
+    # An INSERT that didn't raise always sets lastrowid; see get_or_create_root.
+    return cast(int, cur.lastrowid)
 
 
 def scan_run_finish(
-    conn: sqlite3.Connection, run_id: int, stats, files_on_disk: int | None
+    conn: sqlite3.Connection, run_id: int, stats: _ScanStatsLike, files_on_disk: int | None
 ) -> None:
     """Close out a scan that walked the whole root. Only ever called on the
     normal path — an interrupted scan leaves ``finished_at`` NULL so it is not
@@ -408,4 +431,6 @@ def dedup_needed(conn: sqlite3.Connection, root_id: int) -> bool:
     if row is None:
         return True
     current_files, current_max_id = dedup_coverage(conn, root_id)
-    return row[0] != current_files or row[1] != current_max_id
+    # bool(...): sqlite3.Row.__getitem__ is typed Any, but `!=`/`or` on the ints
+    # actually stored here always produce a real bool at runtime.
+    return bool(row[0] != current_files or row[1] != current_max_id)

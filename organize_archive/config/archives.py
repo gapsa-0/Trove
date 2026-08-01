@@ -5,6 +5,7 @@ import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from ..paths import archive_cache_dir, archive_db_path, archive_dir, archives_dir
 
@@ -28,6 +29,16 @@ class ArchiveRegistryMixin:
     ``self.legacy_migrated``) and calls ``self.save()``, all of which `Config`
     provides.
     """
+
+    if TYPE_CHECKING:
+        # Provided by Config, which is the only class this is mixed into (see
+        # the class docstring above). Type-only: zero runtime footprint.
+        archives: list[dict[str, Any]]
+        db_path: str
+        cache_dir: str
+        legacy_migrated: bool
+
+        def save(self) -> None: ...
 
     def _next_archive_id(self) -> int:
         """The next never-used archive id.
