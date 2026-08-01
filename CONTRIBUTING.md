@@ -26,7 +26,8 @@ make setup PYTHON=/path/to/python3.13
 desktop JS lint), `handlers` (checks every inline `on*` handler — in the markup and in the
 template literals the screen modules generate markup with — resolves to
 something `main.js` actually exports; nothing else catches a handler that
-silently does nothing when clicked), and `test` (the full suite,
+silently does nothing when clicked), `sizes` (the file and function size
+ratchet — see "Definition of done"), and `test` (the full suite,
 `.venv/bin/python -m pytest -q`).
 
 For the day-to-day save loop, `make test-fast` runs the unit tier only, skipping
@@ -82,14 +83,37 @@ would add such a trailer by default. Write the commit body and stop there.
 
 ## Definition of done
 
-- Tests pass (`make test`, or `make check` for the full gate including lint).
-- Lint passes (`make lint`).
-- A bug fix carries a regression test that fails without the fix.
-- A user-visible change updates `README.md` and/or the relevant page under
-  `docs/` in the same commit, or a following one in the same batch of work —
-  not "later".
-- New derived data carries its provenance: which source produced it, and a
+A change is finished when all of these are true. The pull request template
+repeats the list so it gets checked rather than remembered.
+
+- **`make check` passes** — lint, format, types, the handler and size checks,
+  and the full suite. Not "tests pass on my branch": the whole gate.
+- **A bug fix carries a regression test that fails without the fix.** Write the
+  test first and watch it fail; a test written after the fix pins the fix, not
+  the bug.
+- **A new feature has tests for its normal path and at least one edge case** —
+  empty input, a missing file, a duplicate, whichever failure the feature is
+  actually likely to meet.
+- **No new file over 600 lines and no new function over 80.** `make sizes`
+  enforces it against a shrink-only allowlist of today's exceptions
+  (`tools/dev/check_sizes.py`). If a change genuinely needs a new entry, say
+  why in the commit body — that visible justification is the entire mechanism,
+  and an entry that stops being needed has to be deleted.
+- **A user-visible change updates `README.md` and/or the relevant page under
+  `docs/`**, in the same commit or a following one in the same batch of work —
+  not "later" — **and adds a `CHANGELOG.md` entry under `[Unreleased]`**.
+  Releases are cut by moving that section, so an entry written later is an
+  entry that misses its release.
+- **New derived data carries its provenance**: which source produced it, and a
   confidence, stored alongside the value rather than implied by ordering.
+- **A long operation is resumable and idempotent.** Verify it the only way that
+  counts: kill it mid-run, run it again, and check it picks up rather than
+  redoing or double-counting the work.
+- **Nothing writes to a source archive root.** Ever — see the hard rules below.
+- **A decision that closes off an alternative gets an ADR** under `docs/adr/`,
+  so it is not re-argued in six months by someone who cannot see why the
+  obvious-looking alternative was rejected.
+- **No AI attribution in the commit message** — see above.
 
 ## The hard project rules
 
