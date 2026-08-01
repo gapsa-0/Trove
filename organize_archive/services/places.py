@@ -129,6 +129,8 @@ def place_points(conn: sqlite3.Connection, root_id: int, min_media: int = 10) ->
 
 @writing
 def recompute_place_clusters(conn: sqlite3.Connection, root_id: int) -> dict[str, Any]:
+    """Rebuild place_clusters/place_cluster_members for a root from scratch.
+    Returns the resulting cluster and point counts."""
     from ..geo.clusters import cluster_places
 
     stats = cluster_places(conn, root_id)
@@ -139,6 +141,8 @@ def recompute_place_clusters(conn: sqlite3.Connection, root_id: int) -> dict[str
 def place_cluster_members(
     conn: sqlite3.Connection, cluster_id: int, limit: int = 120, offset: int = 0
 ) -> dict[str, Any] | None:
+    """A page of files belonging to one place cluster, newest-dated first.
+    Returns None if ``cluster_id`` doesn't exist."""
     c = conn.execute(
         "SELECT id, name, lat, lon, member_count FROM place_clusters WHERE id=?", (cluster_id,)
     ).fetchone()
@@ -209,6 +213,8 @@ def _place_merges_for(conn: sqlite3.Connection, cluster_id: int) -> list[dict[st
 def rename_place_cluster(
     conn: sqlite3.Connection, cluster_id: int | None, name: str
 ) -> dict[str, Any]:
+    """Set a place cluster's display name. Returns ``{"error": ...}`` if
+    ``cluster_id`` is missing or doesn't exist."""
     if not cluster_id:
         return {"error": "missing cluster_id"}
     cur = conn.execute("UPDATE place_clusters SET name=? WHERE id=?", (name or None, cluster_id))
@@ -600,6 +606,9 @@ def set_place(
 
 @writing
 def clear_place(conn: sqlite3.Connection, file_id: int | None) -> dict[str, Any]:
+    """Detach a file from whatever place it's manually or automatically a
+    member of. Returns ``{"error": "missing file_id"}`` if none is given,
+    otherwise ``{"ok": True, "place": None}`` even if it had no place."""
     if not file_id:
         return {"error": "missing file_id"}
     _detach_file_from_places(conn, file_id)

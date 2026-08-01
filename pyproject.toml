@@ -176,6 +176,18 @@ select = [
   "SIM",      # simplify       — collapsible ifs, redundant bool conversion
   "RUF",      # ruff's own     — mutable class attrs, unused noqa
   "T20",      # flake8-print   — print() in the library; see per-file-ignores
+  # pydocstyle, but only the four rules that ask for content. Deliberately NOT
+  # the whole `D` set: D205/D209/D210 are layout (the formatter owns that, and
+  # turning them on would reflow 100+ docstrings that read fine), D400/D415 want
+  # a full stop on a summary line that is already a sentence fragment on
+  # purpose, and D401 rewrites accurate summaries into the imperative mood.
+  # D102 (public method) is absent because there is nothing to fix: the strict
+  # packages have no undocumented public methods, and adding it would only bind
+  # future code. Add it when that stops being true.
+  "D100",     # module docstring: what lives here and what does not
+  "D101",     # public class
+  "D103",     # public function — the one that carries real information here
+  "D104",     # package (__init__.py)
 ]
 ignore = [
   "E501",     # line length: the formatter owns this; a long SQL string is not a bug
@@ -195,14 +207,40 @@ ignore = [
 allowed-confusables = ["×"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*"  = ["B011"]          # bare assert is the point of a test
-"tools/*"  = ["T201"]          # dev scripts may print
-"packaging/scripts/*" = ["T201"]   # build-time scripts, output is for the build log
+# D100/D104 (module and package docstrings) are on for the whole library and
+# already satisfied: every module and package says what it is. D101/D103 are the
+# expensive ones, so they are on only where the public surface has actually been
+# documented -- services/, db/, metadata/, and (as it turns out) web/routes/,
+# which was already complete from stage 08. Everything else is listed below.
+#
+# This is the same only-ever-shrinks list as mypy's "not reviewed yet" block,
+# and it moves the same way: delete a line only in the commit that documents
+# that package. It is NOT the same membership -- config/ and pipeline/ are
+# mypy-strict but still exempt here, because typing a package and documenting
+# its public surface are separate pieces of work.
+"tests/*"  = ["B011", "D100", "D101", "D103", "D104"]   # a test's name is its documentation
+"tools/*"  = ["T201", "D100", "D101", "D103", "D104"]   # dev scripts may print
+"packaging/scripts/*" = ["T201", "D100", "D101", "D103", "D104"]  # build-time scripts
+"organize_archive/config/*.py" = ["D101", "D103"]
+"organize_archive/dedup/*.py" = ["D101", "D103"]
+"organize_archive/desktop.py" = ["D101", "D103"]
+"organize_archive/detect/*.py" = ["D101", "D103"]
+"organize_archive/embeddings/*.py" = ["D101", "D103"]
+"organize_archive/faces/*.py" = ["D101", "D103"]
+"organize_archive/geo/*.py" = ["D101", "D103"]
+"organize_archive/hashing/*.py" = ["D101", "D103"]
+"organize_archive/media/*.py" = ["D101", "D103"]
+"organize_archive/paths.py" = ["D101", "D103"]
+"organize_archive/pets/*.py" = ["D101", "D103"]
+"organize_archive/pipeline/*.py" = ["D101", "D103"]
+"organize_archive/scan/*.py" = ["D101", "D103"]
+"organize_archive/thumbnails/*.py" = ["D101", "D103"]
+"organize_archive/web/*.py" = ["D101", "D103"]
 # cli/ *is* the user interface: printing is its job, and routing its output
 # through logging would timestamp and re-order the tables it prints. Every other
 # module in the library logs instead -- a library that prints cannot be silenced,
 # redirected, or given a severity, and writes nowhere inside the desktop app.
-"organize_archive/cli/*.py" = ["T201"]
+"organize_archive/cli/*.py" = ["T201", "D101", "D103"]
 
 [tool.ruff.format]
 quote-style = "double"          # matches the existing code

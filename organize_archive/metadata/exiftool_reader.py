@@ -38,10 +38,13 @@ _TAGS = [
 
 
 def available() -> bool:
+    """Whether the exiftool binary was found on PATH."""
     return tool("exiftool") is not None
 
 
 class ExifReader:
+    """Batch reader for the fixed tag set in ``_TAGS``, backed by one exiftool subprocess per batch."""
+
     def __init__(self) -> None:
         if not available():
             raise RuntimeError("exiftool not found on PATH")

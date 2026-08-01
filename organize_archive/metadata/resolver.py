@@ -34,6 +34,7 @@ def _tz(name: str | None) -> ZoneInfo | None:
 
 
 def to_iso(dt: datetime) -> str:
+    """Format a naive wall-clock datetime as ``YYYY-MM-DDTHH:MM:SS`` for storage."""
     return dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 

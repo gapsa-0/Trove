@@ -15,6 +15,9 @@ from ._common import _root_clause, reading
 
 @reading
 def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
+    """The Duplicates panel's summary tile: group/duplicate/reclaimable-bytes
+    totals, plus the redundant copies broken down by match type (identical vs
+    visual) and by media type."""
     rc, rp = _root_clause(root_id)
     row = conn.execute(
         f"""SELECT COUNT(*) groups,
@@ -86,6 +89,8 @@ def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[st
 def dup_groups(
     conn: sqlite3.Connection, root_id: int | None = None, limit: int = 60, offset: int = 0
 ) -> dict[str, Any]:
+    """A page of duplicate groups, largest reclaimable-bytes first, each with
+    its canonical and duplicate members (name, folder, role, match type)."""
     rc, rp = _root_clause(root_id)
     groups = conn.execute(
         f"""SELECT g.id, g.method, g.member_count, g.size_each, g.redundant_bytes,

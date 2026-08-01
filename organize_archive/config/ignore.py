@@ -1,3 +1,9 @@
+"""Extensions, filenames and substrings excluded from the media catalog.
+
+Google Takeout ``.json`` sidecars are excluded here as content but are still
+read as metadata elsewhere (see ``metadata/takeout.py``).
+"""
+
 from __future__ import annotations
 
 # Files that are not media content. Google Takeout ``.json`` sidecars are

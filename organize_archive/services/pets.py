@@ -34,6 +34,9 @@ def pet_summary(
     model_source: str | None = None,
     detect_video_frames: int = 0,
 ) -> dict[str, Any]:
+    """The Pets panel's summary tile: scanned/unscanned image counts, animal
+    detections, named pet groups, non-human faces, and whether the pet
+    backend is available."""
     from ..pets import backend as pet_backend
 
     rc, rp = _root_clause(root_id)
@@ -87,6 +90,8 @@ def pet_summary(
 def pet_groups(
     conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
 ) -> dict[str, Any]:
+    """Pet clusters (identities) in this archive, named ones first and then
+    most detections, each with its detection/photo counts."""
     rc, rp = _root_clause(root_id)
     rows = conn.execute(
         f"""SELECT a.pet_id,p.name,p.species,p.cover_detection_id,
@@ -145,6 +150,8 @@ def animal_gallery(
     offset: int = 0,
     unassigned: bool = False,
 ) -> dict[str, Any]:
+    """A page of raw animal detections (teddy bears excluded), optionally
+    filtered to ones not yet assigned to a pet cluster."""
     rc, rp = _root_clause(root_id)
     un = " AND a.pet_id IS NULL" if unassigned else ""
     rows = conn.execute(
@@ -283,6 +290,8 @@ def _pet_merges_for(
 
 @writing
 def rename_pet(conn: sqlite3.Connection, pet_id: int | None, name: str) -> dict[str, Any]:
+    """Set a pet's display name. Returns ``{"error": "unknown pet"}`` if
+    ``pet_id`` doesn't exist."""
     if not conn.execute("SELECT 1 FROM pets WHERE id=?", (pet_id,)).fetchone():
         return {"error": "unknown pet"}
     conn.execute("UPDATE pets SET name=? WHERE id=?", (name or None, pet_id))
@@ -294,6 +303,8 @@ def rename_pet(conn: sqlite3.Connection, pet_id: int | None, name: str) -> dict[
 def nonhuman_review(
     conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
 ) -> dict[str, Any]:
+    """A page of non-human face detections (dolls, animals, cartoons) awaiting
+    or already given a review verdict, highest confidence first."""
     rc, rp = _root_clause(root_id)
     rows = conn.execute(
         f"""SELECT n.id,n.file_id,n.kind,n.confidence,n.source,n.review_status,
@@ -463,6 +474,9 @@ def add_pet_to_file(
 def remove_pet_from_file(
     conn: sqlite3.Connection, pet_id: int | None, file_id: int | None
 ) -> dict[str, Any]:
+    """Drop a manual pet tag (pet_files) from a file. Does not touch any
+    detection; returns ``{"error": ...}`` only when an id is missing, and
+    ``{"ok": True}`` even if no such tag existed."""
     if not pet_id or not file_id:
         return {"error": "missing pet_id or file_id"}
     conn.execute("DELETE FROM pet_files WHERE pet_id=? AND file_id=?", (pet_id, file_id))

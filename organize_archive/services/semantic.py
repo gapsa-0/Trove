@@ -73,6 +73,8 @@ def backend(
     cfg: Config,
     log: Any = None,  # progress callback; its contract lives in embeddings.backend (not yet typed)
 ) -> eb.SiglipBackend:
+    """The process-wide SigLIP backend, created on first use and reused after.
+    ``log`` is only honored while the backend is still being constructed."""
     global _backend
     if _backend is None:
         with _backend_lock:
@@ -97,6 +99,7 @@ def warm_text_model(cfg: Config) -> None:
 
 
 def embed_query(cfg: Config, query: str) -> list[float]:
+    """Embed a single search string into the SigLIP text vector space."""
     return embed_queries(cfg, [query])[0]
 
 
@@ -242,6 +245,10 @@ def embed_media(
     rotate: int = 0,
     duration_s: Any = None,  # see _video_frame_offsets: passed straight through to it
 ) -> tuple[list[float] | None, str | None, str | None]:
+    """Prepare and embed one archive item end to end: (vector, input_kind,
+    skip_reason). The vector is None whenever indexing didn't happen, with
+    ``skip_reason`` explaining why (unsupported format, no frame decoded);
+    raises ``KeyboardInterrupt`` if ``cancel`` is already set."""
     if cancel is not None and cancel.is_set():
         raise KeyboardInterrupt
     part, kind, skip_reason = media_part(cfg, path, ext, media_type, cache_dir, rotate, duration_s)
@@ -257,6 +264,9 @@ def embed_media(
 def pending_rows(
     conn: sqlite3.Connection, root_id: int | None, force: bool = False
 ) -> list[sqlite3.Row]:
+    """Present, non-hidden files still needing (re-)indexing -- unindexed, with
+    changed bytes, or stamped with a stale ``INDEXER_VERSION`` -- or, with
+    ``force``, every eligible file regardless of what's already indexed."""
     where = ["f.present=1", "f.hidden=0", "f.media_type IN ('image','video','audio','document')"]
     params: list[Any] = []
     if root_id is not None:
@@ -288,6 +298,9 @@ def pending_rows(
 def work_counts(
     conn: sqlite3.Connection, root_id: int | None, force: bool = False
 ) -> tuple[int, int]:
+    """(total eligible files, how many are already indexed at the current
+    ``INDEXER_VERSION``) for a progress readout. With ``force``, completed is
+    always 0 since every eligible file is about to be re-indexed."""
     where = ["f.present=1", "f.hidden=0", "f.media_type IN ('image','video','audio','document')"]
     params: list[Any] = []
     if root_id is not None:
@@ -325,6 +338,10 @@ def save_outcome(
     kind: str | None,
     error: str | None,
 ) -> None:
+    """Upsert one file's semantic_embeddings row from an ``embed_media`` result,
+    deriving ``status`` ('indexed' / 'skipped' / 'error') from whether a vector
+    was produced and, if not, whether the failure is permanent. Does not
+    commit; the caller controls the transaction."""
     status = (
         "indexed" if values is not None else ("skipped" if _is_permanent_skip(error) else "error")
     )

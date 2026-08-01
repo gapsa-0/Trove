@@ -37,6 +37,7 @@ except Exception:  # pragma: no cover
     ExifReader = None
 
     def exif_available() -> bool:
+        """Always False: this stub only exists because the real exiftool binding failed to import."""
         return False
 
 
@@ -58,6 +59,8 @@ class _Progress(Protocol):
 
 @dataclass
 class EnrichStats:
+    """Counters for one ``enrich`` run, returned to the caller when the batch loop ends."""
+
     processed: int = 0
     with_takeout: int = 0
     with_gps: int = 0
@@ -131,6 +134,13 @@ def enrich(
     batch_size: int = 80,
     root_ids: tuple[int, ...] | None = None,
 ) -> EnrichStats:
+    """Resolve dates/GPS/media metadata for every file still missing a ``dates`` row.
+
+    Processes in batches, committing periodically, until no pending files
+    remain, then returns the accumulated ``EnrichStats``. A file with no
+    resolvable date is simply left without a ``dates`` row and picked up
+    again on the next call.
+    """
     stats = EnrichStats()
     matcher = SidecarMatcher()
     reader = ExifReader() if (ExifReader and exif_available()) else None

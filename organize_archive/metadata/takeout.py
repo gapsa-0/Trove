@@ -41,6 +41,9 @@ _TRAIL_COUNTER_RE = re.compile(r"\(\d+\)$")
 
 @dataclass
 class SidecarData:
+    """Fields parsed out of one Takeout JSON sidecar. ``lat``/``lon``/``alt`` are
+    all None together when the sidecar's geo fields were the 0/0/0 "no location" placeholder."""
+
     title: str | None
     description: str | None
     taken_time: int | None  # photoTakenTime epoch (UTC)
@@ -144,6 +147,7 @@ def _clean_coord(lat: Any, lon: Any, alt: Any) -> tuple[float | None, float | No
 
 
 def parse_sidecar(json_path: Path) -> SidecarData | None:
+    """Parse one Takeout JSON sidecar. Returns None if it can't be read or isn't valid JSON."""
     try:
         data = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):

@@ -34,10 +34,16 @@ class _ScanStatsLike(Protocol):
 
 
 def now_iso() -> str:
+    """Current UTC time as an ISO 8601 string, seconds precision."""
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
+    """Open a writable connection with WAL, busy_timeout and foreign keys set.
+
+    Row access is by column name (``sqlite3.Row``). The pragmas below are
+    issued in a load-bearing order -- see the comment on ``busy_timeout``.
+    """
     conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     # busy_timeout MUST be set before any statement that can take a lock. The GUI
@@ -206,6 +212,7 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 
 def get_or_create_root(conn: sqlite3.Connection, path: str) -> int:
+    """Return the id of the ``roots`` row for ``path``, inserting one if none exists."""
     row = conn.execute("SELECT id FROM roots WHERE path=?", (path,)).fetchone()
     if row:
         return cast(int, row["id"])  # sqlite3.Row.__getitem__ is typed Any
@@ -311,6 +318,7 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
 
 
 def scan_run_start(conn: sqlite3.Connection, root_id: int, roots: Iterable[str]) -> int:
+    """Insert an open ``scan_runs`` row (``finished_at`` still NULL) and return its id."""
     cur = conn.execute(
         "INSERT INTO scan_runs(started_at, roots, root_id) VALUES(?,?,?)",
         (now_iso(), json.dumps(list(roots)), root_id),

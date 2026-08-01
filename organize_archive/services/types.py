@@ -35,6 +35,8 @@ class _MediaItemBase(TypedDict):
 
 
 class MediaItem(_MediaItemBase, total=False):
+    """One media-grid item, as built by browse, people, places, pets and search."""
+
     # Keys only some of the five builders add. `date_source` is here, not on
     # the required base, because services/pets.py's pet_group() is the one
     # builder that omits it (and also hardcodes "type": "image" and

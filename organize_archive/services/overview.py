@@ -14,6 +14,9 @@ from ._common import _NOT_HIDDEN, _QUALITY_OK, _VISIBLE, _root_clause, reading
 
 @reading
 def summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
+    """Top-line Overview dashboard numbers: total files/bytes, the type
+    breakdown, how many carry GPS or a resolved date, and the archive's
+    overall date range."""
     rc, rp = _root_clause(root_id)
     total, size = conn.execute(
         f"SELECT COUNT(*), COALESCE(SUM(size),0) FROM files f WHERE {_VISIBLE}{rc}",

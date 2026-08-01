@@ -25,6 +25,8 @@ from .types import MediaItem
 def face_summary(
     conn: sqlite3.Connection, root_id: int | None = None, detect_video_frames: int = 0
 ) -> dict[str, Any]:
+    """The People panel's summary tile: scanned/unscanned image counts, total
+    faces and named clusters, and whether the face backend is available."""
     from ..faces import backend as fb
 
     rc, rp = _root_clause(root_id)
@@ -272,6 +274,9 @@ def _person_merges_for(
 
 @writing
 def rename_person(conn: sqlite3.Connection, person_id: int | None, name: str) -> dict[str, Any]:
+    """Set a person's display name, carrying any existing manual face-pins
+    over to the new name. Returns ``{"error": ...}`` if ``person_id`` is
+    missing or unknown."""
     if not person_id:
         return {"error": "missing person_id"}
     old = conn.execute("SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
@@ -410,6 +415,9 @@ def add_person_to_file(
 def remove_person_from_file(
     conn: sqlite3.Connection, person_id: int | None, file_id: int | None
 ) -> dict[str, Any]:
+    """Drop a manual person tag (person_files) from a file. Does not touch any
+    detected face; returns ``{"error": ...}`` only when an id is missing, and
+    ``{"ok": True}`` even if no such tag existed."""
     if not person_id or not file_id:
         return {"error": "missing person_id or file_id"}
     conn.execute("DELETE FROM person_files WHERE person_id=? AND file_id=?", (person_id, file_id))
@@ -597,10 +605,18 @@ def _persons_link(
 
 
 def set_persons_different(db_path: str, id_a: int | None, id_b: int | None) -> dict[str, Any]:
+    """Record that two person clusters are NOT the same person: a durable
+    cannot-link in face_links, which blocks a future automatic merge and drops
+    the pair out of the person_suggestions queue. Returns ``{"error": ...}`` if
+    the ids are missing, equal, or unknown."""
     return _persons_link(db_path, id_a, id_b, "different")
 
 
 def set_persons_skip(db_path: str, id_a: int | None, id_b: int | None) -> dict[str, Any]:
+    """Record that a "same person?" suggestion was reviewed and left undecided:
+    the pair stops being offered by person_suggestions, but nothing is asserted
+    about it either way. Returns ``{"error": ...}`` if the ids are missing,
+    equal, or unknown."""
     return _persons_link(db_path, id_a, id_b, "skip")
 
 

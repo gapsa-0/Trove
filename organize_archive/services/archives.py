@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 def archives(cfg: Config) -> list[dict[str, Any]]:
+    """Every registered archive with its picker-page stats: file/byte/hashed
+    counts, last scan time and cover thumbnails, or zeroed stats when its
+    database hasn't been created yet."""
     out: list[dict[str, Any]] = []
     for entry in sorted(cfg.archives, key=lambda a: a["id"]):
         rid, path = entry["id"], entry["path"]
@@ -82,6 +85,10 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
 
 
 def add_archive(cfg: Config, path: str) -> dict[str, Any]:
+    """Register a new archive rooted at ``path``, building its private database
+    first. Returns ``{"id": ..., "path": ...}`` on success; an ``{"error":
+    ...}`` dict if the path isn't a directory, is already registered, or the
+    catalog can't be prepared."""
     p = Path(path).expanduser()
     if not p.is_dir():
         return {"error": f"Not a directory: {path}"}

@@ -1,3 +1,10 @@
+"""Per-archive registry: id allocation, and one-time migration of the legacy
+shared-catalog database into the current per-archive layout.
+
+Provides ``ArchiveRegistryMixin``, mixed into ``Config`` (see ``settings.py``);
+nothing here is used standalone.
+"""
+
 from __future__ import annotations
 
 import logging

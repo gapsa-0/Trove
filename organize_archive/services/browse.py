@@ -437,6 +437,9 @@ def _item_manual_tags(
 
 @reading
 def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, Any] | None:
+    """The detail-panel payload for one file: its dates, GPS, metadata,
+    people/animals, place, and the pick lists to edit them. Returns None if
+    ``fid`` doesn't exist."""
     f = conn.execute(
         """SELECT f.*, r.path AS root_path FROM files f
            JOIN roots r ON r.id=f.root_id WHERE f.id=?""",

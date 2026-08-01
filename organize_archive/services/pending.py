@@ -38,6 +38,9 @@ def faces_pending(conn: sqlite3.Connection, root_id: int | None = None) -> int:
 def pets_pending(
     conn: sqlite3.Connection, root_id: int | None = None, model_source: str | None = None
 ) -> int:
+    """Present canonical images not yet pet-scanned with the current source
+    hash and, when given, the current ``model_source`` -- used by the
+    auto-scheduler to decide whether to queue a pets job."""
     rc, rp = _root_clause(root_id)
     model_clause = ""
     params: list[Any] = []
