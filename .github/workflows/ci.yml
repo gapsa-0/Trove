@@ -52,6 +52,11 @@ jobs:
       # else in CI can see a mismatch: eslint does not read HTML attributes and
       # no test drives a browser -- the button just silently stops working.
       - run: python tools/dev/check_handlers.py
+      # A file or function that grows past budget passes every other check
+      # here -- ruff and mypy grade style and correctness, not shape. This is
+      # the shrink-only ratchet that catches a module quietly becoming the
+      # place every future change lands.
+      - run: python tools/dev/check_sizes.py
       - run: make test
       - run: python packaging/scripts/stage-tools.py --validate
       - run: python packaging/scripts/stage-models.py --validate

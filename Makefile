@@ -4,7 +4,7 @@
 # the two cannot drift apart and "green locally, red in CI" stays abnormal.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint lint-py lint-js handlers fmt test test-fast gui shots api-docs check
+.PHONY: help setup lint lint-py lint-js handlers sizes fmt test test-fast gui shots api-docs check
 
 # `?=` so CI can point this at the interpreter it already installed into:
 # the runner has no .venv, and sets PY=python in the job environment.
@@ -44,6 +44,13 @@ lint-js:         ## JavaScript static checks only (what CI's electron job runs)
 handlers:        ## Check every inline on* handler resolves to main.js's export block
 	$(PY) tools/dev/check_handlers.py
 
+# A file or function that grows past budget still passes every other check --
+# ruff and mypy grade style and correctness, not shape. This is what keeps a
+# "just one more case" habit from quietly turning one module into the place
+# every future change lands.
+sizes:           ## Check tracked files and functions against a shrink-only size ratchet
+	$(PY) tools/dev/check_sizes.py
+
 fmt:             ## Autoformat
 	$(PY) -m ruff format .
 	$(PY) -m ruff check --fix .
@@ -78,4 +85,4 @@ shots:           ## Screenshot every route into shots/ as a refactor guardrail
 api-docs:        ## Regenerate docs/dev/api.md from the route tables
 	$(PY) tools/dev/gen_api_docs.py
 
-check: lint handlers test ## Everything CI runs
+check: lint handlers sizes test ## Everything CI runs
