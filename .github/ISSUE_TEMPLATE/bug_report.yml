@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in Trove is broken or behaving unexpectedly.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown in the app, and in `release-version.json` for a source checkout.
+      placeholder: "0.1.2"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Distro/version for Linux, or the Windows/macOS version.
+      placeholder: "e.g. Ubuntu 24.04, Windows 11, macOS 14"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Windows installer
+        - AppImage
+        - .deb
+        - From source
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: As precisely as you can — which archive/page/action.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: >
+        This is the single most useful thing you can attach. Run `oa logs` for the
+        last 200 lines, or `oa logs --path` to find the log file and attach it
+        directly. See docs/troubleshooting.md ("Where are the logs?") for the file
+        location on each OS. Please trim to the relevant portion if it's long.
+      render: text
+    validations:
+      required: false

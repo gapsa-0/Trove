@@ -1,0 +1,35 @@
+version: 2
+updates:
+  # Python project at the repo root. Note: Dependabot reads `pyproject.toml`'s
+  # dependency ranges, not `constraints.txt` — the exact pins this project tests
+  # against (see the header comment in constraints.txt) are not what Dependabot
+  # proposes or checks; a PR here bumps an allowed range, and the pin in
+  # constraints.txt still needs updating and testing by hand as usual.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  # Desktop shell (Electron) under desktop/.
+  - package-ecosystem: "npm"
+    directory: "/desktop"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+
+  # Workflow actions under .github/workflows/.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-dependencies:
+        patterns:
+          - "*"
