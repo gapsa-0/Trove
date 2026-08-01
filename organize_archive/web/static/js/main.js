@@ -8,54 +8,49 @@ import {
   esc,
 } from "./dom.js";
 import {
+  applyHash, applyNavCollapsed, showSection, toPicker, toggleNav,
+} from "./router.js";
+import {
   ARCHIVES, addArchiveFromForm, loadPicker, openArchive,
 } from "./picker.js";
+
 import {
-  stopGlobalStatus,
-} from "./status.js";
-import {
-  applyFilters, applySort, clearFilters, onPeopleFilterChange, onYearChange, renderPhotos,
+  applyFilters, applySort, clearFilters, onPeopleFilterChange, onYearChange,
 } from "./library.js";
 import {
   onSemanticComposerInput, onSemanticComposerKeydown, onSemanticComposerPaste,
-  renderSearchReach, semanticSubmit,
+  semanticSubmit,
 } from "./search.js";
-import {
-  INFINITE_LIST_KEYS,
-} from "./infinite.js";
+
 import {
   MITEM, addPersonPicker, addPetPicker, closeModal, closePick, editDate, editPlace, newPlace,
   onAddPerson, onAddPet, onPlaceSelect, openItem, reassignFace, removeManualPerson,
   removeManualPet, renderInfo, saveDate, saveNewPlace, syncPickerMapTiles,
 } from "./item.js";
 import {
-  renamePet, renderPets, startPetPoll,
+  renamePet,
 } from "./pets.js";
 import {
-  answerSuggest, backToPeople, editPersonName, hidePerson, renderFaces, startFacePoll,
+  answerSuggest, backToPeople, editPersonName, hidePerson,
 } from "./people.js";
 import {
   mergeAskCancel, undoMerge,
 } from "./merge.js";
 import {
-  MAP, closePlaceCluster, disposeMap, drawMap, editClusterName, renderMap, setMapView,
-  syncPlacesMapTiles,
+  closePlaceCluster, editClusterName, setMapView, syncPlacesMapTiles,
 } from "./places.js";
 import {
-  applyTimelineFilters, clearTimelineFilters, onTimelineYearChange, renderTimeline,
+  applyTimelineFilters, clearTimelineFilters, onTimelineYearChange,
 } from "./timeline.js";
 import {
-  renderOverview, setStorageMetric, startPoll, stopPoll, togglePipelinePause,
-  toggleStagePause,
+  setStorageMetric, togglePipelinePause, toggleStagePause,
 } from "./overview.js";
+
 import {
-  renderDedup,
-} from "./dups.js";
-import {
-  ICONS, S, SECTIONS,
+  ICONS, S,
 } from "./state.js";
 import {
-  jget, jpost,
+  jget,
 } from "./api.js";
 
 // Checkbox filter menus behave like native popovers: only one stays open, and
@@ -77,7 +72,7 @@ document.addEventListener("toggle", event => {
 }, true);
 
 export function currentTheme() { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
-function syncThemeControl() {
+export function syncThemeControl() {
   const dark = currentTheme() === "dark";
   // Gear buttons (settings) share the .theme-toggle look but carry no theme
   // icon/label, so skip anything without a .theme-icon so they don't break here.
@@ -117,11 +112,6 @@ function closeSettings() {
 
 /* ---------- archive shell ---------- */
 
-function applyHash() {
-  const m = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);
-  if (m) { const a = ARCHIVES.find(x => x.id == +m[1]); if (a) { openArchive(a, m[2]); return true; } }
-  return false;
-}
 window.addEventListener("hashchange", () => {
   const match = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);
   if (!match) return;
@@ -130,153 +120,12 @@ window.addEventListener("hashchange", () => {
   if (S.arch && S.arch.id === archive.id) showSection(match[2]);
   else openArchive(archive, match[2]);
 });
-function toPicker() {
-  if (S.arch) jpost("/api/archive/close", { root_id: S.arch.id });
-  stopPoll(); stopGlobalStatus(); resetSectionViews(); S.arch = null;
-  document.getElementById("app").classList.remove("on");
-  document.getElementById("picker").style.display = "";
-  loadPicker();
-}
+
 window.addEventListener("pagehide", () => {
   if (S.arch) navigator.sendBeacon("/api/archive/close", JSON.stringify({ root_id: S.arch.id }));
 });
-export function renderNav() {
-  const el = document.getElementById("navitems"); el.innerHTML = "";
-  SECTIONS.forEach(s => {
-    const d = document.createElement("button"); d.type = "button";
-    d.className = "navitem" + (s.id === S.section ? " active" : "");
-    d.title = s.label; d.setAttribute("aria-current", s.id === S.section ? "page" : "false");
-    d.innerHTML = `<span class="navicon" aria-hidden="true">${ICONS[s.id]}</span><span>${s.label}</span>`; d.onclick = () => showSection(s.id);
-    el.appendChild(d);
-  });
-  syncThemeControl();
-}
-function navCollapsed() { return localStorage.getItem("navCollapsed") === "1"; }
-function applyNavCollapsed() {
-  document.getElementById("nav").classList.toggle("collapsed", navCollapsed());
-}
-function toggleNav() {
-  localStorage.setItem("navCollapsed", navCollapsed() ? "0" : "1");
-  applyNavCollapsed();
-}
+
 applyNavCollapsed();
-const RENDERERS = {
-  overview: renderOverview, library: renderPhotos, timeline: renderTimeline, places: renderMap,
-  people: renderFaces, pets: renderPets, dups: renderDedup
-};
-const SECTION_VIEWS = new Map();
-const SECTION_READY = new Set();
-export let ACTIVE_SECTION = null;
-export function resetSectionViews() {
-  const main = document.getElementById("main");
-  disposeMap();
-  if (S.grid && S.grid.observer) S.grid.observer.disconnect();
-  S.grid = null; S.gallery = [];
-  INFINITE_LIST_KEYS.forEach(key => {
-    if (S[key] && S[key].observer) S[key].observer.disconnect();
-    S[key] = null;
-  });
-  SECTION_VIEWS.clear(); SECTION_READY.clear(); ACTIVE_SECTION = null;
-  if (main) main.replaceChildren();
-}
-export function libraryVisibleAnchor() {
-  const main = document.getElementById("main"), grid = document.getElementById("grid");
-  if (!main || !grid) return null;
-  const top = main.getBoundingClientRect().top;
-  const tiles = [...grid.querySelectorAll(".tile[data-result-index]")];
-  const visible = tiles.find(node => node.getBoundingClientRect().bottom > top);
-  return visible ? {
-    id: Number(visible.dataset.fileId),
-    index: Number(visible.dataset.resultIndex),
-    top: visible.getBoundingClientRect().top - top,
-  } : null;
-}
-export function restoreLibraryAnchor(anchor) {
-  if (!anchor) return false;
-  const main = document.getElementById("main");
-  const tile = document.querySelector(`#grid .tile[data-file-id="${anchor.id}"]`);
-  if (!main || !tile) return false;
-  const top = main.getBoundingClientRect().top;
-  main.scrollTop += tile.getBoundingClientRect().top - top - anchor.top;
-  return true;
-}
-function stashActiveSection() {
-  if (!ACTIVE_SECTION) return;
-  const main = document.getElementById("main"), section = ACTIVE_SECTION;
-  if (!SECTION_READY.has(section)) {
-    main.replaceChildren(); ACTIVE_SECTION = null; return;
-  }
-  // The Library can contain hundreds of decoded thumbnails. Preserve its
-  // lightweight query/page state and visible anchor, but release every DOM and
-  // image node instead of retaining the section as a detached fragment.
-  if (section === "library") {
-    const g = S.grid;
-    if (g) {
-      g.anchor = libraryVisibleAnchor();
-      g.savedScrollTop = main.scrollTop;
-      if (g.observer) g.observer.disconnect();
-      g.observer = null;
-    }
-    main.replaceChildren();
-    SECTION_READY.delete(section);
-    ACTIVE_SECTION = null;
-    return;
-  }
-  const fragment = document.createDocumentFragment();
-  const scrollTop = main.scrollTop;
-  while (main.firstChild) fragment.appendChild(main.firstChild);
-  SECTION_VIEWS.set(section, { fragment, scrollTop });
-  ACTIVE_SECTION = null;
-}
-function resumeSection(id) {
-  if (id === "overview") startPoll();
-  else if (id === "library") renderSearchReach();
-  else if (id === "people" && document.getElementById("facejob")) startFacePoll();
-  else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
-  else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
-}
-export function showSection(id, reload = false) {
-  if (!RENDERERS[id]) id = "overview";
-  if (ACTIVE_SECTION === id && !reload) return;
-  S.nav++; const gen = S.nav;
-  stopPoll();
-  const m = document.getElementById("main");
-  if (ACTIVE_SECTION) {
-    if (reload && ACTIVE_SECTION === id) {
-      m.replaceChildren();
-      SECTION_VIEWS.delete(id);
-      SECTION_READY.delete(id);
-      ACTIVE_SECTION = null;
-    } else stashActiveSection();
-  }
-  S.section = id; ACTIVE_SECTION = id; renderNav();
-  if (S.arch) location.hash = `/archive/${S.arch.id}/${id}`;
-  const saved = SECTION_VIEWS.get(id);
-  if (saved && !reload) {
-    SECTION_VIEWS.delete(id);
-    m.appendChild(saved.fragment);
-    requestAnimationFrame(() => { if (ACTIVE_SECTION === id) m.scrollTop = saved.scrollTop; });
-    resumeSection(id);
-    return;
-  }
-  SECTION_READY.delete(id);
-  m.scrollTop = 0;
-  m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
-  const fn = RENDERERS[id] || (mm => renderSoon(mm, id));
-  // Isolate each section render: a throw (bad fetch, JSON error, …) shows an inline
-  // error with Retry instead of leaving the previous section's DOM half-replaced.
-  Promise.resolve().then(() => fn(m)).then(() => {
-    if (gen === S.nav && ACTIVE_SECTION === id) SECTION_READY.add(id);
-  }).catch(err => {
-    if (gen !== S.nav) return;
-    console.error("section render failed:", id, err);
-    m.innerHTML = `<div class="soonbox"><div class="big">⚠️</div>
-      <p>Couldn't load this section.</p>
-      <p class="muted">${(err && err.message) || err}</p>
-      <p style="margin-top:14px"><button class="btn sec" onclick="showSection('${id}',true)">Retry</button></p></div>`;
-    SECTION_READY.add(id);
-  });
-}
 
 /* ---------- overview + tasks ---------- */
 
@@ -347,7 +196,7 @@ export function syncCardGrid(grid, items, { keyOf, make, update, complete, empty
   return cards;
 }
 
-function renderSoon(m, id) {
+export function renderSoon(m, id) {
   const S2 = {
     places: ["📍", "Places", "Reverse-geocode coordinates into place names and browse by location."],
     situations: ["🔎", "Situations", "Search by content: “beach sunset”, “birthday”, using local image embeddings."]

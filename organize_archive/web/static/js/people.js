@@ -3,6 +3,9 @@
 // the single-person page. Merging is drag-to-merge's job, not this module's.
 
 import {
+  renderNav,
+} from "./router.js";
+import {
   personTile,
 } from "./library.js";
 import {
@@ -27,7 +30,7 @@ import {
   S,
 } from "./state.js";
 import {
-  detectStatusRow, renderNav, syncCardGrid,
+  detectStatusRow, syncCardGrid,
 } from "./main.js";
 
 export async function renderFaces(m) {

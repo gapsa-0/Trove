@@ -4,6 +4,9 @@
 // grid does with whatever query it is given.
 
 import {
+  ACTIVE_SECTION, libraryVisibleAnchor, restoreLibraryAnchor,
+} from "./router.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -22,9 +25,6 @@ import {
 import {
   applyTimelineFilters,
 } from "./timeline.js";
-import {
-  ACTIVE_SECTION, libraryVisibleAnchor, restoreLibraryAnchor,
-} from "./main.js";
 
 export const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
   "August", "September", "October", "November", "December"];

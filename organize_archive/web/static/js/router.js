@@ -1,0 +1,196 @@
+// Hash routing and the section shell: which screen is on, the nav that switches
+// between them, and the stash/resume that keeps a section's DOM and scroll
+// position alive while the user is elsewhere. The RENDERERS table is the one
+// place that names every screen's entry point.
+
+import {
+  jpost,
+} from "./api.js";
+import {
+  renderDedup,
+} from "./dups.js";
+import {
+  INFINITE_LIST_KEYS,
+} from "./infinite.js";
+import {
+  renderPhotos,
+} from "./library.js";
+import {
+  renderOverview, startPoll, stopPoll,
+} from "./overview.js";
+import {
+  renderFaces, startFacePoll,
+} from "./people.js";
+import {
+  renderPets, startPetPoll,
+} from "./pets.js";
+import {
+  ARCHIVES, loadPicker, openArchive,
+} from "./picker.js";
+import {
+  MAP, disposeMap, drawMap, renderMap,
+} from "./places.js";
+import {
+  renderSearchReach,
+} from "./search.js";
+import {
+  ICONS, S, SECTIONS,
+} from "./state.js";
+import {
+  stopGlobalStatus,
+} from "./status.js";
+import {
+  renderTimeline,
+} from "./timeline.js";
+import {
+  renderSoon, syncThemeControl,
+} from "./main.js";
+
+export function applyHash() {
+  const m = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);
+  if (m) { const a = ARCHIVES.find(x => x.id == +m[1]); if (a) { openArchive(a, m[2]); return true; } }
+  return false;
+}
+export function toPicker() {
+  if (S.arch) jpost("/api/archive/close", { root_id: S.arch.id });
+  stopPoll(); stopGlobalStatus(); resetSectionViews(); S.arch = null;
+  document.getElementById("app").classList.remove("on");
+  document.getElementById("picker").style.display = "";
+  loadPicker();
+}
+export function renderNav() {
+  const el = document.getElementById("navitems"); el.innerHTML = "";
+  SECTIONS.forEach(s => {
+    const d = document.createElement("button"); d.type = "button";
+    d.className = "navitem" + (s.id === S.section ? " active" : "");
+    d.title = s.label; d.setAttribute("aria-current", s.id === S.section ? "page" : "false");
+    d.innerHTML = `<span class="navicon" aria-hidden="true">${ICONS[s.id]}</span><span>${s.label}</span>`; d.onclick = () => showSection(s.id);
+    el.appendChild(d);
+  });
+  syncThemeControl();
+}
+function navCollapsed() { return localStorage.getItem("navCollapsed") === "1"; }
+export function applyNavCollapsed() {
+  document.getElementById("nav").classList.toggle("collapsed", navCollapsed());
+}
+export function toggleNav() {
+  localStorage.setItem("navCollapsed", navCollapsed() ? "0" : "1");
+  applyNavCollapsed();
+}
+const RENDERERS = {
+  overview: renderOverview, library: renderPhotos, timeline: renderTimeline, places: renderMap,
+  people: renderFaces, pets: renderPets, dups: renderDedup
+};
+const SECTION_VIEWS = new Map();
+const SECTION_READY = new Set();
+export let ACTIVE_SECTION = null;
+export function resetSectionViews() {
+  const main = document.getElementById("main");
+  disposeMap();
+  if (S.grid && S.grid.observer) S.grid.observer.disconnect();
+  S.grid = null; S.gallery = [];
+  INFINITE_LIST_KEYS.forEach(key => {
+    if (S[key] && S[key].observer) S[key].observer.disconnect();
+    S[key] = null;
+  });
+  SECTION_VIEWS.clear(); SECTION_READY.clear(); ACTIVE_SECTION = null;
+  if (main) main.replaceChildren();
+}
+export function libraryVisibleAnchor() {
+  const main = document.getElementById("main"), grid = document.getElementById("grid");
+  if (!main || !grid) return null;
+  const top = main.getBoundingClientRect().top;
+  const tiles = [...grid.querySelectorAll(".tile[data-result-index]")];
+  const visible = tiles.find(node => node.getBoundingClientRect().bottom > top);
+  return visible ? {
+    id: Number(visible.dataset.fileId),
+    index: Number(visible.dataset.resultIndex),
+    top: visible.getBoundingClientRect().top - top,
+  } : null;
+}
+export function restoreLibraryAnchor(anchor) {
+  if (!anchor) return false;
+  const main = document.getElementById("main");
+  const tile = document.querySelector(`#grid .tile[data-file-id="${anchor.id}"]`);
+  if (!main || !tile) return false;
+  const top = main.getBoundingClientRect().top;
+  main.scrollTop += tile.getBoundingClientRect().top - top - anchor.top;
+  return true;
+}
+function stashActiveSection() {
+  if (!ACTIVE_SECTION) return;
+  const main = document.getElementById("main"), section = ACTIVE_SECTION;
+  if (!SECTION_READY.has(section)) {
+    main.replaceChildren(); ACTIVE_SECTION = null; return;
+  }
+  // The Library can contain hundreds of decoded thumbnails. Preserve its
+  // lightweight query/page state and visible anchor, but release every DOM and
+  // image node instead of retaining the section as a detached fragment.
+  if (section === "library") {
+    const g = S.grid;
+    if (g) {
+      g.anchor = libraryVisibleAnchor();
+      g.savedScrollTop = main.scrollTop;
+      if (g.observer) g.observer.disconnect();
+      g.observer = null;
+    }
+    main.replaceChildren();
+    SECTION_READY.delete(section);
+    ACTIVE_SECTION = null;
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  const scrollTop = main.scrollTop;
+  while (main.firstChild) fragment.appendChild(main.firstChild);
+  SECTION_VIEWS.set(section, { fragment, scrollTop });
+  ACTIVE_SECTION = null;
+}
+function resumeSection(id) {
+  if (id === "overview") startPoll();
+  else if (id === "library") renderSearchReach();
+  else if (id === "people" && document.getElementById("facejob")) startFacePoll();
+  else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
+  else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
+}
+export function showSection(id, reload = false) {
+  if (!RENDERERS[id]) id = "overview";
+  if (ACTIVE_SECTION === id && !reload) return;
+  S.nav++; const gen = S.nav;
+  stopPoll();
+  const m = document.getElementById("main");
+  if (ACTIVE_SECTION) {
+    if (reload && ACTIVE_SECTION === id) {
+      m.replaceChildren();
+      SECTION_VIEWS.delete(id);
+      SECTION_READY.delete(id);
+      ACTIVE_SECTION = null;
+    } else stashActiveSection();
+  }
+  S.section = id; ACTIVE_SECTION = id; renderNav();
+  if (S.arch) location.hash = `/archive/${S.arch.id}/${id}`;
+  const saved = SECTION_VIEWS.get(id);
+  if (saved && !reload) {
+    SECTION_VIEWS.delete(id);
+    m.appendChild(saved.fragment);
+    requestAnimationFrame(() => { if (ACTIVE_SECTION === id) m.scrollTop = saved.scrollTop; });
+    resumeSection(id);
+    return;
+  }
+  SECTION_READY.delete(id);
+  m.scrollTop = 0;
+  m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
+  const fn = RENDERERS[id] || (mm => renderSoon(mm, id));
+  // Isolate each section render: a throw (bad fetch, JSON error, …) shows an inline
+  // error with Retry instead of leaving the previous section's DOM half-replaced.
+  Promise.resolve().then(() => fn(m)).then(() => {
+    if (gen === S.nav && ACTIVE_SECTION === id) SECTION_READY.add(id);
+  }).catch(err => {
+    if (gen !== S.nav) return;
+    console.error("section render failed:", id, err);
+    m.innerHTML = `<div class="soonbox"><div class="big">⚠️</div>
+      <p>Couldn't load this section.</p>
+      <p class="muted">${(err && err.message) || err}</p>
+      <p style="margin-top:14px"><button class="btn sec" onclick="showSection('${id}',true)">Retry</button></p></div>`;
+    SECTION_READY.add(id);
+  });
+}

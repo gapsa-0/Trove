@@ -3,6 +3,9 @@
 // poll. The single-pet page lives here too.
 
 import {
+  ACTIVE_SECTION, showSection,
+} from "./router.js";
+import {
   tile,
 } from "./library.js";
 import {
@@ -27,7 +30,7 @@ import {
   S,
 } from "./state.js";
 import {
-  ACTIVE_SECTION, detectStatusRow, showSection, syncCardGrid,
+  detectStatusRow, syncCardGrid,
 } from "./main.js";
 
 const PET_LIST_PAGE_SIZE = 120, LOOSE_PET_PAGE_SIZE = 120, NONHUMAN_PAGE_SIZE = 60;

@@ -3,6 +3,9 @@
 // so it is also where the app's very first render happens.
 
 import {
+  resetSectionViews, showSection,
+} from "./router.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -14,9 +17,6 @@ import {
 import {
   startGlobalStatus,
 } from "./status.js";
-import {
-  resetSectionViews, showSection,
-} from "./main.js";
 
 export let ARCHIVES = [];
 // Build one archive card's cover mosaic from a few real thumbnails (served by
