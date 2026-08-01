@@ -99,6 +99,30 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    def _is_cross_origin(self) -> bool:
+        """Whether this request was made by a page on some *other* site.
+
+        This server listens on the loopback interface, which is not the barrier
+        it looks like: a tab open on any website can post to 127.0.0.1, and the
+        browser will send it. A JSON body normally forces a CORS preflight that
+        we never answer, but ``fetch`` with a ``text/plain`` content type is a
+        "simple request" -- no preflight, straight through -- and
+        ``_read_json_body`` parses the body whatever the content type says. So
+        without this check, any website could quietly drive /api/archive/remove.
+
+        The test is ``Origin`` against ``Host``, which is enough because
+        browsers set ``Origin`` on every cross-origin request and cannot be
+        talked out of it. A missing ``Origin`` means the caller is not a browser
+        at all -- curl, the test suite, a script -- and those are not the
+        confused deputy this defends against. Comparing against ``Host`` rather
+        than a fixed address is what keeps it working whether the user reached
+        the app as 127.0.0.1 or localhost, on whatever port it got.
+        """
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return False
+        return urlparse(origin).netloc != self.headers.get("Host")
+
     # -- routing ------------------------------------------------------------
     # Every route this server answers is registered in ``routes/``; the two
     # methods below only translate. ``_build_request`` turns a socket into a
@@ -131,8 +155,12 @@ class Handler(BaseHTTPRequestHandler):
         """Run this request's handler and send exactly one response, whatever
         happens.
 
-        Four outcomes, and which one a failure gets is the point of the split:
+        Five outcomes, and which one a failure gets is the point of the split:
 
+        * **Another site driving a mutation** -- 403, before the body is even
+          looked at. GET is deliberately not checked: it changes nothing, and
+          a cross-origin caller cannot read the reply anyway without the CORS
+          headers this server never sends.
         * **No route** -- 404.
         * **The caller's fault** -- ``TroveError`` (raised deliberately, message
           written to be read by a person) or ``ValueError`` (a bad id in the
@@ -147,6 +175,8 @@ class Handler(BaseHTTPRequestHandler):
         what makes that impossible to reintroduce.
         """
         try:
+            if method == "POST" and self._is_cross_origin():
+                return self._json({"error": "cross-origin request refused"}, 403)
             body = self._read_json_body() if method == "POST" else {}
             req = self._build_request(method, body)
             handler = routes.handler_for(method, req.path)

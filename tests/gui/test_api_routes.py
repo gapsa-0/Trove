@@ -63,13 +63,15 @@ def _get(base_url: str, path: str) -> tuple[int, str, bytes]:
         return exc.code, exc.headers.get("Content-Type", ""), exc.read()
 
 
-def _post(base_url: str, path: str, payload: dict) -> tuple[int, bytes]:
+def _post(
+    base_url: str, path: str, payload: dict, headers: dict | None = None
+) -> tuple[int, bytes]:
     data = json.dumps(payload).encode()
     req = Request(
         f"{base_url}{path}",
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **(headers or {})},
     )
     try:
         with urlopen(req, timeout=5) as resp:
@@ -447,6 +449,133 @@ def test_an_unexpected_error_answers_500_and_logs_a_traceback(live_server, monke
     assert status == 500, body
     assert "cover_face_id" in json.loads(body)["error"]
     assert any("Traceback" in rec.exc_text for rec in caplog.records if rec.exc_text)
+
+
+# ---------------------------------------------------------------------------
+# Hardening. This server reads a user's entire photo archive and listens on a
+# predictable loopback port, so the two questions worth pinning are "can
+# another site drive it" and "can a request name a file outside the archive".
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        pytest.param("http://evil.example", id="another site"),
+        pytest.param("null", id="sandboxed iframe / file://"),
+        # Same host, different port: a *different* local app, which is exactly
+        # the neighbour a loopback-only check would wrongly trust.
+        pytest.param("http://127.0.0.1:1", id="another local server"),
+    ],
+)
+def test_a_cross_origin_post_is_refused(live_server, origin):
+    """Loopback is not a security boundary: a tab on any website can POST to
+    127.0.0.1 and the browser will send it.
+
+    A JSON body would normally force a CORS preflight this server never
+    answers -- but ``fetch`` with ``text/plain`` is a simple request that skips
+    the preflight entirely, and ``_read_json_body`` parses the body whatever
+    the content type claims. So the ``Origin`` check is what actually stops it.
+    """
+    status, body = _post(live_server.base_url, "/api/archive/close", {}, headers={"Origin": origin})
+    assert status == 403, body
+    assert json.loads(body) == {"error": "cross-origin request refused"}
+
+
+def test_a_same_origin_post_is_allowed(live_server):
+    """The other half, and the one that matters for not breaking the app: the
+    GUI's own fetches carry an ``Origin`` matching ``Host``, and so does the
+    Electron shell, which loads the app over http from this very server.
+
+    ``base_url`` is exactly that origin -- scheme, host and port, no path --
+    which is what the browser would send."""
+    status, body = _post(
+        live_server.base_url,
+        "/api/archive/close",
+        {},
+        headers={"Origin": live_server.base_url},
+    )
+    assert status == 200, body
+    assert json.loads(body) == {"ok": True}
+
+
+def test_a_post_with_no_origin_header_is_allowed(live_server):
+    """No ``Origin`` means the caller is not a browser -- curl, a script, this
+    suite. Those are not the confused deputy the check defends against, and
+    refusing them would break every non-browser client for no gain."""
+    status, body = _post(live_server.base_url, "/api/archive/close", {})
+    assert status == 200, body
+
+
+def test_a_cross_origin_get_is_still_allowed(live_server):
+    """GET is deliberately unchecked. It changes nothing, and a cross-origin
+    caller cannot read the reply without the CORS headers this server never
+    sends -- so refusing it would buy nothing and could break the shell."""
+    req = Request(f"{live_server.base_url}/api/health", headers={"Origin": "http://evil.example"})
+    with urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+
+
+# Deep enough to reach the filesystem root from web/vendor/ whatever the repo
+# is checked out under. This is load-bearing: an earlier draft of these tests
+# used three "..", which cannot climb out of the repo, so they passed against a
+# deliberately broken server too and proved nothing. Any payload here must be
+# able to actually reach /etc/passwd if the route lets it.
+_UP = "../" * 12
+
+TRAVERSAL_PAYLOADS = [
+    pytest.param(f"/vendor/{_UP}etc/passwd", id="dot-dot segments"),
+    pytest.param(f"/vendor/{_UP.replace('/', '%2f')}etc%2fpasswd", id="percent-encoded slashes"),
+    pytest.param("/vendor/" + "....//" * 12 + "etc/passwd", id="doubled dots"),
+    pytest.param("/vendor/..", id="bare dot-dot"),
+    pytest.param("/vendor/", id="empty name"),
+    pytest.param(f"/vendor/{_UP}etc/passwd%00.css", id="null byte"),
+]
+
+
+@pytest.mark.parametrize("path", TRAVERSAL_PAYLOADS)
+def test_vendor_route_cannot_escape_its_directory(live_server, path):
+    """``/vendor/<name>`` is the only route that builds a filesystem path out of
+    the request rather than out of a database id, so it is this server's only
+    path-traversal surface.
+
+    Two things stop it, and they are checked together because either alone
+    would be enough today and neither is obviously permanent: the handler takes
+    only the last ``/``-separated segment, and it refuses a segment containing
+    ``..``.
+
+    Verified non-vacuous by mutation, and the result is worth recording.
+    Breaking *only* the segment split (taking the whole path suffix instead)
+    still passes -- the ``..`` refusal catches it. Breaking both makes the
+    ``dot-dot segments`` case serve ``/etc/passwd`` with a 200, which this test
+    then fails on. The other five payloads survive either mutation because
+    nothing here percent-decodes, so they never become ``..`` at all. So the
+    encoded variants document that the surface is closed rather than proving
+    it, and the plain one is the case with teeth.
+
+    ``/etc/passwd`` is the target because it exists on this machine; a payload
+    aimed at a file that does not exist would 404 for the wrong reason.
+    """
+    assert Path("/etc/passwd").exists(), "this test's whole premise"
+    status, _content_type, body = _get(live_server.base_url, path)
+    assert status == 404, (status, body[:200])
+    assert b"root:" not in body
+
+
+def test_media_routes_take_an_id_not_a_path(live_server):
+    """The counterpart to the vendor test, and why there is only one traversal
+    surface: every thumbnail and original resolves through an integer id looked
+    up in the database, so a path in the URL is never opened. A non-numeric id
+    cannot reach the filesystem at all -- it fails to parse first.
+
+    The status is asserted loosely (400 from the unparseable id, or 404 if the
+    client library collapsed the ``..`` before sending) because which of the two
+    arrives depends on urllib, not on this server. The assertion that matters is
+    the second one, and it does not care which path got us there.
+    """
+    status, _content_type, body = _get(live_server.base_url, "/file/../../etc/passwd")
+    assert status in (400, 404), (status, body)
+    assert b"root:" not in body
 
 
 def test_a_post_to_a_get_only_route_answers_404(live_server):
