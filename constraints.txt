@@ -34,7 +34,7 @@ ImageHash==4.3.2
 
 # --- faces extra ---
 insightface==1.0.1
-onnxruntime==1.27.0
+onnxruntime==1.28.0
 opencv-python==5.0.0.93
 scikit-learn==1.9.0
 numpy==2.5.1
