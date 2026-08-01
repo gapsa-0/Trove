@@ -17,10 +17,15 @@ miserable to reproduce.
 from __future__ import annotations
 
 from ..job import Runner
-from . import places
+from . import dedup, enrich, face_cluster, pet_cluster, places, scan
 
 RUNNERS: dict[str, Runner] = {
+    scan.RUNNER.kind: scan.RUNNER,
+    enrich.RUNNER.kind: enrich.RUNNER,
+    dedup.RUNNER.kind: dedup.RUNNER,
     places.RUNNER.kind: places.RUNNER,
+    face_cluster.RUNNER.kind: face_cluster.RUNNER,
+    pet_cluster.RUNNER.kind: pet_cluster.RUNNER,
 }
 
 __all__ = ["RUNNERS", "Runner"]

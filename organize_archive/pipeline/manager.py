@@ -56,7 +56,6 @@ from contextlib import nullcontext
 
 from ..config import Config
 from ..db import database as db
-from ..scan import walker
 from .job import Job, JobContext, JobProgress, Runner
 from .runners import RUNNERS
 
@@ -661,30 +660,12 @@ class JobManager:
                 self._dispatch(runner, job, cancel)
             elif job.kind == "semantic":
                 self._run_semantic(job, cancel)
-            elif job.kind in ("scan", "enrich"):
-                # Scan and enrich each use their own connection and bypass the
-                # write lock so they can run in parallel. SQLite WAL mode
-                # serializes their brief commits safely.
-                conn = self._open_db(job.root_id)
-                try:
-                    if job.kind == "scan":
-                        self._run_scan(conn, job, cancel)
-                    else:
-                        self._run_enrich(conn, job, cancel)
-                finally:
-                    conn.close()
             else:
                 with self._write_lock:
                     conn = self._open_db(job.root_id)
                     try:
-                        if job.kind == "dedup":
-                            self._run_dedup(conn, job, cancel)
-                        elif job.kind == "detect":
+                        if job.kind == "detect":
                             self._run_detect(conn, job, cancel)
-                        elif job.kind == "face_cluster":
-                            self._run_face_cluster(conn, job, cancel)
-                        elif job.kind == "pet_cluster":
-                            self._run_pet_cluster(conn, job, cancel)
                         else:
                             raise ValueError(f"unknown job kind: {job.kind}")
                     finally:
@@ -740,83 +721,6 @@ class JobManager:
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()
-
-    def _run_scan(self, conn, job: Job, cancel):
-        from pathlib import Path
-
-        prog = JobProgress(job, cancel)
-        run_started = db.now_iso()
-        # An archive database has exactly one root; job.root_path is always
-        # supplied by the scheduler, this is just a defensive fallback.
-        roots = [job.root_path] if job.root_path else [self.cfg.archive_path(job.root_id)]
-        on_disk = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
-        prog.total = on_disk
-        run_id = db.scan_run_start(conn, job.root_id, roots)
-        totals = walker.ScanStats()
-        for r in roots:
-            stats = walker.scan_root(
-                conn,
-                self.cfg,
-                r,
-                run_started,
-                progress=prog,
-                base_done=totals.seen,
-                # Small batches so the parallel enrich job
-                # can begin reading committed rows quickly.
-                commit_every=80,
-                # This archive's root id, not a path lookup:
-                # the rows must land where the GUI reads.
-                root_id=job.root_id,
-            )
-            totals.seen += stats.seen
-            totals.new += stats.new
-            totals.updated += stats.updated
-            totals.errors += stats.errors
-            totals.bytes_hashed += stats.bytes_hashed
-        # Reached only when every root was walked end to end: cancellation and
-        # errors both leave the run open, so neither can pass for full coverage.
-        db.scan_run_finish(conn, run_id, totals, on_disk)
-        job.message = f"{totals.seen} files scanned" + (
-            f" · {totals.errors} unreadable" if totals.errors else ""
-        )
-
-    def _run_enrich(self, conn, job: Job, cancel):
-        from ..metadata import enrich as enrich_mod
-
-        prog = JobProgress(job, cancel)
-        root_ids = (job.root_id,) if job.root_id else None
-        stats = enrich_mod.enrich(conn, self.cfg, progress=prog, root_ids=root_ids)
-        job.message = (
-            f"{stats.processed} processed, "
-            f"{stats.with_takeout} Takeout-matched, "
-            f"{stats.with_gps} with GPS"
-        )
-
-    def _run_dedup(self, conn, job: Job, cancel):
-        from ..dedup import exact
-
-        prog = JobProgress(job, cancel)
-        stats = exact.run(conn, self.cfg, progress=prog, root_id=job.root_id)
-        # Hidden files are duplicate copies. They must never consume semantic
-        # storage or appear as a stale vector if a prior run overlapped dedup.
-        conn.execute(
-            "DELETE FROM semantic_embeddings WHERE file_id IN (SELECT id FROM files WHERE hidden=1)"
-        )
-        # Record what this successful rebuild covered so dedup_needed() can
-        # tell -- from the catalog alone, even after a restart -- that nothing
-        # is owed, until a later scan/enrich invalidates it again
-        # (_mark_dedup_owed). Sharing this commit with the DELETE above (not
-        # exact.run()'s own, earlier commit) is fine: if the process dies
-        # between them, the grouping already landed correctly and the only
-        # cost is one redundant, harmless re-run that re-derives the same
-        # grouping and then marks it.
-        covered_files, covered_max_id = db.dedup_coverage(conn, job.root_id)
-        db.dedup_mark_done(conn, job.root_id, covered_files, covered_max_id)
-        conn.commit()
-        job.message = (
-            f"{stats.groups} groups, {stats.duplicate_files} duplicates, "
-            f"{stats.reclaimable_bytes / 1e9:.1f} GB reclaimable"
-        )
 
     def _run_detect(self, conn, job: Job, cancel):
         # Part of the automatic pipeline (after dedup). ONE decode per image runs
@@ -890,25 +794,6 @@ class JobManager:
             + (f" · {turned} photos turned upright" if turned else "")
             + (f" · {restored} identities restored" if restored else "")
         )
-
-    def _run_face_cluster(self, conn, job: Job, cancel):
-        from ..faces.cluster import cluster_faces
-
-        job.current = "reclustering people after review…"
-        stats = cluster_faces(conn, self.cfg)
-        job.done = job.total = 1
-        job.message = f"{stats.people} people · {stats.clustered} faces clustered"
-
-    def _run_pet_cluster(self, conn, job: Job, cancel):
-        # Mirrors _run_face_cluster; started after unmerge_pets so an undone
-        # merge's fresh 'different' pet_links row takes effect immediately
-        # rather than waiting for the next full detect chunk.
-        from ..pets.cluster import cluster_pets
-
-        job.current = "reclustering pets after review…"
-        stats = cluster_pets(conn, self.cfg, root_id=job.root_id)
-        job.done = job.total = 1
-        job.message = f"{stats.pets} pets · {stats.clustered} detections clustered"
 
     def _run_semantic(self, job: Job, cancel):
         # Drain in passes so semantic indexing is ONE continuous job: each pass

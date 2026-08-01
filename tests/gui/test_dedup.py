@@ -1,3 +1,4 @@
+import logging
 import threading
 
 import factories
@@ -5,6 +6,27 @@ import factories
 from organize_archive.config import Config
 from organize_archive.dedup import exact
 from organize_archive.pipeline import manager as jobs_mod
+from organize_archive.pipeline.job import JobContext
+from organize_archive.pipeline.runners import dedup as dedup_runner
+
+
+def _run_dedup(jm, conn, job):
+    """Run the dedup stage against an already-open connection.
+
+    The runner is called directly, the way the manager calls it, rather than
+    through ``start()``: these tests are about what a completed rebuild records
+    in the catalog, and going through the scheduler would add a worker thread
+    and its own connection for no gain.
+    """
+    dedup_runner.run(
+        JobContext(
+            cfg=jm.cfg,
+            job=job,
+            cancel=threading.Event(),
+            conn=conn,
+            log=logging.getLogger(__name__),
+        )
+    )
 
 
 def test_exact_grouping_still_works_without_visual_dependencies():
@@ -125,7 +147,7 @@ def test_dedup_needed_survives_a_restart(tmp_path, monkeypatch):
         assert jm.dedup_needed(1) is True  # never rebuilt yet
 
         job = jobs_mod.Job(id=1, kind="dedup", root_id=1, root_path="/x")
-        jm._run_dedup(conn, job, threading.Event())
+        _run_dedup(jm, conn, job)
 
         assert jm.dedup_needed(1) is False
     finally:
@@ -152,7 +174,7 @@ def test_dedup_needed_true_again_after_new_files_arrive(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     try:
         job = jobs_mod.Job(id=1, kind="dedup", root_id=1, root_path="/x")
-        jm._run_dedup(conn, job, threading.Event())
+        _run_dedup(jm, conn, job)
         assert jm.dedup_needed(1) is False
 
         factories.add_file(conn, rel_path="two.jpg", sha256="b" * 64, size=5)

@@ -15,6 +15,7 @@ from helpers import wait_until
 
 from organize_archive.config import Config
 from organize_archive.pipeline import manager as jobs_mod
+from organize_archive.pipeline.job import Runner
 
 
 class _FakeConn:
@@ -62,10 +63,10 @@ def _run_to_completion(manager, kind="dedup", timeout=5.0):
 
 
 def test_a_failing_job_logs_an_error_with_a_traceback(jm, monkeypatch, caplog):
-    def boom(self, conn, job, cancel):
+    def boom(ctx):
         raise RuntimeError("the detector exploded")
 
-    monkeypatch.setattr(jobs_mod.JobManager, "_run_dedup", boom)
+    monkeypatch.setitem(jobs_mod.RUNNERS, "dedup", Runner(kind="dedup", run=boom))
 
     with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
         job = _run_to_completion(jm)
@@ -81,7 +82,7 @@ def test_a_failing_job_logs_an_error_with_a_traceback(jm, monkeypatch, caplog):
 
 
 def test_a_successful_job_logs_a_start_and_a_done(jm, monkeypatch, caplog):
-    monkeypatch.setattr(jobs_mod.JobManager, "_run_dedup", lambda self, conn, job, cancel: None)
+    monkeypatch.setitem(jobs_mod.RUNNERS, "dedup", Runner(kind="dedup", run=lambda ctx: None))
 
     with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
         job = _run_to_completion(jm)
@@ -100,10 +101,10 @@ def test_a_cancelled_job_is_not_logged_as_a_failure(jm, monkeypatch, caplog):
     stopped the work on purpose, so cancellation is INFO, not ERROR.
     """
 
-    def cancelled(self, conn, job, cancel):
+    def cancelled(ctx):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(jobs_mod.JobManager, "_run_dedup", cancelled)
+    monkeypatch.setitem(jobs_mod.RUNNERS, "dedup", Runner(kind="dedup", run=cancelled))
 
     with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
         job = _run_to_completion(jm)
