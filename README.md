@@ -1,5 +1,9 @@
 # Trove
 
+[![CI](https://github.com/gapsa-0/Trove/actions/workflows/ci.yml/badge.svg)](https://github.com/gapsa-0/Trove/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/gapsa-0/Trove)](https://github.com/gapsa-0/Trove/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Trove is a desktop catalogue for a large, messy media collection: family photos,
 videos, audio, documents, phone dumps, and Google Takeout exports spread across one
 or more folders. It indexes the collection in place so it can be browsed by date,
@@ -8,6 +12,14 @@ person, place, type, folder, and duplicate group.
 It never moves, renames, edits, or deletes an original file. The catalogue, thumbnails,
 face crops, models, and other derived data live separately in the current user's
 application-data folder.
+
+![The Library overview: counts for the whole archive, a card per pipeline stage
+with its own pause control, and storage broken down by media
+type.](docs/images/overview.png)
+
+*The archive above is the small synthetic one the test suite uses, which is why
+the numbers are tiny — it is the interface that is being shown, not a real
+library.*
 
 ## What it does
 
@@ -219,10 +231,23 @@ make check          # lint and the full test suite — what CI runs
 `make` on its own lists the other targets. If your system has no `python3.13`,
 pass one: `make setup PYTHON=/path/to/python3.13`.
 
-Using the `oa` command line and building the desktop packages yourself are covered
-in [command line and development](docs/command-line.md); which optional extra
-enables what, and why each dependency was chosen, is in
-[dependencies](docs/dev/dependencies.md).
+For anything beyond that:
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — what the pieces are, how data flows through
+  them, and where to go to change a given thing.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — commit rules, the definition of done, where
+  a new test belongs, and how to look at a GUI change.
+- [docs/adr/](docs/adr/) — why the larger decisions were made, one record each.
+- [CHANGELOG.md](CHANGELOG.md) — what changed between releases.
+- [command line and development](docs/command-line.md) — using `oa`, and building
+  the desktop packages yourself.
+- [dependencies](docs/dev/dependencies.md) — which optional extra enables what, and
+  why each dependency was chosen.
+- [SECURITY.md](SECURITY.md) — the localhost server's threat model, and how to
+  report a vulnerability.
+
+Trove is an early, single-developer project with no support commitment. There is
+no public roadmap; the changelog is the record of what has actually landed.
 
 ## License
 
