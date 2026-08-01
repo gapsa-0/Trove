@@ -195,56 +195,6 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/dates/sources":
                 rid = one("root", int)
                 self._json(overview.date_sources(self._db(rid), rid))
-            elif path == "/api/pets/summary":
-                from ..pets.extract import scan_source as pet_scan_source
-
-                rid = one("root", int)
-                self._json(
-                    pets.pet_summary(
-                        self._db(rid), rid, pet_scan_source(self.cfg), self.cfg.detect_video_frames
-                    )
-                )
-            elif path == "/api/pets":
-                rid = one("root", int)
-                self._json(
-                    pets.pet_groups(
-                        self._db(rid),
-                        rid,
-                        limit=min(one("limit", int, 120), 500),
-                        offset=one("offset", int, 0),
-                    )
-                )
-            elif path == "/api/pet/detections":
-                rid = one("root", int)
-                self._json(
-                    pets.animal_gallery(
-                        self._db(rid),
-                        rid,
-                        limit=min(one("limit", int, 120), 500),
-                        offset=one("offset", int, 0),
-                        unassigned=bool(one("unassigned", int, 0)),
-                    )
-                )
-            elif path == "/api/nonhuman":
-                rid = one("root", int)
-                self._json(
-                    pets.nonhuman_review(
-                        self._db(rid),
-                        rid,
-                        limit=min(one("limit", int, 120), 500),
-                        offset=one("offset", int, 0),
-                    )
-                )
-            elif path.startswith("/api/pet/"):
-                rid = one("root", int)
-                result = pets.pet_group(
-                    self._db(rid),
-                    int(path.rsplit("/", 1)[1]),
-                    rid,
-                    limit=min(one("limit", int, 120), 500),
-                    offset=one("offset", int, 0),
-                )
-                self._json(result) if result else self._json({"error": "not found"}, 404)
             elif path == "/api/dups/summary":
                 rid = one("root", int)
                 self._json(dups.dup_summary(self._db(rid), rid))

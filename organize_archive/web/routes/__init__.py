@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from . import browse, overview, people, places, static
+from . import browse, overview, people, pets, places, static
 from ._request import NOT_FOUND, FileBody, Json, Raw, Request, ok_or_error
 
 __all__ = [
@@ -52,6 +52,10 @@ GET_ROUTES: dict[str, Handler] = {
     "/api/faces/summary": people.summary,
     "/api/faces/persons": people.persons,
     "/api/faces/suggestions": people.suggestions,
+    "/api/pets/summary": pets.summary,
+    "/api/pets": pets.groups,
+    "/api/pet/detections": pets.detections,
+    "/api/nonhuman": pets.nonhuman,
     "/": static.index,
     "/index.html": static.index,
     "/manifest.webmanifest": static.manifest,
@@ -63,6 +67,7 @@ GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
     ("/api/item/", browse.item),
     ("/api/map/cluster/", places.cluster_members),
     ("/api/faces/person/", people.person),
+    ("/api/pet/", pets.group),
     ("/icon-", static.icon),
     ("/vendor/", static.vendor),
 )
