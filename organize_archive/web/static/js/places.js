@@ -4,6 +4,9 @@
 // two ways the router and the theme switch reach them.
 
 import {
+  attachMergeDrag, guardCardClick, mergesPanel,
+} from "./merge.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -13,8 +16,7 @@ import {
   S,
 } from "./state.js";
 import {
-  NAV, attachMergeDrag, currentTheme, guardCardClick, mergesPanel, openItem,
-  startInfiniteList, tile,
+  NAV, currentTheme, openItem, startInfiniteList, tile,
 } from "./main.js";
 
 /* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
