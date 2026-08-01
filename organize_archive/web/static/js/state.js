@@ -30,5 +30,9 @@ export const SECTIONS = [
 ];
 export const S = {
   arch: null, section: "overview", grid: null,
-  timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, poll: null
+  timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, poll: null,
+  // Bumped on every user navigation (section switch / archive open). Async renders
+  // capture it and bail if it changed while they were awaiting, so a slow fetch can
+  // never paint a stale section over the one the user just picked.
+  nav: 0,
 };

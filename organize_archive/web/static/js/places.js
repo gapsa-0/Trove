@@ -16,7 +16,7 @@ import {
   S,
 } from "./state.js";
 import {
-  NAV, currentTheme, openItem, startInfiniteList, tile,
+  currentTheme, openItem, startInfiniteList, tile,
 } from "./main.js";
 
 /* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
@@ -76,7 +76,7 @@ let MAP_POINTS = null, MAP_POINTS_UNPLACED = 0, MAP_POINT_CANVAS = null;
 // The built point layer and what it was built from (see showPhotoPoints).
 let MAP_POINT_LAYER = null, MAP_POINT_BUILT = null;
 export async function renderMap(m) {
-  const gen = NAV, root = S.arch.id;
+  const gen = S.nav, root = S.arch.id;
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Places</h2>
       <p>Explore geolocated media and give meaningful names to the places you return to.</p></div></div>
     <div class="statrow map-stats">
@@ -99,7 +99,7 @@ export async function renderMap(m) {
   S.mapView = S.mapView || "places";
   MAP_POINTS = null; MAP_POINTS_UNPLACED = 0;
   const { clusters, hidden } = await jget("/api/map/clusters?root=" + root);
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   MAP_CLUSTERS = clusters;
   MAP_HIDDEN = hidden || {};
   updateMapStats();

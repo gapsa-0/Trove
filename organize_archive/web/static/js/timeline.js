@@ -12,7 +12,7 @@ import {
   S, TYPE_COL,
 } from "./state.js";
 import {
-  MONTH_NAMES, NAV, checkedPeople, clearPeopleChecks, peopleFilterHTML, selVal,
+  MONTH_NAMES, checkedPeople, clearPeopleChecks, peopleFilterHTML, selVal,
   updatePeopleFilterLabel,
 } from "./main.js";
 
@@ -42,7 +42,7 @@ async function renderDateSourceBar() {
 }
 const TL_COL = TYPE_COL;
 export async function renderTimeline(m) {
-  const gen = NAV;
+  const gen = S.nav;
   S.timeline = { bucket: "month", year: "", month: "", people: [], place: "" };
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Timeline</h2>
       <p>See how your archive grows over time, then narrow it by date, people together, or place.</p></div></div>
@@ -53,13 +53,13 @@ export async function renderTimeline(m) {
     <h2 class="sec" style="margin-top:28px">How dates were found</h2>
     <div class="panel" id="dsbar">Loading…</div>`;
   await buildTimelineFilterBar();
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   await Promise.all([drawTimeline("month"), renderDateSourceBar()]);
 }
 async function buildTimelineFilterBar() {
-  const gen = NAV;
+  const gen = S.nav;
   const f = await jget("/api/browse/filters?root=" + S.arch.id);
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   const bar = document.getElementById("tl-filterbar"); if (!bar) return;
   const years = [...new Set((f.periods || []).map(p => p.slice(0, 4)))];
   const opt = (v, l) => `<option value="${v}">${l}</option>`;

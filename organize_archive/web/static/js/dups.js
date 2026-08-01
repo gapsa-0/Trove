@@ -11,14 +11,14 @@ import {
   S, TYPE_COL, TYPE_ICON, typeLabel,
 } from "./state.js";
 import {
-  NAV, startInfiniteList,
+  startInfiniteList,
 } from "./main.js";
 
 const DUP_PAGE_SIZE = 40;
 export async function renderDedup(m) {
-  const gen = NAV, root = S.arch.id;
+  const gen = S.nav, root = S.arch.id;
   const ds = await jget("/api/dups/summary?root=" + root);
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   if (!ds.groups) {
     m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
       <div class="soonbox"><div class="big">🧹</div>

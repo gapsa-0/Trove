@@ -13,18 +13,18 @@ import {
   ICONS, S, TYPE_COL, typeLabel,
 } from "./state.js";
 import {
-  CARD_KIND, NAV, renderGstat,
+  CARD_KIND, renderGstat,
 } from "./main.js";
 
 export async function renderOverview(m) {
-  const gen = NAV, root = S.arch.id;
+  const gen = S.nav, root = S.arch.id;
   const [s, ds, fs, ps, ss] = await Promise.all([
     jget("/api/summary?root=" + root),
     jget("/api/dups/summary?root=" + root),
     jget("/api/faces/summary?root=" + root),
     jget("/api/pets/summary?root=" + root).catch(() => null),
     jget("/api/browse/semantic/status?root=" + root).catch(() => null)]);
-  if (gen !== NAV) return;   // user switched sections while these were loading
+  if (gen !== S.nav) return;   // user switched sections while these were loading
   S.dupsum = ds;
   S.facesum = fs;
   S.petsum = ps;

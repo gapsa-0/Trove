@@ -33,10 +33,6 @@ import {
 } from "./api.js";
 
 let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
-// Bumped on every user navigation (section switch / archive open). Async renders
-// capture it and bail if it changed while they were awaiting, so a slow fetch can
-// never paint a stale section over the one the user just picked.
-export let NAV = 0;
 
 // Checkbox filter menus behave like native popovers: only one stays open, and
 // clicking elsewhere or pressing Escape dismisses it without changing choices.
@@ -480,7 +476,7 @@ function resumeSection(id) {
 function showSection(id, reload = false) {
   if (!RENDERERS[id]) id = "overview";
   if (ACTIVE_SECTION === id && !reload) return;
-  NAV++; const gen = NAV;
+  S.nav++; const gen = S.nav;
   stopPoll();
   const m = document.getElementById("main");
   if (ACTIVE_SECTION) {
@@ -508,9 +504,9 @@ function showSection(id, reload = false) {
   // Isolate each section render: a throw (bad fetch, JSON error, …) shows an inline
   // error with Retry instead of leaving the previous section's DOM half-replaced.
   Promise.resolve().then(() => fn(m)).then(() => {
-    if (gen === NAV && ACTIVE_SECTION === id) SECTION_READY.add(id);
+    if (gen === S.nav && ACTIVE_SECTION === id) SECTION_READY.add(id);
   }).catch(err => {
-    if (gen !== NAV) return;
+    if (gen !== S.nav) return;
     console.error("section render failed:", id, err);
     m.innerHTML = `<div class="soonbox"><div class="big">⚠️</div>
       <p>Couldn't load this section.</p>
@@ -536,7 +532,7 @@ export const MONTH_NAMES = ["January", "February", "March", "April", "May", "Jun
   "August", "September", "October", "November", "December"];
 const GRID_PAGE_SIZE = 120, GRID_MAX_PAGES = 4;
 async function renderPhotos(m) {
-  const gen = NAV;
+  const gen = S.nav;
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
   const g = restored ? S.grid : {
     offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
@@ -576,7 +572,7 @@ async function renderPhotos(m) {
   composer.addEventListener("compositionstart", () => S.composerComposing = true);
   composer.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
   await buildFilterBar();
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   renderSearchReach();
   renderSortOptions(g);
   renderActiveQuery(g);
@@ -941,9 +937,9 @@ async function semanticSubmit(ev) {
   return false;
 }
 async function buildFilterBar() {
-  const gen = NAV;
+  const gen = S.nav;
   const f = await jget("/api/browse/filters?root=" + S.arch.id);
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   S.filterOpts = f;
   const bar = document.getElementById("filterbar"); if (!bar) return;
   const years = [...new Set((f.periods || []).map(p => p.slice(0, 4)))];
@@ -1371,10 +1367,10 @@ async function renderFolders(m) {
 /* ---------- faces / people ---------- */
 
 async function renderFaces(m) {
-  const gen = NAV, root = S.arch.id;
+  const gen = S.nav, root = S.arch.id;
   S.facePerson = null;
   const sum = await jget("/api/faces/summary?root=" + root);
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   if (!sum.backend_available) {
     m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces and organize them with names.</p></div></div>
       <div class="panel"><div class="d pending"><span class="dot pending"></span>Face detection needs OpenCV's DNN face module.</div>
@@ -1789,7 +1785,7 @@ async function savePersonName(id, inp) {
   showPerson(id);
 }
 function openPersonFromModal(id) {
-  closeModal(); NAV++; S.section = "people"; renderNav(); showPerson(id);
+  closeModal(); S.nav++; S.section = "people"; renderNav(); showPerson(id);
 }
 
 function renderSoon(m, id) {
@@ -1810,9 +1806,9 @@ const PET_EMPTY = '<div class="muted">No repeated pets grouped yet.</div>',
       NONHUMAN_EMPTY = '<div class="muted">No pending non-human decisions.</div>';
 const petStamp = sum => [sum.pets, sum.detections, sum.nonhuman_faces].join("/");
 async function renderPets(m) {
-  const gen = NAV, root = S.arch.id;
+  const gen = S.nav, root = S.arch.id;
   const sum = await jget("/api/pets/summary?root=" + root);
-  if (gen !== NAV) return;
+  if (gen !== S.nav) return;
   S.petJobRunning = false; S.petStamp = petStamp(sum);
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Pets</h2>
       <p>Locally detected animals, likely identities, and non-human face review.</p></div></div>
