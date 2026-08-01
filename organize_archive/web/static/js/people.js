@@ -3,6 +3,9 @@
 // the single-person page. Merging is drag-to-merge's job, not this module's.
 
 import {
+  closeModal,
+} from "./item.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -18,7 +21,7 @@ import {
   S,
 } from "./state.js";
 import {
-  closeModal, detectStatusRow, personTile, renderNav, startInfiniteList, syncCardGrid,
+  detectStatusRow, personTile, renderNav, startInfiniteList, syncCardGrid,
 } from "./main.js";
 
 export async function renderFaces(m) {

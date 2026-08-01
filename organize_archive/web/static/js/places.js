@@ -4,6 +4,9 @@
 // two ways the router and the theme switch reach them.
 
 import {
+  openItem,
+} from "./item.js";
+import {
   attachMergeDrag, guardCardClick, mergesPanel,
 } from "./merge.js";
 import {
@@ -16,7 +19,7 @@ import {
   S,
 } from "./state.js";
 import {
-  currentTheme, openItem, startInfiniteList, tile,
+  currentTheme, startInfiniteList, tile,
 } from "./main.js";
 
 /* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
