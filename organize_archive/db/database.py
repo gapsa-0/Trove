@@ -85,7 +85,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Read before touching anything: executescript's CREATE TABLE/INDEX IF NOT
     # EXISTS statements never change user_version, so this is a true "what did
     # this file last see" marker for gating one-time migrations below. This
-    # call runs at every job start (see web/jobs.py), so anything gated on it
+    # call runs at every job start (see pipeline/manager.py), so anything gated on it
     # must stay cheap once the database is already current -- a version check
     # is one page read, not a table scan.
     previous_version = conn.execute("PRAGMA user_version").fetchone()[0]

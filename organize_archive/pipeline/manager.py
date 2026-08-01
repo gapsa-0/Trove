@@ -481,7 +481,7 @@ class JobManager:
         cancels that stage's running job at its next batch checkpoint so the
         CPU actually frees up instead of only the *next* run being skipped.
         """
-        from ..pipeline import stages
+        from . import stages
 
         if value:
             self._paused_stages.add(card)
@@ -548,8 +548,8 @@ class JobManager:
         if self._paused:
             logger.debug("tick: skipped, pipeline is paused")
             return False
-        from ..pipeline import stages
         from ..services import archives
+        from . import stages
 
         open_root_id = self._open_root_id
         if open_root_id is None:
@@ -628,7 +628,7 @@ class JobManager:
         propagates the whole chain -- pausing Deduplication also stops the map,
         detection and semantic stages that queue behind it.
         """
-        from ..pipeline import stages
+        from . import stages
 
         stalled: dict[str, bool] = {}
         for s in states:

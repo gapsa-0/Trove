@@ -25,7 +25,7 @@ def serve_in_thread(cfg):
     as a caller obligation that is easy to forget:
 
     * ``JobManager.__init__`` starts a scheduler thread immediately
-      (``web/jobs.py``) which is free to pick up a registered archive and start
+      (``pipeline/manager.py``) which is free to pick up a registered archive and start
       really scanning, hashing and detecting it. Pausing first means a test that
       never thought about the pipeline still cannot start real background work.
     * ``serve()`` starts a thread loading the ~283 MB SigLIP text tower through

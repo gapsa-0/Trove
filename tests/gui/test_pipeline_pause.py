@@ -16,9 +16,9 @@ from __future__ import annotations
 import threading
 
 from organize_archive.config import Config
+from organize_archive.pipeline import manager as jobs_mod
 from organize_archive.pipeline import stages as stages_mod
 from organize_archive.services import archives as archives_mod
-from organize_archive.web import jobs as jobs_mod
 
 
 def _job_manager(tmp_path, monkeypatch):

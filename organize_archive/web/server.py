@@ -17,8 +17,8 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import Config, discard_superseded_secrets
 from ..errors import TroveError
+from ..pipeline.manager import JobManager
 from . import routes
-from .jobs import JobManager
 
 logger = logging.getLogger(__name__)
 

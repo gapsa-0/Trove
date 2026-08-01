@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from ...config import Config
-from ..jobs import JobManager
+from ...pipeline.manager import JobManager
 
 
 @dataclass(frozen=True)

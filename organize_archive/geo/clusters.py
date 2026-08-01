@@ -5,7 +5,7 @@ Places are **durable entities** (see the GUI detail-panel editing feature): the
 pipeline never wipes them. ``cluster_places`` is a one-time *bootstrap* used only
 when a root has no places yet; from then on ``assign_unplaced`` adds newly
 geotagged files incrementally and leaves existing places, names, pins and manual
-attachments untouched. (``web/jobs.py`` ``_run_places`` picks between the two.)
+attachments untouched. (``pipeline/manager.py`` ``_run_places`` picks between the two.)
 """
 
 from __future__ import annotations

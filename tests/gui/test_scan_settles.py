@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
+from organize_archive.pipeline import manager as jobs_mod
 from organize_archive.pipeline import stages as stages_mod
-from organize_archive.web import jobs as jobs_mod
 
 
 class _Stats:
