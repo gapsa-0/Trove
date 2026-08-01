@@ -139,6 +139,11 @@ module = [
   "organize_archive.metadata.*",
   "organize_archive.config.*",
   "organize_archive.db.*",
+  "organize_archive.services._common",
+  "organize_archive.services.archives",
+  "organize_archive.services.overview",
+  "organize_archive.services.dups",
+  "organize_archive.services.pending",
 ]
 ignore_errors = false
 disallow_untyped_defs = true

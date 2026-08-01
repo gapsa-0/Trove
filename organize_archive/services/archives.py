@@ -11,7 +11,9 @@ import logging
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
+from ..config import Config
 from ..db import database as db
 from ..paths import archive_dir as archive_dir_path
 from ._common import _NOT_HIDDEN, _VISIBLE
@@ -27,12 +29,12 @@ logger = logging.getLogger(__name__)
 # for all of them.
 
 
-def archives(cfg) -> list[dict]:
-    out = []
+def archives(cfg: Config) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for entry in sorted(cfg.archives, key=lambda a: a["id"]):
         rid, path = entry["id"], entry["path"]
         db_path = cfg.archive_db_path(rid)
-        row = {
+        row: dict[str, Any] = {
             "id": rid,
             "path": path,
             "name": os.path.basename(path.rstrip("/")) or path,
@@ -79,7 +81,7 @@ def archives(cfg) -> list[dict]:
     return out
 
 
-def add_archive(cfg, path: str) -> dict:
+def add_archive(cfg: Config, path: str) -> dict[str, Any]:
     p = Path(path).expanduser()
     if not p.is_dir():
         return {"error": f"Not a directory: {path}"}
@@ -105,7 +107,7 @@ def add_archive(cfg, path: str) -> dict:
     return {"id": entry["id"], "path": resolved}
 
 
-def remove_archive(cfg, root_id: int) -> dict:
+def remove_archive(cfg: Config, root_id: int) -> dict[str, Any]:
     """Forget one archive: delete its private database and cache wholesale.
 
     Nothing is shared between archives, so unlike the old shared-catalog

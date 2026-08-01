@@ -6,11 +6,14 @@ in `_common` for why that is not the same predicate Browse uses.
 
 from __future__ import annotations
 
+import sqlite3
+from typing import Any
+
 from ._common import _NOT_HIDDEN, _QUALITY_OK, _VISIBLE, _root_clause, reading
 
 
 @reading
-def summary(conn, root_id=None) -> dict:
+def summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
     rc, rp = _root_clause(root_id)
     total, size = conn.execute(
         f"SELECT COUNT(*), COALESCE(SUM(size),0) FROM files f WHERE {_VISIBLE}{rc}",
@@ -53,7 +56,7 @@ def summary(conn, root_id=None) -> dict:
 
 
 @reading
-def date_sources(conn, root_id=None) -> dict:
+def date_sources(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
     """Breakdown of which source resolved each file's date, for the Overview
     'Dated' drill-down (Takeout JSON vs EXIF vs filename vs mtime vs none)."""
     rc, rp = _root_clause(root_id)
@@ -72,15 +75,15 @@ def date_sources(conn, root_id=None) -> dict:
 
 @reading
 def timeline(
-    conn,
-    root_id=None,
-    bucket="month",
-    year=None,
-    month=None,
-    person_id=None,
-    person_ids=None,
-    cluster_id=None,
-) -> dict:
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    bucket: str = "month",
+    year: int | str | None = None,
+    month: str | None = None,
+    person_id: int | None = None,
+    person_ids: list[int] | None = None,
+    cluster_id: int | None = None,
+) -> dict[str, Any]:
     """Frequency of matching, non-hidden media over time.
 
     bucket is 'month' or 'year'. The remaining arguments mirror Browse filters
@@ -89,7 +92,7 @@ def timeline(
     rc, rp = _root_clause(root_id)
     span = 7 if bucket == "month" else 4  # 'YYYY-MM' vs 'YYYY'
     where = [_NOT_HIDDEN, "d.best_datetime IS NOT NULL"]
-    params: list = []
+    params: list[Any] = []
     if rc:
         # removeprefix, not lstrip: lstrip strips any leading run of the
         # given *characters* (space/A/N/D), not the literal " AND " prefix.

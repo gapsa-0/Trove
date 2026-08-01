@@ -8,11 +8,16 @@ agree on it, and the comments explain what breaks when they disagree.
 from __future__ import annotations
 
 import functools
+import sqlite3
+from collections.abc import Callable
+from typing import Concatenate
 
 from ..db import database as db
 
 
-def reading(fn):
+def reading[**P, R](
+    fn: Callable[Concatenate[sqlite3.Connection, P], R],
+) -> Callable[Concatenate[str, P], R]:
     """Open a read-only connection, pass it to ``fn``, always close it.
 
     A connection per call looks wasteful next to reusing one, but it is the
@@ -29,7 +34,7 @@ def reading(fn):
     """
 
     @functools.wraps(fn)
-    def wrapper(db_path, *args, **kwargs):
+    def wrapper(db_path: str, *args: P.args, **kwargs: P.kwargs) -> R:
         conn = db.open_readonly(db_path)
         try:
             return fn(conn, *args, **kwargs)
@@ -39,7 +44,9 @@ def reading(fn):
     return wrapper
 
 
-def writing(fn):
+def writing[**P, R](
+    fn: Callable[Concatenate[sqlite3.Connection, P], R],
+) -> Callable[Concatenate[str, P], R]:
     """Open a read-write connection, pass it to ``fn``, always close it.
 
     Same per-call-connection reasoning as ``@reading`` (see its docstring):
@@ -60,7 +67,7 @@ def writing(fn):
     """
 
     @functools.wraps(fn)
-    def wrapper(db_path, *args, **kwargs):
+    def wrapper(db_path: str, *args: P.args, **kwargs: P.kwargs) -> R:
         conn = db.connect(db_path)
         try:
             return fn(conn, *args, **kwargs)
@@ -101,7 +108,7 @@ def _quality_ok(alias: str = "fa") -> str:
 _QUALITY_OK = _quality_ok()
 
 
-def _root_clause(root_id):
+def _root_clause(root_id: int | None) -> tuple[str, list[int]]:
     if root_id is None:
         return "", []
     return " AND f.root_id = ?", [root_id]

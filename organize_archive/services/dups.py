@@ -7,12 +7,14 @@ or picks a canonical itself, only reports what dedup already decided.
 from __future__ import annotations
 
 import os
+import sqlite3
+from typing import Any
 
 from ._common import _root_clause, reading
 
 
 @reading
-def dup_summary(conn, root_id=None) -> dict:
+def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
     rc, rp = _root_clause(root_id)
     row = conn.execute(
         f"""SELECT COUNT(*) groups,
@@ -38,7 +40,8 @@ def dup_summary(conn, root_id=None) -> dict:
     # `f` is the canonical here, same as in the count above, so the shared
     # _root_clause keeps filtering on the root the group belongs to; `d` is
     # the redundant copy being described.
-    by_match, by_media = {}, {}
+    by_match: dict[str, dict[str, int]] = {}
+    by_media: dict[str, dict[str, int]] = {}
     for r in conn.execute(
         f"""SELECT CASE WHEN d.sha256 IS NOT NULL AND d.sha256 = f.sha256
                         THEN 'identical' ELSE 'visual' END AS match_type,
@@ -60,8 +63,10 @@ def dup_summary(conn, root_id=None) -> dict:
             acc["count"] += r["n"]
             acc["bytes"] += r["bytes"]
 
-    def _ranked(bucket, order=None):
-        items = [{"key": k, **v} for k, v in bucket.items()]
+    def _ranked(
+        bucket: dict[str, dict[str, int]], order: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = [{"key": k, **v} for k, v in bucket.items()]
         if order:  # fixed order where one exists (identical first)
             items.sort(key=lambda i: order.index(i["key"]) if i["key"] in order else len(order))
         else:
@@ -78,7 +83,9 @@ def dup_summary(conn, root_id=None) -> dict:
 
 
 @reading
-def dup_groups(conn, root_id=None, limit=60, offset=0) -> dict:
+def dup_groups(
+    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 60, offset: int = 0
+) -> dict[str, Any]:
     rc, rp = _root_clause(root_id)
     groups = conn.execute(
         f"""SELECT g.id, g.method, g.member_count, g.size_each, g.redundant_bytes,
