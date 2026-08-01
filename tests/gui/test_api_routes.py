@@ -30,8 +30,8 @@ report.
 from __future__ import annotations
 
 import json
+import logging
 import re
-from http.client import RemoteDisconnected
 from pathlib import Path
 from typing import NamedTuple
 from urllib.error import HTTPError
@@ -43,6 +43,7 @@ from helpers import serve_in_thread
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
+from organize_archive.errors import ModelUnavailableError
 from organize_archive.services import archives, semantic
 from organize_archive.web import server
 
@@ -369,24 +370,92 @@ def test_get_file_serves_the_original_bytes(live_server):
     assert body
 
 
-def test_get_root_scoped_route_without_root_param_drops_the_connection_silently(live_server):
-    """Documents a real server.py bug, found while writing this file (see the
-    report) -- not fixed here, server.py is off-limits for this stage.
+def test_get_root_scoped_route_without_root_param_answers_400(live_server):
+    """A root-scoped GET called without ``?root=`` answers 400, like every
+    other validation failure in this file.
 
-    Every GET route that resolves ``rid = one("root", int)`` and then calls
-    ``self._db(rid)`` (summary, timeline, dates/sources, every /api/map/*,
-    faces/summary, pets*, pet/*, nonhuman, faces/persons, faces/suggestions,
-    faces/person/*, dups*, media, browse/*) raises a bare ``ValueError("root
-    is required")`` when ``?root=`` is missing -- and do_GET's outer
-    ``except (ValueError, BrokenPipeError): pass`` (server.py:454) swallows
-    it with no response sent at all. ``send_response`` is never called, so
-    the client sees the connection reset rather than a clean 400 the way
-    every *other* validation failure in this file returns one. Confirmed via
-    ``http.client.RemoteDisconnected`` here, not ``HTTPError`` -- the two are
-    different failure modes and this test is specifically about the former.
+    This test used to assert the opposite, and was named
+    ``..._drops_the_connection_silently``. Every GET route that resolves a
+    ``root`` id and then asks for its database (summary, timeline,
+    dates/sources, every /api/map/*, faces/summary, pets*, pet/*, nonhuman,
+    faces/persons, faces/suggestions, faces/person/*, dups*, media, browse/*)
+    raises ``ValueError("root is required")`` when the param is missing --
+    and ``do_GET``'s outer ``except (ValueError, BrokenPipeError): pass``
+    swallowed it having sent nothing at all, so the client saw
+    ``RemoteDisconnected`` instead of a response. POST answered 400 for the
+    same mistake the whole time; only GET had the hole.
+
+    It is pinned on ``/api/summary``, but the fix is structural: both methods
+    now answer through one dispatcher, so no route can reacquire this.
     """
-    with pytest.raises(RemoteDisconnected):
-        urlopen(f"{live_server.base_url}/api/summary", timeout=5)
+    status, _content_type, body = _get(live_server.base_url, "/api/summary")
+    assert status == 400, body
+    assert json.loads(body) == {"error": "root is required"}
+
+
+# ---------------------------------------------------------------------------
+# The dispatcher's four outcomes. Everything above asks "does this route work";
+# these ask "what happens when one doesn't", which is the half that used to
+# have no coverage at all and where the silent-drop bug above lived.
+#
+# The failing handlers are injected into the live tables with monkeypatch: the
+# server runs in a thread in this same process, so it looks up the same dict
+# object these tests mutate. Faking the failure is the only way in -- no real
+# route can be made to raise on demand without changing shipped code.
+# ---------------------------------------------------------------------------
+
+
+def test_an_unknown_get_path_answers_404(live_server):
+    status, _content_type, body = _get(live_server.base_url, "/api/no-such-route")
+    assert status == 404, body
+    assert json.loads(body) == {"error": "not found"}
+
+
+def test_an_unknown_post_path_answers_404(live_server):
+    status, body = _post(live_server.base_url, "/api/no-such-route", {})
+    assert status == 404, body
+    assert json.loads(body) == {"error": "not found"}
+
+
+def test_a_trove_error_answers_400_with_its_message(live_server, monkeypatch):
+    """``TroveError`` is the "raised on purpose, message written for a person"
+    base class, so its text goes to the client verbatim rather than becoming an
+    anonymous 500."""
+
+    def raiser(req):
+        raise ModelUnavailableError("the face model is not installed")
+
+    monkeypatch.setitem(server.routes.GET_ROUTES, "/api/health", raiser)
+    status, _content_type, body = _get(live_server.base_url, "/api/health")
+    assert status == 400, body
+    assert json.loads(body) == {"error": "the face model is not installed"}
+
+
+def test_an_unexpected_error_answers_500_and_logs_a_traceback(live_server, monkeypatch, caplog):
+    """The other half of the same split: an error we did not raise on purpose
+    is our bug, so it gets a traceback in the log. Before this stage a handler
+    blowing up produced whatever ``BaseHTTPRequestHandler`` does by default and
+    logged nothing."""
+
+    def raiser(req):
+        raise KeyError("cover_face_id")
+
+    monkeypatch.setitem(server.routes.GET_ROUTES, "/api/health", raiser)
+    with caplog.at_level(logging.ERROR, logger="organize_archive.web.server"):
+        status, _content_type, body = _get(live_server.base_url, "/api/health")
+
+    assert status == 500, body
+    assert "cover_face_id" in json.loads(body)["error"]
+    assert any("Traceback" in rec.exc_text for rec in caplog.records if rec.exc_text)
+
+
+def test_a_post_to_a_get_only_route_answers_404(live_server):
+    """The two tables are independent, which is what lets ``/api/pet/`` be a GET
+    prefix while ``/api/pet/rename`` is a POST. The flip side is that a method
+    mismatch is a 404, not a 405 -- pinned because it is a real, deliberate
+    consequence of the split rather than an oversight."""
+    status, body = _post(live_server.base_url, "/api/summary", {})
+    assert status == 404, body
 
 
 # ---------------------------------------------------------------------------

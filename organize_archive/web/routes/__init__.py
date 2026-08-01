@@ -49,6 +49,7 @@ __all__ = [
     "Json",
     "Raw",
     "Request",
+    "handler_for",
     "ok_or_error",
     "prefix_handler",
 ]
@@ -137,3 +138,14 @@ def prefix_handler(table: tuple[tuple[str, Handler], ...], path: str) -> Handler
         if path.startswith(prefix):
             return handler
     return None
+
+
+def handler_for(method: str, path: str) -> Handler | None:
+    """The one place a request becomes a handler, or ``None`` for a 404.
+
+    Both dispatch rules live here rather than in ``server.py``, so the exact-
+    before-prefix ordering is stated once instead of once per HTTP method.
+    """
+    if method == "POST":
+        return POST_ROUTES.get(path)
+    return GET_ROUTES.get(path) or prefix_handler(GET_PREFIX_ROUTES, path)

@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ..config import Config, discard_superseded_secrets
+from ..errors import TroveError
 from . import routes
 from .jobs import JobManager
 
@@ -99,16 +100,10 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     # -- routing ------------------------------------------------------------
-    # The route tables in ``routes/`` are consulted first and the if/elif chains
-    # below are the fallback, so routes can move a domain at a time and the ones
-    # that have not moved keep working untouched.
-    #
-    # ⚠️ A prefix route may only move into ``GET_PREFIX_ROUTES`` together with
-    # every exact route that sits underneath it -- ``/api/map/cluster/`` with
-    # ``/api/map/cluster/merge-preview``, ``/api/pet/`` with
-    # ``/api/pet/detections``. Split them across two commits and the prefix
-    # swallows the exact route for one commit, which no test would catch because
-    # both answer 404.
+    # Every route this server answers is registered in ``routes/``; the two
+    # methods below only translate. ``_build_request`` turns a socket into a
+    # ``Request``, ``_answer`` turns whatever the handler returns -- or raises
+    # -- back into a response.
     def _build_request(self, method: str, body: dict) -> routes.Request:
         u = urlparse(self.path)
         return routes.Request(
@@ -132,18 +127,36 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(result)
 
-    # -- GET --------------------------------------------------------------
-    def do_GET(self):
+    def _answer(self, method: str) -> None:
+        """Run this request's handler and send exactly one response, whatever
+        happens.
+
+        Four outcomes, and which one a failure gets is the point of the split:
+
+        * **No route** -- 404.
+        * **The caller's fault** -- ``TroveError`` (raised deliberately, message
+          written to be read by a person) or ``ValueError`` (a bad id in the
+          path, a missing ``?root=``) becomes a 400 carrying that message.
+        * **A dead client** -- nothing. The tab closed mid-request; there is
+          nobody left to answer, and a traceback would only be noise.
+        * **Ours** -- a logged traceback and a 500.
+
+        GET used to swallow ``ValueError`` silently, so a root-scoped route
+        called without ``?root=`` dropped the connection with no response while
+        POST answered 400 for the same mistake. Handling both methods here is
+        what makes that impossible to reintroduce.
+        """
         try:
-            req = self._build_request("GET", {})
-            handler = routes.GET_ROUTES.get(req.path) or routes.prefix_handler(
-                routes.GET_PREFIX_ROUTES, req.path
-            )
+            body = self._read_json_body() if method == "POST" else {}
+            req = self._build_request(method, body)
+            handler = routes.handler_for(method, req.path)
             if handler is None:
                 return self._json({"error": "not found"}, 404)
             self._respond(handler(req))
-        except (ValueError, BrokenPipeError):
+        except (BrokenPipeError, ConnectionResetError):
             pass
+        except (TroveError, ValueError) as e:
+            self._json({"error": str(e)}, 400)
         except Exception as e:
             logger.exception("unhandled error serving %s %s", self.command, self.path)
             try:
@@ -153,21 +166,11 @@ class Handler(BaseHTTPRequestHandler):
                 # nowhere left to report this failure to, so stay silent.
                 pass
 
-    # -- POST -------------------------------------------------------------
+    def do_GET(self):
+        self._answer("GET")
+
     def do_POST(self):
-        u = urlparse(self.path)
-        path = u.path
-        try:
-            body = self._read_json_body()
-            handler = routes.POST_ROUTES.get(path)
-            if handler is None:
-                return self._json({"error": "not found"}, 404)
-            self._respond(handler(self._build_request("POST", body)))
-        except ValueError as e:
-            self._json({"error": str(e)}, 400)
-        except Exception as e:
-            logger.exception("unhandled error serving %s %s", self.command, self.path)
-            self._json({"error": str(e)}, 500)
+        self._answer("POST")
 
 
 def serve(cfg: Config, host="127.0.0.1", port=8756):
