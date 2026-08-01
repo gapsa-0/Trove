@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from ...db import database as db
 from ...services import pets
-from ._request import NOT_FOUND, Request
+from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
 def summary(req: Request) -> dict:
@@ -44,3 +45,45 @@ def group(req: Request):
         offset=req.offset(),
     )
     return g if g else NOT_FOUND
+
+
+def rename_pet(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: pets.rename_pet(
+            req.db(req.open_root_id),
+            req.body.get("pet_id"),
+            (req.body.get("name") or "").strip(),
+        )
+    )
+    return ok_or_error(res)
+
+
+def merge(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: pets.merge_pets(
+            req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
+        )
+    )
+    return ok_or_error(res)
+
+
+def unmerge(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: pets.unmerge_pets(req.db(req.open_root_id), req.body.get("merge_id"))
+    )
+    if res.get("recluster") and req.jobs.current_root_id():
+        req.jobs.start("pet_cluster", req.jobs.current_root_id())
+    return ok_or_error(res)
+
+
+def review_nonhuman(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: pets.review_nonhuman(
+            req.db(req.open_root_id),
+            req.body.get("detection_id"),
+            req.body.get("verdict", "confirmed"),
+        )
+    )
+    if res.get("status") == "human" and res.get("root_id"):
+        req.jobs.start("face_cluster", res["root_id"])
+    return ok_or_error(res)
