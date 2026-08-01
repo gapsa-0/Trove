@@ -55,9 +55,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
-def write_with_retry[T](
-    fn: Callable[[], T], *, retries: int = 4, initial_delay: float = 0.25
-) -> T | None:
+def write_with_retry[T](fn: Callable[[], T], *, retries: int = 4, initial_delay: float = 0.25) -> T:
     """Call ``fn()``, retrying with backoff if SQLite reports a locked writer.
 
     ``fn`` takes no arguments and performs one bounded write, including its own
@@ -69,7 +67,14 @@ def write_with_retry[T](
     ``sqlite3.OperationalError`` around this call and decide what "leave it
     for later" means for that write, instead of letting a lock become a stage
     or request failure.
+
+    ``retries`` must not be negative. It used to be possible to call this with
+    a negative count and have it perform **no write at all** and return None,
+    silently -- the worst outcome a write helper can have, and invisible to
+    every caller because they all take the default.
     """
+    if retries < 0:
+        raise ValueError(f"retries must be >= 0, got {retries}")
     delay = initial_delay
     for attempt in range(retries + 1):
         try:
@@ -79,7 +84,7 @@ def write_with_retry[T](
                 raise
             time.sleep(delay)
             delay *= 2
-    return None  # unreachable: the loop's last iteration always returns or raises
+    raise AssertionError("unreachable: the loop's last iteration returns or raises")
 
 
 def open_readonly(db_path: str | Path) -> sqlite3.Connection:
