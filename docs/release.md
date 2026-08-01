@@ -9,9 +9,39 @@ value to agree. After intentionally changing the canonical value, run
 because `npm ci` does not verify its version field, so a stale value passes CI and
 is then silently rewritten by whoever next runs `npm install`. Candidate builds are native CI artifacts, never developer uploads.
 
-Before tagging, move `CHANGELOG.md`'s `[Unreleased]` section into a new dated
-version section. That section's body is also the GitHub release's body: paste
-it in as-is when creating the release.
+## Release checklist
+
+In order. Each step is here because skipping it has produced, or would produce,
+a release that is wrong in a way nobody notices until it is published.
+
+1. **Move `CHANGELOG.md`'s `[Unreleased]` section into a new dated version
+   section.** That section's body is also the GitHub release's body: paste it in
+   as-is when creating the release. Do this before the version bump, so the
+   section heading and the canonical version cannot disagree.
+2. **Bump the version**: change `release-version.json`, run `npm run sync:version`
+   from `desktop/`, review its four generated updates and commit them together.
+3. **`make check`** — the full gate, not `make test`.
+4. **Skim the size allowlist** in `tools/dev/check_sizes.py`: did it grow since
+   the last release, and does each new entry have the reason its commit body
+   promised? An allowlist that only ever grows is a ratchet running backwards.
+5. **Build and launch the packaged app on both Linux and Windows.** A green suite
+   says nothing about package data — a missing directory under
+   `organize_archive/web/` produces a build that imports fine and serves a blank
+   page. Launch it and open a screen.
+6. **Build from a clean tree, not the working copy.** `build/lib/` is a stale
+   setuptools staging directory that is never cleaned between builds, so
+   setuptools copies the current tree in *beside* the old one and ships both — a
+   local wheel has already been observed carrying a package that had been renamed
+   two commits earlier. Either `rm -rf build/` first, or export and build
+   elsewhere:
+
+   ```
+   git ls-files -z | tar --null -T - -cf - | (mkdir -p /tmp/rel && cd /tmp/rel && tar xf -)
+   ```
+
+   PyInstaller is unaffected (it resolves the package path to the live source),
+   but "I built a wheel and it looked right" is not trustworthy without this.
+7. **Record the clean-machine acceptance run** — see below.
 
 ## Build inputs
 
