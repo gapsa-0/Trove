@@ -24,6 +24,7 @@ def item(req: Request) -> dict | Json:
 
 
 def media(req: Request) -> dict:
+    """The media grid: filtered, sorted and paginated files for the archive."""
     rid = req.root_id
     # Absent means "no filter"; only the two explicit values narrow
     # the grid, so a stray ?indexed=maybe cannot silently hide media
@@ -47,16 +48,19 @@ def media(req: Request) -> dict:
 
 
 def filters(req: Request) -> dict:
+    """The distinct filter values (years, types, folders...) the Browse UI offers."""
     rid = req.root_id
     return browse.browse_filters(req.db(rid), rid)
 
 
 def folders(req: Request) -> dict:
+    """The folder tree with per-folder file counts."""
     rid = req.root_id
     return browse.folders(req.db(rid), rid, limit=req.limit(120, 500))
 
 
 def set_date(req: Request) -> Json:
+    """Set one file's date by hand, as a manual override."""
     res = db.write_with_retry(
         lambda: browse.set_date(
             req.db(req.open_root_id), req.body.get("file_id"), req.body.get("datetime")

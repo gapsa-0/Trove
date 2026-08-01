@@ -8,17 +8,21 @@ from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
 def clusters(req: Request) -> dict:
+    """Place clusters (grouped geotagged files) with at least the configured minimum media."""
     rid = req.root_id
     return places.place_clusters(req.db(rid), rid, req.cfg.place_min_media)
 
 
 def points(req: Request) -> dict:
+    """Every geotagged file as a single un-clustered map point."""
     # The un-clustered map view: one point per geotagged file.
     rid = req.root_id
     return places.place_points(req.db(rid), rid, req.cfg.place_min_media)
 
 
 def merge_preview(req: Request):
+    """How spread out a prospective cluster merge would be, so the GUI can warn
+    before it's confirmed."""
     # GET, not POST: this mutates nothing, it only answers "how
     # spread out would this merge be" so the GUI can decide
     # whether to warn before the user confirms the drag-merge.
@@ -30,6 +34,7 @@ def merge_preview(req: Request):
 
 
 def cluster_members(req: Request):
+    """One place cluster's member files, paginated."""
     rid = req.root_id
     c = places.place_cluster_members(
         req.db(rid),
@@ -41,6 +46,7 @@ def cluster_members(req: Request):
 
 
 def rename_cluster(req: Request) -> Json:
+    """Rename a place cluster."""
     res = db.write_with_retry(
         lambda: places.rename_place_cluster(
             req.db(req.open_root_id),
@@ -52,6 +58,7 @@ def rename_cluster(req: Request) -> Json:
 
 
 def merge_clusters(req: Request) -> Json:
+    """Merge two place clusters the user confirmed are the same location, immediately."""
     res = db.write_with_retry(
         lambda: places.merge_place_clusters(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
@@ -61,6 +68,7 @@ def merge_clusters(req: Request) -> Json:
 
 
 def unmerge_clusters(req: Request) -> Json:
+    """Undo a place-cluster merge, restoring the dropped cluster verbatim."""
     # Unlike /api/faces/unmerge and /api/pets/unmerge, no job is
     # started here: places are durable (see place_merges' schema
     # comment), so unmerge_place_clusters is already a complete
@@ -73,6 +81,7 @@ def unmerge_clusters(req: Request) -> Json:
 
 
 def set_item_place(req: Request) -> Json:
+    """Attach or clear one file's place, depending on whether `clear` is set."""
     db_path = req.db(req.open_root_id)
     if req.body.get("clear"):
         res = db.write_with_retry(lambda: places.clear_place(db_path, req.body.get("file_id")))
@@ -84,6 +93,7 @@ def set_item_place(req: Request) -> Json:
 
 
 def create_place(req: Request) -> Json:
+    """Create a user-pinned place at a dropped coordinate, optionally attaching a file to it."""
     res = db.write_with_retry(
         lambda: places.create_place(
             req.db(req.body.get("root")),

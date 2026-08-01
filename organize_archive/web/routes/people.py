@@ -9,21 +9,25 @@ from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
 def summary(req: Request) -> dict:
+    """Face/person totals for the Faces overview."""
     rid = req.root_id
     return people.face_summary(req.db(rid), rid, req.cfg.detect_video_frames)
 
 
 def persons(req: Request) -> dict:
+    """Paginated list of person clusters."""
     rid = req.root_id
     return people.face_persons(req.db(rid), rid, limit=req.limit(120, 500), offset=req.offset())
 
 
 def suggestions(req: Request) -> dict:
+    """The 'same person?' review queue: candidate cluster pairs the automatic pass left apart."""
     rid = req.root_id
     return people.person_suggestions(req.db(rid), rid, limit=req.limit(40, 200))
 
 
 def person(req: Request):
+    """One person's detail page: their faces, paginated."""
     rid = req.root_id
     p = people.face_person(
         req.db(rid),
@@ -36,6 +40,7 @@ def person(req: Request):
 
 
 def rename_person(req: Request) -> Json:
+    """Rename a person cluster."""
     res = db.write_with_retry(
         lambda: people.rename_person(
             req.db(req.open_root_id),
@@ -47,6 +52,7 @@ def rename_person(req: Request) -> Json:
 
 
 def reassign(req: Request) -> Json:
+    """Move one face onto a named person and pin it there so re-clustering keeps it."""
     res = db.write_with_retry(
         lambda: people.reassign_face(
             req.db(req.open_root_id), req.body.get("face_id"), req.body.get("person_id")
@@ -56,6 +62,7 @@ def reassign(req: Request) -> Json:
 
 
 def merge(req: Request) -> Json:
+    """Merge two person clusters the user confirmed are the same, immediately and durably."""
     res = db.write_with_retry(
         lambda: people.merge_persons(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
@@ -65,6 +72,7 @@ def merge(req: Request) -> Json:
 
 
 def unmerge(req: Request) -> Json:
+    """Undo a person merge and, if needed, kick off a recluster."""
     res = db.write_with_retry(
         lambda: people.unmerge_persons(req.db(req.open_root_id), req.body.get("merge_id"))
     )
@@ -74,6 +82,8 @@ def unmerge(req: Request) -> Json:
 
 
 def detach(req: Request) -> Json:
+    """Release every face of one file from a person and durably block them from
+    drifting back."""
     res = db.write_with_retry(
         lambda: people.detach_file_from_person(
             req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
@@ -83,6 +93,8 @@ def detach(req: Request) -> Json:
 
 
 def mark_different(req: Request) -> Json:
+    """Record that two person clusters are confirmed NOT the same, so auto-merge
+    never proposes them again."""
     res = db.write_with_retry(
         lambda: people.set_persons_different(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b")
@@ -92,6 +104,8 @@ def mark_different(req: Request) -> Json:
 
 
 def skip(req: Request) -> Json:
+    """Record that a 'same person?' pair was reviewed and left undecided, so it
+    drops out of the suggestions queue."""
     res = db.write_with_retry(
         lambda: people.set_persons_skip(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b")
@@ -101,6 +115,7 @@ def skip(req: Request) -> Json:
 
 
 def hide(req: Request) -> Json:
+    """Mark a cluster as not a person (animal/toy/cartoon/false detection) and drop it."""
     res = db.write_with_retry(
         lambda: people.hide_person(
             req.db(req.open_root_id),
@@ -112,6 +127,7 @@ def hide(req: Request) -> Json:
 
 
 def add_person(req: Request) -> Json:
+    """Tag a file with a named person by hand, for media where no face was detected."""
     res = db.write_with_retry(
         lambda: people.add_person_to_file(
             req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
@@ -121,6 +137,7 @@ def add_person(req: Request) -> Json:
 
 
 def remove_person(req: Request) -> Json:
+    """Remove a hand-added person tag from a file."""
     res = db.write_with_retry(
         lambda: people.remove_person_from_file(
             req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")

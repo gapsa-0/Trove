@@ -22,29 +22,35 @@ def health(req: Request) -> dict:
 
 
 def settings(req: Request) -> dict:
+    """No user-configurable settings exist yet; always answers with an empty object."""
     return {}
 
 
 def index(req: Request) -> FileBody:
+    """The single-page app shell HTML."""
     # Never cache the app shell, so a server update takes effect on a plain
     # reload (no hard-refresh needed to shake off stale JS).
     return FileBody(assets.INDEX, "text/html; charset=utf-8", cache_control="no-store")
 
 
 def manifest(req: Request) -> Raw:
+    """The PWA manifest describing the installable app."""
     return Raw(json.dumps(assets.MANIFEST).encode(), "application/manifest+json")
 
 
 def service_worker(req: Request) -> Raw:
+    """The service worker script that lets the app be installed and work offline."""
     return Raw(assets.SW.encode(), "text/javascript")
 
 
 def icon(req: Request) -> Raw:
+    """The app icon PNG, 512px or 192px depending on which the request path names."""
     size = 512 if "512" in req.path else 192
     return Raw(icons.app_icon(req.cfg.cache_dir, size), "image/png")
 
 
 def vendor(req: Request) -> FileBody | Json:
+    """A vendored static asset by filename, or 404 if it isn't under the vendor directory."""
     name = req.path.rsplit("/", 1)[1]
     vf = assets.VENDOR_DIR / name
     if vf.is_file() and ".." not in name:

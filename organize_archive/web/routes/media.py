@@ -21,6 +21,7 @@ def _open_db_and_cache(req: Request):
 
 
 def thumb(req: Request):
+    """A file's thumbnail, generated and cached on first request."""
     fid = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = browse.media_source(db_path, fid) if db_path else None
@@ -32,6 +33,8 @@ def thumb(req: Request):
 
 
 def archive_thumb(req: Request):
+    """A thumbnail scoped to a named archive, for the start-page cover mosaic where
+    nothing is 'open' yet."""
     parts = req.path.split("/")  # ['', 'archivethumb', root_id, file_id]
     if not (len(parts) == 4 and parts[2].isdigit() and parts[3].isdigit()):
         return NOT_FOUND
@@ -51,6 +54,8 @@ def archive_thumb(req: Request):
 
 
 def face_thumb(req: Request):
+    """A cropped face thumbnail, cut from the source photo or (for a video
+    detection) its re-derived keyframe."""
     face_id = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = people.face_crop_source(db_path, face_id) if db_path else None
@@ -76,6 +81,8 @@ def face_thumb(req: Request):
 
 
 def animal_thumb(req: Request):
+    """A cropped pet/animal thumbnail, cut from the source photo or (for a video
+    detection) its re-derived keyframe."""
     detection_id = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = pets.animal_crop_source(db_path, detection_id) if db_path else None
@@ -97,6 +104,7 @@ def animal_thumb(req: Request):
 
 
 def original(req: Request):
+    """The original file, or an upright re-encode for a photo stored sideways."""
     fid = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = browse.media_source(db_path, fid) if db_path else None

@@ -8,6 +8,7 @@ from ._request import Json, Request
 
 
 def snapshot(req: Request) -> dict | Json:
+    """The resolved status of every pipeline stage for one archive."""
     # Single source of truth for pipeline status: the same resolved
     # stage list the scheduler acts on, so cards never disagree with
     # what's actually running.
@@ -19,6 +20,7 @@ def snapshot(req: Request) -> dict | Json:
 
 
 def pause(req: Request) -> dict | Json:
+    """Pause or resume the whole pipeline, or a single stage's card if `stage` is given."""
     # Without "stage" this is the whole-pipeline switch; with one it
     # pauses that single card (scan/dedup/detect/places/semantic) and
     # leaves the rest of the pipeline running.

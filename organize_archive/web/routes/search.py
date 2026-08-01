@@ -7,6 +7,7 @@ from ._request import Json, Request
 
 
 def semantic_status(req: Request) -> dict:
+    """Semantic index state and whether the local SigLIP model is available."""
     from ...services import semantic
 
     rid = req.root_id
@@ -18,6 +19,7 @@ def semantic_status(req: Request) -> dict:
 
 
 def semantic_search(req: Request) -> dict | Json:
+    """Free-text semantic search over the archive's media, ranked by embedding similarity."""
     search_queries = []
     for value in req.query.get("q", []):
         value = value.strip()

@@ -7,14 +7,17 @@ from ._request import Json, Request, ok_or_error
 
 
 def archive_list(req: Request) -> dict:
+    """Every registered archive, for the picker."""
     return {"archives": archives.archives(req.cfg)}
 
 
 def add(req: Request) -> Json:
+    """Register a new archive by folder path, preparing its private database."""
     return ok_or_error(archives.add_archive(req.cfg, req.body.get("path", "")))
 
 
 def open_archive(req: Request) -> dict | Json:
+    """Open one registered archive so the GUI starts serving its content."""
     root_id = req.body.get("root_id")
     if not isinstance(root_id, int):
         return Json({"error": "root_id is required"}, 400)
@@ -25,12 +28,14 @@ def open_archive(req: Request) -> dict | Json:
 
 
 def close(req: Request) -> dict:
+    """Close the currently open archive, stopping its background jobs."""
     root_id = req.body.get("root_id")
     req.jobs.close_archive(root_id if isinstance(root_id, int) else None)
     return {"ok": True}
 
 
 def remove(req: Request) -> Json:
+    """Forget an archive: delete its private database and cache wholesale."""
     root_id = req.body.get("root_id")
     if not isinstance(root_id, int):
         return Json({"error": "root_id is required"}, 400)

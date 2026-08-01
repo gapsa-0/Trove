@@ -7,10 +7,12 @@ from ._request import Request
 
 
 def summary(req: Request) -> dict:
+    """Duplicate-group counts and reclaimable bytes, broken down by match type and media type."""
     rid = req.root_id
     return dups.dup_summary(req.db(rid), rid)
 
 
 def groups(req: Request) -> dict:
+    """Duplicate groups, largest reclaimable bytes first, with each member's role."""
     rid = req.root_id
     return dups.dup_groups(req.db(rid), rid, limit=req.limit(60, 200), offset=req.offset())

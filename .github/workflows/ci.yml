@@ -41,6 +41,12 @@ jobs:
       # what CI checks and what `make check` checks cannot drift apart. PY points
       # at the runner's interpreter because there is no .venv here.
       - run: make lint-py
+      # docs/dev/api.md is generated from the three route tables, never written
+      # by hand, so the only way it can be wrong is by being stale. Checking it
+      # here is what makes "add a route, forget the doc" a failed build instead
+      # of a document that silently stops describing the server. Cheap: it
+      # imports the route tables and renders a string.
+      - run: python tools/dev/gen_api_docs.py --check
       - run: make test
       - run: python packaging/scripts/stage-tools.py --validate
       - run: python packaging/scripts/stage-models.py --validate

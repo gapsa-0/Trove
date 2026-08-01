@@ -14,6 +14,7 @@ def summary(req: Request) -> dict:
 
 
 def timeline(req: Request) -> dict:
+    """Counts of matching, non-hidden media bucketed by month or year, for the timeline chart."""
     rid = req.root_id
     return overview.timeline(
         req.db(rid),
@@ -27,5 +28,6 @@ def timeline(req: Request) -> dict:
 
 
 def date_sources(req: Request) -> dict:
+    """How many files' dates came from Takeout JSON vs EXIF vs filename vs mtime vs none."""
     rid = req.root_id
     return overview.date_sources(req.db(rid), rid)

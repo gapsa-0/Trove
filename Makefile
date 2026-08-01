@@ -4,7 +4,7 @@
 # the two cannot drift apart and "green locally, red in CI" stays abnormal.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint lint-py lint-js fmt test test-fast gui shots check
+.PHONY: help setup lint lint-py lint-js fmt test test-fast gui shots api-docs check
 
 # `?=` so CI can point this at the interpreter it already installed into:
 # the runner has no .venv, and sets PY=python in the job environment.
@@ -64,5 +64,11 @@ gui:             ## Run the GUI on a test port against a throwaway dev data dir
 # debugging port open (tools/dev/shoot_all.py's docstring has the command).
 shots:           ## Screenshot every route into shots/ as a refactor guardrail
 	$(PY) tools/dev/shoot_all.py http://127.0.0.1:$(GUI_PORT) shots/ 1
+
+# Run this after adding a route. CI runs the same script with --check, so a
+# route added without regenerating the doc fails the build rather than shipping
+# a document that quietly no longer describes the server.
+api-docs:        ## Regenerate docs/dev/api.md from the route tables
+	$(PY) tools/dev/gen_api_docs.py
 
 check: lint test ## Everything CI runs
