@@ -37,7 +37,10 @@ imposes.
 from __future__ import annotations
 
 import json
+import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from ..db import database as db
 
@@ -58,7 +61,9 @@ class EntitySpec:
     columns: str
 
 
-def load_sides(conn, spec: EntitySpec, id_a, id_b):
+def load_sides(
+    conn: sqlite3.Connection, spec: EntitySpec, id_a: int | None, id_b: int | None
+) -> tuple[sqlite3.Row, sqlite3.Row, None] | tuple[None, None, dict[str, str]]:
     """Validate a merge's two ids and load both rows.
 
     Returns ``(row_a, row_b, None)``, or ``(None, None, error_dict)`` if the
@@ -75,7 +80,9 @@ def load_sides(conn, spec: EntitySpec, id_a, id_b):
     return pa, pb, None
 
 
-def resolve_name(pa, pb, name):
+def resolve_name(
+    pa: sqlite3.Row, pb: sqlite3.Row, name: str | None
+) -> tuple[str | None, None] | tuple[None, dict[str, str]]:
     """Normalise an explicit merge name and refuse an unresolvable clash.
 
     Returns ``(name, None)`` or ``(None, error_dict)``. Two differently-named
@@ -112,7 +119,14 @@ class LinkedSpec:
     link_b: str
 
 
-def record_link(conn, spec: LinkedSpec, child_a, child_b, kind: str, now: str):
+def record_link(
+    conn: sqlite3.Connection,
+    spec: LinkedSpec,
+    child_a: int | None,
+    child_b: int | None,
+    kind: str,
+    now: str,
+) -> tuple[int, int] | None:
     """Write a durable link constraint between two child rows.
 
     Returns the ``(sorted)`` pair it wrote, or ``None`` if there was nothing to
@@ -131,7 +145,17 @@ def record_link(conn, spec: LinkedSpec, child_a, child_b, kind: str, now: str):
     return (a, b)
 
 
-def merge_linked(conn, spec: LinkedSpec, keep, drop, *, survivor_name, rep, finish, now: str):
+def merge_linked(
+    conn: sqlite3.Connection,
+    spec: LinkedSpec,
+    keep: sqlite3.Row,
+    drop: sqlite3.Row,
+    *,
+    survivor_name: str | None,
+    rep: Callable[[sqlite3.Connection, sqlite3.Row], int | None],
+    finish: Callable[[sqlite3.Connection, sqlite3.Row, str | None], None],
+    now: str,
+) -> None:
     """Move the loser's children onto the survivor and record how to undo it.
 
     ``keep``/``drop`` are already chosen by the caller: survivor rules differ
@@ -181,7 +205,13 @@ def merge_linked(conn, spec: LinkedSpec, keep, drop, *, survivor_name, rep, fini
     )
 
 
-def unmerge_linked(conn, spec: LinkedSpec, merge_id, *, restore=None) -> dict:
+def unmerge_linked(
+    conn: sqlite3.Connection,
+    spec: LinkedSpec,
+    merge_id: int | None,
+    *,
+    restore: Callable[[sqlite3.Connection, sqlite3.Row], None] | None = None,
+) -> dict[str, Any]:
     """Undo a merge recorded by ``merge_linked``.
 
     ``restore(conn, merge_row)`` is the entity's own extra restoration, if it

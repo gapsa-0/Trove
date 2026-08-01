@@ -144,6 +144,10 @@ module = [
   "organize_archive.services.overview",
   "organize_archive.services.dups",
   "organize_archive.services.pending",
+  "organize_archive.services.browse",
+  "organize_archive.services.merging",
+  "organize_archive.services.search",
+  "organize_archive.services.semantic",
 ]
 ignore_errors = false
 disallow_untyped_defs = true

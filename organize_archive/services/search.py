@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 import os
+import sqlite3
+from typing import Any
 
 from ._common import _HAS_LOCATION, _NOT_HIDDEN, _quality_ok, _root_clause, reading
 
@@ -30,7 +32,7 @@ _SCORE_CHUNK = 4096
 
 
 @reading
-def semantic_summary(conn, root_id=None) -> dict:
+def semantic_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
     """Index state for the Browse semantic-search controls."""
     from . import semantic
 
@@ -73,12 +75,15 @@ def semantic_summary(conn, root_id=None) -> dict:
 
 
 @reading
-def semantic_pending(conn, root_id=None) -> int:
+def semantic_pending(conn: sqlite3.Connection, root_id: int | None = None) -> int:
     """Compatible media that needs a first (or revised) semantic embedding."""
     from . import semantic
 
     rc, rp = _root_clause(root_id)
-    return conn.execute(
+    # int() around the fetched value is a no-op at runtime -- COUNT(*) always
+    # returns one row holding an int -- but sqlite3.Row.__getitem__ is typed
+    # Any, which the `-> int` would otherwise silently swallow (see pending.py).
+    row = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN semantic_embeddings e ON e.file_id=f.id
             WHERE {_NOT_HIDDEN}{rc}
@@ -86,13 +91,23 @@ def semantic_pending(conn, root_id=None) -> int:
               AND (e.file_id IS NULL OR e.source_sha256 IS NOT f.sha256
                    OR COALESCE(e.indexer_version, '') != ?)""",
         (*rp, semantic.INDEXER_VERSION),
-    ).fetchone()[0]
+    ).fetchone()
+    return int(row[0])
 
 
-def _search_where_clause(root_id, year, month, mtype, person_id, person_ids, cluster_id, located):
+def _search_where_clause(
+    root_id: int | None,
+    year: int | str | None,
+    month: str | None,
+    mtype: str | None,
+    person_id: int | None,
+    person_ids: list[int] | None,
+    cluster_id: int | None,
+    located: bool | None,
+) -> tuple[str, list[Any]]:
     """Build the WHERE clause and SQL text for semantic_search's candidate query."""
     where = [_NOT_HIDDEN, "e.status='indexed'", "e.embedding IS NOT NULL"]
-    params: list = []
+    params: list[Any] = []
     rc, rp = _root_clause(root_id)
     if rc:
         where.append(rc.removeprefix(" AND "))
@@ -135,7 +150,9 @@ def _search_where_clause(root_id, year, month, mtype, person_id, person_ids, clu
     return sql, params
 
 
-def _prepare_query_vectors(query_vector, alternate_vectors):
+def _prepare_query_vectors(
+    query_vector: list[float], alternate_vectors: list[tuple[list[float], float]] | None
+) -> list[tuple[tuple[float, ...], float, float]]:
     """Turn the query vector(s) into ``(vector, norm, penalty)`` triples, dropping
     any that come out zero-norm."""
     vectors = [(tuple(query_vector), 0.0)]
@@ -147,12 +164,22 @@ def _prepare_query_vectors(query_vector, alternate_vectors):
     return prepared
 
 
-def _score_candidates(conn, sql, params, prepared):
+def _score_candidates(
+    conn: sqlite3.Connection,
+    sql: str,
+    params: list[Any],
+    prepared: list[tuple[tuple[float, ...], float, float]],
+) -> tuple[Any, list[dict[str, Any]]]:
     """Run the candidate query and score every row against ``prepared``.
 
     Returns ``(scores, meta)``: a float32 array of best-of-``prepared`` scores
     and the parallel per-row metadata dicts, both in the query's row order.
     """
+    # numpy stays a function-local import on purpose: hoisting it would make
+    # importing this module require numpy even for callers that never touch a
+    # score. That means the array types below can't be spelled `np.ndarray` at
+    # module scope either -- `Any` is the honest type for anything that
+    # crosses this function's boundary as one of numpy's arrays.
     import numpy as np
 
     dim = len(prepared[0][0])
@@ -164,8 +191,8 @@ def _score_candidates(conn, sql, params, prepared):
     # arithmetic, but the inner product moves out of the interpreter. Each
     # chunk is scored and dropped, so only the per-row metadata and one
     # float32 score per row outlive the loop -- not the blobs themselves.
-    meta: list[dict] = []
-    blocks: list = []
+    meta: list[dict[str, Any]] = []
+    blocks: list[Any] = []
     cursor = conn.execute(sql, params)
     while True:
         batch = cursor.fetchmany(_SCORE_CHUNK)
@@ -211,8 +238,12 @@ def _score_candidates(conn, sql, params, prepared):
     return scores, meta
 
 
-def _apply_similarity_cuts(scores, min_similarity, relative_floor):
-    """Return the indices of ``scores`` that clear the absolute and relative floors."""
+def _apply_similarity_cuts(scores: Any, min_similarity: float, relative_floor: float) -> Any:
+    """Return the indices of ``scores`` that clear the absolute and relative floors.
+
+    ``scores``/the return value are numpy arrays; see ``_score_candidates`` for
+    why they are typed ``Any`` instead of ``np.ndarray`` here.
+    """
     import numpy as np
 
     keep = np.flatnonzero(scores >= min_similarity)
@@ -228,8 +259,19 @@ def _apply_similarity_cuts(scores, min_similarity, relative_floor):
     return keep
 
 
-def _rank_and_paginate(scores, meta, keep, sort, offset, limit):
-    """Sort the kept candidates and slice out one page as the response dict."""
+def _rank_and_paginate(
+    scores: Any,
+    meta: list[dict[str, Any]],
+    keep: Any,
+    sort: str,
+    offset: int,
+    limit: int,
+) -> dict[str, Any]:
+    """Sort the kept candidates and slice out one page as the response dict.
+
+    ``scores``/``keep`` are numpy arrays; see ``_score_candidates`` for why
+    they are typed ``Any`` instead of ``np.ndarray`` here.
+    """
     # Ascending index order, which is the SQL's order -- so the sorts below
     # stay stable against it exactly as they were over the old scored list.
     ranked = [(float(scores[i]), meta[i]) for i in keep]
@@ -256,24 +298,24 @@ def _rank_and_paginate(scores, meta, keep, sort, offset, limit):
 
 @reading
 def semantic_search(
-    conn,
+    conn: sqlite3.Connection,
     query_vector: list[float],
     *,
-    root_id=None,
-    year=None,
-    month=None,
-    mtype=None,
-    person_id=None,
-    person_ids=None,
-    cluster_id=None,
-    min_similarity=-1.0,
-    relative_floor=0.0,
-    sort="relevance",
-    limit=120,
-    offset=0,
-    alternate_vectors=None,
-    located=None,
-) -> dict:
+    root_id: int | None = None,
+    year: int | str | None = None,
+    month: str | None = None,
+    mtype: str | None = None,
+    person_id: int | None = None,
+    person_ids: list[int] | None = None,
+    cluster_id: int | None = None,
+    min_similarity: float = -1.0,
+    relative_floor: float = 0.0,
+    sort: str = "relevance",
+    limit: int = 120,
+    offset: int = 0,
+    alternate_vectors: list[tuple[list[float], float]] | None = None,
+    located: bool | None = None,
+) -> dict[str, Any]:
     """Rank locally stored vectors against the original and optional expansions.
 
     Alternate vectors are ``(vector, penalty)`` pairs.  Taking the best score

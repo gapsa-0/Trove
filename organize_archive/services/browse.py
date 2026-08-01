@@ -9,7 +9,9 @@ date, even though what it writes is a resolver fact.
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
+from typing import Any, cast
 
 from ._common import (
     _HAS_LOCATION,
@@ -25,23 +27,23 @@ from .places import _PLACE_EXEMPT
 
 def _media_where(
     *,
-    root_id,
-    mtype,
-    year,
-    month,
-    person_id,
-    person_ids,
-    cluster_id,
-    indexed,
-    located,
-    indexer_version,
-) -> tuple[str, list, str]:
+    root_id: int | None,
+    mtype: str | None,
+    year: int | str | None,
+    month: str | None,
+    person_id: int | None,
+    person_ids: list[int] | None,
+    cluster_id: int | None,
+    indexed: bool | None,
+    located: bool | None,
+    indexer_version: str,
+) -> tuple[str, list[Any], str]:
     """Build the Browse grid's WHERE clause and its bound params, plus the
     ``indexed`` sub-select reused in the SELECT list. ``params`` is built up
     positionally in the same order the clauses below are appended -- callers
     bind it positionally, so that order is load-bearing."""
     where = [_NOT_HIDDEN]
-    params: list = []
+    params: list[Any] = []
     rc, rp = _root_clause(root_id)
     if rc:
         where.append(rc.removeprefix(" AND "))
@@ -98,21 +100,21 @@ def _media_where(
 
 @reading
 def media(
-    conn,
+    conn: sqlite3.Connection,
     *,
-    root_id=None,
-    year=None,
-    month=None,
-    mtype=None,
-    person_id=None,
-    person_ids=None,
-    cluster_id=None,
-    sort="newest",
-    limit=120,
-    offset=0,
-    indexed=None,
-    located=None,
-) -> dict:
+    root_id: int | None = None,
+    year: int | str | None = None,
+    month: str | None = None,
+    mtype: str | None = None,
+    person_id: int | None = None,
+    person_ids: list[int] | None = None,
+    cluster_id: int | None = None,
+    sort: str = "newest",
+    limit: int = 120,
+    offset: int = 0,
+    indexed: bool | None = None,
+    located: bool | None = None,
+) -> dict[str, Any]:
     """The Browse grid. ``indexed`` filters on description-search coverage: True
     for media that can be found by describing it, False for what cannot (still
     queued, skipped, or failed), None for everything.
@@ -177,7 +179,7 @@ def media(
 
 
 @reading
-def browse_filters(conn, root_id=None) -> dict:
+def browse_filters(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
     """Options for the Browse filter bar: which year/months, media types, named
     people and named places actually occur in this archive. Scoped to the
     default browse view (_NOT_HIDDEN), so the choices match what the grid shows.
@@ -258,7 +260,7 @@ def browse_filters(conn, root_id=None) -> dict:
 
 
 @reading
-def folders(conn, root_id: int | None, limit: int = 120) -> dict:
+def folders(conn: sqlite3.Connection, root_id: int | None, limit: int = 120) -> dict[str, Any]:
     """Return the archive's source tree as a compact, browseable folder list."""
     rc, rp = _root_clause(root_id)
     rows = conn.execute(f"SELECT rel_path FROM files f WHERE {_NOT_HIDDEN}{rc}", rp).fetchall()
@@ -271,7 +273,7 @@ def folders(conn, root_id: int | None, limit: int = 120) -> dict:
 
 
 @writing
-def set_date(conn, file_id, value: str) -> dict:
+def set_date(conn: sqlite3.Connection, file_id: int | None, value: str) -> dict[str, Any]:
     """Set a manual, variable-precision date. `value` is a YYYY, YYYY-MM or
     YYYY-MM-DD prefix (stored as-is; the whole app groups/sorts by prefix)."""
     if not file_id:
@@ -311,7 +313,9 @@ def set_date(conn, file_id, value: str) -> dict:
     return {"ok": True, "date": v, "date_source": "manual"}
 
 
-def _item_detections(conn, fid):
+def _item_detections(
+    conn: sqlite3.Connection, fid: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Detected people and animals for one file, as (people, animals)."""
     people = [
         {
@@ -346,21 +350,25 @@ def _item_detections(conn, fid):
     return people, animals
 
 
-def _item_place(conn, fid, min_media):
+def _item_place(conn: sqlite3.Connection, fid: int, min_media: int) -> sqlite3.Row | None:
     # Current place membership (a file belongs to at most one place).
     # A below-threshold, unnamed/unpinned cluster is not reported as a
     # "place" here either (see place_min_media) — this file just has no
     # location, matching what place_clusters() shows on the map.
-    return conn.execute(
+    row = conn.execute(
         f"""SELECT pc.id, pc.name FROM place_cluster_members pcm
            JOIN place_clusters pc ON pc.id=pcm.cluster_id
            WHERE pcm.file_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
            LIMIT 1""",
         (fid, min_media),
     ).fetchone()
+    # sqlite3.Cursor.fetchone() is typed Any, so say what this one returns.
+    return cast("sqlite3.Row | None", row)
 
 
-def _item_pick_lists(conn, root_id):
+def _item_pick_lists(
+    conn: sqlite3.Connection, root_id: int | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     # Pick-lists for in-panel editing: only *named* places (in this file's root)
     # and *named* persons are offered as targets.
     place_options = [
@@ -389,7 +397,9 @@ def _item_pick_lists(conn, root_id):
     return place_options, person_options, pet_options
 
 
-def _item_manual_tags(conn, fid):
+def _item_manual_tags(
+    conn: sqlite3.Connection, fid: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     # Manually tagged people/pets on this file (person_files/pet_files) --
     # no face/detection exists for these, so there's no face_id/detection_id.
     # Name resolves from the live persons/pets table; if the id has rotted
@@ -425,7 +435,7 @@ def _item_manual_tags(conn, fid):
 
 
 @reading
-def item(conn, fid: int, min_media: int = 10) -> dict | None:
+def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, Any] | None:
     f = conn.execute(
         """SELECT f.*, r.path AS root_path FROM files f
            JOIN roots r ON r.id=f.root_id WHERE f.id=?""",
@@ -470,7 +480,7 @@ def item(conn, fid: int, min_media: int = 10) -> dict | None:
 
 
 @reading
-def media_source(conn, fid: int):
+def media_source(conn: sqlite3.Connection, fid: int) -> tuple[Path, str, int] | None:
     """(absolute path, content sha256, rotate_deg) for a file id, or None.
 
     The sha256 is what the thumbnail cache is keyed on, so byte-identical

@@ -23,10 +23,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import sqlite3
 import threading
 from pathlib import Path
+from typing import Any, cast
 
 from .. import thumbnails
+from ..config import Config
 from ..db import database as db
 from ..embeddings import backend as eb
 
@@ -61,12 +64,15 @@ def available() -> bool:
     return eb.available()
 
 
-def models_ready(cfg) -> bool:
+def models_ready(cfg: Config) -> bool:
     """True when the indexing half (the vision tower) is already downloaded."""
     return eb.vision_ready(cfg.cache_dir)
 
 
-def backend(cfg, log=None) -> eb.SiglipBackend:
+def backend(
+    cfg: Config,
+    log: Any = None,  # progress callback; its contract lives in embeddings.backend (not yet typed)
+) -> eb.SiglipBackend:
     global _backend
     if _backend is None:
         with _backend_lock:
@@ -75,7 +81,7 @@ def backend(cfg, log=None) -> eb.SiglipBackend:
     return _backend
 
 
-def warm_text_model(cfg) -> None:
+def warm_text_model(cfg: Config) -> None:
     """Load the text tower now, so the first search does not wait for it.
 
     Best-effort: called from a background thread at server start, where the
@@ -90,11 +96,11 @@ def warm_text_model(cfg) -> None:
         logger.debug("text tower warmup failed", exc_info=True)
 
 
-def embed_query(cfg, query: str) -> list[float]:
+def embed_query(cfg: Config, query: str) -> list[float]:
     return embed_queries(cfg, [query])[0]
 
 
-def embed_queries(cfg, queries: list[str]) -> list[list[float]]:
+def embed_queries(cfg: Config, queries: list[str]) -> list[list[float]]:
     """Embed related search formulations together in one forward pass."""
     vectors = backend(cfg).embed_texts(queries)
     return [[float(v) for v in vector] for vector in vectors]
@@ -111,7 +117,9 @@ def _format_offset(secs: float) -> str:
     return f"{int(h):02d}:{int(m):02d}:{s:06.3f}"
 
 
-def _video_frame_offsets(duration_s) -> list[str]:
+def _video_frame_offsets(
+    duration_s: Any,  # sqlite3 REAL column: None, an int/float, or (rarely) unparsable text
+) -> list[str]:
     """ffmpeg ``-ss`` offsets for a handful of frames spread across the clip.
 
     Falls back to one fixed early offset when the duration is unknown (enrich
@@ -134,7 +142,10 @@ def _video_frame_offsets(duration_s) -> list[str]:
 
 
 def _video_frames_part(
-    path: Path, cache_dir: str, rotate: int, duration_s
+    path: Path,
+    cache_dir: str,
+    rotate: int,
+    duration_s: Any,  # see _video_frame_offsets: passed straight through to it
 ) -> tuple[list[Path] | None, str | None, str | None]:
     """A handful of frames sampled across the clip, instead of the whole video.
 
@@ -166,7 +177,13 @@ def _video_frames_part(
 
 
 def media_part(
-    cfg, path: Path, ext: str, media_type: str, cache_dir: str, rotate: int = 0, duration_s=None
+    cfg: Config,
+    path: Path,
+    ext: str,
+    media_type: str,
+    cache_dir: str,
+    rotate: int = 0,
+    duration_s: Any = None,  # see _video_frame_offsets: passed straight through to it
 ) -> tuple[list[Path] | None, str | None, str | None]:
     """The image files to embed for one archive item, or a non-fatal skip reason.
 
@@ -200,7 +217,7 @@ def media_part(
     )
 
 
-def embed_part(cfg, part: list[Path], kind: str | None) -> list[float] | None:
+def embed_part(cfg: Config, part: list[Path], kind: str | None) -> list[float] | None:
     """Embed one prepared item: a photo's thumbnail, or a video's frames.
 
     Returns None only when nothing in ``part`` could be decoded, which the
@@ -216,29 +233,32 @@ def embed_part(cfg, part: list[Path], kind: str | None) -> list[float] | None:
 
 
 def embed_media(
-    cfg,
+    cfg: Config,
     path: Path,
     ext: str,
     media_type: str,
     cache_dir: str,
-    cancel=None,
+    cancel: threading.Event | None = None,
     rotate: int = 0,
-    duration_s=None,
+    duration_s: Any = None,  # see _video_frame_offsets: passed straight through to it
 ) -> tuple[list[float] | None, str | None, str | None]:
     if cancel is not None and cancel.is_set():
         raise KeyboardInterrupt
     part, kind, skip_reason = media_part(cfg, path, ext, media_type, cache_dir, rotate, duration_s)
     if skip_reason:
         return None, kind, skip_reason
-    values = embed_part(cfg, part, kind)
+    # media_part's invariant: part is None iff skip_reason is set, just checked above.
+    values = embed_part(cfg, cast(list[Path], part), kind)
     if values is None:
         return None, kind, f"unsupported {media_type}: no frame could be decoded"
     return values, kind, None
 
 
-def pending_rows(conn, root_id: int | None, force: bool = False):
+def pending_rows(
+    conn: sqlite3.Connection, root_id: int | None, force: bool = False
+) -> list[sqlite3.Row]:
     where = ["f.present=1", "f.hidden=0", "f.media_type IN ('image','video','audio','document')"]
-    params: list = []
+    params: list[Any] = []
     if root_id is not None:
         where.append("f.root_id=?")
         params.append(root_id)
@@ -265,9 +285,11 @@ def pending_rows(conn, root_id: int | None, force: bool = False):
     ).fetchall()
 
 
-def work_counts(conn, root_id: int | None, force: bool = False) -> tuple[int, int]:
+def work_counts(
+    conn: sqlite3.Connection, root_id: int | None, force: bool = False
+) -> tuple[int, int]:
     where = ["f.present=1", "f.hidden=0", "f.media_type IN ('image','video','audio','document')"]
-    params: list = []
+    params: list[Any] = []
     if root_id is not None:
         where.append("f.root_id=?")
         params.append(root_id)
@@ -295,7 +317,14 @@ def _is_permanent_skip(error: str | None) -> bool:
     return error.startswith(("unsupported", "media exceeds"))
 
 
-def save_outcome(conn, cfg, row, values, kind: str | None, error: str | None) -> None:
+def save_outcome(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    row: sqlite3.Row,
+    values: list[float] | None,
+    kind: str | None,
+    error: str | None,
+) -> None:
     status = (
         "indexed" if values is not None else ("skipped" if _is_permanent_skip(error) else "error")
     )
