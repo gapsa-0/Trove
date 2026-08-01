@@ -530,7 +530,7 @@ export function showSection(id, reload = false) {
 
 function syncMapTiles() {
   syncPlacesMapTiles();
-  if (MPICK) MPICK_TILES = replaceMapTiles(MPICK, MPICK_TILES);
+  syncPickerMapTiles();
 }
 
 /* ---------- browse ---------- */
@@ -1714,6 +1714,11 @@ function onPlaceSelect(pid) {
 }
 let MPICK = null, MPICK_TILES = null, MPICK_MARK = null, MPICK_LL = null;
 function closePick() { if (MPICK) { MPICK.remove(); MPICK = null; } MPICK_TILES = null; MPICK_MARK = null; MPICK_LL = null; }
+// The theme switch's one reach into the place picker's map, matching the
+// Places map's own seam: the switch swaps tiles, it does not own the handle.
+function syncPickerMapTiles() {
+  if (MPICK) MPICK_TILES = replaceMapTiles(MPICK, MPICK_TILES);
+}
 function newPlace() {
   const host = document.getElementById("p-pick");
   host.innerHTML = `
