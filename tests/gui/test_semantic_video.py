@@ -23,6 +23,7 @@ from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.embeddings import backend as eb
 from organize_archive.pipeline import manager as jobs_mod
+from organize_archive.pipeline.runners import semantic as semantic_runner
 from organize_archive.services import semantic
 
 np = pytest.importorskip("numpy")
@@ -220,7 +221,7 @@ def test_an_ordinary_failure_still_records_as_error(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# JobManager._semantic_pass(): one bad file costs one file
+# runners.semantic._semantic_pass(): one bad file costs one file
 # ---------------------------------------------------------------------------
 
 
@@ -273,7 +274,9 @@ def test_a_failing_file_is_recorded_once_and_never_retried(tmp_path, monkeypatch
         monkeypatch.setattr(semantic, "embed_part", fake_embed_part)
 
         job = jobs_mod.Job(id=1, kind="semantic", root_id=1, root_path="/x")
-        indexed, skipped, failed, total = jm._semantic_pass(job, threading.Event(), force=False)
+        indexed, skipped, failed, total = semantic_runner._semantic_pass(
+            jm.cfg, job, threading.Event(), force=False
+        )
 
         assert len(calls) == 1
         assert (indexed, skipped, failed, total) == (0, 0, 1, 1)
@@ -344,7 +347,9 @@ def test_one_bad_file_does_not_take_its_neighbours_down(tmp_path, monkeypatch):
         monkeypatch.setattr(semantic, "embed_part", fake_embed_part)
 
         job = jobs_mod.Job(id=1, kind="semantic", root_id=1, root_path="/x")
-        indexed, skipped, failed, total = jm._semantic_pass(job, threading.Event(), force=False)
+        indexed, skipped, failed, total = semantic_runner._semantic_pass(
+            jm.cfg, job, threading.Event(), force=False
+        )
 
         assert (indexed, skipped, failed, total) == (1, 0, 1, 2)
 

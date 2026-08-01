@@ -56,7 +56,7 @@ from contextlib import nullcontext
 
 from ..config import Config
 from ..db import database as db
-from .job import Job, JobContext, JobProgress, Runner
+from .job import Job, JobContext, Runner
 from .runners import RUNNERS
 
 logger = logging.getLogger(__name__)
@@ -87,12 +87,6 @@ class JobManager:
     # to do, so a quiet archive doesn't get walked every few seconds forever.
     _AUTO_MIN = 10
     _AUTO_MAX = 300
-    # Images per detect-then-recluster chunk in the detect job (see _run_detect):
-    # small enough that people/pets appear early in a multi-hour run, large enough
-    # that repeated clustering stays a small fraction of total time. Detection is
-    # heavier per image than one detector was (SCRFD + YOLOX + embeds), so the
-    # chunk is smaller than the old faces chunk.
-    _DETECT_CHUNK = 600
     # Freshness disk walk is reused for this long before re-walking (see
     # _walk_cache). Comfortably below the idle backoff so an idle tick still
     # re-walks and notices files added to the source folder.
@@ -264,7 +258,7 @@ class JobManager:
         files `dedup_needed` otherwise compares (enrich never touches
         `files.sha256`/`present`) -- so that comparison alone would miss a
         case where the previous grouping's canonical pick is now stale.
-        Invalidating through the same persisted marker `_run_dedup` writes on
+        Invalidating through the same persisted marker the dedup runner writes on
         success means this obligation survives a restart too.
 
         Runs on the scheduler thread, which must not die on a transient lock:
@@ -656,24 +650,13 @@ class JobManager:
     def _run(self, job: Job, cancel: threading.Event):
         try:
             runner = RUNNERS.get(job.kind)
-            if runner is not None:
-                self._dispatch(runner, job, cancel)
-            elif job.kind == "semantic":
-                self._run_semantic(job, cancel)
-            else:
-                with self._write_lock:
-                    conn = self._open_db(job.root_id)
-                    try:
-                        if job.kind == "detect":
-                            self._run_detect(conn, job, cancel)
-                        else:
-                            raise ValueError(f"unknown job kind: {job.kind}")
-                    finally:
-                        conn.close()
+            if runner is None:
+                raise ValueError(f"unknown job kind: {job.kind}")
+            self._dispatch(runner, job, cancel)
             job.status = "done"
             # A successful rebuild is the only thing that marks dedup_runs (see
-            # _run_dedup), so a cancelled or errored dedup leaves no marker and
-            # stays queued/retries next tick.
+            # runners/dedup.py), so a cancelled or errored dedup leaves no
+            # marker and stays queued/retries next tick.
             self._error_at.pop((job.root_id, job.kind), None)
             logger.info(
                 "job done kind=%s root=%s job=%s done=%s total=%s elapsed=%.1fs %s",
@@ -721,207 +704,3 @@ class JobManager:
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()
-
-    def _run_detect(self, conn, job: Job, cancel):
-        # Part of the automatic pipeline (after dedup). ONE decode per image runs
-        # both detectors — people via SCRFD, animals via YOLOX — and the animal
-        # boxes cross-check the faces inline (a face inside an animal box is
-        # dropped from People). Detect in chunks and re-cluster people + pets after
-        # each so both views fill in progressively during a long run.
-        from ..detect import extract as dx
-        from ..faces import cluster as fc
-        from ..pets import cluster as pc
-
-        # Progress is cumulative over ALL canonical media, not just this run's
-        # backlog: total = every canonical image (+ video, once video detection
-        # is enabled), done starts at how many are already detected. So the
-        # bar/% match the "Detected N / total" tile and survive resuming across
-        # restarts (no misleading per-run total). cfg is passed so the
-        # population matches pending_count's (both honour detect_video_frames).
-        total = dx.image_count(conn, self.cfg, job.root_id)
-        already = max(0, total - dx.pending_count(conn, self.cfg, job.root_id))
-        job.total, job.done = total, already
-        # Load both detector model sets once and reuse across every chunk.
-        face_be, pet_be = dx.make_backends(self.cfg, log=lambda m: setattr(job, "current", m))
-        processed = faces_found = animals = suppressed = human_pets = 0
-        turned = 0
-        while True:
-            if cancel.is_set():
-                raise KeyboardInterrupt
-            prog = JobProgress(job, cancel, base=already + processed, fixed_total=True)
-            st = dx.extract(
-                conn,
-                self.cfg,
-                progress=prog,
-                limit=self._DETECT_CHUNK,
-                face_be=face_be,
-                pet_be=pet_be,
-                cache_dir=self.cfg.archive_cache_dir(job.root_id),
-            )
-            if st.processed == 0:
-                break
-            processed += st.processed
-            faces_found += st.faces_found
-            animals += st.animals
-            suppressed += st.nonhuman_suppressed
-            human_pets += st.human_animals_dropped
-            turned += st.rotated
-            job.current = "grouping people & pets…"
-            fc.cluster_faces(conn, self.cfg)
-            pc.cluster_pets(conn, self.cfg, root_id=job.root_id)
-
-        # The backlog is empty, so an embedder migration staged earlier now has
-        # every re-extracted face it needs: give the names, pins and review
-        # answers back to the faces they belong to, then cluster once more so
-        # those restored pins actually take effect. Only here, never mid-run: a
-        # partially re-extracted archive would strand identities on faces that
-        # have not been detected yet.
-        from ..faces import migrate_adaface
-
-        restored = 0
-        if migrate_adaface.pending(conn):
-            job.current = "restoring names and corrections…"
-            restored = migrate_adaface.reattach(conn, self.cfg).faces_reattached
-            fc.cluster_faces(conn, self.cfg)
-
-        people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
-        groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
-        job.message = (
-            f"{faces_found} faces · {people} people · {animals} animals · "
-            f"{groups} pet groups"
-            + (f" · {suppressed} animal-face FPs dropped" if suppressed else "")
-            + (f" · {human_pets} people misread as pets" if human_pets else "")
-            + (f" · {turned} photos turned upright" if turned else "")
-            + (f" · {restored} identities restored" if restored else "")
-        )
-
-    def _run_semantic(self, job: Job, cancel):
-        # Drain in passes so semantic indexing is ONE continuous job: each pass
-        # handles the current backlog, then loops to pick up anything that became
-        # pending while it ran (files the concurrent scan/enrich just added).
-        # Restarting a fresh job per snapshot is what used to flicker the card
-        # done→running; looping here keeps it steadily "running" until drained.
-        total_indexed = total_skipped = total_failed = 0
-        force = job.force
-        while True:
-            if cancel.is_set():
-                raise KeyboardInterrupt
-            indexed, skipped, failed, remaining = self._semantic_pass(job, cancel, force)
-            total_indexed += indexed
-            total_skipped += skipped
-            total_failed += failed
-            if remaining == 0:
-                break
-            force = False  # only the first pass honours a forced full reindex
-        job.message = (
-            f"{total_indexed} indexed, {total_skipped} skipped, {total_failed} errors"
-            if (total_indexed or total_skipped or total_failed)
-            else "semantic index is already current"
-        )
-
-    def _semantic_pass(self, job: Job, cancel, force: bool):
-        """One snapshot pass. Returns (indexed, skipped, failed, rows_in_pass)."""
-        from pathlib import Path
-
-        from ..services import semantic
-
-        # Snapshot candidates under a read-only connection. The API calls below
-        # happen without the writer lock so local metadata/faces work continues.
-        read_conn = db.open_readonly(self.cfg.archive_db_path(job.root_id))
-        try:
-            rows = semantic.pending_rows(read_conn, job.root_id, force=force)
-            total, already = semantic.work_counts(read_conn, job.root_id, force=force)
-        finally:
-            read_conn.close()
-        job.total, job.done = total, already
-        if not rows:
-            return (0, 0, 0, 0)
-        indexed = skipped = failed = 0
-        # A straight loop, one file at a time. The old batch-then-isolate retry
-        # ladder existed because a single malformed input could 400 an entire
-        # Voyage request and take its innocent neighbours down with it. Local
-        # inference has no such failure mode: a file either decodes or it does
-        # not, and media_part has already decided that. Batching would not even
-        # pay for itself — on this CPU a batch of four costs four single
-        # forwards — while one-at-a-time keeps the progress card truthful.
-        # Per-item error capture stays: a truncated JPEG can still raise inside
-        # PIL, and that must cost one file, not the pass.
-        cache_dir = self.cfg.archive_cache_dir(job.root_id)
-        for offset, row in enumerate(rows):
-            if cancel.is_set():
-                raise KeyboardInterrupt
-            job.current = row["rel_path"]
-            try:
-                part, kind, reason = semantic.media_part(
-                    self.cfg,
-                    Path(row["root_path"]) / row["rel_path"],
-                    row["ext"],
-                    row["media_type"],
-                    cache_dir,
-                    row["rotate_deg"],
-                    row["duration_s"],
-                )
-                if reason:
-                    self._save_semantic_outcome(job.root_id, row, None, kind, reason)
-                    skipped += 1
-                else:
-                    values = semantic.embed_part(self.cfg, part, kind)
-                    if values is None:
-                        self._save_semantic_outcome(
-                            job.root_id,
-                            row,
-                            None,
-                            kind,
-                            f"unsupported {row['media_type']}: no frame could be decoded",
-                        )
-                        skipped += 1
-                    else:
-                        self._save_semantic_outcome(job.root_id, row, values, kind, None)
-                        indexed += 1
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                # One line, no exc_info: this loop covers every file in the
-                # archive (~150k), so a traceback each would fill the rotated log
-                # before anything useful survived. The reason is also persisted
-                # per row by _save_semantic_outcome, which the GUI surfaces.
-                logger.warning("semantic indexing failed for file_id=%s: %s", row["id"], exc)
-                self._save_semantic_outcome(job.root_id, row, None, None, str(exc))
-                failed += 1
-            job.done = already + offset + 1
-        return (indexed, skipped, failed, len(rows))
-
-    def _save_semantic_outcome(self, root_id, row, values, kind, reason):
-        """Persist one result without taking the manager-wide pipeline lock.
-
-        SQLite WAL plus its busy timeout serializes this tiny transaction against
-        a metadata/faces batch, while the semantic worker remains independent of
-        that job's long-lived manager lock. ``write_with_retry`` covers the rarer
-        case where that still isn't enough (a batch write holding the writer past
-        busy_timeout, see detect's commit budget); if the lock still won't clear,
-        this row is left pending instead of turning into the card's error text --
-        a lock is not a stage failure, and the next semantic pass will retry it
-        since no embedding was ever written for it.
-        """
-        from ..services import semantic
-
-        conn = db.connect(self.cfg.archive_db_path(root_id))
-        try:
-            # Dedup may have completed while this item was being embedded.
-            # Only keep an outcome if this exact source remains canonical.
-            current = conn.execute(
-                "SELECT hidden, sha256 FROM files WHERE id=?", (row["id"],)
-            ).fetchone()
-            if current is None or current["hidden"] or current["sha256"] != row["sha256"]:
-                return
-
-            def _write():
-                semantic.save_outcome(conn, self.cfg, row, values, kind, reason)
-                conn.commit()
-
-            try:
-                db.write_with_retry(_write)
-            except sqlite3.OperationalError:
-                conn.rollback()
-        finally:
-            conn.close()

@@ -17,7 +17,7 @@ miserable to reproduce.
 from __future__ import annotations
 
 from ..job import Runner
-from . import dedup, enrich, face_cluster, pet_cluster, places, scan
+from . import dedup, detect, enrich, face_cluster, pet_cluster, places, scan, semantic
 
 RUNNERS: dict[str, Runner] = {
     scan.RUNNER.kind: scan.RUNNER,
@@ -26,6 +26,8 @@ RUNNERS: dict[str, Runner] = {
     places.RUNNER.kind: places.RUNNER,
     face_cluster.RUNNER.kind: face_cluster.RUNNER,
     pet_cluster.RUNNER.kind: pet_cluster.RUNNER,
+    detect.RUNNER.kind: detect.RUNNER,
+    semantic.RUNNER.kind: semantic.RUNNER,
 }
 
 __all__ = ["RUNNERS", "Runner"]

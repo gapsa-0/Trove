@@ -361,9 +361,10 @@ def dedup_mark_done(
 ) -> None:
     """Record a successful rebuild's coverage.
 
-    Its caller (``jobs._run_dedup``) writes this on the rebuild's connection but
-    in a later transaction than ``exact.run``'s own commit, so the marker can
-    lag the grouping it describes if the process dies in that narrow window.
+    Its caller (``pipeline/runners/dedup.py``) writes this on the rebuild's
+    connection but in a later transaction than ``exact.run``'s own commit, so
+    the marker can lag the grouping it describes if the process dies in that
+    narrow window.
     That direction is the safe one: the grouping is already correct and the only
     cost is one redundant rebuild. Never write it *before* the grouping commits,
     which would strand a stale grouping behind an up-to-date marker."""
