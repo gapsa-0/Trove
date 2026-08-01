@@ -16,8 +16,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ..config import Config, discard_superseded_secrets
-from ..db import database as db
-from ..services import browse, people, pets, places
 from . import routes
 from .jobs import JobManager
 
@@ -100,22 +98,6 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
-    # -- per-archive resolution ---------------------------------------------
-    # Each archive is a fully separate database and cache dir; every request
-    # that touches archive content must say which one. Content routes that
-    # take no ``root`` query param (thumbnails, the original file) instead
-    # resolve against whichever archive is currently open in the GUI, since
-    # only one is ever browsed at a time.
-    def _db(self, root_id) -> str:
-        if root_id is None:
-            raise ValueError("root is required")
-        return self.cfg.archive_db_path(root_id)
-
-    def _cache(self, root_id) -> str:
-        if root_id is None:
-            raise ValueError("root is required")
-        return self.cfg.archive_cache_dir(root_id)
-
     # -- routing ------------------------------------------------------------
     # The route tables in ``routes/`` are consulted first and the if/elif chains
     # below are the fallback, so routes can move a domain at a time and the ones
@@ -178,113 +160,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._read_json_body()
             handler = routes.POST_ROUTES.get(path)
-            if handler is not None:
-                self._respond(handler(self._build_request("POST", body)))
-            # The mutations below act on an id (person, cluster, face, pet...)
-            # rather than a file the caller already knows the root of, and the
-            # frontend never sends one for them. They resolve against whichever
-            # archive is currently open, same as thumbnail/original serving.
-            elif path == "/api/map/cluster/rename":
-                res = db.write_with_retry(
-                    lambda: places.rename_place_cluster(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("cluster_id"),
-                        (body.get("name") or "").strip(),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/map/cluster/merge":
-                res = db.write_with_retry(
-                    lambda: places.merge_place_clusters(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("a"),
-                        body.get("b"),
-                        body.get("name"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/map/cluster/unmerge":
-                # Unlike /api/faces/unmerge and /api/pets/unmerge, no job is
-                # started here: places are durable (see place_merges' schema
-                # comment), so unmerge_place_clusters is already a complete
-                # restore, not a "delete a constraint and recluster" that
-                # needs a background pass to finish the job.
-                res = db.write_with_retry(
-                    lambda: places.unmerge_place_clusters(
-                        self._db(self.jobs.current_root_id()), body.get("merge_id")
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/item/date":
-                res = db.write_with_retry(
-                    lambda: browse.set_date(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("file_id"),
-                        body.get("datetime"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/item/place":
-                db_path = self._db(self.jobs.current_root_id())
-                if body.get("clear"):
-                    res = db.write_with_retry(
-                        lambda: places.clear_place(db_path, body.get("file_id"))
-                    )
-                else:
-                    res = db.write_with_retry(
-                        lambda: places.set_place(db_path, body.get("file_id"), body.get("place_id"))
-                    )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/item/person/add":
-                res = db.write_with_retry(
-                    lambda: people.add_person_to_file(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("person_id"),
-                        body.get("file_id"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/item/person/remove":
-                res = db.write_with_retry(
-                    lambda: people.remove_person_from_file(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("person_id"),
-                        body.get("file_id"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/item/pet/add":
-                res = db.write_with_retry(
-                    lambda: pets.add_pet_to_file(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("pet_id"),
-                        body.get("file_id"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/item/pet/remove":
-                res = db.write_with_retry(
-                    lambda: pets.remove_pet_from_file(
-                        self._db(self.jobs.current_root_id()),
-                        body.get("pet_id"),
-                        body.get("file_id"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/places/create":
-                res = db.write_with_retry(
-                    lambda: places.create_place(
-                        self._db(body.get("root")),
-                        body.get("root"),
-                        body.get("name"),
-                        body.get("lat"),
-                        body.get("lon"),
-                        body.get("file_id"),
-                    )
-                )
-                self._json(res, 400 if "error" in res else 200)
-            else:
-                self._json({"error": "not found"}, 404)
+            if handler is None:
+                return self._json({"error": "not found"}, 404)
+            self._respond(handler(self._build_request("POST", body)))
         except ValueError as e:
             self._json({"error": str(e)}, 400)
         except Exception as e:

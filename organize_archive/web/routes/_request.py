@@ -110,7 +110,12 @@ class Request:
     # that touches archive content must say which one. Content routes that
     # take no ``root`` query param (thumbnails, the original file) instead
     # resolve against whichever archive is currently open in the GUI, since
-    # only one is ever browsed at a time.
+    # only one is ever browsed at a time. The same is true of mutations that
+    # act on an id (person, cluster, face, pet...) rather than a file the
+    # caller already knows the root of -- the frontend never sends one for
+    # them either, so they resolve against the open archive too. The one
+    # exception is /api/places/create, which is given an explicit ``root``
+    # in its body.
     @property
     def root_id(self) -> int | None:
         """The ``?root=`` archive id, or ``None``. Turning that ``None`` into an

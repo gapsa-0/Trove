@@ -109,3 +109,21 @@ def hide(req: Request) -> Json:
         )
     )
     return ok_or_error(res)
+
+
+def add_person(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: people.add_person_to_file(
+            req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
+        )
+    )
+    return ok_or_error(res)
+
+
+def remove_person(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: people.remove_person_from_file(
+            req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
+        )
+    )
+    return ok_or_error(res)

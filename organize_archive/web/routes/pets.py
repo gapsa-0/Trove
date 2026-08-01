@@ -87,3 +87,21 @@ def review_nonhuman(req: Request) -> Json:
     if res.get("status") == "human" and res.get("root_id"):
         req.jobs.start("face_cluster", res["root_id"])
     return ok_or_error(res)
+
+
+def add_pet(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: pets.add_pet_to_file(
+            req.db(req.open_root_id), req.body.get("pet_id"), req.body.get("file_id")
+        )
+    )
+    return ok_or_error(res)
+
+
+def remove_pet(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: pets.remove_pet_from_file(
+            req.db(req.open_root_id), req.body.get("pet_id"), req.body.get("file_id")
+        )
+    )
+    return ok_or_error(res)

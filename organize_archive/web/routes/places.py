@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from ...db import database as db
 from ...services import places
-from ._request import NOT_FOUND, Request, ok_or_error
+from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
 def clusters(req: Request) -> dict:
@@ -37,3 +38,60 @@ def cluster_members(req: Request):
         offset=req.offset(),
     )
     return c if c else NOT_FOUND
+
+
+def rename_cluster(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: places.rename_place_cluster(
+            req.db(req.open_root_id),
+            req.body.get("cluster_id"),
+            (req.body.get("name") or "").strip(),
+        )
+    )
+    return ok_or_error(res)
+
+
+def merge_clusters(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: places.merge_place_clusters(
+            req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
+        )
+    )
+    return ok_or_error(res)
+
+
+def unmerge_clusters(req: Request) -> Json:
+    # Unlike /api/faces/unmerge and /api/pets/unmerge, no job is
+    # started here: places are durable (see place_merges' schema
+    # comment), so unmerge_place_clusters is already a complete
+    # restore, not a "delete a constraint and recluster" that
+    # needs a background pass to finish the job.
+    res = db.write_with_retry(
+        lambda: places.unmerge_place_clusters(req.db(req.open_root_id), req.body.get("merge_id"))
+    )
+    return ok_or_error(res)
+
+
+def set_item_place(req: Request) -> Json:
+    db_path = req.db(req.open_root_id)
+    if req.body.get("clear"):
+        res = db.write_with_retry(lambda: places.clear_place(db_path, req.body.get("file_id")))
+    else:
+        res = db.write_with_retry(
+            lambda: places.set_place(db_path, req.body.get("file_id"), req.body.get("place_id"))
+        )
+    return ok_or_error(res)
+
+
+def create_place(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: places.create_place(
+            req.db(req.body.get("root")),
+            req.body.get("root"),
+            req.body.get("name"),
+            req.body.get("lat"),
+            req.body.get("lon"),
+            req.body.get("file_id"),
+        )
+    )
+    return ok_or_error(res)

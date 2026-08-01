@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from ...db import database as db
 from ...services import browse
-from ._request import NOT_FOUND, Json, Request
+from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
 def item(req: Request) -> dict | Json:
@@ -53,3 +54,12 @@ def filters(req: Request) -> dict:
 def folders(req: Request) -> dict:
     rid = req.root_id
     return browse.folders(req.db(rid), rid, limit=req.limit(120, 500))
+
+
+def set_date(req: Request) -> Json:
+    res = db.write_with_retry(
+        lambda: browse.set_date(
+            req.db(req.open_root_id), req.body.get("file_id"), req.body.get("datetime")
+        )
+    )
+    return ok_or_error(res)

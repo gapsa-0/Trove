@@ -119,6 +119,16 @@ POST_ROUTES: dict[str, Handler] = {
     "/api/pets/merge": pets.merge,
     "/api/pets/unmerge": pets.unmerge,
     "/api/nonhuman/review": pets.review_nonhuman,
+    "/api/map/cluster/rename": places.rename_cluster,
+    "/api/map/cluster/merge": places.merge_clusters,
+    "/api/map/cluster/unmerge": places.unmerge_clusters,
+    "/api/item/date": browse.set_date,
+    "/api/item/place": places.set_item_place,
+    "/api/item/person/add": people.add_person,
+    "/api/item/person/remove": people.remove_person,
+    "/api/item/pet/add": pets.add_pet,
+    "/api/item/pet/remove": pets.remove_pet,
+    "/api/places/create": places.create_place,
 }
 
 
