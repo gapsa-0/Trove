@@ -4,6 +4,9 @@
 // two ways the router and the theme switch reach them.
 
 import {
+  currentTheme,
+} from "./settings.js";
+import {
   tile,
 } from "./library.js";
 import {
@@ -24,9 +27,6 @@ import {
 import {
   S,
 } from "./state.js";
-import {
-  currentTheme,
-} from "./main.js";
 
 /* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
    Photos within 300m of each other are grouped server-side into one named

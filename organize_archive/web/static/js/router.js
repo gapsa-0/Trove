@@ -4,6 +4,9 @@
 // place that names every screen's entry point.
 
 import {
+  syncThemeControl,
+} from "./settings.js";
+import {
   jpost,
 } from "./api.js";
 import {
@@ -43,7 +46,7 @@ import {
   renderTimeline,
 } from "./timeline.js";
 import {
-  renderSoon, syncThemeControl,
+  renderSoon,
 } from "./main.js";
 
 export function applyHash() {

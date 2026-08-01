@@ -8,6 +8,9 @@ import {
   esc,
 } from "./dom.js";
 import {
+  closeSettings, openSettings, syncThemeControl, toggleTheme,
+} from "./settings.js";
+import {
   applyHash, applyNavCollapsed, showSection, toPicker, toggleNav,
 } from "./router.js";
 import {
@@ -25,7 +28,7 @@ import {
 import {
   MITEM, addPersonPicker, addPetPicker, closeModal, closePick, editDate, editPlace, newPlace,
   onAddPerson, onAddPet, onPlaceSelect, openItem, reassignFace, removeManualPerson,
-  removeManualPet, renderInfo, saveDate, saveNewPlace, syncPickerMapTiles,
+  removeManualPet, renderInfo, saveDate, saveNewPlace,
 } from "./item.js";
 import {
   renamePet,
@@ -37,7 +40,7 @@ import {
   mergeAskCancel, undoMerge,
 } from "./merge.js";
 import {
-  closePlaceCluster, editClusterName, setMapView, syncPlacesMapTiles,
+  closePlaceCluster, editClusterName, setMapView,
 } from "./places.js";
 import {
   applyTimelineFilters, clearTimelineFilters, onTimelineYearChange,
@@ -47,7 +50,7 @@ import {
 } from "./overview.js";
 
 import {
-  ICONS, S,
+  S,
 } from "./state.js";
 import {
   jget,
@@ -71,42 +74,7 @@ document.addEventListener("toggle", event => {
     });
 }, true);
 
-export function currentTheme() { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
-export function syncThemeControl() {
-  const dark = currentTheme() === "dark";
-  // Gear buttons (settings) share the .theme-toggle look but carry no theme
-  // icon/label, so skip anything without a .theme-icon so they don't break here.
-  document.querySelectorAll(".theme-toggle,.appearance-fab").forEach(button => {
-    const icon = button.querySelector(".theme-icon");
-    if (!icon) return;
-    icon.innerHTML = dark ? ICONS.sun : ICONS.moon;
-    const label = button.querySelector(".theme-label");
-    if (label) label.textContent = dark ? "Light appearance" : "Dark appearance";
-    button.title = dark ? "Use light appearance" : "Use dark appearance";
-  });
-  document.querySelectorAll(".gear-icon").forEach(el => { el.innerHTML = ICONS.settings; });
-}
-function toggleTheme() {
-  const next = currentTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  localStorage.setItem("archiveTheme", next);
-  document.querySelector('meta[name="theme-color"]').content = next === "dark" ? "#101014" : "#f5f5f7";
-  syncThemeControl();
-  syncMapTiles();
-}
-
 /* ---------- settings drawer (app-wide config) ---------- */
-// Nothing in here is user-configurable any more: semantic search stopped
-// needing an API key when the embedding model moved on-device, so the drawer
-// is appearance plus a statement of what runs where.
-function openSettings() {
-  const d = document.getElementById("settings-drawer"), b = document.getElementById("drawer-backdrop");
-  b.classList.add("open"); d.classList.add("open"); d.setAttribute("aria-hidden", "false");
-}
-function closeSettings() {
-  const d = document.getElementById("settings-drawer"), b = document.getElementById("drawer-backdrop");
-  b.classList.remove("open"); d.classList.remove("open"); d.setAttribute("aria-hidden", "true");
-}
 
 /* ---------- picker ---------- */
 
@@ -132,11 +100,6 @@ applyNavCollapsed();
 /* ---------- date sources (complementary bar shown under the Timeline) ---------- */
 
 /* ---------- timeline ---------- */
-
-function syncMapTiles() {
-  syncPlacesMapTiles();
-  syncPickerMapTiles();
-}
 
 /* ---------- browse ---------- */
 
