@@ -4,6 +4,9 @@
 // the always-visible sidebar chip is status polling of its own.
 
 import {
+  CARD_KIND, renderGstat,
+} from "./status.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -12,9 +15,6 @@ import {
 import {
   ICONS, S, TYPE_COL, typeLabel,
 } from "./state.js";
-import {
-  CARD_KIND, renderGstat,
-} from "./main.js";
 
 export async function renderOverview(m) {
   const gen = S.nav, root = S.arch.id;
