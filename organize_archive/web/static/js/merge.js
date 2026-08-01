@@ -4,6 +4,9 @@
 // three entity types it is working on beyond the label it was handed.
 
 import {
+  showPet,
+} from "./pets.js";
+import {
   showPerson,
 } from "./people.js";
 import {
@@ -18,9 +21,6 @@ import {
 import {
   S,
 } from "./state.js";
-import {
-  showPet,
-} from "./main.js";
 
 /* ---------- drag-to-merge (People, Pets & Places grids) ----------
    Dragging one group card onto another folds the dragged ("source") group
