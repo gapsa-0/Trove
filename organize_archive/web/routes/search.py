@@ -36,6 +36,7 @@ def semantic_search(req: Request) -> dict | Json:
     rid = req.root_id
     db_path = req.db(rid)
     vectors = semantic.embed_queries(req.cfg, search_queries)
+    sort_q, located_q = req.one("sort"), req.one("located")
     return search.semantic_search(
         db_path,
         vectors[0],
@@ -47,9 +48,9 @@ def semantic_search(req: Request) -> dict | Json:
         cluster_id=req.one("place", int),
         min_similarity=max(-1.0, min(1.0, float(req.cfg.semantic_search_min_similarity))),
         relative_floor=max(0.0, min(1.0, float(req.cfg.semantic_search_relative_floor))),
-        sort=(req.one("sort") if req.one("sort") in ("newest", "oldest") else "relevance"),
+        sort=(sort_q if sort_q in ("newest", "oldest") else "relevance"),
         limit=req.limit(120, 500),
         offset=req.offset(),
-        located={"yes": True, "no": False}.get(req.one("located")),
+        located={"yes": True, "no": False}.get(located_q) if located_q is not None else None,
         alternate_vectors=[(vector, search.ALTERNATE_VECTOR_PENALTY) for vector in vectors[1:]],
     )

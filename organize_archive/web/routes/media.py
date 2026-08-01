@@ -3,6 +3,8 @@ param) except for the start-page cover mosaic, which names its archive."""
 
 from __future__ import annotations
 
+from typing import cast
+
 from ... import thumbnails
 from ...services import browse, people, pets
 from ._request import NOT_FOUND, FileBody, Json, Request
@@ -13,26 +15,30 @@ from ._request import NOT_FOUND, FileBody, Json, Request
 # (the frontend never sends one for these), so they resolve against
 # whichever single archive is currently open, the GUI never browses two
 # archives' content at once.
-def _open_db_and_cache(req: Request):
+def _open_db_and_cache(req: Request) -> tuple[str, str] | tuple[None, None]:
     rid = req.open_root_id
     if rid is None:
         return None, None
     return req.db(rid), req.cache(rid)
 
 
-def thumb(req: Request):
+def thumb(req: Request) -> FileBody | Json:
     """A file's thumbnail, generated and cached on first request."""
     fid = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = browse.media_source(db_path, fid) if db_path else None
     if info is None:
         return NOT_FOUND
+    # _open_db_and_cache returns its pair together: cache_dir is None exactly
+    # when db_path is, and a non-None db_path is what let media_source find
+    # ``info`` above, so cache_dir is a str here too.
+    cache_dir = cast(str, cache_dir)
     src, sha256, rotate = info
     tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
     return FileBody(tp if tp else src)
 
 
-def archive_thumb(req: Request):
+def archive_thumb(req: Request) -> FileBody | Json:
     """A thumbnail scoped to a named archive, for the start-page cover mosaic where
     nothing is 'open' yet."""
     parts = req.path.split("/")  # ['', 'archivethumb', root_id, file_id]
@@ -53,7 +59,7 @@ def archive_thumb(req: Request):
     return FileBody(tp if tp else src)
 
 
-def face_thumb(req: Request):
+def face_thumb(req: Request) -> FileBody | Json:
     """A cropped face thumbnail, cut from the source photo or (for a video
     detection) its re-derived keyframe."""
     face_id = int(req.path.rsplit("/", 1)[1])
@@ -61,6 +67,8 @@ def face_thumb(req: Request):
     info = people.face_crop_source(db_path, face_id) if db_path else None
     if info is None:
         return NOT_FOUND
+    # See thumb() above: info non-None proves cache_dir is a str too.
+    cache_dir = cast(str, cache_dir)
     src, sha256, box, rotate, frame_offset, _media_type, file_id = info
     if frame_offset is not None:
         # A video detection's box was measured in the extracted keyframe,
@@ -80,7 +88,7 @@ def face_thumb(req: Request):
     return FileBody(tp if tp else src)
 
 
-def animal_thumb(req: Request):
+def animal_thumb(req: Request) -> FileBody | Json:
     """A cropped pet/animal thumbnail, cut from the source photo or (for a video
     detection) its re-derived keyframe."""
     detection_id = int(req.path.rsplit("/", 1)[1])
@@ -88,6 +96,8 @@ def animal_thumb(req: Request):
     info = pets.animal_crop_source(db_path, detection_id) if db_path else None
     if info is None:
         return NOT_FOUND
+    # See thumb() above: info non-None proves cache_dir is a str too.
+    cache_dir = cast(str, cache_dir)
     src, sha256, box, rotate, frame_offset, _media_type, file_id = info
     if frame_offset is not None:
         frame = thumbnails.detect_frame_for(
@@ -103,13 +113,15 @@ def animal_thumb(req: Request):
     return FileBody(tp if tp else src)
 
 
-def original(req: Request):
+def original(req: Request) -> FileBody | Json:
     """The original file, or an upright re-encode for a photo stored sideways."""
     fid = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = browse.media_source(db_path, fid) if db_path else None
     if info is None:
         return NOT_FOUND
+    # See thumb() above: info non-None proves cache_dir is a str too.
+    cache_dir = cast(str, cache_dir)
     src, sha256, rotate = info
     # A photo stored sideways is served from an upright re-encode; every
     # other file is served as its own untouched bytes.

@@ -139,6 +139,7 @@ module = [
   "organize_archive.config.*",
   "organize_archive.db.*",
   "organize_archive.services.*",
+  "organize_archive.web.routes.*",
 ]
 ignore_errors = false
 disallow_untyped_defs = true

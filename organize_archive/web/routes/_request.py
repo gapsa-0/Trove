@@ -19,12 +19,15 @@ the response themselves, is the whole reason the handlers are testable.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar, overload
 
 from ...config import Config
 from ...pipeline.manager import JobManager
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -77,20 +80,35 @@ class Request:
     method: str
     path: str
     query: dict[str, list[str]]
-    body: dict
+    body: dict[str, Any]
     cfg: Config
     jobs: JobManager
 
     # -- query parameters --------------------------------------------------
-    def one(self, name: str, cast=str, default=None):
+    # Three overloads, not a looser signature, because the three call shapes
+    # genuinely return different types: no cast is "a string or absent", a
+    # cast with no default is "a T or absent", and a cast plus default is
+    # always a T -- collapsing that to one Any-returning signature would
+    # silently drop the checking every call site actually relies on.
+    @overload
+    def one(self, name: str) -> str | None: ...
+    @overload
+    def one(self, name: str, cast: Callable[[str], _T]) -> _T | None: ...
+    @overload
+    def one(self, name: str, cast: Callable[[str], _T], default: _T) -> _T: ...
+    def one(self, name: str, cast: Callable[[str], Any] = str, default: Any = None) -> Any:
         """One query value, cast. An empty value counts as absent, so
         ``?year=`` means "no year filter" rather than ``int("")``."""
         v = self.query.get(name, [None])[0]
         return cast(v) if v not in (None, "") else default
 
-    def many(self, name: str, cast=int) -> list:
+    @overload
+    def many(self, name: str) -> list[int]: ...
+    @overload
+    def many(self, name: str, cast: Callable[[str], _T]) -> list[_T]: ...
+    def many(self, name: str, cast: Callable[[str], Any] = int) -> list[Any]:
         """Read repeatable or comma-separated query values, preserving order."""
-        out = []
+        out: list[Any] = []
         for value in self.query.get(name, []):
             for part in value.split(","):
                 if part and (item := cast(part)) not in out:
@@ -127,12 +145,24 @@ class Request:
         """The archive the GUI currently has open."""
         return self.jobs.current_root_id()
 
-    def db(self, root_id) -> str:
+    def db(self, root_id: int | None) -> str:
         if root_id is None:
             raise ValueError("root is required")
         return self.cfg.archive_db_path(root_id)
 
-    def cache(self, root_id) -> str:
+    def cache(self, root_id: int | None) -> str:
         if root_id is None:
             raise ValueError("root is required")
         return self.cfg.archive_cache_dir(root_id)
+
+    def require_root(self) -> int:
+        """``?root=`` as a plain ``int``, for a route that needs the id itself
+        (not just to resolve ``db()``/``cache()``) -- e.g. passing it on to a
+        service that takes ``int``, not ``int | None``. Raises the identical
+        ``ValueError("root is required")`` those raise for a missing root, so
+        checking it here instead of leaving it to ``db()`` a line later changes
+        nothing observable: same exception, same message, same 400."""
+        rid = self.root_id
+        if rid is None:
+            raise ValueError("root is required")
+        return rid

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ...db import database as db
 from ...services import pets
 from ._request import NOT_FOUND, Json, Request, ok_or_error
@@ -39,7 +41,7 @@ def nonhuman(req: Request) -> dict:
     return pets.nonhuman_review(req.db(rid), rid, limit=req.limit(120, 500), offset=req.offset())
 
 
-def group(req: Request):
+def group(req: Request) -> dict[str, Any] | Json:
     """One pet's detail page: their detections, paginated."""
     rid = req.root_id
     g = pets.pet_group(

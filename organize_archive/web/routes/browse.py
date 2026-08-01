@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ...db import database as db
 from ...services import browse
 from ._request import NOT_FOUND, Json, Request, ok_or_error
@@ -29,8 +31,11 @@ def media(req: Request) -> dict:
     # Absent means "no filter"; only the two explicit values narrow
     # the grid, so a stray ?indexed=maybe cannot silently hide media
     # the user asked to see.
-    indexed = {"yes": True, "no": False}.get(req.one("indexed"))
-    located = {"yes": True, "no": False}.get(req.one("located"))
+    # Keyed on `str | None` so an absent param looks up as cleanly as a
+    # nonsense one: both miss, and both mean "no filter".
+    tristate: dict[str | None, bool] = {"yes": True, "no": False}
+    indexed = tristate.get(req.one("indexed"))
+    located = tristate.get(req.one("located"))
     return browse.media(
         req.db(rid),
         root_id=rid,
@@ -63,7 +68,12 @@ def set_date(req: Request) -> Json:
     """Set one file's date by hand, as a manual override."""
     res = db.write_with_retry(
         lambda: browse.set_date(
-            req.db(req.open_root_id), req.body.get("file_id"), req.body.get("datetime")
+            req.db(req.open_root_id),
+            req.body.get("file_id"),
+            # The JSON body is untyped at the boundary; set_date has always
+            # received whatever the client sent under "datetime" with no
+            # static check, same as before this pass -- just now spelled out.
+            cast(str, req.body.get("datetime")),
         )
     )
     return ok_or_error(res)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from ...db import database as db
 from ...services import places
 from ._request import NOT_FOUND, Json, Request, ok_or_error
@@ -9,18 +11,22 @@ from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 def clusters(req: Request) -> dict:
     """Place clusters (grouped geotagged files) with at least the configured minimum media."""
-    rid = req.root_id
+    # place_clusters takes a plain int, not the usual int | None: raising here
+    # (same ValueError, same 400) rather than a line later at req.db() is
+    # observably identical, since this route does nothing with a missing root
+    # other than fail.
+    rid = req.require_root()
     return places.place_clusters(req.db(rid), rid, req.cfg.place_min_media)
 
 
 def points(req: Request) -> dict:
     """Every geotagged file as a single un-clustered map point."""
     # The un-clustered map view: one point per geotagged file.
-    rid = req.root_id
+    rid = req.require_root()  # see clusters() above
     return places.place_points(req.db(rid), rid, req.cfg.place_min_media)
 
 
-def merge_preview(req: Request):
+def merge_preview(req: Request) -> Json:
     """How spread out a prospective cluster merge would be, so the GUI can warn
     before it's confirmed."""
     # GET, not POST: this mutates nothing, it only answers "how
@@ -33,7 +39,7 @@ def merge_preview(req: Request):
     return ok_or_error(res)
 
 
-def cluster_members(req: Request):
+def cluster_members(req: Request) -> dict[str, Any] | Json:
     """One place cluster's member files, paginated."""
     rid = req.root_id
     c = places.place_cluster_members(
@@ -98,7 +104,10 @@ def create_place(req: Request) -> Json:
         lambda: places.create_place(
             req.db(req.body.get("root")),
             req.body.get("root"),
-            req.body.get("name"),
+            # The JSON body is untyped at the boundary; create_place has
+            # always received whatever the client sent under "name" with no
+            # static check, same as before this pass -- just now spelled out.
+            cast(str, req.body.get("name")),
             req.body.get("lat"),
             req.body.get("lon"),
             req.body.get("file_id"),

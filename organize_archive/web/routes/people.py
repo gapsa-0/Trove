@@ -3,6 +3,8 @@ one person's detail page."""
 
 from __future__ import annotations
 
+from typing import Any
+
 from ...db import database as db
 from ...services import people
 from ._request import NOT_FOUND, Json, Request, ok_or_error
@@ -26,7 +28,7 @@ def suggestions(req: Request) -> dict:
     return people.person_suggestions(req.db(rid), rid, limit=req.limit(40, 200))
 
 
-def person(req: Request):
+def person(req: Request) -> dict[str, Any] | Json:
     """One person's detail page: their faces, paginated."""
     rid = req.root_id
     p = people.face_person(
