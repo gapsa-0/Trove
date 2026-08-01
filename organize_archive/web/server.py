@@ -195,9 +195,6 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/dates/sources":
                 rid = one("root", int)
                 self._json(overview.date_sources(self._db(rid), rid))
-            elif path == "/api/faces/summary":
-                rid = one("root", int)
-                self._json(people.face_summary(self._db(rid), rid, self.cfg.detect_video_frames))
             elif path == "/api/pets/summary":
                 from ..pets.extract import scan_source as pet_scan_source
 
@@ -248,33 +245,6 @@ class Handler(BaseHTTPRequestHandler):
                     offset=one("offset", int, 0),
                 )
                 self._json(result) if result else self._json({"error": "not found"}, 404)
-            elif path == "/api/faces/persons":
-                rid = one("root", int)
-                self._json(
-                    people.face_persons(
-                        self._db(rid),
-                        rid,
-                        limit=min(one("limit", int, 120), 500),
-                        offset=one("offset", int, 0),
-                    )
-                )
-            elif path == "/api/faces/suggestions":
-                rid = one("root", int)
-                self._json(
-                    people.person_suggestions(
-                        self._db(rid), rid, limit=min(one("limit", int, 40), 200)
-                    )
-                )
-            elif path.startswith("/api/faces/person/"):
-                rid = one("root", int)
-                p2 = people.face_person(
-                    self._db(rid),
-                    int(path.rsplit("/", 1)[1]),
-                    rid,
-                    limit=min(one("limit", int, 120), 500),
-                    offset=one("offset", int, 0),
-                )
-                self._json(p2) if p2 else self._json({"error": "not found"}, 404)
             elif path == "/api/dups/summary":
                 rid = one("root", int)
                 self._json(dups.dup_summary(self._db(rid), rid))
