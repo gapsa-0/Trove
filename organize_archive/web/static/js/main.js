@@ -403,7 +403,7 @@ const SECTION_READY = new Set();
 let ACTIVE_SECTION = null;
 function resetSectionViews() {
   const main = document.getElementById("main");
-  if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; MAP_TILES = null; }
+  disposeMap();
   if (S.grid && S.grid.observer) S.grid.observer.disconnect();
   S.grid = null; S.gallery = [];
   INFINITE_LIST_KEYS.forEach(key => {
@@ -558,8 +558,17 @@ function replaceMapTiles(map, tiles) {
   return themedTileLayer().addTo(map);
 }
 function syncMapTiles() {
-  if (MAP) MAP_TILES = replaceMapTiles(MAP, MAP_TILES);
+  syncPlacesMapTiles();
   if (MPICK) MPICK_TILES = replaceMapTiles(MPICK, MPICK_TILES);
+}
+// The two seams the Places map offers the rest of the app. Both exist because
+// the router and the theme switch have to reach into the map's private state,
+// and neither of them should own a Leaflet handle to do it.
+function syncPlacesMapTiles() {
+  if (MAP) MAP_TILES = replaceMapTiles(MAP, MAP_TILES);
+}
+function disposeMap() {
+  if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; MAP_TILES = null; }
 }
 let MAP = null, MAP_LAYER = null, MAP_TILES = null, MAP_CLUSTERS = [], MAP_HIDDEN = {};
 // Un-clustered view (things_to_fix #33): every geotagged file as its own
