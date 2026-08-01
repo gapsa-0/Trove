@@ -5,11 +5,11 @@ every invocation (an `UnboundLocalError` on its very first line, from a redundan
 `from pathlib import Path` inside `cmd_scan` shadowing the module-level import) and
 the whole suite stayed green, because no test drove any CLI entry point -- not even
 the parser that comes before dispatch. `tests/unit/test_cli_guards.py` now covers
-that dispatch path; this file covers the layer beneath it, `build_parser()` itself,
-which is about to matter a lot more: Stage 06 splits `cli.py` into a package, one
-module per command, and every subparser's flags, defaults and `func` wiring must
-come out the other side identical. These tests are the contract that split has to
-preserve.
+that dispatch path; this file covers the layer beneath it, `build_parser()` itself.
+That layer is the one worth pinning hardest, because the CLI is a package of one
+module per command: every subparser's flags, defaults and `func` wiring is assembled
+from a different file, and a command can be moved, renamed or re-registered without
+any other test noticing. These tests are the contract such a change has to preserve.
 
 Parser-only: no database, no filesystem, no `args.func(...)` calls. Milliseconds.
 """
