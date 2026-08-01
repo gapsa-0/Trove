@@ -118,6 +118,7 @@ class Scheduler:
             logger.debug("tick: skipped, pipeline is paused")
             return False
         from ..services import archives
+        from . import archives as archives_state
         from . import stages
 
         open_root_id = self._manager._open_root_id
@@ -166,7 +167,7 @@ class Scheduler:
             # Scanning or enriching may change the file set, so a fresh duplicate
             # rebuild is owed once they finish.
             if kind in (stages.SCAN, stages.ENRICH):
-                self._manager._mark_dedup_owed(open_root_id)
+                archives_state.mark_dedup_owed(self._manager.cfg, open_root_id)
             # dedup/places operate per-root via root_id and ignore root_path.
             path = None if kind in (stages.DEDUP, stages.PLACES) else archive["path"]
             if "error" not in self._manager.start(kind, open_root_id, path):

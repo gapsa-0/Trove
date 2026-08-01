@@ -111,6 +111,6 @@ def test_status_polling_never_waits_for_a_disk_walk(tmp_path, monkeypatch):
     assert len(walks) == 1
     # Now stale, but a polled call keeps serving the cached count rather than
     # blocking on a fresh walk — the distinct value proves where it came from.
-    jm._walk_cache[1] = (0.0, 42)
+    jm._disk._cache[1] = (0.0, 42)
     assert jm.disk_count(1, "/media", allow_walk=False) == 42
     jm.shutdown(timeout=1)

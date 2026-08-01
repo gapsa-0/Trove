@@ -31,10 +31,12 @@ proves the rule -- they are one-shot jobs with no dependencies.
   most one of them holds SQLite's writer at a time. A runner declares whether
   it needs this (``Runner.takes_write_lock``); the manager, not the runner,
   takes it.
-* ``_paused``, ``_paused_stages``, ``_walk_cache``, ``_walking`` and
-  ``_error_at`` are plain attributes read and written without ``_lock``. That
-  is deliberate and safe here: each is a single atomic rebind or a
-  ``dict``/``set`` mutation under the GIL, and no invariant spans two of them.
+* ``_paused``, ``_paused_stages`` and ``_error_at`` are plain attributes read
+  and written without ``_lock``. That is deliberate and safe here: each is a
+  single atomic rebind or a ``dict`` mutation under the GIL, and no invariant
+  spans two of them.
+* The disk-count cache has moved to ``archives.DiskCounts``, which owns a lock
+  of its own -- it never needed ordering against the job registry.
 
 **Connections.** A runner gets its own connection and must not share it with
 another thread -- SQLite connections are not safe across threads by default.
@@ -51,13 +53,13 @@ so an interrupted job leaves usable partial progress rather than nothing.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import time
 from contextlib import nullcontext
 
 from ..config import Config
 from ..db import database as db
+from . import archives
 from .job import Job, JobContext, Runner
 from .runners import RUNNERS
 from .scheduler import Scheduler
@@ -71,11 +73,6 @@ __all__ = ["Job", "JobManager"]
 
 
 class JobManager:
-    # Freshness disk walk is reused for this long before re-walking (see
-    # _walk_cache). Comfortably below the scheduler's idle backoff so an idle
-    # tick still re-walks and notices files added to the source folder.
-    _WALK_TTL = 60.0
-
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self._jobs: dict[int, Job] = {}
@@ -91,10 +88,8 @@ class JobManager:
         # readiness lives on this object.
         # Disk-walk cache per root: counting files on disk is the one expensive
         # part of freshness, so the status endpoint (polled ~1/s) reads a cached
-        # count instead of walking ~150k files every time. (monotonic_ts, count)
-        self._walk_cache: dict[int, tuple[float, int]] = {}
-        # Roots with a background refresh walk in flight (see disk_count).
-        self._walking: set[int] = set()
+        # count instead of walking ~150k files every time.
+        self._disk = archives.DiskCounts(lambda: self.scheduler.stopping())
         # When a stage's job errors, hold off auto-restarting that kind for a
         # cooldown so a hard failure can't hot-loop through the nudge path.
         self._error_at: dict[tuple[int, str], float] = {}
@@ -164,104 +159,19 @@ class JobManager:
     def disk_count(
         self, root_id: int, root_path: str, max_age: float | None = None, allow_walk: bool = True
     ) -> int | None:
-        """Files on disk under this root, cached so the polled status endpoint
-        never triggers a fresh ~150k-file walk. Returns None if the folder is
-        gone.
+        """Files on disk under this root. See ``archives.DiskCounts.count``.
 
-        ``allow_walk=False`` additionally refuses to *wait* for a refresh walk,
-        which is what the status endpoint passes. Counting 150k files on a busy
-        external drive can take longer than the client's poll interval, and a
-        walk on the request thread then stacks requests up against the browser's
-        handful of connections until the whole UI stops updating. The stale
-        count is served instead and a refresh runs in the background. The very
-        first walk still blocks: there is nothing to serve yet, and answering
-        "no idea" would show every stage as up to date on the first paint.
+        Kept on the manager because ``stages._pending`` reads it off whatever
+        object it is handed, and that object is this one.
         """
-        from pathlib import Path
-
-        from ..scan.walker import count_files
-
-        ttl = self._WALK_TTL if max_age is None else max_age
-        hit = self._walk_cache.get(root_id)
-        now = time.monotonic()
-        if hit and now - hit[0] < ttl:
-            return hit[1]
-        if hit and not allow_walk:
-            self._refresh_disk_count(root_id, root_path)
-            return hit[1]
-        if not Path(root_path).is_dir():
-            self._walk_cache.pop(root_id, None)
-            return None
-        count = count_files(Path(root_path))
-        self._walk_cache[root_id] = (now, count)
-        return count
-
-    def _refresh_disk_count(self, root_id: int, root_path: str) -> None:
-        """Re-walk this root off the caller's thread, one walk at a time."""
-        with self._lock:
-            if root_id in self._walking or self.scheduler.stopping():
-                return
-            self._walking.add(root_id)
-
-        def run():
-            try:
-                self.disk_count(root_id, root_path, max_age=0)
-            except OSError:
-                pass
-            finally:
-                with self._lock:
-                    self._walking.discard(root_id)
-
-        threading.Thread(target=run, daemon=True).start()
+        return self._disk.count(root_id, root_path, max_age=max_age, allow_walk=allow_walk)
 
     def dedup_needed(self, root_id: int) -> bool:
-        """Whether a duplicate rebuild is outstanding for this root.
+        """Whether a duplicate rebuild is outstanding. See ``archives``.
 
-        Derived entirely from the catalog (db.dedup_needed / dedup_runs):
-        a freshly constructed JobManager -- e.g. right after an app restart --
-        gives the same answer a long-running one would have, instead of the
-        old in-memory flag's default-dirty-on-every-start behaviour.
+        Kept on the manager for the same reason as ``disk_count``.
         """
-        conn = db.open_readonly(self.cfg.archive_db_path(root_id))
-        try:
-            return db.dedup_needed(conn, root_id)
-        finally:
-            conn.close()
-
-    def _mark_dedup_owed(self, root_id: int) -> None:
-        """Persist that a dedup rebuild is owed for this root.
-
-        Scan can change the file set and enrich can populate metadata dedup's
-        canonical-selection rule reads (Takeout sidecar, resolved date,
-        dimensions) without changing the count/max id of present, hashed
-        files `dedup_needed` otherwise compares (enrich never touches
-        `files.sha256`/`present`) -- so that comparison alone would miss a
-        case where the previous grouping's canonical pick is now stale.
-        Invalidating through the same persisted marker the dedup runner writes on
-        success means this obligation survives a restart too.
-
-        Runs on the scheduler thread, which must not die on a transient lock:
-        this tiny write can land while a detect batch holds the writer, and an
-        escaping OperationalError would abort the whole tick before any stage
-        starts. A lost invalidation is harmless — the next tick re-derives the
-        same obligation and tries again.
-        """
-
-        def _write():
-            conn = db.connect(self.cfg.archive_db_path(root_id))
-            try:
-                db.dedup_invalidate(conn, root_id)
-                conn.commit()
-            finally:
-                conn.close()
-
-        try:
-            db.write_with_retry(_write)
-        except sqlite3.OperationalError:
-            # Not fatal -- the next tick marks it again -- but not nothing either:
-            # while this keeps failing, dedup is not told the file set changed, so
-            # "duplicates never rebuilt after a scan" is traced from here.
-            logger.warning("could not mark dedup owed for root=%s", root_id, exc_info=True)
+        return archives.dedup_needed(self.cfg, root_id)
 
     def current_root_id(self) -> int | None:
         """Which single archive is open in the GUI right now, if any.
@@ -554,7 +464,7 @@ class JobManager:
             # A finished scan changed what's on disk-vs-indexed; drop the cached
             # walk so freshness reflects it immediately.
             if job.kind == "scan":
-                self._walk_cache.pop(job.root_id, None)
+                self._disk.invalidate(job.root_id)
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()
