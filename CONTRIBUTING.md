@@ -1,0 +1,205 @@
+# Contributing
+
+Operational notes for working in this repository. For what the pieces are and how
+they fit together, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Setup
+
+```
+make setup
+make check
+```
+
+is the whole onboarding sequence.
+
+`make setup` creates a venv with `python3.13 -m venv .venv`, upgrades pip inside it,
+installs the package editable with every extra (`pip install -e '.[dev,cli,media,faces,pets,semantic]'
+-c constraints.txt`), installs the pre-commit hook, and runs `npm ci` in `desktop/`.
+If your machine has no `python3.13` on PATH, point the venv step at whichever
+interpreter you do have:
+
+```
+make setup PYTHON=/path/to/python3.13
+```
+
+`make check` is "everything CI runs": `lint` (Python static checks, then the
+desktop JS lint), `handlers` (checks every inline `on*` handler — in the markup and in the
+template literals the screen modules generate markup with — resolves to
+something `main.js` actually exports; nothing else catches a handler that
+silently does nothing when clicked), and `test` (the full suite,
+`.venv/bin/python -m pytest -q`).
+
+For the day-to-day save loop, `make test-fast` runs the unit tier only, skipping
+tests marked `slow`: `.venv/bin/python -m pytest -q -m "not slow" tests/unit`.
+That drops both the sleeping tests and the ~13s SigLIP module (which lives in
+`tests/unit` but is marked `slow`), landing around 2s. It does not run
+`tests/integration` or `tests/gui`, so it is not a substitute for `make check`
+before a commit.
+
+**Trap:** `ruff` and `pre-commit` are installed only inside `.venv`, and
+`pre-commit`'s importable module name has an underscore where the PyPI name
+has a hyphen. Running `pre-commit` or `ruff` bare, or `python -m pre-commit`,
+fails outside an activated venv or with the wrong module name. The commands
+that actually work are:
+
+```
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
+.venv/bin/python -m pre_commit install
+```
+
+The Makefile always spells them this way (via `PY ?= .venv/bin/python`), which is
+the reason to prefer `make lint` / `make fmt` over remembering the invocation.
+
+## Commit rules
+
+- Maintainer work lands directly on `main`; there are no long-lived feature
+  branches. If you are contributing from a fork, open a pull request against
+  `main` — everything below applies to its commits just the same.
+- Imperative subject line, 72 characters or fewer.
+- The body explains *why*, not what — the diff already says what changed.
+- No mixed commits: one concern per commit. If you catch yourself writing "and"
+  in the subject, it's probably two commits.
+- A pure-move or pure-rename commit only moves or renames; say so in the subject
+  or body (e.g. "no logic change"). Any accompanying fix is a separate, later
+  commit.
+- Every commit is green before it is made: run `make check` first.
+
+Real examples from this repository's history:
+
+```
+Refuse a negative retry count instead of skipping the write
+Type web/routes/ and put it in the strict mypy list
+Give the shared People/Pets card pieces their own module
+```
+
+## No AI attribution in commit messages
+
+No `Co-Authored-By` trailer, no "generated with" footer, no trailer of any
+kind identifying an AI tool — regardless of how the commit was produced. This
+is a standing project rule, not a preference, and it applies even when a tool
+would add such a trailer by default. Write the commit body and stop there.
+
+## Definition of done
+
+- Tests pass (`make test`, or `make check` for the full gate including lint).
+- Lint passes (`make lint`).
+- A bug fix carries a regression test that fails without the fix.
+- A user-visible change updates `README.md` and/or the relevant page under
+  `docs/` in the same commit, or a following one in the same batch of work —
+  not "later".
+- New derived data carries its provenance: which source produced it, and a
+  confidence, stored alongside the value rather than implied by ordering.
+
+## The hard project rules
+
+- **Never write to, move, rename, or delete anything under a source archive
+  root.** All output goes to the catalogue database and a separate cache
+  directory. If a feature seems to need to touch a source root, that's a
+  design smell — raise it before building it.
+- **No network calls for media processing.** The one bounded exception is the
+  map's street-map tile layer: it is a user-facing toggle, defaults on, and
+  sends photo *coordinates* to a public tile server, never the photos
+  themselves — turning it off leaves a fully offline plot (see `README.md`'s
+  Privacy section). Local models' weights download once, on first use, and
+  nothing after that.
+- **Long operations must be resumable and idempotent.** Scanning, hashing,
+  detection, and embedding all need to be safe to interrupt and re-run,
+  picking up where they left off rather than redoing finished work.
+- **Every derived fact records which source produced it and a confidence** —
+  see "Definition of done" above; this is the same rule stated as a design
+  constraint rather than a checklist item.
+- **Package layering is enforced by `tests/unit/test_layering.py`**, not just
+  convention. A module may import from its own layer or any layer below it,
+  never above — and a deferred import inside a function body counts just as
+  much as a top-level one. Four layers, lowest first:
+
+  | Layer | Name | Contains |
+  | --- | --- | --- |
+  | L0 | foundation | `config`, `paths`, `runtime`, `logging_setup`, `errors`, `db` |
+  | L1 | domain | `scan`, `hashing`, `metadata`, `media`, `dedup`, `geo`, `detect`, `faces`, `pets`, `embeddings`, `thumbnails` |
+  | L2 | application | `services`, `pipeline` |
+  | L3 | delivery | `web`, `cli`, `desktop` |
+
+  Adding a new top-level package under `organize_archive/` and forgetting to
+  place it in `LAYERS` fails the test outright rather than silently exempting
+  the package from the rule.
+
+## Where tests go
+
+- `tests/unit/` — no database, no threads, no real files. Fast, pure-logic
+  checks (filename date parsing, the Takeout sidecar matcher, the layering
+  rule itself, and so on).
+- `tests/integration/` — real SQLite and real files on disk (dedup grouping,
+  merges, migrations, thumbnailing).
+- `tests/gui/` — anything touching `JobManager`, the pipeline scheduler, or a
+  live server (API routes, job logging, pipeline pause/resume).
+
+All three tiers share `tests/factories.py` (`make_db`, `make_archive`,
+`add_file`, `add_date`, `add_geo`, `add_person`, `add_face`, `add_pet`,
+`add_place`, and friends) and `tests/helpers.py` (`serve_in_thread`,
+`wait_until`) — read those before hand-rolling another way to build a fake
+archive or spin up a test server. `tests/conftest.py` adds two fixtures used
+throughout: `catalog` (an initialised database with one root, from
+`factories.make_db`) and `source_root` (an empty fake archive root, fill it
+via `factories.make_archive`). It also has an autouse fixture that points
+`XDG_DATA_HOME` at a throwaway directory for every test, so nothing can
+resolve to your real archive store by accident.
+
+Markers are `slow` (measured over roughly a second — re-check with
+`--durations` rather than guessing before adding one) and `models` (needs
+ONNX weights or a tokenizer checkpoint on disk). `pyproject.toml` sets
+`--strict-markers`, so a typo'd marker is a collection error, not a silent
+no-op.
+
+## How to look at a GUI change
+
+This machine has no selenium, playwright, or puppeteer. `tools/dev/cdp_shot.py`
+is a stdlib-only tool that drives an already-running headless Chrome over the
+DevTools Protocol to take one screenshot; `tools/dev/shoot_all.py` (imports
+`cdp_shot.py` by path) drives the same protocol to shoot every route in both
+themes and diff two runs, and is what `make shots` calls.
+
+1. Start headless Chrome with a debugging port:
+
+   ```
+   chromium-browser --headless=new --disable-gpu --no-sandbox \
+     --remote-debugging-port=9333 --remote-debugging-address=127.0.0.1 about:blank &
+   ```
+
+2. Run the GUI on a test port, never your real one. `make gui` does this
+   correctly already — it sets `XDG_DATA_HOME` to a throwaway `.devdata/`
+   directory under the repo before starting the server, because without that
+   the GUI opens your real archive (hundreds of gigabytes) and its background
+   pipeline auto-starts:
+
+   ```
+   make gui              # port 8799 by default; override with GUI_PORT=
+   ```
+
+3. Screenshot a route:
+
+   ```
+   .venv/bin/python tools/dev/cdp_shot.py \
+     "http://127.0.0.1:8799/#/archive/<id>/<section>" out.png 3.5
+   ```
+
+   The wait argument (seconds, real wall-clock) has to cover whatever
+   `fetch()` calls the route fires on load.
+
+Three traps, each burned once already:
+
+- **Do not** use plain `chromium --headless --screenshot=...` — it snapshots
+  at the `load` event, before any async `fetch()` in the page resolves, so
+  you get the empty shell, not the rendered screen.
+- **Do not** use `--virtual-time-budget` — it looks like the fix and reliably
+  hangs forever on any page with a running `setInterval`, which this GUI has
+  (its job-status polling loop).
+- **Close your tabs.** Both scripts open one tab and close it in a `finally`;
+  if you drive the protocol by hand instead, close each tab yourself
+  (`curl "http://127.0.0.1:9333/json/close/<id>"`). A handful of leftover
+  tabs each keep polling the server in the background and are enough to
+  starve the browser, making `Page.captureScreenshot` itself start timing out
+  on later calls.
+
+Kill your server and your headless Chrome when you're done.
