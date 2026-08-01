@@ -68,12 +68,6 @@ document.addEventListener("toggle", event => {
     });
 }, true);
 
-/* ---------- settings drawer (app-wide config) ---------- */
-
-/* ---------- picker ---------- */
-
-/* ---------- archive shell ---------- */
-
 window.addEventListener("hashchange", () => {
   const match = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);
   if (!match) return;
@@ -89,30 +83,6 @@ window.addEventListener("pagehide", () => {
 
 applyNavCollapsed();
 
-/* ---------- overview + tasks ---------- */
-
-/* ---------- date sources (complementary bar shown under the Timeline) ---------- */
-
-/* ---------- timeline ---------- */
-
-/* ---------- browse ---------- */
-
-/* ---------- source folders + archive maintenance ---------- */
-
-/* ---------- duplicates ---------- */
-
-/* ---------- faces / people ---------- */
-
-/* ---------- pets / non-human review ---------- */
-
-/* ---------- detail modal (editable: faces / place / date) ---------- */
-
-/* ----- faces: reassign to a named person (pinned server-side) ----- */
-
-/* ----- date: variable precision (year / year-month / year-month-day) ----- */
-
-/* ----- place: attach to a named place, or create one by pin ----- */
-
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
     closeSettings(); return;
@@ -127,10 +97,11 @@ document.addEventListener("keydown", e => {
 syncThemeControl();
 loadPicker().then(applyHash);
 
-// Inline `on*` attributes in the markup -- and in the template literals above that
-// generate markup -- are evaluated by the browser against `window`, not against this
-// module's scope. Every function named by one of them must therefore be re-exported
-// here or its button silently does nothing when clicked, with no error at load time.
+// Inline `on*` attributes in index.html -- and in the template literals that the
+// screen modules use to generate markup -- are evaluated by the browser against
+// `window`, not against any module's scope. Every function named by one of them
+// must therefore be re-exported here, or its button silently does nothing when
+// clicked, with no error at load time.
 // This list is the frontend's public surface; keep it alphabetical.
 // `tools/dev/check_handlers.py` fails the build if the two ever disagree.
 Object.assign(window, {
