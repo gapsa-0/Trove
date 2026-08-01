@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
-from ..services import archives, browse, dups, overview, people, pets, places, search
+from ..services import archives, browse, people, pets, places, search
 from . import routes
 from .jobs import JobManager
 
@@ -179,66 +179,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"archives": archives.archives(self.cfg)})
             elif path == "/api/settings":
                 self._json({})
-            elif path == "/api/timeline":
-                rid = one("root", int)
-                self._json(
-                    overview.timeline(
-                        self._db(rid),
-                        root_id=rid,
-                        bucket=one("bucket", str, "month"),
-                        year=one("year"),
-                        month=one("month"),
-                        person_ids=many("person"),
-                        cluster_id=one("place", int),
-                    )
-                )
-            elif path == "/api/dates/sources":
-                rid = one("root", int)
-                self._json(overview.date_sources(self._db(rid), rid))
-            elif path == "/api/dups/summary":
-                rid = one("root", int)
-                self._json(dups.dup_summary(self._db(rid), rid))
-            elif path == "/api/dups":
-                rid = one("root", int)
-                self._json(
-                    dups.dup_groups(
-                        self._db(rid),
-                        rid,
-                        limit=min(one("limit", int, 60), 200),
-                        offset=one("offset", int, 0),
-                    )
-                )
-            elif path == "/api/media":
-                rid = one("root", int)
-                # Absent means "no filter"; only the two explicit values narrow
-                # the grid, so a stray ?indexed=maybe cannot silently hide media
-                # the user asked to see.
-                indexed = {"yes": True, "no": False}.get(one("indexed"))
-                located = {"yes": True, "no": False}.get(one("located"))
-                self._json(
-                    browse.media(
-                        self._db(rid),
-                        root_id=rid,
-                        year=one("year"),
-                        month=one("month"),
-                        mtype=one("type"),
-                        person_ids=many("person"),
-                        cluster_id=one("place", int),
-                        sort="oldest" if one("sort") == "oldest" else "newest",
-                        limit=min(one("limit", int, 120), 500),
-                        offset=one("offset", int, 0),
-                        indexed=indexed,
-                        located=located,
-                    )
-                )
-            elif path == "/api/browse/filters":
-                rid = one("root", int)
-                self._json(browse.browse_filters(self._db(rid), rid))
-            elif path == "/api/folders":
-                rid = one("root", int)
-                self._json(
-                    browse.folders(self._db(rid), rid, limit=min(one("limit", int, 120), 500))
-                )
             elif path == "/api/browse/semantic/status":
                 from ..services import semantic
 

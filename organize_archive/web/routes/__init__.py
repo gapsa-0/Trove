@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from . import browse, overview, people, pets, places, static
+from . import browse, dups, overview, people, pets, places, static
 from ._request import NOT_FOUND, FileBody, Json, Raw, Request, ok_or_error
 
 __all__ = [
@@ -46,6 +46,13 @@ Handler = Callable[[Request], object]
 GET_ROUTES: dict[str, Handler] = {
     "/api/health": static.health,
     "/api/summary": overview.summary,
+    "/api/timeline": overview.timeline,
+    "/api/dates/sources": overview.date_sources,
+    "/api/dups/summary": dups.summary,
+    "/api/dups": dups.groups,
+    "/api/media": browse.media,
+    "/api/browse/filters": browse.filters,
+    "/api/folders": browse.folders,
     "/api/map/clusters": places.clusters,
     "/api/map/points": places.points,
     "/api/map/cluster/merge-preview": places.merge_preview,
