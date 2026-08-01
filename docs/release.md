@@ -9,6 +9,10 @@ value to agree. After intentionally changing the canonical value, run
 because `npm ci` does not verify its version field, so a stale value passes CI and
 is then silently rewritten by whoever next runs `npm install`. Candidate builds are native CI artifacts, never developer uploads.
 
+Before tagging, move `CHANGELOG.md`'s `[Unreleased]` section into a new dated
+version section. That section's body is also the GitHub release's body: paste
+it in as-is when creating the release.
+
 ## Build inputs
 
 A build has three staged inputs, each verified against a manifest so that the
