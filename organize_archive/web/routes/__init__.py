@@ -101,7 +101,13 @@ GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
     ("/file/", media.original),
 )
 
-POST_ROUTES: dict[str, Handler] = {}
+POST_ROUTES: dict[str, Handler] = {
+    "/api/archives": archives.add,
+    "/api/archive/open": archives.open_archive,
+    "/api/archive/close": archives.close,
+    "/api/archive/remove": archives.remove,
+    "/api/pipeline/pause": pipeline.pause,
+}
 
 
 def prefix_handler(table: tuple[tuple[str, Handler], ...], path: str) -> Handler | None:

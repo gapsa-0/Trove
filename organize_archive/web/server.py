@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
-from ..services import archives, browse, people, pets, places
+from ..services import browse, people, pets, places
 from . import routes
 from .jobs import JobManager
 
@@ -177,56 +177,9 @@ class Handler(BaseHTTPRequestHandler):
         path = u.path
         try:
             body = self._read_json_body()
-            if path == "/api/archives":
-                res = archives.add_archive(self.cfg, body.get("path", ""))
-                self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/archive/open":
-                root_id = body.get("root_id")
-                if not isinstance(root_id, int):
-                    self._json({"error": "root_id is required"}, 400)
-                elif not any(
-                    a["id"] == root_id and a["exists"] for a in archives.archives(self.cfg)
-                ):
-                    self._json({"error": "archive not found or unavailable"}, 404)
-                else:
-                    self.jobs.open_archive(root_id)
-                    self._json({"ok": True})
-            elif path == "/api/archive/close":
-                root_id = body.get("root_id")
-                self.jobs.close_archive(root_id if isinstance(root_id, int) else None)
-                self._json({"ok": True})
-            elif path == "/api/archive/remove":
-                root_id = body.get("root_id")
-                if not isinstance(root_id, int):
-                    self._json({"error": "root_id is required"}, 400)
-                elif not self.jobs.stop_archive(root_id):
-                    self._json({"error": "archive is still stopping; try again shortly"}, 409)
-                else:
-                    res = archives.remove_archive(self.cfg, root_id)
-                    self._json(res, 400 if "error" in res else 200)
-            elif path == "/api/pipeline/pause":
-                # Without "stage" this is the whole-pipeline switch; with one it
-                # pauses that single card (scan/dedup/detect/places/semantic) and
-                # leaves the rest of the pipeline running.
-                from . import pipeline
-
-                paused = body.get("paused")
-                stage = body.get("stage")
-                if not isinstance(paused, bool):
-                    self._json({"error": "paused (bool) is required"}, 400)
-                elif stage is not None and stage not in pipeline.CARD_ORDER:
-                    self._json({"error": f"unknown stage: {stage}"}, 400)
-                elif stage is None:
-                    self.jobs.set_paused(paused)
-                    self._json({"paused": self.jobs.paused()})
-                else:
-                    self.jobs.set_stage_paused(stage, paused)
-                    self._json(
-                        {
-                            "paused": self.jobs.paused(),
-                            "paused_stages": sorted(self.jobs.paused_stages()),
-                        }
-                    )
+            handler = routes.POST_ROUTES.get(path)
+            if handler is not None:
+                self._respond(handler(self._build_request("POST", body)))
             # The mutations below act on an id (person, cluster, face, pet...)
             # rather than a file the caller already knows the root of, and the
             # frontend never sends one for them. They resolve against whichever
