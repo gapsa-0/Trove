@@ -1,30 +1,30 @@
-"""Route-existence coverage for organize_archive/web/server.py.
+"""One test per HTTP route, plus the dispatcher's failure modes.
 
-``server.py`` sits at 16% statement coverage: ``do_GET``/``do_POST`` are two
-long if-elif chains covering 66 routes (39 GET, 27 POST -- see
-``plan/repo-overhaul/baseline/api-routes.txt``), and almost none of the
-branches in that chain ever execute in the suite. The next refactor stage
-(08) rewrites both chains into a route table; without a test per route, a
-route silently dropped or mistyped during that rewrite would not fail a
-single test.
+This file was written to protect a rewrite: ``do_GET``/``do_POST`` were two
+long if-elif chains covering 66 routes (39 GET, 27 POST), almost none of whose
+branches the suite ever executed, and a route silently dropped or mistyped
+while they became route tables would have failed nothing. That rewrite has
+landed -- the routes now live in ``organize_archive/web/routes/`` and the
+chains are gone -- and these tests are what says it changed no behaviour.
 
 The trap this file is built around: an unknown path and a legitimate
 "no such record" answer return the *same* body (``{"error": "not found"}``,
-404 -- see server.py:453/735 for the fall-throughs and e.g. server.py:425 for
-a genuine miss). So "not 404" proves nothing. Every test here instead spins
-up a real archive with real rows (``live_server`` below) and asserts a GET
-returns 200 with the JSON shape that route actually produces, or a POST
-returns its real success body -- not merely "didn't fall through".
+404), one from the dispatcher's fall-through and one from a handler that
+looked and found nothing. So "not 404" proves nothing. Every test here
+instead spins up a real archive with real rows (``live_server`` below) and
+asserts a GET returns 200 with the JSON shape that route actually produces,
+or a POST returns its real success body -- not merely "didn't fall through".
 
 Static asset and media-serving routes (no JSON shape to check) instead
 assert 200 and a sane content-type. The one static case with a genuinely
 fixed body (``/api/settings``) gets an exact-equality test.
 
-A drift guard at the bottom parses server.py's own ``path ==`` / ``path in
-(...)`` / ``path.startswith(...)`` conditions and checks the result against
-the literal route lists this file declares -- so an added-and-forgotten (or
-silently dropped) route fails a test here too, not just a future coverage
-report.
+A drift guard at the bottom checks the route tables against the literal lists
+this file declares, so an added-and-forgotten or silently dropped route fails
+a test here. It still also parses ``server.py`` for ``path ==`` /
+``path in (...)`` / ``path.startswith(...)`` conditions even though there are
+none left: that half now guards against a hand-rolled branch reappearing
+beside the tables, which would be a route the generated API docs never see.
 """
 
 from __future__ import annotations
@@ -1103,49 +1103,42 @@ POST_EXACT = {
 }
 
 
-def _route_literals(chunk: str) -> set[str]:
-    """Every path string literal a `path` condition compares against, within
-    one if/elif chain's source text. Line-scoped (not a whole-file regex) so
-    it only picks up literals that are actually part of a route condition."""
+def _route_literals(source: str) -> set[str]:
+    """Every path string literal a `path` condition compares against. Line-scoped
+    (not a whole-file regex) so it only picks up literals that are actually part
+    of a route condition."""
     literals: set[str] = set()
-    for line in chunk.splitlines():
+    for line in source.splitlines():
         if "path ==" in line or "path in (" in line or "path.startswith(" in line:
             literals.update(re.findall(r'"([^"]*)"', line))
     return literals
 
 
-def _chain_literals() -> tuple[set[str], set[str]]:
-    """(GET, POST) route literals still hard-coded in server.py's chains.
-
-    ``do_POST``'s chunk runs to end of file rather than to a named method: the
-    methods after it hold no route conditions, and anchoring on one of them
-    would make this guard fail for the wrong reason the day it moves.
-    """
-    source = Path(server.__file__).read_text()
-    return (
-        _route_literals(source[source.index("def do_GET") : source.index("def do_POST")]),
-        _route_literals(source[source.index("def do_POST") :]),
-    )
-
-
-def test_route_literals_match_server_py_exactly():
-    """Checks every route server.py serves -- from the ``web/routes`` tables and
-    from what remains of the if/elif chains -- against GET_EXACT/GET_PREFIX/
-    POST_EXACT above, so a route added or dropped without a matching update here
-    fails a test instead of silently drifting out of what this file covers.
+def test_the_route_tables_are_exactly_the_routes_this_file_covers():
+    """The tables must equal GET_EXACT/GET_PREFIX/POST_EXACT above, so a route
+    added or dropped without a matching update here fails a test instead of
+    silently drifting out of what this file covers.
 
     Verified to fail on a planted regression: dropping ``"/api/health"`` from
-    GET_EXACT, deleting an elif branch from server.py, or removing an entry from
-    ``routes.GET_ROUTES`` each trips this assertion (checked by hand -- there is
-    no supported way to mutate the shipped server from within a test)."""
-    get_chain, post_chain = _chain_literals()
+    GET_EXACT, or removing an entry from ``routes.GET_ROUTES``, each trips this
+    assertion (checked by hand -- there is no supported way to mutate the
+    shipped server from within a test)."""
     get_table = set(server.routes.GET_ROUTES) | {p for p, _ in server.routes.GET_PREFIX_ROUTES}
-    post_table = set(server.routes.POST_ROUTES)
 
-    assert get_table | get_chain == GET_EXACT | GET_PREFIX
-    assert post_table | post_chain == POST_EXACT
-    # Nothing may be served twice: a route left in the chain *and* added to a
-    # table would answer from the table, making the chain branch dead code that
-    # still reads as live.
-    assert not (get_table & get_chain), "route in both the GET table and the GET chain"
-    assert not (post_table & post_chain), "route in both the POST table and the POST chain"
+    assert get_table == GET_EXACT | GET_PREFIX
+    assert set(server.routes.POST_ROUTES) == POST_EXACT
+
+
+def test_server_py_routes_nothing_by_hand():
+    """``server.py`` must contain no path condition at all.
+
+    It used to hold two if-elif chains, and this guard existed to check them
+    against the tables while routes moved across a commit at a time. Nothing is
+    left to check -- which is exactly why the guard is kept and inverted. A
+    hand-rolled ``if path == ...`` added beside the tables would work, so
+    nothing else would complain, and it would be invisible to both the drift
+    check above and the generated ``docs/dev/api.md``. Registering it in a table
+    is the only supported way to add a route, and this is what says so.
+    """
+    stray = _route_literals(Path(server.__file__).read_text())
+    assert not stray, f"server.py routes these by hand instead of via a table: {sorted(stray)}"
