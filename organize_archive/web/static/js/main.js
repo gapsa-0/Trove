@@ -371,7 +371,11 @@ async function gstatTick() {
         }
       }, 1500);
     }
-  } catch (e) { }
+  } catch {
+    // A poll tick that fails is a non-event: the next one is two seconds away
+    // and the chip simply keeps its last value. Reporting it would fill the
+    // console every time the server restarts under the user.
+  }
 }
 function startGlobalStatus() { stopGlobalStatus(); S.gpoll = setInterval(gstatTick, 2000); gstatTick(); }
 function stopGlobalStatus() { if (S.gpoll) { clearInterval(S.gpoll); S.gpoll = null; } }
@@ -1193,7 +1197,14 @@ async function loadMapPoints() {
 // re-pulled when that view is actually on screen.
 async function invalidateMapPoints() {
   MAP_POINTS = null;
-  if (S.mapView === "photos") { try { await loadMapPoints(); } catch { } }
+  if (S.mapView === "photos") {
+    try {
+      await loadMapPoints();
+    } catch {
+      // The cache is already cleared, so a failed re-pull costs nothing: the
+      // next switch to the photos view fetches again.
+    }
+  }
 }
 function renderMapViewNote() {
   const el = document.getElementById("map-view-note"); if (!el) return;

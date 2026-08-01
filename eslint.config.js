@@ -23,14 +23,16 @@ module.exports = [
     // `basePath` pins `files`/`ignores` resolution to the repo root regardless of
     // the caller's cwd. Flat config normally resolves relative glob patterns
     // against the directory that eslint.config.js was *auto-discovered* from --
-    // but `desktop/package.json`'s `lint` script passes an explicit
-    // `--config ../eslint.config.js`, and ESLint's own loader only anchors
-    // patterns to the config file's directory on auto-discovery; with an
-    // explicit `--config` it anchors them to the process cwd instead (`desktop/`
-    // here). Without `basePath`, "desktop/src/**/*.cjs" would need to be
-    // "src/**/*.cjs" when run via `npm run lint` from `desktop/`, but
+    // but `desktop/package.json`'s `lint` script passes an explicit `--config`,
+    // and ESLint's own loader only anchors patterns to the config file's
+    // directory on auto-discovery; with an explicit `--config` it anchors them
+    // to the process cwd instead. Without `basePath`, "desktop/src/**/*.cjs"
+    // would need to be "src/**/*.cjs" when run from `desktop/` but
     // "desktop/src/**/*.cjs" when run from the repo root -- silently matching
     // zero files in one of the two cases. `basePath` removes that ambiguity.
+    // The `lint` script now cd's to the repo root for a second reason: a path
+    // argument outside the cwd (`../organize_archive/...`) is rejected outright,
+    // so the browser modules cannot be linted from inside `desktop/` at all.
     basePath: __dirname,
     ignores: [
       "organize_archive/web/vendor/**",
@@ -71,11 +73,12 @@ module.exports = [
     rules: sharedRules,
   },
   {
-    // organize_archive/web/static/js/** does not exist yet: Stage 10 of the repo
-    // overhaul creates it by splitting the current 9,000-line index.html into
-    // real modules. This block is declared ahead of time so Stage 10 only has to
-    // add this glob to the `lint` script in desktop/package.json; the rules and
-    // globals are already in place. Today the glob simply matches nothing.
+    // The browser-side app: native ES modules under organize_archive/web/static/js,
+    // loaded by index.html with `<script type="module">`. There is no bundler and
+    // no build step, so what eslint reads here is exactly what the browser runs.
+    // `no-undef` is the rule that earns its keep: it is what catches a function
+    // that moved to another module and is still called without an import, which
+    // would otherwise surface only as a console error at click time.
     basePath: __dirname,
     files: ["organize_archive/web/static/js/**/*.js"],
     languageOptions: {
@@ -95,6 +98,18 @@ module.exports = [
         Image: "readonly",
         IntersectionObserver: "readonly",
         history: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        clearTimeout: "readonly",
+        requestAnimationFrame: "readonly",
+        getSelection: "readonly",
+        Node: "readonly",
+        alert: "readonly",
+        confirm: "readonly",
+        prompt: "readonly",
+        // Leaflet, loaded as a classic script from vendor/ ahead of the module,
+        // so it is a real global rather than something a module can import.
+        L: "readonly",
       },
     },
     rules: sharedRules,
