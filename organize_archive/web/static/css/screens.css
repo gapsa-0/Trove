@@ -1,0 +1,482 @@
+/* People, duplicates, map, settings */
+.people {
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr))
+}
+
+.pcard {
+  border: 0;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  transition: transform .18s, box-shadow .18s
+}
+
+.pcard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .11)
+}
+
+.pcard .face,
+.facecollage {
+  background: var(--panel2)
+}
+
+.pcard .pmeta {
+  padding: 10px 12px 12px
+}
+
+.pcard .pname {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text
+}
+
+.pcard .pname:hover {
+  color: var(--accent)
+}
+
+.pcard .pname.un {
+  color: var(--accent);
+  font-weight: 550;
+  font-style: normal
+}
+
+.pcard .pcount {
+  color: var(--muted)
+}
+
+.pcard .pmeta-editing {
+  padding: 8px 10px 11px
+}
+
+.pcard .pmeta-editing input,
+.detail-name-input,
+.inline-name-editor input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--text)
+}
+
+.pcard .pmeta-editing .pcount {
+  margin: 4px 2px 0
+}
+
+.person-name-button {
+  min-width: 0;
+  padding: 3px 5px;
+  margin-left: -5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: text
+}
+
+.person-name-button:hover {
+  background: var(--panel2);
+  color: var(--accent)
+}
+
+.person-name-button.un {
+  color: var(--accent);
+  font-weight: 550;
+  font-style: normal
+}
+
+.detail-name-input {
+  max-width: 360px;
+  font-size: 15px
+}
+
+.suggest {
+  max-width: 620px;
+  padding: 20px;
+  border-radius: var(--radius);
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm)
+}
+
+.suggest .sug-face>img,
+.suggest .sug-face .facecollage {
+  border-radius: 13px
+}
+
+.suggest .sug-btns button {
+  border-radius: 9px;
+  background: var(--panel2);
+  color: var(--text)
+}
+
+.dupgroup {
+  padding: 16px;
+  border-radius: var(--radius);
+  border-color: var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm)
+}
+
+.duptile>img,
+.duptile>.ph {
+  border-radius: 10px;
+  border-color: var(--line);
+  background: var(--panel2)
+}
+
+.mapwrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px
+}
+
+.mapwrap.has-selection {
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 34%)
+}
+
+#lmap,
+#mapside {
+  width: 100%;
+  height: clamp(480px, 66vh, 680px);
+  border-color: var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm)
+}
+
+#mapside {
+  display: none;
+  padding: 17px;
+  background: var(--panel)
+}
+
+.mapwrap.has-selection #mapside {
+  display: block
+}
+
+.map-empty {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(390px, calc(100% - 40px));
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(16px)
+}
+
+.map-empty .big {
+  font-size: 28px
+}
+
+.map-empty h3 {
+  margin: 8px 0 4px
+}
+
+.map-empty p {
+  margin: 0;
+  color: var(--muted)
+}
+
+.map-footnote {
+  margin-top: 11px;
+  color: var(--muted);
+  font-size: 11.5px
+}
+
+/* Places / Photos switch. Mounted as a Leaflet control (top right), so
+   placement, stacking above the marker panes and pointer events are all
+   handled by Leaflet; this is only the pill styling. */
+.map-viewtoggle {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(14px)
+}
+
+.map-viewtoggle button {
+  padding: 5px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 620;
+  cursor: pointer
+}
+
+.map-viewtoggle button.on {
+  background: var(--accent-soft);
+  color: var(--accent)
+}
+
+.map-viewtoggle button:disabled {
+  cursor: progress;
+  opacity: .6
+}
+
+/* Legend for the un-clustered view: one swatch per shown place is useless
+   at 271 places, so it explains the encoding instead of enumerating it. */
+.map-pointkey {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px
+}
+
+.map-pointkey i {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: .75
+}
+
+.mapside-name .close-side {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--panel2);
+  color: var(--muted);
+  cursor: pointer
+}
+
+.mapside-title {
+  min-width: 0;
+  flex: 1
+}
+
+.mapside-title .person-name-button {
+  display: block;
+  width: 100%;
+  font-size: 14px
+}
+
+.mapside-title>span {
+  display: block;
+  margin: 2px 5px 0;
+  font-size: 11px
+}
+
+.mapside-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px
+}
+
+.inline-name-editor {
+  width: 100%
+}
+
+.leaflet-container {
+  background: var(--panel2)
+}
+
+.leaflet-tooltip {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm)
+}
+
+:root[data-theme="dark"] .leaflet-bar a,
+:root[data-theme="dark"] .leaflet-control-attribution {
+  background: rgba(28, 28, 30, .9);
+  color: var(--muted);
+  border-color: var(--line)
+}
+
+:root[data-theme="dark"] .leaflet-bar a:hover,
+:root[data-theme="dark"] .leaflet-bar a:focus {
+  background: var(--panel2);
+  color: var(--text)
+}
+
+:root[data-theme="dark"] .leaflet-control-attribution a {
+  color: var(--accent)
+}
+
+#tlc2 {
+  border-color: var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm)
+}
+
+.taskcard {
+  border-bottom-color: var(--line)
+}
+
+.facetopbar {
+  top: calc(0px - var(--main-pad-top));
+  min-height: 82px;
+  margin: calc(0px - var(--main-pad-top)) calc(0px - var(--main-gutter)) 18px;
+  padding: 12px var(--main-gutter);
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(20px);
+  -webkit-backdrop-filter: saturate(160%) blur(20px)
+}
+
+.facetopbar .back-control {
+  align-self: stretch;
+  justify-content: center;
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 11px;
+  color: var(--muted)
+}
+
+.facetopbar .back-control span {
+  display: none
+}
+
+.facetopbar .back-control svg {
+  width: 18px;
+  height: 18px
+}
+
+.facetopbar .back-control:hover {
+  background: var(--panel2);
+  color: var(--text);
+  text-decoration: none
+}
+
+.person-header-avatar {
+  width: 54px;
+  height: 54px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--panel2);
+  box-shadow: 0 0 0 1px var(--line), 0 2px 8px rgba(0, 0, 0, .16)
+}
+
+.facetopbar .ftb-identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center
+}
+
+.facetopbar .ftb-name {
+  flex: none;
+  gap: 6px
+}
+
+.facetopbar .person-name-button {
+  max-width: min(480px, 48vw);
+  margin-left: -6px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.025em;
+  cursor: pointer
+}
+
+.facetopbar .person-name-button svg {
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  transition: opacity .15s
+}
+
+.facetopbar .person-name-button:hover svg,
+.facetopbar .person-name-button:focus-visible svg {
+  opacity: .65
+}
+
+.facetopbar .ftb-count {
+  flex: none;
+  margin-top: 1px;
+  font-size: 12px
+}
+
+.facetopbar .detail-name-input {
+  max-width: min(420px, 48vw);
+  font-size: 18px;
+  font-weight: 650
+}
+
+.not-person-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: 550 12px/1.2 inherit;
+  cursor: pointer;
+  white-space: nowrap
+}
+
+.not-person-button svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+.not-person-button:hover {
+  border-color: color-mix(in srgb, var(--bad) 24%, transparent);
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  color: var(--bad)
+}
+
+code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--panel2);
+  font-size: .9em
+}

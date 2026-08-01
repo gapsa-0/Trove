@@ -1,0 +1,385 @@
+/* Viewer */
+.modal {
+  padding: 18px;
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px)
+}
+
+.viewer {
+  width: auto;
+  max-width: calc(100vw - 36px);
+  max-height: calc(100vh - 36px);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 18px;
+  background: #050505;
+  box-shadow: var(--shadow-md)
+}
+
+.viewer .media {
+  max-width: calc(100vw - 390px);
+  background: #050505
+}
+
+.viewer .media img,
+.viewer .media video {
+  max-width: calc(100vw - 390px);
+  max-height: calc(100vh - 36px)
+}
+
+.viewer .info {
+  width: 355px;
+  max-height: calc(100vh - 36px);
+  padding: 23px;
+  background: var(--panel);
+  color: var(--text)
+}
+
+.viewer .info h3 {
+  font-size: 15px
+}
+
+.kv {
+  padding: 7px 0;
+  border-bottom-color: var(--line)
+}
+
+.isec {
+  margin-top: 20px
+}
+
+.isec>.h {
+  margin-bottom: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em
+}
+
+.facecrop {
+  border-radius: 10px;
+  border-color: var(--line)
+}
+
+.dtrow input {
+  border-color: var(--line);
+  background: var(--panel2);
+  color: var(--text)
+}
+
+.close {
+  top: 20px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(30, 30, 30, .62);
+  font-size: 25px;
+  line-height: 1;
+  color: #fff;
+  backdrop-filter: blur(14px)
+}
+
+#toast {
+  padding: 11px 16px;
+  border-color: var(--line);
+  border-radius: 11px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: var(--shadow-md)
+}
+
+@media(max-width:1050px) {
+  .statrow {
+    grid-template-columns: repeat(2, minmax(150px, 1fr))
+  }
+
+  .overview-grid {
+    grid-template-columns: 1fr
+  }
+
+  #app.on {
+    grid-template-columns: 220px minmax(0, 1fr)
+  }
+}
+
+@media(max-width:800px) {
+
+  #app.on,
+  #app.on:has(nav.collapsed) {
+    display: block
+  }
+
+  nav,
+  nav.collapsed {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    width: 100%;
+    height: 61px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    overflow: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line)
+  }
+
+  nav .brand,
+  nav.collapsed .brand {
+    height: auto;
+    padding: 3px 7px;
+    flex: none
+  }
+
+  nav .brand img,
+  nav.collapsed .brand img {
+    display: block
+  }
+
+  nav .brandtxt,
+  .navtoggle,
+  nav .back,
+  nav .arch,
+  .gstat,
+  .theme-label {
+    display: none !important
+  }
+
+  /* main stops scrolling here, so the bar pins against the viewport,
+     below the 61px top nav — not against main's padded scrollport. */
+  .facetopbar {
+    top: 61px
+  }
+
+  .facetopbar .back-control {
+    display: inline-flex !important
+  }
+
+  #navitems {
+    display: flex;
+    flex-direction: row;
+    gap: 3px
+  }
+
+  .navitem,
+  .theme-toggle,
+  nav.collapsed .theme-toggle {
+    width: 39px;
+    min-width: 39px;
+    height: 39px;
+    justify-content: center;
+    padding: 8px;
+    margin: 0
+  }
+
+  .navitem span:nth-of-type(2) {
+    display: none
+  }
+
+  .theme-toggle {
+    margin-left: auto
+  }
+
+  main {
+    --main-gutter: 16px;
+    --main-pad-top: 29px;
+    height: auto;
+    min-height: calc(100vh - 61px);
+    overflow: visible;
+    padding: var(--main-pad-top) var(--main-gutter) 60px
+  }
+
+  main>h2.sec,
+  main>.eyebrow+h2.sec {
+    font-size: 30px
+  }
+
+  .pagehead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px
+  }
+
+  .pagehead h2.sec {
+    font-size: 32px
+  }
+
+  .library-search {
+    width: 100%
+  }
+
+  .library-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px
+  }
+
+  .library-toolbar .chips {
+    width: 100%;
+    justify-content: space-between
+  }
+
+  .mapwrap.has-selection {
+    grid-template-columns: 1fr
+  }
+
+  #mapside,
+  .mapwrap.has-selection #mapside {
+    height: auto;
+    max-height: 480px
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+    gap: 3px
+  }
+
+  .viewer {
+    align-self: stretch;
+    flex-direction: column
+  }
+
+  .viewer .media,
+  .viewer .media img,
+  .viewer .media video {
+    max-width: 100%;
+    max-height: 58vh
+  }
+
+  .viewer .info {
+    position: static;
+    width: 100%;
+    max-height: 38vh;
+    border-top: 1px solid var(--line)
+  }
+
+  .setup-form {
+    flex-direction: column;
+    padding: 8px
+  }
+
+  .setup-form .btn {
+    width: 100%
+  }
+}
+
+@media(max-width:520px) {
+  #picker {
+    padding: 38px 18px
+  }
+
+  .welcome h1 {
+    font-size: 40px
+  }
+
+  .welcome .sub {
+    font-size: 18px
+  }
+
+  .appearance-fab {
+    top: 12px;
+    right: 12px
+  }
+
+  .appearance-fab .theme-label {
+    display: none
+  }
+
+  .appearance-fab {
+    width: 36px;
+    padding: 0;
+    justify-content: center
+  }
+
+  .cards {
+    grid-template-columns: 1fr
+  }
+
+  .statrow {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px
+  }
+
+  .stat {
+    padding: 14px
+  }
+
+  .stat .v {
+    font-size: 22px
+  }
+
+  .library-search {
+    flex-wrap: wrap;
+    padding: 5px
+  }
+
+  .library-search:before {
+    display: none
+  }
+
+  .semantic-composer {
+    min-width: 120px;
+    padding-left: 7px
+  }
+
+  .library-search .btn {
+    width: 100%
+  }
+
+  .multi-menu {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: auto;
+    width: auto
+  }
+
+  .health-grid {
+    grid-template-columns: 1fr
+  }
+
+  .map-stats {
+    grid-template-columns: 1fr
+  }
+
+  .facetopbar {
+    top: 61px;
+    min-height: 70px;
+    margin-top: -29px;
+    padding: 9px var(--main-gutter);
+    gap: 9px
+  }
+
+  .facetopbar .back-control {
+    width: 32px
+  }
+
+  .person-header-avatar {
+    width: 44px;
+    height: 44px
+  }
+
+  .facetopbar .person-name-button {
+    max-width: calc(100vw - 200px);
+    font-size: 17px
+  }
+
+  .facetopbar .detail-name-input {
+    max-width: calc(100vw - 200px);
+    font-size: 16px
+  }
+
+  .not-person-button {
+    width: 32px;
+    padding: 0;
+    justify-content: center
+  }
+
+  .not-person-button span {
+    display: none
+  }
+}

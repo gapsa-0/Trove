@@ -1,0 +1,449 @@
+/* Library and controls */
+.library-controls {
+  margin-bottom: 18px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm)
+}
+
+.library-search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 3px 3px 10px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none
+}
+
+.library-search:before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex: none;
+  opacity: .55;
+  background: no-repeat center/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E")
+}
+
+.semantic-composer {
+  flex: 1;
+  min-width: 190px;
+  min-height: 36px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text
+}
+
+.semantic-composer:focus {
+  outline: 0
+}
+
+.semantic-composer:empty:before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none
+}
+
+.person-token {
+  display: inline-flex;
+  align-items: center;
+  margin: -2px 1px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 18px;
+  vertical-align: 1px;
+  cursor: default;
+  position: relative
+}
+
+.person-token:after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 9px);
+  z-index: 30;
+  width: max-content;
+  max-width: 260px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.3;
+  white-space: normal;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity .12s, transform .12s, visibility .12s
+}
+
+.person-token:hover:after,
+.person-token:focus:after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0)
+}
+
+.person-token:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 2px
+}
+
+.library-search .search-note {
+  display: none
+}
+
+.filterbar {
+  gap: 8px;
+  margin-bottom: 13px;
+  padding: 0;
+  border: 0
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 9px 4px 1px;
+  margin: 0
+}
+
+.library-toolbar .filterbar {
+  margin: 0
+}
+
+.library-toolbar .chips {
+  min-height: 0;
+  margin: 0;
+  justify-content: flex-end;
+  white-space: nowrap
+}
+
+.library-toolbar .sort-sel {
+  padding: 5px 8px;
+  font-size: 12.5px
+}
+
+/* Active query: the search the grid is currently answering, kept visible
+   under the box because the box itself is only a draft. */
+.active-query {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+  padding: 12px 4px 0 10px;
+  font-size: 13.5px
+}
+
+.active-query .aq-label {
+  color: var(--muted);
+  font-size: 12px
+}
+
+.active-query .aq-phrase {
+  color: var(--text);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere
+}
+
+.active-query .aq-phrase:before,
+.active-query .aq-phrase:after {
+  content: "\201C";
+  color: var(--muted);
+  font-weight: 400
+}
+
+.active-query .aq-phrase:after {
+  content: "\201D"
+}
+
+.active-query .aq-clear {
+  margin-left: auto;
+  padding: 0;
+  white-space: nowrap
+}
+
+/* Search reach: how much of the library the description search can currently
+   find, broken down by media type. Colored keys match the Overview's
+   Storage panel so a hue means the same type everywhere. */
+.search-reach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 15px;
+  padding: 11px 4px 3px 10px;
+  font-size: 12px;
+  color: var(--muted)
+}
+
+.search-reach .reach-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px
+}
+
+.search-reach .reach-item b {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums
+}
+
+.search-reach .reach-key {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%
+}
+
+.search-reach .reach-div {
+  width: 1px;
+  height: 11px;
+  background: var(--line-strong)
+}
+
+.search-reach .reach-note {
+  color: var(--muted)
+}
+
+.check-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  cursor: pointer
+}
+
+.fsel {
+  height: 34px;
+  max-width: 210px;
+  padding: 6px 30px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .02)
+}
+
+.fsel:hover {
+  border-color: var(--line-strong)
+}
+
+/* Sits in the same row as the .fsel pills and has to read as one of them:
+   same height, radius, border and type size. It is a checkbox rather than
+   a third "any / yes / no" select because there is only one question worth
+   asking here -- show me what is done -- and a select made the reader pick
+   an answer to a question they had not asked. */
+.fcheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .02);
+}
+
+.fcheck:hover {
+  border-color: var(--line-strong);
+}
+
+.fcheck:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fcheck input {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.fcheck.is-disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.fcheck.is-disabled input {
+  cursor: not-allowed;
+}
+
+.multi-filter {
+  position: relative
+}
+
+.multi-filter>summary {
+  display: flex;
+  align-items: center;
+  min-width: 150px;
+  list-style: none;
+  white-space: nowrap
+}
+
+.multi-filter>summary::-webkit-details-marker {
+  display: none
+}
+
+.multi-filter>summary:after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  opacity: .55
+}
+
+.multi-filter[open]>summary {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft)
+}
+
+.multi-menu {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  z-index: 12;
+  width: 260px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md)
+}
+
+.multi-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px
+}
+
+.multi-option:hover {
+  background: var(--panel2)
+}
+
+.multi-help {
+  padding: 8px 9px 5px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.35
+}
+
+.filter-placeholder {
+  display: flex;
+  align-items: center;
+  opacity: .62;
+  cursor: not-allowed
+}
+
+.chips {
+  min-height: 27px;
+  margin-bottom: 12px;
+  color: var(--muted)
+}
+
+.chip {
+  padding: 5px 10px;
+  border-color: var(--line);
+  border-radius: 99px;
+  background: var(--panel);
+  font-size: 11px
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent)
+}
+
+.grid {
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr))
+}
+
+.tile {
+  border: 0;
+  border-radius: 5px;
+  background: var(--panel2);
+  box-shadow: none;
+  transition: transform .15s, filter .15s
+}
+
+.tile:hover {
+  z-index: 1;
+  outline: 3px solid var(--bg);
+  box-shadow: 0 0 0 5px var(--accent);
+  transform: scale(1.012)
+}
+
+.tile .cap {
+  padding: 22px 8px 6px;
+  font-size: 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .72))
+}
+
+.date-heading {
+  padding: 31px 0 9px;
+  border: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -.025em;
+  color: var(--text)
+}
+
+.more {
+  margin: 24px 0
+}
+
+.more .btn {
+  min-width: 130px
+}
+
+.infinite-status {
+  min-height: 42px;
+  margin: 18px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px
+}
+
+.infinite-status.top {
+  min-height: 1px;
+  margin: 0
+}

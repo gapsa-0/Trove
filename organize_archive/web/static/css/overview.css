@@ -1,0 +1,380 @@
+/* Main content and overview */
+main {
+  --main-gutter: clamp(28px, 4vw, 62px);
+  --main-pad-top: 42px;
+  height: 100vh;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--main-pad-top) var(--main-gutter) 80px;
+  background: var(--bg)
+}
+
+main::-webkit-scrollbar-track {
+  background: linear-gradient(to bottom,
+      transparent 0 81px, var(--line) 81px 82px, transparent 82px)
+}
+
+main>h2.sec,
+main>.eyebrow+h2.sec {
+  font-size: 34px;
+  font-weight: 740;
+  line-height: 1.08;
+  letter-spacing: -.042em;
+  margin: 0 0 25px
+}
+
+main>.eyebrow {
+  margin: 2px 0 7px;
+  color: var(--muted);
+  font-size: 12px
+}
+
+.pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 30px;
+  margin: 0 0 28px
+}
+
+.pagehead .eyebrow {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px
+}
+
+.pagehead h2.sec {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 750;
+  line-height: 1.06;
+  letter-spacing: -.045em
+}
+
+.pagehead p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px
+}
+
+.statrow {
+  gap: 13px;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  margin-bottom: 22px
+}
+
+.stat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: transform .18s, border-color .18s;
+  cursor: default
+}
+
+button.stat {
+  cursor: pointer
+}
+
+button.stat:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong)
+}
+
+.metric-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 11px
+}
+
+.metric-icon svg,
+.panel-symbol svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+.metric-icon.blue {
+  color: #007aff;
+  background: rgba(0, 122, 255, .12)
+}
+
+.metric-icon.violet {
+  color: #af52de;
+  background: rgba(175, 82, 222, .12)
+}
+
+.metric-icon.green {
+  color: #28a745;
+  background: rgba(40, 167, 69, .12)
+}
+
+.metric-icon.orange {
+  color: #ff9500;
+  background: rgba(255, 149, 0, .14)
+}
+
+.stat .k {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .045em;
+  color: var(--muted)
+}
+
+.stat .v {
+  margin-top: 3px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums
+}
+
+.stat .v small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(330px, .85fr);
+  gap: 18px
+}
+
+.overview-grid .panel {
+  margin: 0
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px
+}
+
+.panel-heading h3 {
+  margin: 0 0 2px
+}
+
+.panel-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px
+}
+
+.panel-heading .pause-btn {
+  margin-left: auto
+}
+
+.pause-note {
+  margin: -12px 0 16px;
+  color: var(--muted);
+  font-size: 11px
+}
+
+.panel-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent)
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px
+}
+
+.health-task {
+  min-width: 0;
+  padding: 13px;
+  height: 110px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2)
+}
+
+.health-task-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 680
+}
+
+/* Per-stage pause/resume. Dimmed until the card is hovered or the stage is
+   already paused, so five of these never compete with the status text --
+   but never fully hidden, or nobody would find them. */
+.health-task-btn {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: .4;
+  transition: opacity .12s ease, background .12s ease, color .12s ease
+}
+
+.health-task:hover .health-task-btn,
+.health-task-btn:focus-visible,
+.health-task.paused .health-task-btn {
+  opacity: 1
+}
+
+.health-task-btn:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--fg)
+}
+
+.health-task-btn:disabled {
+  cursor: default;
+  opacity: .2
+}
+
+.health-task-btn svg {
+  width: 12px;
+  height: 12px;
+  display: block
+}
+
+/* Stopped by a pause (this stage's own, or one it waits on): no accent, no
+   amber "about to run" cue -- it reads as deliberately parked. */
+.health-task.paused {
+  border-style: dashed;
+  background: var(--panel2)
+}
+
+.health-task.paused .health-task-head {
+  color: var(--muted)
+}
+
+.health-task-state {
+  margin: 5px 0 0 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.health-task.running {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--accent-soft)
+}
+
+.health-task.pending {
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--line))
+}
+
+.health-task.error {
+  border-color: color-mix(in srgb, var(--bad) 28%, var(--line))
+}
+
+/* Up next: on deck behind the running stage. Dashed accent border (related to
+   the running card's accent, but clearly not-yet-active) + a tinted message. */
+.health-task.next {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-style: dashed
+}
+
+.health-task.next .health-task-state {
+  color: color-mix(in srgb, var(--accent) 55%, var(--muted))
+}
+
+.map-stats {
+  grid-template-columns: repeat(3, minmax(150px, 1fr))
+}
+
+.panel {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 18px
+}
+
+.panel h3 {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: -.015em
+}
+
+.progress {
+  height: 7px;
+  margin: 10px 0;
+  border-radius: 99px;
+  background: var(--panel2)
+}
+
+.progfill {
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), #5ac8fa)
+}
+
+.type-summary-bar {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--panel2);
+  gap: 2px
+}
+
+.type-summary-segment:first-child {
+  border-radius: 99px 0 0 99px
+}
+
+.type-summary-segment:last-child {
+  border-radius: 0 99px 99px 0
+}
+
+.type-summary-legend {
+  margin: 13px 0 7px;
+  font-size: 11px;
+  color: var(--muted)
+}
+
+.type-summary-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%
+}
+
+table.types td {
+  padding: 9px 4px;
+  border-bottom-color: var(--line)
+}

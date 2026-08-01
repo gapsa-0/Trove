@@ -1,0 +1,402 @@
+/* ============ Start page: gallery layout (overrides base #picker) ============ */
+#picker {
+  max-width: none;
+  min-height: 0;
+  height: 100vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch
+}
+
+.p-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px clamp(20px, 3vw, 40px);
+  border-bottom: 1px solid var(--line);
+  background: var(--sidebar);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px)
+}
+
+.p-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px
+}
+
+/* The mark carries its own tile and gradient (see the #trove-mark symbol),
+   so this only sizes it and adds the accent glow the picker bar had. */
+.p-logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  box-shadow: 0 5px 14px rgba(0, 122, 255, .3)
+}
+
+.p-brand b {
+  font-size: 16.5px;
+  font-weight: 720;
+  letter-spacing: -.02em
+}
+
+.p-tools {
+  display: flex;
+  gap: 9px
+}
+
+/* Gear pill (also reused by the in-archive sidebar via .gear-icon) */
+.gear-fab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 600 12px/1 inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm)
+}
+
+.gear-fab:hover {
+  color: var(--text);
+  border-color: var(--line-strong)
+}
+
+.gear-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px
+}
+
+.gear-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+.gear-fab .gear-icon {
+  width: 15px;
+  height: 15px
+}
+
+/* The theme pill lives in the top bar here, not fixed to the viewport corner. */
+.p-tools .appearance-fab {
+  position: static;
+  top: auto;
+  right: auto;
+  height: 34px;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm)
+}
+
+.p-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 clamp(20px, 3vw, 40px) 30px
+}
+
+.p-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  padding: clamp(24px, 3vw, 34px);
+  margin: clamp(18px, 2.4vw, 26px) 0 clamp(22px, 2.6vw, 30px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--accent-soft), transparent 62%), var(--panel);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden
+}
+
+.p-eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .01em
+}
+
+.p-hero h1 {
+  margin: 8px 0 0;
+  font-size: clamp(28px, 3.4vw, 38px);
+  line-height: 1.05;
+  font-weight: 750;
+  letter-spacing: -.035em;
+  text-wrap: balance
+}
+
+.p-hero p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 15.5px;
+  line-height: 1.5;
+  max-width: 54ch
+}
+
+.p-add {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  min-width: 340px
+}
+
+.p-add input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 11px 12px;
+  font-size: 14px;
+  outline: 0
+}
+
+.p-add input::placeholder {
+  color: var(--faint)
+}
+
+.p-add .btn {
+  white-space: nowrap
+}
+
+.p-add.needs-path input {
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--focus);
+  transition: box-shadow .2s
+}
+
+.p-sec {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px
+}
+
+.p-sec h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -.02em
+}
+
+.p-sec small {
+  color: var(--faint);
+  font-weight: 600;
+  font-size: 12.5px
+}
+
+.p-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px
+}
+
+.p-card {
+  text-align: left;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform .16s, box-shadow .16s, border-color .16s
+}
+
+.p-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .1)
+}
+
+.p-cover {
+  position: relative;
+  height: 132px;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  background: var(--panel2)
+}
+
+.p-cover .cell {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel2)
+}
+
+.p-cover .cell:first-child {
+  grid-row: 1 / span 2
+}
+
+.p-cover .cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block
+}
+
+/* Cover with no thumbnails yet: a calm folder glyph instead of blank tiles. */
+.p-cover.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+  background: linear-gradient(135deg, var(--accent-soft), var(--panel2))
+}
+
+.p-cover.empty svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6
+}
+
+.p-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 99px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px)
+}
+
+.p-meta {
+  padding: 13px 15px 15px
+}
+
+.p-meta .nm {
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.p-meta .st {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap
+}
+
+.p-meta .warn {
+  color: var(--warning);
+  font-weight: 600
+}
+
+.p-remove {
+  float: right;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bad);
+  padding: 4px 7px;
+  font-size: 11px;
+  cursor: pointer
+}
+
+.p-remove:hover {
+  background: color-mix(in srgb, var(--bad) 10%, transparent)
+}
+
+.p-card.add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: 207px
+}
+
+.p-card.add:hover {
+  transform: none;
+  background: var(--accent-soft)
+}
+
+.p-card.add span {
+  font-size: 28px;
+  line-height: 1
+}
+
+.p-guide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  margin: 26px 2px 4px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 12.5px
+}
+
+.p-guide em {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 700;
+  margin-right: 7px
+}
+
+.p-guide b {
+  color: var(--muted);
+  font-weight: 650
+}
+
+@media (max-width: 1080px) {
+  .p-grid {
+    grid-template-columns: repeat(2, 1fr)
+  }
+}
+
+@media (max-width: 900px) {
+  .p-hero {
+    flex-direction: column;
+    align-items: flex-start
+  }
+
+  .p-add {
+    width: 100%;
+    min-width: 0
+  }
+}
+
+@media (max-width: 620px) {
+  .p-grid {
+    grid-template-columns: 1fr
+  }
+}

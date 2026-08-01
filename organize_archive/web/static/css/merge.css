@@ -1,0 +1,168 @@
+/* Drag-to-merge (People & Pets grids only -- see attachMergeDrag). .pcard
+   is shared with place cards, but they never get the classes below. */
+.pcard.dragging {
+  opacity: .5
+}
+
+.pcard.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  position: relative
+}
+
+/* "Merge people" / "Merge pets" pill, shown only while a valid drag
+   hovers a target (data-merge-label is set once per card in
+   attachMergeDrag; place cards never call attachMergeDrag so they never
+   carry it or the drop-target class -- this rule can't fire on them). */
+.pcard.drop-target::after {
+  content: attr(data-merge-label);
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: #fff;
+  background: var(--accent);
+  pointer-events: none
+}
+
+/* Small centered confirm dialog asking which of two differently-named
+   groups should survive a drag-merge. Deliberately separate markup from
+   #modal (the media viewer) -- unrelated concerns. */
+.mergeask-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, .32);
+  opacity: 0;
+  visibility: hidden;
+  /* visibility flips instantly on open (see .mergeask below) and only after
+     the fade on close, so the dialog is focusable the moment it opens. */
+  transition: opacity .18s, visibility 0s linear .18s;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px)
+}
+
+.mergeask-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .18s, visibility 0s
+}
+
+.mergeask {
+  position: fixed;
+  z-index: 61;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, calc(-50% + 8px));
+  width: min(360px, calc(100% - 40px));
+  padding: 22px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  /* `visibility 0s linear .18s` (not `visibility .18s`): a transitioned
+     visibility is still computed `hidden` on the frame .open lands, and the
+     browser silently refuses to focus an element it considers hidden — the
+     radio never got focus, so Esc/Enter were dead. Delaying only the
+     hide keeps the close fade while making the open instant. */
+  transition: opacity .18s, transform .18s, visibility 0s linear .18s
+}
+
+.mergeask.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%);
+  transition: opacity .18s, transform .18s, visibility 0s
+}
+
+.mergeask-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  margin: 0 0 6px
+}
+
+.mergeask-body {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 14px;
+  line-height: 1.4
+}
+
+/* Places-only "wide area" caution (see runMerge / askMergeName's `warning`
+   param). Deliberately not styled like an error -- .bad/--bad is for
+   failures, this is advisory and the merge proceeds either way -- so it
+   borrows --warning (already themed light/dark, see health-task.pending)
+   tinted at low opacity behind a solid left border, same
+   color-mix(..., transparent) recipe used elsewhere in this file. */
+.mergeask-warning {
+  font-size: 12px;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-left: 3px solid var(--warning);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: -4px 0 14px;
+  line-height: 1.4
+}
+
+.mergeask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mergeask-opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px
+}
+
+.mergeask-opt:hover {
+  border-color: var(--accent)
+}
+
+.mergeask-opt span:first-of-type {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis
+}
+
+.mergeask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px
+}
+
+/* Undo-a-merge panel on the person/pet detail pages (see mergesPanel). */
+.merges-panel {
+  margin-bottom: 16px
+}
+
+.merge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 13px
+}
+
+.merge-row+.merge-row {
+  border-top: 1px solid var(--line)
+}
