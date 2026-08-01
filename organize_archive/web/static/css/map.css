@@ -1,0 +1,207 @@
+/* The timeline chart, by id rather than by element: Leaflet's un-clustered
+   photo view renders into its own <canvas>, and a blanket `canvas` rule
+   gave that one a panel background and a max-width that collapsed it to a
+   couple of pixels -- the dots were drawn, just nowhere visible. */
+#tlc2 {
+  max-width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+/* map markers */
+.mk {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px #0008;
+  background: var(--panel2);
+  cursor: pointer;
+}
+
+.mk img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mk.mk-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mk.mk-ph::after {
+  content: "📍";
+  font-size: 20px;
+}
+
+.mk.mk-sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent), 0 2px 6px #0008;
+}
+
+.mk-cluster {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-color: var(--accent);
+}
+
+.mk-cluster span {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--accent2);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 11px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
+}
+
+/* Leaflet's own panes/controls use z-index up to ~1000; without this the
+ map isolates none of that and it renders on top of the modal (z-index:20). */
+.leaflet-container {
+  background: #11141a;
+  font: inherit;
+  position: relative;
+  z-index: 0;
+}
+
+/* place-cluster collage marker: a small photo grid representing "the place" */
+.cgrid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 1px;
+}
+
+.cgrid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cgrid.n1 {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.cgrid.n2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.cgrid.n3 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.cgrid.n3 img:first-child {
+  grid-row: 1/3;
+}
+
+.cgrid.n4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.mk-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--accent2);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 9px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
+}
+
+.leaflet-tooltip {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 7px;
+  box-shadow: 0 2px 6px #0008;
+}
+
+.leaflet-tooltip-top:before {
+  border-top-color: var(--panel);
+}
+
+/* map layout: map on the left, selected place's photos on the right */
+.mapwrap {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+#lmap {
+  flex: 1;
+  min-width: 0;
+  height: 600px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#mapside {
+  width: 300px;
+  flex: none;
+  height: 600px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  overflow: auto;
+}
+
+#mapside .empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 70px 10px;
+  font-size: 13px;
+}
+
+#mapside .mapside-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+@media (max-width:900px) {
+  .mapwrap {
+    flex-direction: column;
+  }
+
+  #lmap,
+  #mapside {
+    width: 100%;
+    height: 360px;
+  }
+}

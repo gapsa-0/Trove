@@ -1,0 +1,334 @@
+/* faces / people */
+.people {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.pcard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+
+.pcard:hover {
+  border-color: var(--accent);
+}
+
+.pcard .face {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  background: var(--panel2);
+}
+
+/* 2x2 face collage (person cards + review card) */
+.facecollage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  aspect-ratio: 1;
+  gap: 2px;
+  background: var(--line);
+  width: 100%;
+}
+
+.facecollage>img,
+.facecollage>.cempty {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: var(--panel2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.pcard .pmeta {
+  padding: 8px 10px;
+}
+
+.pcard .pname {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pcard .pname.un {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.pcard .pcount {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.pet-species {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.nonhuman-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  margin-top: 12px
+}
+
+.nonhuman-card {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel)
+}
+
+.nonhuman-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 7px;
+  background: var(--panel2)
+}
+
+.nonhuman-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px
+}
+
+.nonhuman-actions button {
+  flex: 1;
+  font-size: 11px
+}
+
+.place-gallery-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 2px 12px;
+}
+
+.place-gallery-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.placecollage {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.placecollage>.cgrid {
+  width: 100%;
+  height: 100%;
+}
+
+.placecollage>.placeempty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  font-size: 30px;
+}
+
+/* "Same person?" review card, shown above the people grid */
+.suggest {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 18px;
+  max-width: 520px;
+}
+
+.suggest .sug-head {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.suggest .sug-head .muted {
+  font-weight: 400;
+}
+
+.suggest .sug-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.suggest .sug-face {
+  flex: 1;
+  max-width: 180px;
+  text-align: center;
+}
+
+.suggest .sug-face>img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--panel2);
+  display: block;
+}
+
+.suggest .sug-face .facecollage {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.suggest .sug-lbl {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggest .sug-cnt {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.suggest .sug-q {
+  flex: none;
+  font-size: 26px;
+  color: var(--muted);
+}
+
+.suggest .sug-btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.suggest .sug-btns button {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .12s;
+}
+
+.suggest .sug-yes {
+  border-color: var(--accent) !important;
+}
+
+.suggest .sug-yes:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.suggest .sug-no:hover,
+.suggest .sug-skip:hover {
+  border-color: var(--muted);
+}
+
+.suggest .sug-extra {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.suggest .sug-extra button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.suggest .sug-extra button:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+/* person detail: a sticky topbar keeps back-nav + name reachable while the
+ photo grid below (often thousands of tiles) scrolls out of view. */
+.facetopbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.facetopbar .back {
+  flex: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.facetopbar .back:hover {
+  text-decoration: underline;
+}
+
+.facetopbar .ftb-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.facetopbar .ftb-name .nm {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.facetopbar .ftb-name .nm.un {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.facetopbar .ftb-count {
+  flex: none;
+  font-size: 12px;
+}
+
+.soonbox {
+  padding: 50px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.soonbox .big {
+  font-size: 40px;
+  margin-bottom: 10px;
+}

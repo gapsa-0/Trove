@@ -1,0 +1,228 @@
+/* modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: #000d;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal.open {
+  display: flex;
+}
+
+.viewer {
+  display: flex;
+  max-width: 96vw;
+  max-height: 94vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.viewer .media {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 74vw;
+}
+
+.viewer .media img,
+.viewer .media video {
+  max-width: 74vw;
+  max-height: 94vh;
+  object-fit: contain;
+}
+
+.viewer .info {
+  width: 320px;
+  flex: none;
+  padding: 16px;
+  overflow: auto;
+  max-height: 94vh;
+}
+
+.viewer .info h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.kv .k {
+  color: var(--muted);
+}
+
+.kv .v {
+  text-align: right;
+  word-break: break-word;
+}
+
+/* editable detail sections */
+.isec {
+  margin-top: 16px;
+}
+
+.isec>.h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.isec>.h .linkbtn {
+  margin-left: auto;
+}
+
+.facelist {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.facerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.facecrop {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--panel2);
+  flex: none;
+  border: 1px solid var(--line);
+}
+
+/* placeholder in the .facecrop slot for a manual tag with no detection to
+   crop a thumbnail from -- keeps the row height identical to a real face/
+   pet row so the list doesn't jump. */
+.facecrop.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.facerow .fsel {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  padding: 6px 8px;
+  font-size: 12.5px;
+}
+
+.info .fsel {
+  max-width: none;
+  width: 100%;
+}
+
+.dtrow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dtrow input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.dtrow .yr {
+  flex: 1.8;
+}
+
+.placepick {
+  height: 190px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+  border: 1px solid var(--line);
+}
+
+.btnrow {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.val {
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.close {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 26px;
+  color: #fff;
+  cursor: pointer;
+  z-index: 21;
+}
+
+/* transient, non-blocking notice (used when an optimistic save is rolled back) */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 40;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 10px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  max-width: 80vw;
+  box-shadow: 0 8px 24px #0009;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+#toast.err {
+  border-color: #c0504d;
+}
+
+@media(prefers-reduced-motion:reduce) {
+
+  *,
+  *:before,
+  *:after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important
+  }
+}

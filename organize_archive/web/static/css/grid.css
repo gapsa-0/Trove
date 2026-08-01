@@ -1,0 +1,176 @@
+/* grid */
+.grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--panel);
+  /* A tile is a <button>, so it inherits the UA's 1px 6px padding unless
+     told otherwise. That padding inset the thumbnail inside its own square
+     and showed the tile background as grey strips down both sides. */
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tile .ph {
+  font-size: 32px;
+  color: var(--muted);
+}
+
+.tile .cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: #eef;
+  background: linear-gradient(transparent, #000a);
+  display: flex;
+  justify-content: space-between;
+}
+
+.tile .badge {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  font-size: 12px;
+  text-shadow: 0 1px 2px #000;
+}
+
+.tile .cap-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Description-search coverage. In the caption strip rather than the badge
+   slot on purpose: once indexing drains, this mark sits on very nearly
+   every tile, so it has to be quiet enough to live there permanently --
+   and the badge corner stays the singular "notable fact" position that 📍
+   already holds. A tinted pip rather than an emoji also keeps the two
+   readable apart: 📍 is a fact about the photo, this is a capability the
+   app gained over it.
+
+   Fixed blue, not var(--accent): the caption sits on its own dark scrim in
+   both themes, so a theme-adaptive colour would go muddy in light mode.
+   The ring is what makes 7px legible over an arbitrary photograph. */
+.tile .cap .indexed {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #4da3ff;
+  box-shadow: 0 0 0 2px #fff;
+  flex: none;
+}
+
+/* "Not this person" control -- person detail page only (see personTile).
+   Hidden until the tile is hovered/focused so it doesn't clutter a page
+   of hundreds of thumbnails at rest. */
+.tile-detach {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: #000a;
+  color: #fff;
+  font-size: 12px;
+  line-height: 22px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, background-color .12s;
+}
+
+.tile-detach:hover {
+  background: #d33;
+}
+
+.tile:hover .tile-detach,
+.tile-detach:focus-visible {
+  opacity: 1;
+}
+
+.more {
+  text-align: center;
+  margin: 16px;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip button {
+  all: unset;
+  margin-left: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* Browse filter bar */
+.filterbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.fsel {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  cursor: pointer;
+  max-width: 190px;
+}
+
+.fsel:hover {
+  border-color: var(--accent);
+}
+
+.fsel:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.fsel:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: .6;
+}
