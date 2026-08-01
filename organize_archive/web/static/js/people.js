@@ -3,6 +3,9 @@
 // the single-person page. Merging is drag-to-merge's job, not this module's.
 
 import {
+  detectStatusRow, syncCardGrid,
+} from "./cards.js";
+import {
   renderNav,
 } from "./router.js";
 import {
@@ -29,9 +32,6 @@ import {
 import {
   S,
 } from "./state.js";
-import {
-  detectStatusRow, syncCardGrid,
-} from "./main.js";
 
 export async function renderFaces(m) {
   const gen = S.nav, root = S.arch.id;

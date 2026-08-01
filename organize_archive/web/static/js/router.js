@@ -4,6 +4,9 @@
 // place that names every screen's entry point.
 
 import {
+  renderSoon,
+} from "./cards.js";
+import {
   syncThemeControl,
 } from "./settings.js";
 import {
@@ -45,9 +48,6 @@ import {
 import {
   renderTimeline,
 } from "./timeline.js";
-import {
-  renderSoon,
-} from "./main.js";
 
 export function applyHash() {
   const m = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);

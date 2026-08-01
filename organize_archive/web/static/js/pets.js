@@ -3,6 +3,9 @@
 // poll. The single-pet page lives here too.
 
 import {
+  detectStatusRow, syncCardGrid,
+} from "./cards.js";
+import {
   ACTIVE_SECTION, showSection,
 } from "./router.js";
 import {
@@ -29,9 +32,6 @@ import {
 import {
   S,
 } from "./state.js";
-import {
-  detectStatusRow, syncCardGrid,
-} from "./main.js";
 
 const PET_LIST_PAGE_SIZE = 120, LOOSE_PET_PAGE_SIZE = 120, NONHUMAN_PAGE_SIZE = 60;
 // Shared by the first render and by syncPetGrids, so an emptied grid says
