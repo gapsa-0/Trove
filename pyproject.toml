@@ -125,7 +125,6 @@ module = [
   "organize_archive.geo.*",
   "organize_archive.pets.*",
   "organize_archive.pipeline.*",
-  "organize_archive.services.*",
   "organize_archive.thumbnails.*",
   "organize_archive.web.*",
 ]
@@ -139,15 +138,7 @@ module = [
   "organize_archive.metadata.*",
   "organize_archive.config.*",
   "organize_archive.db.*",
-  "organize_archive.services._common",
-  "organize_archive.services.archives",
-  "organize_archive.services.overview",
-  "organize_archive.services.dups",
-  "organize_archive.services.pending",
-  "organize_archive.services.browse",
-  "organize_archive.services.merging",
-  "organize_archive.services.search",
-  "organize_archive.services.semantic",
+  "organize_archive.services.*",
 ]
 ignore_errors = false
 disallow_untyped_defs = true

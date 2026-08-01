@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
+from typing import Any, cast
 
 from ..db import database as db
 from . import merging
 from ._common import reading, writing
 
 
-def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict:
+def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict[str, Any]:
     """List of place clusters for a root, computing them the first time
     they're requested (subsequent calls just read the cached rows)."""
     conn = db.open_readonly(db_path)
@@ -42,7 +44,9 @@ _PLACE_EXEMPT = "(NULLIF(TRIM(pc.name), '') IS NOT NULL OR pc.pinned = 1)"
 
 
 @reading
-def _read_place_clusters(conn, root_id: int, min_media: int = 10) -> dict:
+def _read_place_clusters(
+    conn: sqlite3.Connection, root_id: int, min_media: int = 10
+) -> dict[str, Any]:
     clusters = conn.execute(
         f"""SELECT pc.id, pc.name, pc.lat, pc.lon, pc.member_count
            FROM place_clusters pc
@@ -67,7 +71,7 @@ def _read_place_clusters(conn, root_id: int, min_media: int = 10) -> dict:
            WHERE pc.root_id=? ORDER BY pcm.cluster_id, pcm.file_id""",
         (root_id,),
     ).fetchall()
-    thumbs: dict[int, list] = {}
+    thumbs: dict[int, list[int]] = {}
     for m in members:
         ids = thumbs.setdefault(m["cluster_id"], [])
         if len(ids) < 4:
@@ -89,7 +93,7 @@ def _read_place_clusters(conn, root_id: int, min_media: int = 10) -> dict:
 
 
 @reading
-def place_points(conn, root_id: int, min_media: int = 10) -> dict:
+def place_points(conn: sqlite3.Connection, root_id: int, min_media: int = 10) -> dict[str, Any]:
     """Every geotagged file as its own point, for the map's un-clustered view.
 
     The clustered view answers "where do we keep going back to"; this one
@@ -123,7 +127,7 @@ def place_points(conn, root_id: int, min_media: int = 10) -> dict:
 
 
 @writing
-def recompute_place_clusters(conn, root_id: int) -> dict:
+def recompute_place_clusters(conn: sqlite3.Connection, root_id: int) -> dict[str, Any]:
     from ..geo.clusters import cluster_places
 
     stats = cluster_places(conn, root_id)
@@ -131,7 +135,9 @@ def recompute_place_clusters(conn, root_id: int) -> dict:
 
 
 @reading
-def place_cluster_members(conn, cluster_id: int, limit=120, offset=0) -> dict | None:
+def place_cluster_members(
+    conn: sqlite3.Connection, cluster_id: int, limit: int = 120, offset: int = 0
+) -> dict[str, Any] | None:
     c = conn.execute(
         "SELECT id, name, lat, lon, member_count FROM place_clusters WHERE id=?", (cluster_id,)
     ).fetchone()
@@ -172,7 +178,7 @@ def place_cluster_members(conn, cluster_id: int, limit=120, offset=0) -> dict | 
     }
 
 
-def _place_merges_for(conn, cluster_id) -> list[dict]:
+def _place_merges_for(conn: sqlite3.Connection, cluster_id: int) -> list[dict[str, Any]]:
     """Merges this place can undo. Looked up by survivor_id alone, unlike
     _person_merges_for/_pet_merges_for: place_clusters ids are durable (never
     rebuilt wholesale -- see place_merges' schema comment), so there is no
@@ -198,7 +204,9 @@ def _place_merges_for(conn, cluster_id) -> list[dict]:
 
 
 @writing
-def rename_place_cluster(conn, cluster_id, name: str) -> dict:
+def rename_place_cluster(
+    conn: sqlite3.Connection, cluster_id: int | None, name: str
+) -> dict[str, Any]:
     if not cluster_id:
         return {"error": "missing cluster_id"}
     cur = conn.execute("UPDATE place_clusters SET name=? WHERE id=?", (name or None, cluster_id))
@@ -225,7 +233,7 @@ _PLACE = merging.EntitySpec(
 )
 
 
-def _place_merge_survivor(pa, pb):
+def _place_merge_survivor(pa: sqlite3.Row, pb: sqlite3.Row) -> tuple[sqlite3.Row, sqlite3.Row]:
     """Which of two place_clusters rows (each needing at least id, name, lat,
     lon, member_count, pinned) survives a merge, and which is dropped.
 
@@ -249,7 +257,7 @@ def _place_merge_survivor(pa, pb):
     return pb, pa
 
 
-def _merged_centre(keep, drop) -> tuple[float, float]:
+def _merged_centre(keep: sqlite3.Row, drop: sqlite3.Row) -> tuple[float, float]:
     # Coordinates: a pinned survivor's coordinate is a deliberate user
     # pin and never moves. Otherwise, the merged centroid is the
     # member-count weighted mean of the two inputs -- the same
@@ -270,8 +278,15 @@ def _merged_centre(keep, drop) -> tuple[float, float]:
 
 
 def _record_place_merge(
-    conn, keep, drop, survivor_name, survivor_lat_before, survivor_lon_before, drop_members, now
-):
+    conn: sqlite3.Connection,
+    keep: sqlite3.Row,
+    drop: sqlite3.Row,
+    survivor_name: str | None,
+    survivor_lat_before: float,
+    survivor_lon_before: float,
+    drop_members: list[tuple[int, str]],
+    now: str,
+) -> None:
     # Recorded so this merge can be undone later (see
     # unmerge_place_clusters): the losing row in full, its members with
     # their original source, and the survivor's centroid BEFORE this
@@ -299,7 +314,9 @@ def _record_place_merge(
 
 
 @writing
-def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
+def merge_place_clusters(
+    conn: sqlite3.Connection, id_a: int | None, id_b: int | None, name: str | None = None
+) -> dict[str, Any]:
     """User confirmed two place clusters are the same location. Merge
     immediately: move every member of the losing side into the survivor and
     delete the losing row. Mirrors merge_persons/merge_pets in signature,
@@ -316,6 +333,11 @@ def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
     pa, pb, err = merging.load_sides(conn, _PLACE, id_a, id_b)
     if err:
         return err
+    # load_sides ties err's nullness to pa/pb's, but mypy unpacks the union
+    # element-wise and loses that coupling; err is None here so both rows
+    # are guaranteed present.
+    pa = cast(sqlite3.Row, pa)
+    pb = cast(sqlite3.Row, pb)
     if pa["root_id"] != pb["root_id"]:
         return {"error": "cannot merge places from different archives"}
     name, err = merging.resolve_name(pa, pb, name)
@@ -368,7 +390,9 @@ def merge_place_clusters(conn, id_a, id_b, name=None) -> dict:
     return {"ok": True, "place": {"id": keep["id"], "name": survivor_name, "count": new_count}}
 
 
-def _restore_dropped_place(conn, m, survivor_root_id, now) -> int:
+def _restore_dropped_place(
+    conn: sqlite3.Connection, m: sqlite3.Row, survivor_root_id: int, now: str
+) -> int:
     """Re-INSERT the place merge_place_clusters deleted. Returns its new id."""
     cur = conn.execute(
         """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
@@ -383,10 +407,14 @@ def _restore_dropped_place(conn, m, survivor_root_id, now) -> int:
             now,
         ),
     )
-    return cur.lastrowid
+    # lastrowid is None only when no INSERT has run on this cursor; the
+    # INSERT immediately above guarantees a rowid.
+    return cast(int, cur.lastrowid)
 
 
-def _move_members_back(conn, file_ids, survivor_id, restored_id) -> int:
+def _move_members_back(
+    conn: sqlite3.Connection, file_ids: list[tuple[int, str]], survivor_id: int, restored_id: int
+) -> int:
     """Move each recorded member off the survivor and back onto the restored
     place, preserving its original `source` so a manual attachment stays
     manual. Returns the restored place's resulting member_count."""
@@ -411,12 +439,13 @@ def _move_members_back(conn, file_ids, survivor_id, restored_id) -> int:
             "VALUES(?,?,?)",
             (restored_id, file_id, source),
         )
-    return conn.execute(
+    row = conn.execute(
         "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (restored_id,)
-    ).fetchone()[0]
+    ).fetchone()
+    return int(row[0])
 
 
-def _restore_survivor(conn, survivor, m) -> None:
+def _restore_survivor(conn: sqlite3.Connection, survivor: sqlite3.Row, m: sqlite3.Row) -> None:
     # Restore the survivor's pre-merge centroid verbatim (see docstring
     # for why this isn't recomputed) and its member_count from what
     # actually remains after the moves above.
@@ -442,7 +471,7 @@ def _restore_survivor(conn, survivor, m) -> None:
 
 
 @writing
-def unmerge_place_clusters(conn, merge_id) -> dict:
+def unmerge_place_clusters(conn: sqlite3.Connection, merge_id: int | None) -> dict[str, Any]:
     """Undo a drag-merge recorded by merge_place_clusters.
 
     Because places are durable (see the module-level comment above), this is
@@ -495,7 +524,9 @@ def unmerge_place_clusters(conn, merge_id) -> dict:
 
 
 @reading
-def place_merge_preview(conn, id_a, id_b, warn_km: float) -> dict:
+def place_merge_preview(
+    conn: sqlite3.Connection, id_a: int | None, id_b: int | None, warn_km: float
+) -> dict[str, Any]:
     """Read-only "how spread out would this merge be?" check, so the GUI can
     warn before a drag-to-merge is confirmed rather than after it's already
     committed. Mirrors merge_place_clusters' validation and survivor/centre
@@ -513,6 +544,11 @@ def place_merge_preview(conn, id_a, id_b, warn_km: float) -> dict:
     pa, pb, err = merging.load_sides(conn, _PLACE, id_a, id_b)
     if err:
         return err
+    # load_sides ties err's nullness to pa/pb's, but mypy unpacks the union
+    # element-wise and loses that coupling; err is None here so both rows
+    # are guaranteed present.
+    pa = cast(sqlite3.Row, pa)
+    pb = cast(sqlite3.Row, pb)
     if pa["root_id"] != pb["root_id"]:
         return {"error": "cannot merge places from different archives"}
     keep, drop = _place_merge_survivor(pa, pb)
@@ -539,7 +575,9 @@ def place_merge_preview(conn, id_a, id_b, warn_km: float) -> dict:
 
 
 @writing
-def set_place(conn, file_id, place_id) -> dict:
+def set_place(
+    conn: sqlite3.Connection, file_id: int | None, place_id: int | None
+) -> dict[str, Any]:
     """Attach a file to a place as a MANUAL member (membership only, no geo is
     written, so provenance stays honest). Replaces any existing membership."""
     if not file_id or not place_id:
@@ -559,7 +597,7 @@ def set_place(conn, file_id, place_id) -> dict:
 
 
 @writing
-def clear_place(conn, file_id) -> dict:
+def clear_place(conn: sqlite3.Connection, file_id: int | None) -> dict[str, Any]:
     if not file_id:
         return {"error": "missing file_id"}
     _detach_file_from_places(conn, file_id)
@@ -568,7 +606,14 @@ def clear_place(conn, file_id) -> dict:
 
 
 @writing
-def create_place(conn, root_id, name: str, lat, lon, file_id=None) -> dict:
+def create_place(
+    conn: sqlite3.Connection,
+    root_id: int | None,
+    name: str,
+    lat: Any,  # JSON body value, unvalidated until the float() conversion below
+    lon: Any,  # JSON body value, unvalidated until the float() conversion below
+    file_id: int | None = None,
+) -> dict[str, Any]:
     """Create a user-pinned place (fixed coordinate) and optionally attach a file
     to it in one call. The dropped map pin becomes the place's coordinate."""
     if root_id is None or lat is None or lon is None:
@@ -587,7 +632,9 @@ def create_place(conn, root_id, name: str, lat, lon, file_id=None) -> dict:
            VALUES(?,?,?,?,0,1,?)""",
         (root_id, (name or "").strip() or None, lat, lon, db.now_iso()),
     )
-    cid = cur.lastrowid
+    # lastrowid is None only when no INSERT has run on this cursor; the
+    # INSERT immediately above guarantees a rowid.
+    cid = cast(int, cur.lastrowid)
     if file_id:
         _detach_file_from_places(conn, file_id)
         conn.execute(
@@ -601,7 +648,7 @@ def create_place(conn, root_id, name: str, lat, lon, file_id=None) -> dict:
     return {"ok": True, "id": cid, "place": {"id": pc["id"], "name": pc["name"]}}
 
 
-def _detach_file_from_places(conn, file_id):
+def _detach_file_from_places(conn: sqlite3.Connection, file_id: int) -> None:
     affected = [
         r["cluster_id"]
         for r in conn.execute(
@@ -613,7 +660,7 @@ def _detach_file_from_places(conn, file_id):
         _recount_place(conn, cid)
 
 
-def _recount_place(conn, cluster_id):
+def _recount_place(conn: sqlite3.Connection, cluster_id: int) -> None:
     n = conn.execute(
         "SELECT COUNT(*) FROM place_cluster_members WHERE cluster_id=?", (cluster_id,)
     ).fetchone()[0]

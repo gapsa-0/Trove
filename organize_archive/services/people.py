@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from pathlib import Path
+from typing import Any, cast
 
 from ..db import database as db
 from . import merging
@@ -19,7 +21,9 @@ from ._common import _NOT_HIDDEN, _QUALITY_OK, _quality_ok, _root_clause, readin
 
 
 @reading
-def face_summary(conn, root_id=None, detect_video_frames: int = 0) -> dict:
+def face_summary(
+    conn: sqlite3.Connection, root_id: int | None = None, detect_video_frames: int = 0
+) -> dict[str, Any]:
     from ..faces import backend as fb
 
     rc, rp = _root_clause(root_id)
@@ -67,7 +71,9 @@ def face_summary(conn, root_id=None, detect_video_frames: int = 0) -> dict:
     }
 
 
-def _preview_faces(conn, pids, k=4) -> dict:
+def _preview_faces(
+    conn: sqlite3.Connection, pids: list[int | None], k: int = 4
+) -> dict[int, list[int]]:
     """Up to k sharpest (highest det_score), non-hidden face ids per person, for
     the 4-up collage on each person card. One window-function query for the page."""
     pids = [p for p in pids if p is not None]
@@ -84,14 +90,16 @@ def _preview_faces(conn, pids, k=4) -> dict:
             ) WHERE rn <= ?""",
         (*pids, k),
     ).fetchall()
-    out: dict = {}
+    out: dict[int, list[int]] = {}
     for r in rows:
         out.setdefault(r["person_id"], []).append(r["id"])
     return out
 
 
 @reading
-def face_persons(conn, root_id=None, limit=120, offset=0) -> dict:
+def face_persons(
+    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
+) -> dict[str, Any]:
     """People (clusters) in this archive, named people first and then most faces.
     Each carries up to 4 preview faces for a collage card + photo/face counts."""
     rc, rp = _root_clause(root_id)
@@ -148,7 +156,13 @@ def face_persons(conn, root_id=None, limit=120, offset=0) -> dict:
 
 
 @reading
-def face_person(conn, person_id: int, root_id=None, limit=120, offset=0) -> dict | None:
+def face_person(
+    conn: sqlite3.Connection,
+    person_id: int,
+    root_id: int | None = None,
+    limit: int = 120,
+    offset: int = 0,
+) -> dict[str, Any] | None:
     """Files this person appears in: files with a detected face of them,
     UNION ALL files manually tagged with them (person_files) that don't
     already have such a face -- so a file tagged both ways appears once, and
@@ -220,7 +234,9 @@ def face_person(conn, person_id: int, root_id=None, limit=120, offset=0) -> dict
     }
 
 
-def _person_merges_for(conn, person_id, name) -> list[dict]:
+def _person_merges_for(
+    conn: sqlite3.Connection, person_id: int, name: str | None
+) -> list[dict[str, Any]]:
     """Merges this person can undo. Looked up by survivor_id OR by
     survivor_name (when non-empty) rather than survivor_id alone: cluster_faces
     DELETEs and rebuilds every `persons` row, so a merge's survivor_id can
@@ -254,7 +270,7 @@ def _person_merges_for(conn, person_id, name) -> list[dict]:
 
 
 @writing
-def rename_person(conn, person_id, name: str) -> dict:
+def rename_person(conn: sqlite3.Connection, person_id: int | None, name: str) -> dict[str, Any]:
     if not person_id:
         return {"error": "missing person_id"}
     old = conn.execute("SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
@@ -272,7 +288,7 @@ def rename_person(conn, person_id, name: str) -> dict:
 # -- in-panel edits (face / person) ------------------------------------------
 
 
-def _sync_person_stats(conn, pid):
+def _sync_person_stats(conn: sqlite3.Connection, pid: int | None) -> None:
     """Recompute one person's face_count + cover after a face moves in/out; drop
     it if it's now empty. Mirrors faces/cluster.py's _refresh_person_stats."""
     if pid is None:
@@ -298,7 +314,9 @@ def _sync_person_stats(conn, pid):
 
 
 @writing
-def reassign_face(conn, face_id, person_id) -> dict:
+def reassign_face(
+    conn: sqlite3.Connection, face_id: int | None, person_id: int | None
+) -> dict[str, Any]:
     """Move a face to a named person and PIN it (by name) so re-clustering keeps
     it there. Only named persons are valid targets."""
     if not face_id or not person_id:
@@ -322,7 +340,9 @@ def reassign_face(conn, face_id, person_id) -> dict:
 
 
 @writing
-def detach_file_from_person(conn, person_id, file_id) -> dict:
+def detach_file_from_person(
+    conn: sqlite3.Connection, person_id: int | None, file_id: int | None
+) -> dict[str, Any]:
     """ "This photo isn't them": release every face of this file currently
     assigned to person_id, and durably block them from drifting back.
 
@@ -362,7 +382,9 @@ def detach_file_from_person(conn, person_id, file_id) -> dict:
 
 
 @writing
-def add_person_to_file(conn, person_id, file_id) -> dict:
+def add_person_to_file(
+    conn: sqlite3.Connection, person_id: int | None, file_id: int | None
+) -> dict[str, Any]:
     """Tag a file with a named person by hand, for media where no face was
     detected at all. Only named persons are valid targets (mirrors
     reassign_face) -- an unnamed auto-cluster id is ephemeral and wouldn't
@@ -384,7 +406,9 @@ def add_person_to_file(conn, person_id, file_id) -> dict:
 
 
 @writing
-def remove_person_from_file(conn, person_id, file_id) -> dict:
+def remove_person_from_file(
+    conn: sqlite3.Connection, person_id: int | None, file_id: int | None
+) -> dict[str, Any]:
     if not person_id or not file_id:
         return {"error": "missing person_id or file_id"}
     conn.execute("DELETE FROM person_files WHERE person_id=? AND file_id=?", (person_id, file_id))
@@ -411,7 +435,7 @@ _PERSON = merging.LinkedSpec(
 )
 
 
-def _rep_face(conn, pid, cover) -> int | None:
+def _rep_face(conn: sqlite3.Connection, pid: int, cover: int | None) -> int | None:
     """A stable representative face id for a person (its cover, or its sharpest
     face). Used to anchor a durable face_links constraint."""
     if cover:
@@ -421,10 +445,10 @@ def _rep_face(conn, pid, cover) -> int | None:
         f"ORDER BY det_score DESC LIMIT 1",
         (pid,),
     ).fetchone()
-    return r["id"] if r else None
+    return int(r["id"]) if r else None
 
 
-def _update_person_centroid(conn, pid) -> None:
+def _update_person_centroid(conn: sqlite3.Connection, pid: int) -> None:
     import numpy as np
 
     rows = conn.execute(
@@ -441,7 +465,9 @@ def _update_person_centroid(conn, pid) -> None:
     conn.execute("UPDATE persons SET centroid=? WHERE id=?", (c.tobytes(), pid))
 
 
-def _finish_person_merge(conn, keep, survivor_name) -> None:
+def _finish_person_merge(
+    conn: sqlite3.Connection, keep: sqlite3.Row, survivor_name: str | None
+) -> None:
     """The survivor bookkeeping merge_persons runs after moving drop's faces
     onto keep and deleting drop: give the survivor its name, then recount and
     recentre it."""
@@ -464,7 +490,9 @@ def _finish_person_merge(conn, keep, survivor_name) -> None:
 
 
 @writing
-def merge_persons(conn, id_a, id_b, name=None) -> dict:
+def merge_persons(
+    conn: sqlite3.Connection, id_a: int | None, id_b: int | None, name: str | None = None
+) -> dict[str, Any]:
     """User confirmed two clusters are the same person. Merge immediately (move
     faces, keep the named/larger one) AND store a durable 'same' constraint so
     the merge survives future re-clusters.
@@ -477,6 +505,11 @@ def merge_persons(conn, id_a, id_b, name=None) -> dict:
     pa, pb, err = merging.load_sides(conn, _PERSON.entity, id_a, id_b)
     if err:
         return err
+    # load_sides ties err's nullness to pa/pb's, but mypy unpacks the union
+    # element-wise and loses that coupling; err is None here so both rows
+    # are guaranteed present.
+    pa = cast(sqlite3.Row, pa)
+    pb = cast(sqlite3.Row, pb)
     name, err = merging.resolve_name(pa, pb, name)
     if err:
         return err
@@ -508,7 +541,7 @@ def merge_persons(conn, id_a, id_b, name=None) -> dict:
     }
 
 
-def _restore_person_pins(conn, m) -> None:
+def _restore_person_pins(conn: sqlite3.Connection, m: sqlite3.Row) -> None:
     """The name-restoration half of unmerge_persons; see its docstring."""
     survivor_name = m["survivor_name"]
     dropped_name = m["dropped_name"] or None
@@ -522,7 +555,7 @@ def _restore_person_pins(conn, m) -> None:
 
 
 @writing
-def unmerge_persons(conn, merge_id) -> dict:
+def unmerge_persons(conn: sqlite3.Connection, merge_id: int | None) -> dict[str, Any]:
     """Undo a drag-merge recorded by merge_persons. See merging.unmerge_linked
     for the cannot-link mechanism this writes, its known limitation, and the
     "safe to call twice" / recluster-return contract.
@@ -537,7 +570,9 @@ def unmerge_persons(conn, merge_id) -> dict:
 
 
 @writing
-def _persons_link(conn, id_a, id_b, kind: str) -> dict:
+def _persons_link(
+    conn: sqlite3.Connection, id_a: int | None, id_b: int | None, kind: str
+) -> dict[str, Any]:
     """Record a durable pairwise constraint between two clusters (by their
     representative faces). 'different' = cannot-link (blocks future auto-merge);
     'skip' = "reviewed, undecided" (just drops the pair from the queue so it stops
@@ -560,16 +595,18 @@ def _persons_link(conn, id_a, id_b, kind: str) -> dict:
     return {"ok": True}
 
 
-def set_persons_different(db_path: str, id_a, id_b) -> dict:
+def set_persons_different(db_path: str, id_a: int | None, id_b: int | None) -> dict[str, Any]:
     return _persons_link(db_path, id_a, id_b, "different")
 
 
-def set_persons_skip(db_path: str, id_a, id_b) -> dict:
+def set_persons_skip(db_path: str, id_a: int | None, id_b: int | None) -> dict[str, Any]:
     return _persons_link(db_path, id_a, id_b, "skip")
 
 
 @writing
-def hide_person(conn, person_id, kind="false_detection") -> dict:
+def hide_person(
+    conn: sqlite3.Connection, person_id: int | None, kind: str = "false_detection"
+) -> dict[str, Any]:
     """User marked a cluster as NOT a person (a doll / animal / cartoon face that
     YuNet detected). Flag its faces so they're excluded from every future cluster,
     then drop the person. Durable and reversible only by clearing not_person."""
@@ -591,7 +628,9 @@ def hide_person(conn, person_id, kind="false_detection") -> dict:
 
 
 @reading
-def person_suggestions(conn, root_id=None, limit=40, min_sim=0.45) -> dict:
+def person_suggestions(
+    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 40, min_sim: float = 0.45
+) -> dict[str, Any]:
     """Top candidate "same person?" pairs: distinct clusters whose centroids are
     >= min_sim cosine, highest first, excluding pairs the user already answered
     'different'. This is the review queue, the pairs the automatic pass left
@@ -625,7 +664,8 @@ def person_suggestions(conn, root_id=None, limit=40, min_sim=0.45) -> dict:
         if fa and fb and fa[0] and fb[0]:
             excl.add(frozenset((fa[0], fb[0])))
     info = {r["id"]: r for r in rows}
-    out, total = [], 0
+    out: list[dict[str, Any]] = []
+    total = 0
     for o in order:
         ia, ib = ids[int(ii[o])], ids[int(jj[o])]
         if frozenset((ia, ib)) in excl:
@@ -659,7 +699,9 @@ def person_suggestions(conn, root_id=None, limit=40, min_sim=0.45) -> dict:
 
 
 @reading
-def face_crop_source(conn, face_id: int):
+def face_crop_source(
+    conn: sqlite3.Connection, face_id: int
+) -> tuple[Path, str, tuple[int, int, int, int], int, str | None, str, int] | None:
     """(abs path, sha256, box, rotate_deg, frame_offset, media_type, file_id)
     for a face id, or None. ``file_id`` is the underlying file's id, distinct
     from ``face_id``, for keying a re-derived video frame the same way

@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from collections import Counter
 from pathlib import Path
+from typing import Any, cast
 
 from ..db import database as db
 from . import merging
@@ -25,7 +27,12 @@ from ._common import _NOT_HIDDEN, _root_clause, reading, writing
 
 
 @reading
-def pet_summary(conn, root_id=None, model_source=None, detect_video_frames: int = 0) -> dict:
+def pet_summary(
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    model_source: str | None = None,
+    detect_video_frames: int = 0,
+) -> dict[str, Any]:
     from ..pets import backend as pet_backend
 
     rc, rp = _root_clause(root_id)
@@ -38,7 +45,7 @@ def pet_summary(conn, root_id=None, model_source=None, detect_video_frames: int 
         rp,
     ).fetchone()[0]
     scan_filter = " AND s.source_sha256 IS f.sha256"
-    scan_params = list(rp)
+    scan_params: list[Any] = list(rp)
     if model_source is not None:
         scan_filter += " AND s.model_source IS ?"
         scan_params.append(model_source)
@@ -76,7 +83,9 @@ def pet_summary(conn, root_id=None, model_source=None, detect_video_frames: int 
 
 
 @reading
-def pet_groups(conn, root_id=None, limit=120, offset=0) -> dict:
+def pet_groups(
+    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
+) -> dict[str, Any]:
     rc, rp = _root_clause(root_id)
     rows = conn.execute(
         f"""SELECT a.pet_id,p.name,p.species,p.cover_detection_id,
@@ -128,7 +137,13 @@ def pet_groups(conn, root_id=None, limit=120, offset=0) -> dict:
 
 
 @reading
-def animal_gallery(conn, root_id=None, limit=120, offset=0, unassigned=False) -> dict:
+def animal_gallery(
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    limit: int = 120,
+    offset: int = 0,
+    unassigned: bool = False,
+) -> dict[str, Any]:
     rc, rp = _root_clause(root_id)
     un = " AND a.pet_id IS NULL" if unassigned else ""
     rows = conn.execute(
@@ -159,7 +174,13 @@ def animal_gallery(conn, root_id=None, limit=120, offset=0, unassigned=False) ->
 
 
 @reading
-def pet_group(conn, pet_id: int, root_id=None, limit=120, offset=0):
+def pet_group(
+    conn: sqlite3.Connection,
+    pet_id: int,
+    root_id: int | None = None,
+    limit: int = 120,
+    offset: int = 0,
+) -> dict[str, Any] | None:
     """Files this pet appears in: files with a detection of them, UNION ALL
     files manually tagged with them (pet_files) that don't already have such
     a detection -- mirrors face_person. Manual-only items carry
@@ -224,7 +245,9 @@ def pet_group(conn, pet_id: int, root_id=None, limit=120, offset=0):
     }
 
 
-def _pet_merges_for(conn, pet_id, name) -> list[dict]:
+def _pet_merges_for(
+    conn: sqlite3.Connection, pet_id: int, name: str | None
+) -> list[dict[str, Any]]:
     """Merges this pet can undo. Looked up by survivor_id OR by survivor_name
     (when non-empty), mirroring _person_merges_for: cluster_pets rebuilds
     `pets` wholesale after every detect chunk, so a merge's survivor_id can
@@ -257,7 +280,7 @@ def _pet_merges_for(conn, pet_id, name) -> list[dict]:
 
 
 @writing
-def rename_pet(conn, pet_id, name: str) -> dict:
+def rename_pet(conn: sqlite3.Connection, pet_id: int | None, name: str) -> dict[str, Any]:
     if not conn.execute("SELECT 1 FROM pets WHERE id=?", (pet_id,)).fetchone():
         return {"error": "unknown pet"}
     conn.execute("UPDATE pets SET name=? WHERE id=?", (name or None, pet_id))
@@ -266,7 +289,9 @@ def rename_pet(conn, pet_id, name: str) -> dict:
 
 
 @reading
-def nonhuman_review(conn, root_id=None, limit=120, offset=0) -> dict:
+def nonhuman_review(
+    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
+) -> dict[str, Any]:
     rc, rp = _root_clause(root_id)
     rows = conn.execute(
         f"""SELECT n.id,n.file_id,n.kind,n.confidence,n.source,n.review_status,
@@ -289,7 +314,7 @@ def nonhuman_review(conn, root_id=None, limit=120, offset=0) -> dict:
     }
 
 
-def _bump_face_scan_after_restore(conn, file_id) -> None:
+def _bump_face_scan_after_restore(conn: sqlite3.Connection, file_id: int) -> None:
     """Shared face_scan counter fix for both "verdict=human" paths below."""
     conn.execute(
         """UPDATE face_scan SET n_faces=n_faces+1,
@@ -299,7 +324,9 @@ def _bump_face_scan_after_restore(conn, file_id) -> None:
     )
 
 
-def _restore_existing_face(conn, detection_id, row) -> dict:
+def _restore_existing_face(
+    conn: sqlite3.Connection, detection_id: int, row: sqlite3.Row
+) -> dict[str, Any]:
     """verdict=human, and the detection already has a restored_face_id.
 
     Un-hide that existing face row, mark the detection human, fix the
@@ -322,7 +349,7 @@ def _restore_existing_face(conn, detection_id, row) -> dict:
     }
 
 
-def _insert_face_from_detection(conn, row):
+def _insert_face_from_detection(conn: sqlite3.Connection, row: sqlite3.Row) -> sqlite3.Cursor:
     """INSERT a new faces row from a nonhuman_detections row's own columns.
 
     Returns the cursor so the caller can read ``lastrowid``.
@@ -352,7 +379,9 @@ def _insert_face_from_detection(conn, row):
     )
 
 
-def _create_face_from_detection(conn, detection_id, row) -> dict:
+def _create_face_from_detection(
+    conn: sqlite3.Connection, detection_id: int, row: sqlite3.Row
+) -> dict[str, Any]:
     """verdict=human, with no restored_face_id yet.
 
     Require a retained embedding, INSERT a new faces row from the
@@ -378,7 +407,9 @@ def _create_face_from_detection(conn, detection_id, row) -> dict:
 
 
 @writing
-def review_nonhuman(conn, detection_id, verdict: str) -> dict:
+def review_nonhuman(
+    conn: sqlite3.Connection, detection_id: int | None, verdict: str
+) -> dict[str, Any]:
     """Confirm a non-human candidate or restore it to People as unassigned."""
     if verdict not in {"confirmed", "human"}:
         return {"error": "verdict must be confirmed or human"}
@@ -396,13 +427,18 @@ def review_nonhuman(conn, detection_id, verdict: str) -> dict:
         )
         conn.commit()
         return {"ok": True, "status": "confirmed", "root_id": row["root_id"]}
+    # `row` was found by matching n.id=detection_id above, so detection_id
+    # cannot have been None here -- narrow the type, not the value.
+    detection_id = cast(int, detection_id)
     if row["restored_face_id"]:
         return _restore_existing_face(conn, detection_id, row)
     return _create_face_from_detection(conn, detection_id, row)
 
 
 @writing
-def add_pet_to_file(conn, pet_id, file_id) -> dict:
+def add_pet_to_file(
+    conn: sqlite3.Connection, pet_id: int | None, file_id: int | None
+) -> dict[str, Any]:
     """Tag a file with a named pet by hand. Same shape as add_person_to_file,
     against pet_files/pets."""
     if not pet_id or not file_id:
@@ -422,7 +458,9 @@ def add_pet_to_file(conn, pet_id, file_id) -> dict:
 
 
 @writing
-def remove_pet_from_file(conn, pet_id, file_id) -> dict:
+def remove_pet_from_file(
+    conn: sqlite3.Connection, pet_id: int | None, file_id: int | None
+) -> dict[str, Any]:
     if not pet_id or not file_id:
         return {"error": "missing pet_id or file_id"}
     conn.execute("DELETE FROM pet_files WHERE pet_id=? AND file_id=?", (pet_id, file_id))
@@ -430,7 +468,7 @@ def remove_pet_from_file(conn, pet_id, file_id) -> dict:
     return {"ok": True}
 
 
-def _rep_detection(conn, pid, cover) -> int | None:
+def _rep_detection(conn: sqlite3.Connection, pid: int, cover: int | None) -> int | None:
     """A stable representative animal_detection id for a pet (its cover, or
     its highest-scoring detection). Mirrors _rep_face; used to anchor a
     durable pet_links constraint, which -- unlike a pet id -- survives
@@ -440,7 +478,7 @@ def _rep_detection(conn, pid, cover) -> int | None:
     r = conn.execute(
         "SELECT id FROM animal_detections WHERE pet_id=? ORDER BY det_score DESC LIMIT 1", (pid,)
     ).fetchone()
-    return r["id"] if r else None
+    return int(r["id"]) if r else None
 
 
 # -- "same pet?" merges (durable) -------------------------------------------
@@ -470,7 +508,7 @@ _PET = merging.LinkedSpec(
 )
 
 
-def _refresh_pet_stats(conn, pet_id, name) -> None:
+def _refresh_pet_stats(conn: sqlite3.Connection, pet_id: int, name: str | None) -> None:
     """Recompute a pet's aggregate fields from its current detections and set
     its name. Used right after merge_pets moves detections into the surviving
     pet, so a merged pet ends up with the same shape cluster_pets would have
@@ -509,7 +547,9 @@ def _refresh_pet_stats(conn, pet_id, name) -> None:
 
 
 @writing
-def merge_pets(conn, id_a, id_b, name=None) -> dict:
+def merge_pets(
+    conn: sqlite3.Connection, id_a: int | None, id_b: int | None, name: str | None = None
+) -> dict[str, Any]:
     """User confirmed two pet clusters are the same animal. Merge immediately
     (move detections, keep the named/larger one) AND store a durable 'same'
     pet_links constraint so the merge survives the next cluster_pets rebuild.
@@ -517,6 +557,11 @@ def merge_pets(conn, id_a, id_b, name=None) -> dict:
     pa, pb, err = merging.load_sides(conn, _PET.entity, id_a, id_b)
     if err:
         return err
+    # load_sides ties err's nullness to pa/pb's, but mypy unpacks the union
+    # element-wise and loses that coupling; err is None here so both rows
+    # are guaranteed present.
+    pa = cast(sqlite3.Row, pa)
+    pb = cast(sqlite3.Row, pb)
     name, err = merging.resolve_name(pa, pb, name)
     if err:
         return err
@@ -561,7 +606,7 @@ def merge_pets(conn, id_a, id_b, name=None) -> dict:
 
 
 @writing
-def unmerge_pets(conn, merge_id) -> dict:
+def unmerge_pets(conn: sqlite3.Connection, merge_id: int | None) -> dict[str, Any]:
     """Undo a drag-merge recorded by merge_pets. See merging.unmerge_linked
     for the shared mechanics (the cannot-link write and the safe-to-call-twice
     contract).
@@ -575,7 +620,9 @@ def unmerge_pets(conn, merge_id) -> dict:
 
 
 @reading
-def animal_crop_source(conn, detection_id: int):
+def animal_crop_source(
+    conn: sqlite3.Connection, detection_id: int
+) -> tuple[Path, str, tuple[int, int, int, int], int, str | None, str, int] | None:
     """(abs path, sha256, box, rotate_deg, frame_offset, media_type, file_id)
     for an animal detection id. See ``face_crop_source`` for the video-frame
     caveats and what ``file_id`` is for."""
