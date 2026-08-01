@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 _EXIF_FMTS = ("%Y:%m:%d %H:%M:%S", "%Y:%m:%d %H:%M:%S%z")
 
 
-def _tz(name: str | None):
+def _tz(name: str | None) -> ZoneInfo | None:
     if not name:
         return None
     try:
@@ -46,7 +47,7 @@ def epoch_to_wall(epoch: int, tzname: str | None) -> datetime:
     return dt.replace(tzinfo=None)
 
 
-def exif_datetime(tags: dict) -> tuple[datetime, float] | None:
+def exif_datetime(tags: dict[str, Any]) -> tuple[datetime, float] | None:
     """Best EXIF datetime from DateTimeOriginal (preferred) or CreateDate."""
     for key, conf in (("DateTimeOriginal", 0.9), ("CreateDate", 0.8)):
         raw = tags.get(key)

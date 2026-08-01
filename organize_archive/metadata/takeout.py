@@ -20,6 +20,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 # Localised "-edited" suffixes Google appends to edited copies (name stem).
 EDITED_SUFFIXES = (
@@ -100,7 +101,7 @@ class SidecarMatcher:
         base = _TRAIL_COUNTER_RE.sub("", base)
         return base
 
-    def _prefix_match(self, name: str):
+    def _prefix_match(self, name: str) -> tuple[Path, str, float] | None:
         """Truncated-name fallback: a JSON whose base is a prefix of the media
         name, unique in the folder. Guards against short/ambiguous prefixes."""
         matches = []
@@ -112,7 +113,7 @@ class SidecarMatcher:
             return self._jsons[matches[0]], "prefix-trunc", 0.7
         return None
 
-    def find(self, media_path: Path):
+    def find(self, media_path: Path) -> tuple[Path, str, float] | None:
         """Return (json_path, method, confidence) or None."""
         self._load_dir(media_path.parent)
         if not self._jsons:
@@ -125,8 +126,11 @@ class SidecarMatcher:
         return self._prefix_match(name)
 
 
-def _clean_coord(lat, lon, alt):
-    def num(x):
+def _clean_coord(lat: Any, lon: Any, alt: Any) -> tuple[float | None, float | None, float | None]:
+    # lat/lon/alt come straight out of parsed Takeout JSON, so their runtime type
+    # is whatever the sidecar happened to contain (float, int, str, null, ...);
+    # Any is the honest type here, and num() below is exactly the guard for it.
+    def num(x: Any) -> float | None:
         try:
             return float(x)
         except (TypeError, ValueError):

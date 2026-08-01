@@ -10,6 +10,7 @@ more trustworthy than a date alone or a recovered epoch.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 _MIN_YEAR = 1990
@@ -26,14 +27,21 @@ def _valid(dt: datetime | None) -> datetime | None:
     return dt if _MIN_YEAR <= dt.year <= _MAX_YEAR else None
 
 
-def _dt(y, mo, d, h=0, mi=0, s=0) -> datetime | None:
+def _dt(
+    y: str | int,
+    mo: str | int,
+    d: str | int,
+    h: str | int = 0,
+    mi: str | int = 0,
+    s: str | int = 0,
+) -> datetime | None:
     try:
         return _valid(datetime(int(y), int(mo), int(d), int(h), int(mi), int(s)))
     except ValueError:
         return None
 
 
-def _from_ms(ms) -> datetime | None:
+def _from_ms(ms: str | int) -> datetime | None:
     try:
         v = int(ms)
     except (TypeError, ValueError):
@@ -46,7 +54,14 @@ def _from_ms(ms) -> datetime | None:
         return None
 
 
-def _dt_yfirst_rescue(y, g1, g2, h=0, mi=0, s=0) -> datetime | None:
+def _dt_yfirst_rescue(
+    y: str | int,
+    g1: str | int,
+    g2: str | int,
+    h: str | int = 0,
+    mi: str | int = 0,
+    s: str | int = 0,
+) -> datetime | None:
     """Year-first date: assume (month=g1, day=g2) first (ISO order); if
     that's invalid, retry as (month=g2, day=g1). Handles the rare Y-D-M
     naming quirk without affecting any name that already parses under the
@@ -64,7 +79,16 @@ def _forced_day_month(a: int, b: int) -> tuple[int, int] | None:
     return None
 
 
-def _dt_two_number_date(a, b, y, day_first, h=0, mi=0, s=0, base_conf=0.55):
+def _dt_two_number_date(
+    a: str | int,
+    b: str | int,
+    y: str | int,
+    day_first: bool,
+    h: str | int = 0,
+    mi: str | int = 0,
+    s: str | int = 0,
+    base_conf: float = 0.55,
+) -> tuple[datetime, float] | None:
     """Non-year-led numeric date (DD-MM-YYYY / MM-DD-YYYY). Resolved
     unambiguously when one value is > 12; otherwise falls back to
     `day_first` at a lower confidence since the order is a guess."""
@@ -84,7 +108,15 @@ def _dt_two_number_date(a, b, y, day_first, h=0, mi=0, s=0, base_conf=0.55):
 
 # (regex, builder, confidence). Tried in order; first successful build wins.
 # Higher-confidence / more-specific patterns come first.
-_PATTERNS: list[tuple[re.Pattern, callable, float]] = [
+#
+# Two builder shapes share this table, discriminated by `conf`: a fixed-confidence
+# entry's builder takes just the match and returns a datetime, while a dynamic-
+# confidence entry (conf=None, see parse()) takes the match plus `day_first` and
+# returns its own (datetime, confidence) pair. A plain Callable can't express an
+# arity that varies with a sibling tuple field, so the element type is Any here —
+# parse() is where the two shapes actually get told apart.
+_PatternBuilder = Callable[..., datetime | tuple[datetime, float] | None]
+_PATTERNS: list[tuple[re.Pattern[str], _PatternBuilder, float | None]] = [
     # WhatsApp desktop: "... 2022-05-14 at 09.09.57.jpeg"
     (
         re.compile(
@@ -201,10 +233,13 @@ def parse(name: str, day_first: bool = True) -> tuple[datetime, float] | None:
             continue
         if conf is None:
             result = build(m, day_first)
-            if result is not None:
+            # A dynamic-confidence entry's builder always returns a (datetime,
+            # confidence) pair or None -- the isinstance just tells mypy what the
+            # `conf is None` branch already guarantees at runtime.
+            if isinstance(result, tuple):
                 return result
         else:
             dt = build(m)
-            if dt is not None:
+            if isinstance(dt, datetime):
                 return dt, conf
     return None

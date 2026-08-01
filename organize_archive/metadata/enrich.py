@@ -8,8 +8,11 @@ without a resolved date are processed, in batches.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Protocol
 
 from ..config import Config
 from . import filename_dates, resolver
@@ -18,6 +21,11 @@ from .takeout import SidecarMatcher, parse_sidecar
 logger = logging.getLogger(__name__)
 
 # exiftool is optional; without it we still resolve from Takeout/filename/mtime.
+# Pre-declared so both the success and fallback branches below bind the same
+# name at the same (Optional) type -- a plain `ExifReader = None` in the except
+# branch would otherwise conflict with the class bound to it in the try branch.
+ExifReader: type[Any] | None
+
 try:
     from .exiftool_reader import ExifReader
     from .exiftool_reader import available as exif_available
@@ -32,13 +40,29 @@ except Exception:  # pragma: no cover
         return False
 
 
+class _Progress(Protocol):
+    """Structural type for the two concrete progress trackers passed in here
+    (cli.progress.ScanProgress, pipeline.job.JobProgress) -- both live in
+    lenient (unannotated) modules, so a Protocol is what pins their shape here
+    without importing either concrete class into a strict one."""
+
+    total: int
+
+    # done/bytes_hashed are positional-only on purpose: every call site passes
+    # them positionally, and the two implementations disagree on the second
+    # name (`bytes_hashed` vs `_bytes`), which a by-name protocol would reject
+    # the moment pipeline/ is checked. `current` stays named -- scan/walker.py
+    # passes it by keyword.
+    def update(self, done: int, bytes_hashed: int, /, current: str = "") -> None: ...
+
+
 @dataclass
 class EnrichStats:
     processed: int = 0
     with_takeout: int = 0
     with_gps: int = 0
     unmatched_takeout: int = 0
-    by_source: dict = field(default_factory=dict)
+    by_source: dict[str, int] = field(default_factory=dict)
 
 
 _MIME_TO_TYPE = {"image": "image", "video": "video", "audio": "audio"}
@@ -55,7 +79,7 @@ def _detected_type(mime: str | None) -> str | None:
     return None
 
 
-def _gps_from_exif(tags: dict):
+def _gps_from_exif(tags: dict[str, Any]) -> tuple[float, float, float | None] | None:
     lat = tags.get("GPSLatitude")
     lon = tags.get("GPSLongitude")
     if lat is None or lon is None:
@@ -79,7 +103,9 @@ def _gps_from_exif(tags: dict):
     return lat, lon, alt
 
 
-def _pending(conn, batch_size: int, root_ids: tuple[int, ...] | None = None):
+def _pending(
+    conn: sqlite3.Connection, batch_size: int, root_ids: tuple[int, ...] | None = None
+) -> list[sqlite3.Row]:
     """Return an enrichment batch, optionally restricted to scan roots."""
     where = "d.file_id IS NULL AND f.present = 1"
     params: list[int] = []
@@ -99,7 +125,11 @@ def _pending(conn, batch_size: int, root_ids: tuple[int, ...] | None = None):
 
 
 def enrich(
-    conn, cfg: Config, progress=None, batch_size: int = 80, root_ids: tuple[int, ...] | None = None
+    conn: sqlite3.Connection,
+    cfg: Config,
+    progress: _Progress | None = None,
+    batch_size: int = 80,
+    root_ids: tuple[int, ...] | None = None,
 ) -> EnrichStats:
     stats = EnrichStats()
     matcher = SidecarMatcher()
@@ -129,7 +159,7 @@ def enrich(
         abs_paths = {r["id"]: Path(r["root_path"]) / r["rel_path"] for r in rows}
         mtype = {r["id"]: r["media_type"] for r in rows}
 
-        exif_map: dict[str, dict] = {}
+        exif_map: dict[str, dict[str, Any]] = {}
         if reader is not None:
             to_read = [p for fid, p in abs_paths.items() if mtype[fid] != "archive"]
             exif_map = reader.read_batch(to_read)
@@ -139,7 +169,7 @@ def enrich(
             path = abs_paths[fid]
             name = path.name
             tags = exif_map.get(str(path), {})
-            candidates: dict = {}
+            candidates: dict[str, tuple[datetime, float]] = {}
 
             # --- Takeout sidecar ---
             side = None
@@ -249,7 +279,7 @@ def enrich(
     return stats
 
 
-def _num(v):
+def _num(v: Any) -> int | float | None:
     if v is None:
         return None
     try:

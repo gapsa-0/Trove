@@ -12,6 +12,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 
 from ..runtime import no_window, tool
 
@@ -45,7 +46,7 @@ class ExifReader:
         if not available():
             raise RuntimeError("exiftool not found on PATH")
 
-    def read_batch(self, paths: list[Path]) -> dict[str, dict]:
+    def read_batch(self, paths: list[Path]) -> dict[str, dict[str, Any]]:
         """Return {absolute_path_str: {tag: value}} for the given files.
 
         Files exiftool cannot read are simply absent from the result.
@@ -60,7 +61,12 @@ class ExifReader:
 
         try:
             cmd = [
-                tool("exiftool"),
+                # tool() is `str | None` in general, but ExifReader.__init__ already
+                # refused to construct unless available() (itself a tool() lookup)
+                # returned truthy -- so exiftool was on PATH at construction time.
+                # This is a fresh lookup, not the cached result, so the cast is
+                # trusting that PATH hasn't changed since construction.
+                cast(str, tool("exiftool")),
                 "-json",
                 "-n",
                 "-q",

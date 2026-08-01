@@ -125,7 +125,6 @@ module = [
   "organize_archive.embeddings.*",
   "organize_archive.faces.*",
   "organize_archive.geo.*",
-  "organize_archive.metadata.*",
   "organize_archive.pets.*",
   "organize_archive.pipeline.*",
   "organize_archive.services.*",
@@ -139,6 +138,7 @@ ignore_errors = true
 module = [
   "organize_archive.paths",
   "organize_archive.errors",
+  "organize_archive.metadata.*",
 ]
 ignore_errors = false
 disallow_untyped_defs = true
