@@ -33,6 +33,7 @@ lint: lint-py lint-js  ## Static checks (fast — run this before every commit)
 lint-py:         ## Python static checks only (what CI's python job runs)
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
+	$(PY) -m mypy organize_archive
 
 lint-js:         ## JavaScript static checks only (what CI's electron job runs)
 	cd desktop && npm run lint

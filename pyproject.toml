@@ -40,7 +40,7 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # transformers or torch — a 64-token tokenizer does not justify reversing the
 # torch exclusion in packaging/organize-archive.spec.
 semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pre-commit>=3"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pre-commit>=3", "mypy>=1.11"]
 
 [project.scripts]
 oa = "organize_archive.cli:main"
@@ -86,6 +86,65 @@ omit = ["*/web/vendor/*", "*/__main__.py"]
 [tool.coverage.report]
 skip_covered = false
 show_missing = true
+
+# Type checking is gradual on purpose. A whole-package strict switch produces
+# hundreds of errors nobody reads, and the tool becomes noise. So there are two
+# lists here and they move in opposite directions:
+#
+#   "not reviewed yet"  -- ignore_errors, and only ever SHRINKS
+#   "strict"            -- the real checks, and only ever GROWS
+#
+# A package leaves the first list and joins the second in one commit, once its
+# errors are actually gone. `mypy organize_archive` is therefore green at every
+# commit, which is what makes it usable as a gate instead of a report.
+#
+# Section order is load-bearing: mypy applies every matching override in file
+# order, so the strict block must come after the ignored one and say
+# ignore_errors = false explicitly to win for a sub-package (web.routes vs web).
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+# Lenient global default: an unannotated function is not an error, and its body
+# is not checked. Annotated code still is -- that is the free half of the deal.
+check_untyped_defs = false
+# onnxruntime, insightface, faiss, cv2 and PIL ship no stubs worth the install.
+ignore_missing_imports = true
+
+# ---- not reviewed yet: errors suppressed so the gate is usable today ----
+# Measured at 48f949a, not guessed: these are exactly the packages that had
+# errors under the lenient default above (102 of them). Delete a line from this
+# list only when that package is clean, in the same commit that makes it strict.
+[[tool.mypy.overrides]]
+module = [
+  "organize_archive.config.*",
+  "organize_archive.db.*",
+  "organize_archive.dedup.*",
+  "organize_archive.detect.*",
+  "organize_archive.embeddings.*",
+  "organize_archive.faces.*",
+  "organize_archive.geo.*",
+  "organize_archive.metadata.*",
+  "organize_archive.pets.*",
+  "organize_archive.pipeline.*",
+  "organize_archive.services.*",
+  "organize_archive.thumbnails.*",
+  "organize_archive.web.*",
+]
+ignore_errors = true
+
+# ---- strict: the work is done here ----
+[[tool.mypy.overrides]]
+module = [
+  "organize_archive.paths",
+  "organize_archive.errors",
+]
+ignore_errors = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+strict_optional = true
+warn_return_any = true
 
 [tool.ruff]
 line-length = 100          # matches the style already in the files
