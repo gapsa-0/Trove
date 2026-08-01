@@ -47,6 +47,11 @@ jobs:
       # of a document that silently stops describing the server. Cheap: it
       # imports the route tables and renders a string.
       - run: python tools/dev/gen_api_docs.py --check
+      # The frontend's screens are ES modules, so an inline on* handler only
+      # works if main.js re-exports the function it names onto `window`. Nothing
+      # else in CI can see a mismatch: eslint does not read HTML attributes and
+      # no test drives a browser -- the button just silently stops working.
+      - run: python tools/dev/check_handlers.py
       - run: make test
       - run: python packaging/scripts/stage-tools.py --validate
       - run: python packaging/scripts/stage-models.py --validate

@@ -4,7 +4,7 @@
 # the two cannot drift apart and "green locally, red in CI" stays abnormal.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint lint-py lint-js fmt test test-fast gui shots api-docs check
+.PHONY: help setup lint lint-py lint-js handlers fmt test test-fast gui shots api-docs check
 
 # `?=` so CI can point this at the interpreter it already installed into:
 # the runner has no .venv, and sets PY=python in the job environment.
@@ -36,6 +36,12 @@ lint-py:         ## Python static checks only (what CI's python job runs)
 
 lint-js:         ## JavaScript static checks only (what CI's electron job runs)
 	cd desktop && npm run lint
+
+# Not lint: it compares two files that no linter reads together. An inline
+# handler naming a function main.js does not export renders perfectly and does
+# nothing when clicked, so this is the only automated check that catches it.
+handlers:        ## Check every inline on* handler resolves to main.js's export block
+	$(PY) tools/dev/check_handlers.py
 
 fmt:             ## Autoformat
 	$(PY) -m ruff format .
@@ -71,4 +77,4 @@ shots:           ## Screenshot every route into shots/ as a refactor guardrail
 api-docs:        ## Regenerate docs/dev/api.md from the route tables
 	$(PY) tools/dev/gen_api_docs.py
 
-check: lint test ## Everything CI runs
+check: lint handlers test ## Everything CI runs
