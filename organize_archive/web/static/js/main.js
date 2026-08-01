@@ -4,35 +4,16 @@
 // nothing lands on `window` unless the export block at the bottom puts it there.
 // That block is the one thing to read before changing anything above it.
 
-const TYPE_ICON = { image: "🖼️", video: "🎞️", audio: "🎵", document: "📄", archive: "🗜️", other: "📦" };
-const TYPE_COL = { image: "#ff375f", video: "#ff9f0a", audio: "#30d158", document: "#64d2ff", archive: "#bf5af2", other: "#8e8e93" };
-const TYPE_LABEL = { archive: "compressed" };
-const typeLabel = t => TYPE_LABEL[t] || t;
-const ICONS = {
-  overview: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
-  library: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 2-2L20 19"/></svg>',
-  timeline: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg>',
-  people: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.3 2.3-5 5.5-5s5 1.7 5.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M15.5 15c2.8-.5 4.6.8 5 3.5"/></svg>',
-  pets: '<svg viewBox="0 0 24 24"><path d="M8.5 10.5C6 7 3 7.5 3 11c0 2 1.5 3.5 3.5 3.5C5 18 7.5 21 12 21s7-3 5.5-6.5C19.5 14.5 21 13 21 11c0-3.5-3-4-5.5-.5"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M10 17h4"/></svg>',
-  places: '<svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>',
-  dups: '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h1"/></svg>',
-  settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
-  sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-  moon: '<svg viewBox="0 0 24 24"><path d="M20.5 15.3A9 9 0 0 1 8.7 3.5 9 9 0 1 0 20.5 15.3Z"/></svg>'
-};
-const SECTIONS = [
-  { id: "overview", label: "Overview" },
-  { id: "library", label: "Library" },
-  { id: "timeline", label: "Timeline" },
-  { id: "people", label: "People" },
-  { id: "pets", label: "Pets" },
-  { id: "places", label: "Places" },
-  { id: "dups", label: "Duplicates" },
-];
-const S = {
-  arch: null, section: "overview", grid: null,
-  timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, poll: null
-};
+import {
+  esc, fmtBytes, fmtDate, setText, toast,
+} from "./dom.js";
+import {
+  ICONS, S, SECTIONS, TYPE_COL, TYPE_ICON, typeLabel,
+} from "./state.js";
+import {
+  jget, jpost, qpost,
+} from "./api.js";
+
 let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
 // Bumped on every user navigation (section switch / archive open). Async renders
 // capture it and bail if it changed while they were awaiting, so a slow fetch can
@@ -94,12 +75,6 @@ function closeSettings() {
   b.classList.remove("open"); d.classList.remove("open"); d.setAttribute("aria-hidden", "true");
 }
 
-function fmtBytes(n) {
-  if (n == null) return "-"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, f = n;
-  while (f >= 1024 && i < 4) { f /= 1024; i++; } return f.toFixed(1) + " " + u[i];
-}
-async function jget(u) { return (await fetch(u, { cache: "no-store" })).json(); }
-async function jpost(u, b) { return (await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) })).json(); }
 function clearlyEnglishSearch(text) {
   // Short-query language detection is unreliable, but these structural words
   // are strong English signals and prevent feeding an already-English phrase
@@ -157,19 +132,6 @@ function visualSearchExpansion(translation) {
   // photos without changing the translation shown to the user.
   return ["photo", "photos", "picture", "pictures", "image", "images"].some(word => words.has(word))
     ? translation : `${translation} photo`;
-}
-// Serialize all persistence through ONE in-flight write. A GUI write can block for
-// a few seconds waiting for the background pipeline's single SQLite writer; firing
-// several at once ties up the browser's ~6 connections with stalled POSTs and the
-// whole app hangs (reads/polling/images can't get a connection). Chaining keeps at
-// most one write occupying a connection, so reads always stay responsive. The
-// optimistic UI has already updated, so queueing the actual write is invisible.
-let _wq = Promise.resolve();
-function qpost(u, b) {
-  const run = () => jpost(u, b);
-  const p = _wq.then(run, run);      // run regardless of the previous write's outcome
-  _wq = p.catch(() => { });            // a rejection must not break the chain
-  return p;
 }
 
 /* ---------- picker ---------- */
@@ -2423,10 +2385,6 @@ function dupGroupRow(g) {
   return row;
 }
 /* ---------- faces / people ---------- */
-function esc(s) {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 async function renderFaces(m) {
   const gen = NAV, root = S.arch.id;
@@ -2479,7 +2437,7 @@ function detectStatusRow(sum, failed) {
   }
   return `<div class="d ok"><span class="dot ok"></span>All unique photos scanned.</div>`;
 }
-function setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+
 function startFacePoll() { stopPoll(); S.poll = setInterval(faceTick, 1500); faceTick(); }
 // Live refresh while a faces job runs: the stat tiles tick every poll, and
 // the people grid is *patched* (syncPeopleGrid) rather than rebuilt, so the
@@ -3347,14 +3305,7 @@ async function renamePet(id) {
 
 /* ---------- detail modal (editable: faces / place / date) ---------- */
 let MITEM = null;                 // the currently-open item, mutated in place on edit
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function fmtDate(v) {
-  if (!v) return "-";
-  const p = v.split("T")[0].split("-");
-  if (p.length === 1) return p[0];                                  // year
-  if (p.length === 2) return (MONTHS[(+p[1]) - 1] || p[1]) + " " + p[0];     // year-month
-  return v.replace("T", " ");                                     // full day/datetime
-}
+
 async function openItem(id) {
   MITEM = await jget("/api/item/" + id);
   const m = document.getElementById("mmedia");
@@ -3410,6 +3361,10 @@ function renderInfo() {
 }
 
 /* ----- faces: reassign to a named person (pinned server-side) ----- */
+// Optimistic saves: update the panel now, persist in the background, and roll back
+// only if the DB write actually fails, so editing feels instant even while the
+// pipeline holds the single writer. Every background callback bails out (or re-checks
+// stillOpen) if the modal has since closed or moved to another item.
 function faceRow(f) {
   const named = MITEM.person_options || [];
   const isNamed = f.person_id && f.name;
@@ -3422,17 +3377,7 @@ function faceRow(f) {
     <img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
     <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select></div>`;
 }
-// Optimistic saves: update the panel now, persist in the background, and roll back
-// only if the DB write actually fails, so editing feels instant even while the
-// pipeline holds the single writer. Every background callback bails out (or re-checks
-// stillOpen) if the modal has since closed or moved to another item.
-let _toastT = null;
-function toast(msg, isErr) {
-  let t = document.getElementById("toast");
-  if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
-  t.textContent = msg; t.className = "show" + (isErr ? " err" : "");
-  clearTimeout(_toastT); _toastT = setTimeout(() => { t.className = isErr ? "err" : ""; }, 2800);
-}
+
 function stillOpen(id) { return MITEM && MITEM.id === id; }
 
 function reassignFace(faceId, pid, sel) {
