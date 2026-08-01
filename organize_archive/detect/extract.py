@@ -626,6 +626,302 @@ def collapse_video_animals(entries: list[tuple], threshold: float) -> list[tuple
     return [(a, o) for a, o in kept]
 
 
+@dataclass
+class _FileResult:
+    """One decoded file's detections, shaped for persistence."""
+
+    # [(Face|AnimalDetection, frame_offset|None), ...]; offset is
+    # always None for a photo, and for a video after collapsing.
+    face_hits: list = field(default_factory=list)
+    animal_hits: list = field(default_factory=list)
+    report: object = field(default_factory=face_backend.DetectionReport)
+    human_animals: int = 0
+    suppressed_faces: int = 0
+    rotate: int = 0
+    confidence: float = 0.0
+    orient_source: str = ""
+
+
+def _fix_sideways_photo(img, scale, found, cfg, face_be, pet_be):
+    """Is this photo stored sideways?
+
+    Someone/something is here but no face resolved: that is the signature of
+    a photo whose pixels are turned. Probing costs three score-only SCRFD
+    passes and is skipped for the vast majority of images, which answer on
+    the first pass. SCRFD finding nothing at all is the signal, not the
+    cross-check's verdict: a face it did find and an animal then claimed
+    says the photo was readable, so leave it be.
+    """
+    rotate, conf, orient_src = 0, 0.0, ""
+    if face_be is not None and not found.report.faces and (found.animals or found.humans):
+        rotate, conf, orient_src = _resolve_rotation(
+            img, face_be, pet_be, cfg, found.max_subject_share, found.animal_score
+        )
+        if rotate:
+            img = rotate_image(img, rotate)
+            found = _detect_on(img, scale, cfg, face_be, pet_be)
+    return found, rotate, conf, orient_src
+
+
+def _detect_photo(path, cfg, face_be, pet_be) -> _FileResult:
+    """Decode one image and detect on it, self-correcting orientation if needed."""
+    img, scale = _load_bgr(str(path), cfg.detect_max_side)
+    found = _detect_on(img, scale, cfg, face_be, pet_be)
+    found, rotate, conf, orient_src = _fix_sideways_photo(img, scale, found, cfg, face_be, pet_be)
+    return _FileResult(
+        face_hits=[(fc, None) for fc in found.faces],
+        animal_hits=[(a, None) for a in found.animals],
+        report=found.report,
+        human_animals=found.human_animals,
+        suppressed_faces=found.suppressed_faces,
+        rotate=rotate,
+        confidence=conf,
+        orient_source=orient_src,
+    )
+
+
+def _detect_video(path, cfg, cache_dir, row, face_be, pet_be, stats, commit_if_due) -> _FileResult:
+    """Sample a video's frames, detect on each, and collapse repeats across them.
+
+    ``stats`` is updated per frame directly (not returned and added by the
+    caller), so a video that fails partway through keeps the frames it did
+    finish -- matching what the inline loop this replaces did.
+    """
+    # ffmpeg already applies the container's rotation metadata
+    # when it extracts a frame, so every sampled frame is
+    # upright by construction: there is no rotation to resolve
+    # and no `orientation` row to write for a video.
+    fid = row["id"]
+    result = _FileResult()
+    offsets = _video_offsets(row["duration_s"], cfg.detect_video_frames)
+    raw_faces, raw_animals = [], []
+    for offset in offsets:
+        frame_path = thumbnails.detect_frame_for(
+            cache_dir,
+            fid,
+            path,
+            offset,
+            cfg.detect_video_frame_px,
+            sha256=row["sha256"],
+        )
+        if frame_path is None:
+            continue  # this offset alone failed; try the rest
+        stats.video_frames += 1
+        img, scale = _load_bgr(str(frame_path), cfg.detect_max_side)
+        found = _detect_on(img, scale, cfg, face_be, pet_be)
+        result.report.candidates += found.report.candidates
+        for reason, n in found.report.rejected.items():
+            result.report.rejected[reason] = result.report.rejected.get(reason, 0) + n
+        stats.human_animals_dropped += found.human_animals
+        stats.nonhuman_suppressed += found.suppressed_faces
+        raw_faces.extend((fc, offset) for fc in found.faces)
+        raw_animals.extend((a, offset) for a in found.animals)
+        # A video costs one decode+detect PER sampled frame, so
+        # the same time-budget relief extract() applies between
+        # files is also applied between frames here -- otherwise a
+        # single multi-frame video could itself hold the writer
+        # past other connections' busy_timeout.
+        commit_if_due()
+    # Same person/animal across several frames must not become
+    # several rows -- collapse before writing.
+    result.face_hits = collapse_video_faces(raw_faces, cfg.detect_video_same_face)
+    result.animal_hits = collapse_video_animals(raw_animals, cfg.detect_video_same_animal)
+    # No frame at all (no ffmpeg, unreadable container) is a
+    # clean permanent skip, not an error: _write_scan_markers
+    # still writes them with zero counts, so this video
+    # is never retried forever.
+    return result
+
+
+def _rewrite_file_detections(conn, fid, now, result: _FileResult, pet_src, fiqa_model):
+    """Rewrite this file's detections as a unit."""
+    conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
+    conn.execute("DELETE FROM animal_detections WHERE file_id=?", (fid,))
+    conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?", (fid,))
+    conn.execute("DELETE FROM orientation WHERE file_id=?", (fid,))
+    if result.rotate:
+        conn.execute(
+            """INSERT INTO orientation
+               (file_id, rotate_deg, source, confidence, created_at)
+               VALUES (?,?,?,?,?)""",
+            (fid, result.rotate, result.orient_source, result.confidence, now),
+        )
+    for a, offset in result.animal_hits:
+        conn.execute(
+            """INSERT INTO animal_detections
+               (file_id,species,box_x,box_y,box_w,box_h,det_score,
+                embedding,model_source,frame_offset,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                fid,
+                a.species,
+                a.x,
+                a.y,
+                a.w,
+                a.h,
+                a.score,
+                a.embedding.tobytes(),
+                pet_src,
+                offset,
+                now,
+            ),
+        )
+    for fc, offset in result.face_hits:
+        conn.execute(
+            """INSERT INTO faces
+               (file_id, box_x, box_y, box_w, box_h, det_score,
+                focus_score, brightness, extreme_fraction,
+                clipped_fraction, quality_score, quality_source,
+                fiqa_norm, fiqa_score, fiqa_source, quality_tier,
+                embedding, frame_offset, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                fid,
+                fc.x,
+                fc.y,
+                fc.w,
+                fc.h,
+                fc.score,
+                fc.focus_score,
+                fc.brightness,
+                fc.extreme_fraction,
+                fc.clipped_fraction,
+                fc.quality_score,
+                fc.quality_source,
+                # getattr, like _best_face_quality above: lightweight
+                # stand-in backends (tests, third-party) yield objects
+                # without the FIQA fields, and an un-tiered face is a
+                # supported state (NULL reads as BORDERLINE downstream).
+                getattr(fc, "fiqa_norm", None),
+                getattr(fc, "fiqa_score", None),
+                fiqa_model,
+                getattr(fc, "quality_tier", None),
+                fc.embedding.tobytes(),
+                offset,
+                now,
+            ),
+        )
+
+
+def _prepare_backends(conn, cfg: Config, progress, limit, face_be, pet_be):
+    """Load whichever detectors weren't already provided, and size the run."""
+    if not available():
+        raise RuntimeError("detect backend unavailable (needs faces and/or pets)")
+    if face_be is None and pet_be is None:
+        face_be, pet_be = make_backends(
+            cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None
+        )
+        if face_be is None and pet_be is None:
+            # Both sets of weights failed to load. Stop here rather than walk the
+            # pending images and mark them scanned with nothing detected.
+            raise RuntimeError(
+                "detect backend unavailable: neither the face nor the pet models "
+                "could be loaded (see the messages above)"
+            )
+    # The FIQA assessor is attached per run rather than baked into the backend:
+    # it depends on the calibration row, which this very run may create (see
+    # _maybe_bootstrap_fiqa), and the backend is often reused across chunked runs.
+    if face_be is not None:
+        face_be.assessor = fiqa.make_assessor(conn, cfg)
+
+    total = pending_count(conn, cfg)
+    if limit is not None:
+        total = min(total, limit)
+    if progress is not None:
+        progress.total = total
+    return face_be, pet_be
+
+
+def _make_committer(conn):
+    """Build a callable that commits ``conn`` at most once every 2 seconds.
+
+    ``force=True`` commits unconditionally and resets the clock either way --
+    used once per batch, where a commit is always wanted.
+    """
+    import time as _time
+
+    last = _time.monotonic()
+
+    def commit_if_due(force: bool = False):
+        nonlocal last
+        if force or (_time.monotonic() - last) >= 2:
+            conn.commit()
+            last = _time.monotonic()
+
+    return commit_if_due
+
+
+def _write_scan_markers(conn, fid, result: _FileResult, sha256, pet_src, now):
+    # Both scan markers, always written together so the image is never
+    # reprocessed for one detector while the other's row is stale.
+    face_report = result.report
+    conn.execute(
+        """INSERT OR REPLACE INTO face_scan
+           (file_id, n_faces, n_candidates, rejected_score, rejected_size,
+            rejected_focus, rejected_exposure, rejected_clipped,
+            rejected_nonhuman, scanned_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (
+            fid,
+            len(result.face_hits),
+            face_report.candidates,
+            face_report.rejected.get("score", 0),
+            face_report.rejected.get("size", 0),
+            0,
+            0,
+            face_report.rejected.get("clipped", 0),
+            face_report.rejected.get("nonhuman", 0),
+            now,
+        ),
+    )
+    conn.execute(
+        """INSERT OR REPLACE INTO pet_scan
+           (file_id, n_animals, source_sha256, model_source, scanned_at)
+           VALUES (?,?,?,?,?)""",
+        (fid, len(result.animal_hits), sha256, pet_src, now),
+    )
+
+
+def _finish_row(stats: DetectStats, progress, result: _FileResult, path):
+    """Roll one file's outcome into the run's stats and progress reporting."""
+    n_faces = len(result.face_hits)
+    n_animals = len(result.animal_hits)
+    stats.candidates += result.report.candidates
+    stats.rejected_score += result.report.rejected.get("score", 0)
+    stats.rejected_size += result.report.rejected.get("size", 0)
+    stats.rejected_clipped += result.report.rejected.get("clipped", 0)
+    stats.rejected_nonhuman += result.report.rejected.get("nonhuman", 0)
+    stats.processed += 1
+    stats.faces_found += n_faces
+    stats.animals += n_animals
+    if n_faces:
+        stats.images_with_faces += 1
+    if n_animals:
+        stats.photos_with_animals += 1
+    if progress is not None:
+        progress.update(stats.processed, 0, path.name)
+
+
+def _maybe_bootstrap_fiqa(conn, cfg: Config, face_be, stats, progress):
+    # Once enough feature norms exist, fix the FIQA calibration and tier the
+    # backlog that was extracted before it. A no-op on every later batch
+    # (one indexed lookup), so the archive is calibrated exactly once and a
+    # face's tier never depends on which batch it happened to land in.
+    if face_be is not None:
+        before = fiqa.load_calibration(conn, cfg.faces_fiqa_model)
+        if (
+            before is None
+            and fiqa.bootstrap_calibration(
+                conn,
+                cfg,
+                log=(lambda m: progress.update(stats.processed, 0, m)) if progress else None,
+            )
+            is not None
+        ):
+            conn.commit()
+            face_be.assessor = fiqa.make_assessor(conn, cfg)
+
+
 def extract(
     conn,
     cfg: Config,
@@ -653,36 +949,11 @@ def extract(
     """
     cache_dir = cache_dir if cache_dir is not None else cfg.cache_dir
     stats = DetectStats()
-    if not available():
-        raise RuntimeError("detect backend unavailable (needs faces and/or pets)")
-    if face_be is None and pet_be is None:
-        face_be, pet_be = make_backends(
-            cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None
-        )
-        if face_be is None and pet_be is None:
-            # Both sets of weights failed to load. Stop here rather than walk the
-            # pending images and mark them scanned with nothing detected.
-            raise RuntimeError(
-                "detect backend unavailable: neither the face nor the pet models "
-                "could be loaded (see the messages above)"
-            )
-
-    total = pending_count(conn, cfg)
-    if limit is not None:
-        total = min(total, limit)
-    if progress is not None:
-        progress.total = total
-
+    face_be, pet_be = _prepare_backends(conn, cfg, progress, limit, face_be, pet_be)
     now = db.now_iso()
     pet_src = pet_scan_source(cfg)
-    # The FIQA assessor is attached per run rather than baked into the backend:
-    # it depends on the calibration row, which this very run may create (see the
-    # bootstrap below), and the backend is often reused across chunked runs.
-    if face_be is not None:
-        face_be.assessor = fiqa.make_assessor(conn, cfg)
-    import time as _time
+    commit_if_due = _make_committer(conn)
 
-    _last_commit = _time.monotonic()
     while True:
         remaining = None if limit is None else max(0, limit - stats.processed)
         if remaining == 0:
@@ -690,170 +961,25 @@ def extract(
         rows = _pending(conn, cfg, batch_size if remaining is None else min(batch_size, remaining))
         if not rows:
             break
-
         for row in rows:
             fid = row["id"]
             path = Path(row["root_path"]) / row["rel_path"]
             is_video = row["media_type"] == "video"
-            n_faces = n_animals = 0
-            rotate, conf, orient_src = 0, 0.0, ""
-            face_report = face_backend.DetectionReport()
-            # [(Face|AnimalDetection, frame_offset|None), ...]; offset is
-            # always None for a photo, and for a video after collapsing.
-            face_hits: list[tuple] = []
-            animal_hits: list[tuple] = []
+            result = _FileResult()
             try:
                 if is_video:
                     stats.videos += 1
-                    # ffmpeg already applies the container's rotation metadata
-                    # when it extracts a frame, so every sampled frame is
-                    # upright by construction: there is no rotation to resolve
-                    # and no `orientation` row to write for a video.
-                    offsets = _video_offsets(row["duration_s"], cfg.detect_video_frames)
-                    raw_faces, raw_animals = [], []
-                    for offset in offsets:
-                        frame_path = thumbnails.detect_frame_for(
-                            cache_dir,
-                            fid,
-                            path,
-                            offset,
-                            cfg.detect_video_frame_px,
-                            sha256=row["sha256"],
-                        )
-                        if frame_path is None:
-                            continue  # this offset alone failed; try the rest
-                        stats.video_frames += 1
-                        img, scale = _load_bgr(str(frame_path), cfg.detect_max_side)
-                        found = _detect_on(img, scale, cfg, face_be, pet_be)
-                        face_report.candidates += found.report.candidates
-                        for reason, n in found.report.rejected.items():
-                            face_report.rejected[reason] = face_report.rejected.get(reason, 0) + n
-                        stats.human_animals_dropped += found.human_animals
-                        stats.nonhuman_suppressed += found.suppressed_faces
-                        raw_faces.extend((fc, offset) for fc in found.faces)
-                        raw_animals.extend((a, offset) for a in found.animals)
-                        # A video costs one decode+detect PER sampled frame, so
-                        # the same time-budget relief used between files (below)
-                        # is also applied between frames here -- otherwise a
-                        # single multi-frame video could itself hold the writer
-                        # past other connections' busy_timeout.
-                        if (_time.monotonic() - _last_commit) >= 2:
-                            conn.commit()
-                            _last_commit = _time.monotonic()
-                    # Same person/animal across several frames must not become
-                    # several rows -- collapse before writing.
-                    face_hits = collapse_video_faces(raw_faces, cfg.detect_video_same_face)
-                    animal_hits = collapse_video_animals(raw_animals, cfg.detect_video_same_animal)
-                    # No frame at all (no ffmpeg, unreadable container) is a
-                    # clean permanent skip, not an error: the scan markers
-                    # below still get written with zero counts, so this video
-                    # is never retried forever.
+                    result = _detect_video(
+                        path, cfg, cache_dir, row, face_be, pet_be, stats, commit_if_due
+                    )
                 else:
-                    img, scale = _load_bgr(str(path), cfg.detect_max_side)
-                    found = _detect_on(img, scale, cfg, face_be, pet_be)
-
-                    # -- is this photo stored sideways? ----------------------
-                    # Someone/something is here but no face resolved: that is
-                    # the signature of a photo whose pixels are turned. Probing
-                    # costs three score-only SCRFD passes and is skipped for
-                    # the vast majority of images, which answer on the first
-                    # pass. SCRFD finding nothing at all is the signal, not the
-                    # cross-check's verdict: a face it did find and an animal
-                    # then claimed says the photo was readable, so leave it be.
-                    if (
-                        face_be is not None
-                        and not found.report.faces
-                        and (found.animals or found.humans)
-                    ):
-                        rotate, conf, orient_src = _resolve_rotation(
-                            img, face_be, pet_be, cfg, found.max_subject_share, found.animal_score
-                        )
-                        if rotate:
-                            img = rotate_image(img, rotate)
-                            found = _detect_on(img, scale, cfg, face_be, pet_be)
-                            stats.rotated += 1
-
-                    face_report = found.report
-                    stats.human_animals_dropped += found.human_animals
-                    stats.nonhuman_suppressed += found.suppressed_faces
-                    face_hits = [(fc, None) for fc in found.faces]
-                    animal_hits = [(a, None) for a in found.animals]
-
-                # -- rewrite this file's detections as a unit ----------------
-                conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
-                conn.execute("DELETE FROM animal_detections WHERE file_id=?", (fid,))
-                conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?", (fid,))
-                conn.execute("DELETE FROM orientation WHERE file_id=?", (fid,))
-                if rotate:
-                    conn.execute(
-                        """INSERT INTO orientation
-                           (file_id, rotate_deg, source, confidence, created_at)
-                           VALUES (?,?,?,?,?)""",
-                        (fid, rotate, orient_src, conf, now),
-                    )
-                for a, offset in animal_hits:
-                    conn.execute(
-                        """INSERT INTO animal_detections
-                           (file_id,species,box_x,box_y,box_w,box_h,det_score,
-                            embedding,model_source,frame_offset,created_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                        (
-                            fid,
-                            a.species,
-                            a.x,
-                            a.y,
-                            a.w,
-                            a.h,
-                            a.score,
-                            a.embedding.tobytes(),
-                            pet_src,
-                            offset,
-                            now,
-                        ),
-                    )
-                for fc, offset in face_hits:
-                    conn.execute(
-                        """INSERT INTO faces
-                           (file_id, box_x, box_y, box_w, box_h, det_score,
-                            focus_score, brightness, extreme_fraction,
-                            clipped_fraction, quality_score, quality_source,
-                            fiqa_norm, fiqa_score, fiqa_source, quality_tier,
-                            embedding, frame_offset, created_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (
-                            fid,
-                            fc.x,
-                            fc.y,
-                            fc.w,
-                            fc.h,
-                            fc.score,
-                            fc.focus_score,
-                            fc.brightness,
-                            fc.extreme_fraction,
-                            fc.clipped_fraction,
-                            fc.quality_score,
-                            fc.quality_source,
-                            # getattr, like _best_face_quality above: lightweight
-                            # stand-in backends (tests, third-party) yield objects
-                            # without the FIQA fields, and an un-tiered face is a
-                            # supported state (NULL reads as BORDERLINE downstream).
-                            getattr(fc, "fiqa_norm", None),
-                            getattr(fc, "fiqa_score", None),
-                            getattr(getattr(face_be, "assessor", None), "model", None),
-                            getattr(fc, "quality_tier", None),
-                            fc.embedding.tobytes(),
-                            offset,
-                            now,
-                        ),
-                    )
-
-                n_faces = len(face_hits)
-                n_animals = len(animal_hits)
-                stats.candidates += face_report.candidates
-                stats.rejected_score += face_report.rejected.get("score", 0)
-                stats.rejected_size += face_report.rejected.get("size", 0)
-                stats.rejected_clipped += face_report.rejected.get("clipped", 0)
-                stats.rejected_nonhuman += face_report.rejected.get("nonhuman", 0)
+                    result = _detect_photo(path, cfg, face_be, pet_be)
+                    if result.rotate:
+                        stats.rotated += 1
+                    stats.human_animals_dropped += result.human_animals
+                    stats.nonhuman_suppressed += result.suppressed_faces
+                fiqa_model = getattr(getattr(face_be, "assessor", None), "model", None)
+                _rewrite_file_detections(conn, fid, now, result, pet_src, fiqa_model)
             except Exception as e:  # bad/corrupt file, unreadable, etc.
                 stats.errors += 1
                 if len(stats.error_samples) < 5:
@@ -861,45 +987,16 @@ def extract(
                 # No exc_info: ~150k files means a traceback per bad file would
                 # flood the log until rotation discards everything useful.
                 logger.warning("detection failed for %s: %s", path.name, e)
-
-            # Both scan markers, always written together so the image is never
-            # reprocessed for one detector while the other's row is stale.
-            conn.execute(
-                """INSERT OR REPLACE INTO face_scan
-                   (file_id, n_faces, n_candidates, rejected_score, rejected_size,
-                    rejected_focus, rejected_exposure, rejected_clipped,
-                    rejected_nonhuman, scanned_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    fid,
-                    n_faces,
-                    face_report.candidates,
-                    face_report.rejected.get("score", 0),
-                    face_report.rejected.get("size", 0),
-                    0,
-                    0,
-                    face_report.rejected.get("clipped", 0),
-                    face_report.rejected.get("nonhuman", 0),
-                    now,
-                ),
-            )
-            conn.execute(
-                """INSERT OR REPLACE INTO pet_scan
-                   (file_id, n_animals, source_sha256, model_source, scanned_at)
-                   VALUES (?,?,?,?,?)""",
-                (fid, n_animals, row["sha256"], pet_src, now),
-            )
-
-            stats.processed += 1
-            stats.faces_found += n_faces
-            stats.animals += n_animals
-            if n_faces:
-                stats.images_with_faces += 1
-            if n_animals:
-                stats.photos_with_animals += 1
-            if progress is not None:
-                progress.update(stats.processed, 0, path.name)
-
+                # Back to zero, because the scan markers below are written
+                # whether or not this file succeeded. Before this function was
+                # broken into steps, the counts they record were assigned at the
+                # very end of the rewrite block, so a rewrite that failed partway
+                # left them at zero -- keep that. Reporting the detected counts
+                # for a file whose rows only partly landed would claim faces the
+                # catalog does not have.
+                result = _FileResult()
+            _write_scan_markers(conn, fid, result, row["sha256"], pet_src, now)
+            _finish_row(stats, progress, result, path)
             # Flush to DB by time, not by batch size: a full 32-image batch is
             # a full SCRFD+YOLOX decode plus up to three extra YOLOX passes
             # each, which can hold the single writer well past the 30s
@@ -907,29 +1004,8 @@ def extract(
             # HTTP handler writes) wait on -- surfacing as a spurious
             # "database is locked". This also cuts worst-case work lost on a
             # kill from a full batch to about 2 seconds.
-            if (_time.monotonic() - _last_commit) >= 2:
-                conn.commit()
-                _last_commit = _time.monotonic()
-
-        conn.commit()
-        _last_commit = _time.monotonic()
-
-        # Once enough feature norms exist, fix the FIQA calibration and tier the
-        # backlog that was extracted before it. A no-op on every later batch
-        # (one indexed lookup), so the archive is calibrated exactly once and a
-        # face's tier never depends on which batch it happened to land in.
-        if face_be is not None:
-            before = fiqa.load_calibration(conn, cfg.faces_fiqa_model)
-            if (
-                before is None
-                and fiqa.bootstrap_calibration(
-                    conn,
-                    cfg,
-                    log=(lambda m: progress.update(stats.processed, 0, m)) if progress else None,
-                )
-                is not None
-            ):
-                conn.commit()
-                face_be.assessor = fiqa.make_assessor(conn, cfg)
+            commit_if_due()
+        commit_if_due(force=True)
+        _maybe_bootstrap_fiqa(conn, cfg, face_be, stats, progress)
 
     return stats
