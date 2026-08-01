@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from ...pipeline import stages
 from ...services import archives
-from .. import pipeline
 from ._request import Json, Request
 
 
@@ -16,7 +16,7 @@ def snapshot(req: Request) -> dict | Json:
     arch = next((a for a in archives.archives(req.cfg) if a["id"] == rid), None)
     if arch is None:
         return Json({"error": "unknown archive"}, 404)
-    return pipeline.snapshot(req.cfg, req.jobs, rid, arch["path"])
+    return stages.snapshot(req.cfg, req.jobs, rid, arch["path"])
 
 
 def pause(req: Request) -> dict | Json:
@@ -28,7 +28,7 @@ def pause(req: Request) -> dict | Json:
     stage = req.body.get("stage")
     if not isinstance(paused, bool):
         return Json({"error": "paused (bool) is required"}, 400)
-    if stage is not None and stage not in pipeline.CARD_ORDER:
+    if stage is not None and stage not in stages.CARD_ORDER:
         return Json({"error": f"unknown stage: {stage}"}, 400)
     if stage is None:
         req.jobs.set_paused(paused)

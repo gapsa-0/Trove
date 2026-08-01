@@ -238,7 +238,7 @@ def default_threads() -> int:
     """One core fewer than the machine has.
 
     Every other backend here uses the full ``os.cpu_count()``, which is wrong for
-    this stage: semantic indexing is a PARALLEL_KINDS member (web/pipeline.py) and
+    this stage: semantic indexing is a PARALLEL_KINDS member (pipeline/stages.py) and
     runs *concurrently* with scan and enrich for several hours. Leaving a core
     free is the difference between a background job and an unusable machine.
     """

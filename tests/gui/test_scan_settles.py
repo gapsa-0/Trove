@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
+from organize_archive.pipeline import stages as stages_mod
 from organize_archive.web import jobs as jobs_mod
-from organize_archive.web import pipeline as pipeline_mod
 
 
 class _Stats:
@@ -47,7 +47,7 @@ def _scan_pending(jm, tmp_path, on_disk):
         return on_disk
 
     jm.disk_count = monkey
-    states = pipeline_mod.stage_states(jm.cfg, jm, 1, "/media")
+    states = stages_mod.stage_states(jm.cfg, jm, 1, "/media")
     return next(s for s in states if s["kind"] == "scan")
 
 

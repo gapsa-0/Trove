@@ -132,7 +132,7 @@ TILE_HOSTS = ["*tile.openstreetmap.org*", "*basemaps.cartocdn.com*"]
 # The grid/thumbnail-heavy rows (people, pets, person, pet, and settings --
 # which renders on top of the overview route) carry extra margin on top of
 # what a quiet archive would need: on a real archive the background pipeline
-# (detect/semantic -- see web/pipeline.py) runs concurrently and competes for
+# (detect/semantic -- see pipeline/stages.py) runs concurrently and competes for
 # CPU with thumbnail generation, so on a busy archive these can still show a
 # "Loading..." placeholder at 3s where 5-6s is clean. Pause the pipeline
 # (Overview -> "Pause all") before a before/after run for the least noise.

@@ -476,12 +476,12 @@ class JobManager:
         """Pause/resume ONE stage card, leaving every other stage running.
 
         Same mechanism as the whole-pipeline pause, scoped to the kinds that
-        card represents (``pipeline.kinds_of``): the in-memory set gates the
+        card represents (``stages.kinds_of``): the in-memory set gates the
         scheduler and is authoritative even if persisting it fails, and pausing
         cancels that stage's running job at its next batch checkpoint so the
         CPU actually frees up instead of only the *next* run being skipped.
         """
-        from . import pipeline
+        from ..pipeline import stages
 
         if value:
             self._paused_stages.add(card)
@@ -495,7 +495,7 @@ class JobManager:
             # Same reasoning as set_paused: honoured now, forgotten on restart.
             logger.warning("could not persist the paused-stage set", exc_info=True)
         if value:
-            self._cancel_running(pipeline.kinds_of(card))
+            self._cancel_running(stages.kinds_of(card))
         else:
             self.nudge()
 
@@ -548,8 +548,8 @@ class JobManager:
         if self._paused:
             logger.debug("tick: skipped, pipeline is paused")
             return False
+        from ..pipeline import stages
         from ..services import archives
-        from . import pipeline
 
         open_root_id = self._open_root_id
         if open_root_id is None:
@@ -563,12 +563,10 @@ class JobManager:
             logger.debug("tick: skipped, archive root=%s is missing or unregistered", open_root_id)
             return False
 
-        states = pipeline.stage_states(
-            self.cfg, self, open_root_id, archive["path"], allow_walk=True
-        )
+        states = stages.stage_states(self.cfg, self, open_root_id, archive["path"], allow_walk=True)
         stalled = self._stalled_kinds(states)
         lock_running = any(
-            s["kind"] in pipeline.LOCK_KINDS and s["state"] == "running" for s in states
+            s["kind"] in stages.LOCK_KINDS and s["state"] == "running" for s in states
         )
         acted = False
         started_lock = False
@@ -578,11 +576,11 @@ class JobManager:
                 continue
             # A stage the user paused on its own is simply never started; its
             # siblings are untouched, which is the whole point of #32.
-            if self.stage_paused(pipeline.card_of(kind)):
+            if self.stage_paused(stages.card_of(kind)):
                 continue
             if state == "error" and not self._error_ready(open_root_id, kind):
                 continue
-            if kind in pipeline.PARALLEL_KINDS:
+            if kind in stages.PARALLEL_KINDS:
                 if self.active_kind(kind):
                     continue
             else:  # single-writer stage: at most one at a time
@@ -590,13 +588,13 @@ class JobManager:
                     continue
             # Scanning or enriching may change the file set, so a fresh duplicate
             # rebuild is owed once they finish.
-            if kind in (pipeline.SCAN, pipeline.ENRICH):
+            if kind in (stages.SCAN, stages.ENRICH):
                 self._mark_dedup_owed(open_root_id)
             # dedup/places operate per-root via root_id and ignore root_path.
-            path = None if kind in (pipeline.DEDUP, pipeline.PLACES) else archive["path"]
+            path = None if kind in (stages.DEDUP, stages.PLACES) else archive["path"]
             if "error" not in self.start(kind, open_root_id, path):
                 acted = True
-                if kind in pipeline.LOCK_KINDS:
+                if kind in stages.LOCK_KINDS:
                     started_lock = True
         # Keep polling promptly while anything is running or waiting to run.
         # Work held back by a per-stage pause does not count -- neither the
@@ -626,16 +624,16 @@ class JobManager:
         """Which stages cannot progress because of a per-stage pause: the paused
         ones, plus everything waiting on a stage that is itself stalled.
 
-        ``states`` is in dependency order (pipeline.STAGES), so one forward pass
+        ``states`` is in dependency order (stages.STAGES), so one forward pass
         propagates the whole chain -- pausing Deduplication also stops the map,
         detection and semantic stages that queue behind it.
         """
-        from . import pipeline
+        from ..pipeline import stages
 
         stalled: dict[str, bool] = {}
         for s in states:
             blocker = s["blocker"]
-            stalled[s["kind"]] = self.stage_paused(pipeline.card_of(s["kind"])) or bool(
+            stalled[s["kind"]] = self.stage_paused(stages.card_of(s["kind"])) or bool(
                 blocker and stalled.get(blocker)
             )
         return stalled

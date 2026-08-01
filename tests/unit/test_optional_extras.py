@@ -146,18 +146,16 @@ def test_the_pipeline_still_offers_every_stage_that_needs_no_extras(monkeypatch,
     deduplicating and placing an archive are the product's spine, and they run
     on the standard library. Only the two model-backed stages drop out.
     """
-    from organize_archive.web import pipeline
+    from organize_archive.pipeline import stages
 
     monkeypatch.setattr("organize_archive.detect.extract.available", lambda: False)
     monkeypatch.setattr("organize_archive.services.semantic.available", lambda: False)
 
-    avail = pipeline._availability(Config(db_path=str(tmp_path / "archive.db")))
+    avail = stages._availability(Config(db_path=str(tmp_path / "archive.db")))
 
-    assert avail[pipeline.DETECT] is False
-    assert avail[pipeline.SEMANTIC] is False
-    assert all(
-        avail[stage] for stage in (pipeline.SCAN, pipeline.ENRICH, pipeline.DEDUP, pipeline.PLACES)
-    )
+    assert avail[stages.DETECT] is False
+    assert avail[stages.SEMANTIC] is False
+    assert all(avail[stage] for stage in (stages.SCAN, stages.ENRICH, stages.DEDUP, stages.PLACES))
 
 
 def test_availability_is_decided_without_touching_the_disk(tmp_path):
