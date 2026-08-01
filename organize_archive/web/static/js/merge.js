@@ -4,6 +4,9 @@
 // three entity types it is working on beyond the label it was handed.
 
 import {
+  showPerson,
+} from "./people.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -16,7 +19,7 @@ import {
   S,
 } from "./state.js";
 import {
-  showPerson, showPet,
+  showPet,
 } from "./main.js";
 
 /* ---------- drag-to-merge (People, Pets & Places grids) ----------
