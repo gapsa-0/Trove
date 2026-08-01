@@ -25,7 +25,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from . import archives, browse, dups, overview, people, pets, pipeline, places, search, static
+from . import (
+    archives,
+    browse,
+    dups,
+    media,
+    overview,
+    people,
+    pets,
+    pipeline,
+    places,
+    search,
+    static,
+)
 from ._request import NOT_FOUND, FileBody, Json, Raw, Request, ok_or_error
 
 __all__ = [
@@ -82,6 +94,11 @@ GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
     ("/api/pet/", pets.group),
     ("/icon-", static.icon),
     ("/vendor/", static.vendor),
+    ("/archivethumb/", media.archive_thumb),
+    ("/thumb/", media.thumb),
+    ("/faceThumb/", media.face_thumb),
+    ("/animalThumb/", media.animal_thumb),
+    ("/file/", media.original),
 )
 
 POST_ROUTES: dict[str, Handler] = {}

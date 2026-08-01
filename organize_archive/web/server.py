@@ -15,7 +15,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
 from ..services import archives, browse, people, pets, places
@@ -153,44 +152,14 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- GET --------------------------------------------------------------
     def do_GET(self):
-        u = urlparse(self.path)
-        path, q = u.path, parse_qs(u.query)
-
-        def one(k, cast=str, default=None):
-            v = q.get(k, [None])[0]
-            return cast(v) if v not in (None, "") else default
-
-        def many(k, cast=int):
-            """Read repeatable or comma-separated query values, preserving order."""
-            out = []
-            for value in q.get(k, []):
-                for part in value.split(","):
-                    if part and (item := cast(part)) not in out:
-                        out.append(item)
-            return out
-
         try:
-            handler = routes.GET_ROUTES.get(path) or routes.prefix_handler(
-                routes.GET_PREFIX_ROUTES, path
+            req = self._build_request("GET", {})
+            handler = routes.GET_ROUTES.get(req.path) or routes.prefix_handler(
+                routes.GET_PREFIX_ROUTES, req.path
             )
-            if handler is not None:
-                self._respond(handler(self._build_request("GET", {})))
-            elif path.startswith("/archivethumb/"):
-                parts = path.split("/")  # ['', 'archivethumb', root_id, file_id]
-                if len(parts) == 4 and parts[2].isdigit() and parts[3].isdigit():
-                    self._serve_archive_thumb(int(parts[2]), int(parts[3]))
-                else:
-                    self._json({"error": "not found"}, 404)
-            elif path.startswith("/thumb/"):
-                self._serve_thumb(int(path.rsplit("/", 1)[1]))
-            elif path.startswith("/faceThumb/"):
-                self._serve_face_thumb(int(path.rsplit("/", 1)[1]))
-            elif path.startswith("/animalThumb/"):
-                self._serve_animal_thumb(int(path.rsplit("/", 1)[1]))
-            elif path.startswith("/file/"):
-                self._serve_original(int(path.rsplit("/", 1)[1]))
-            else:
-                self._json({"error": "not found"}, 404)
+            if handler is None:
+                return self._json({"error": "not found"}, 404)
+            self._respond(handler(req))
         except (ValueError, BrokenPipeError):
             pass
         except Exception as e:
@@ -476,95 +445,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.exception("unhandled error serving %s %s", self.command, self.path)
             self._json({"error": str(e)}, 500)
-
-    # -- media serving ----------------------------------------------------
-    # Thumbnails and originals are requested by bare id with no ``root``
-    # (the frontend never sends one for these), so they resolve against
-    # whichever single archive is currently open, the GUI never browses two
-    # archives' content at once.
-    def _open_db_and_cache(self):
-        rid = self.jobs.current_root_id()
-        if rid is None:
-            return None, None
-        return self._db(rid), self._cache(rid)
-
-    def _serve_thumb(self, fid: int):
-        db_path, cache_dir = self._open_db_and_cache()
-        info = browse.media_source(db_path, fid) if db_path else None
-        if info is None:
-            return self._json({"error": "not found"}, 404)
-        src, sha256, rotate = info
-        tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
-        self._send_file(tp if tp else src)
-
-    def _serve_archive_thumb(self, root_id: int, fid: int):
-        # Root-scoped thumbnail for the start-page cover mosaic: the picker shows
-        # several archives at once with none "open", so the id alone (as /thumb/
-        # uses) is not enough, the archive is named explicitly here.
-        if self.cfg.archive_path(root_id) is None:
-            return self._json({"error": "not found"}, 404)
-        db_path, cache_dir = self._db(root_id), self._cache(root_id)
-        info = browse.media_source(db_path, fid)
-        if info is None:
-            return self._json({"error": "not found"}, 404)
-        src, sha256, rotate = info
-        tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
-        self._send_file(tp if tp else src)
-
-    def _serve_face_thumb(self, face_id: int):
-        db_path, cache_dir = self._open_db_and_cache()
-        info = people.face_crop_source(db_path, face_id) if db_path else None
-        if info is None:
-            return self._json({"error": "not found"}, 404)
-        src, sha256, box, rotate, frame_offset, _media_type, file_id = info
-        if frame_offset is not None:
-            # A video detection's box was measured in the extracted keyframe,
-            # already upright (ffmpeg applies container rotation), so the
-            # crop is cut from that same re-derived frame, not the video file
-            # itself, and never rotated again.
-            frame = thumbnails.detect_frame_for(
-                cache_dir, file_id, src, frame_offset, self.cfg.detect_video_frame_px, sha256=sha256
-            )
-            if frame is None:
-                return self._json({"error": "frame unavailable"}, 404)
-            tp = thumbnails.face_thumb_for(
-                cache_dir, face_id, frame, box, sha256=sha256, rotate=0, variant=frame_offset
-            )
-            return self._send_file(tp if tp else frame)
-        tp = thumbnails.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256, rotate=rotate)
-        self._send_file(tp if tp else src)
-
-    def _serve_animal_thumb(self, detection_id: int):
-        db_path, cache_dir = self._open_db_and_cache()
-        info = pets.animal_crop_source(db_path, detection_id) if db_path else None
-        if info is None:
-            return self._json({"error": "not found"}, 404)
-        src, sha256, box, rotate, frame_offset, _media_type, file_id = info
-        if frame_offset is not None:
-            frame = thumbnails.detect_frame_for(
-                cache_dir, file_id, src, frame_offset, self.cfg.detect_video_frame_px, sha256=sha256
-            )
-            if frame is None:
-                return self._json({"error": "frame unavailable"}, 404)
-            tp = thumbnails.face_thumb_for(
-                cache_dir, detection_id, frame, box, sha256=sha256, rotate=0, variant=frame_offset
-            )
-            return self._send_file(tp if tp else frame)
-        tp = thumbnails.face_thumb_for(
-            cache_dir, detection_id, src, box, sha256=sha256, rotate=rotate
-        )
-        self._send_file(tp if tp else src)
-
-    def _serve_original(self, fid: int):
-        db_path, cache_dir = self._open_db_and_cache()
-        info = browse.media_source(db_path, fid) if db_path else None
-        if info is None:
-            return self._json({"error": "not found"}, 404)
-        src, sha256, rotate = info
-        # A photo stored sideways is served from an upright re-encode; every
-        # other file is served as its own untouched bytes.
-        up = thumbnails.upright_for(cache_dir, fid, src, rotate, sha256=sha256)
-        self._send_file(up if up else src)
 
 
 def serve(cfg: Config, host="127.0.0.1", port=8756):
