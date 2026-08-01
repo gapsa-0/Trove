@@ -6,16 +6,18 @@ touches the SQLite writer at a time (reads via the GUI stay concurrent).
 
 Threading contract
 ------------------
-This is the only module in the package that knows about threads, and these are
-the rules it keeps. They were true before they were written down; the point of
-writing them down is that the next change to this file can be checked against
+This module and ``scheduler.py`` are the only two that know about threads --
+this one owns the workers, that one owns the single polling thread -- and these
+are the rules they keep. They were true before they were written down; the
+point of writing them down is that the next change here can be checked against
 them.
 
 **Threads.** Three kinds touch a ``JobManager``: the HTTP threads (many, one
-per request), the scheduler thread (exactly one, started in ``__init__`` and
-stopped by ``shutdown``), and one worker thread per running job.
+per request), the scheduler thread (exactly one, created by the ``Scheduler``
+this manager constructs and stopped by ``shutdown``), and one worker thread per
+running job.
 
-**Who may start a job.** Only the scheduler thread, from ``_auto_tick``. An
+**Who may start a job.** Only the scheduler thread, from ``scheduler.tick()``. An
 HTTP thread that wants work to begin calls ``nudge()``, which sets an event and
 returns; it never starts a job itself. Two mutations do call ``start()``
 directly (a re-cluster after an unmerge), and those are the exception that
@@ -58,6 +60,7 @@ from ..config import Config
 from ..db import database as db
 from .job import Job, JobContext, Runner
 from .runners import RUNNERS
+from .scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -67,33 +70,11 @@ logger = logging.getLogger(__name__)
 __all__ = ["Job", "JobManager"]
 
 
-def _state_note(stage: dict) -> str:
-    """``running(1234/4213)`` for a stage with a live job, else just its state.
-
-    The counts are what make a repeated tick line useful: two ticks showing the
-    same state but a rising count mean progress, and the same count twice means
-    the stage is genuinely stuck -- which is the question the log exists to
-    answer and the one the state alone cannot.
-    """
-    progress = stage.get("progress") or {}
-    total = progress.get("total")
-    if stage["state"] == "running" and total:
-        return f"running({progress.get('done', 0)}/{total})"
-    return str(stage["state"])
-
-
 class JobManager:
-    # Idle poll interval backs off (up to _AUTO_MAX) when a tick finds nothing
-    # to do, so a quiet archive doesn't get walked every few seconds forever.
-    _AUTO_MIN = 10
-    _AUTO_MAX = 300
     # Freshness disk walk is reused for this long before re-walking (see
-    # _walk_cache). Comfortably below the idle backoff so an idle tick still
-    # re-walks and notices files added to the source folder.
+    # _walk_cache). Comfortably below the scheduler's idle backoff so an idle
+    # tick still re-walks and notices files added to the source folder.
     _WALK_TTL = 60.0
-    # After a job of some kind errors, wait this long before auto-restarting the
-    # same kind, so a persistent failure backs off instead of spinning.
-    _ERROR_COOLDOWN = 120.0
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -130,16 +111,14 @@ class JobManager:
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
-        self._auto_interval = self._AUTO_MIN
-        self._wake = threading.Event()
-        self._stopping = threading.Event()
-        self._scheduler = threading.Thread(target=self._auto_loop, daemon=True)
-        self._scheduler.start()
+        # Public, because it is a collaborator rather than an implementation
+        # detail: tests drive tick() by hand instead of waiting on the timer.
+        self.scheduler = Scheduler(self)
+        self.scheduler.start()
 
     def shutdown(self, timeout: float = 8.0) -> bool:
         """Cancel all work and stop the scheduler before the HTTP server exits."""
-        self._stopping.set()
-        self._wake.set()
+        self.scheduler.stop()
         with self._lock:
             # Set every cancel directly rather than going through
             # _cancel_running: on the way out, jobs of every kind and root stop.
@@ -156,7 +135,7 @@ class JobManager:
             with self._lock:
                 active = any(job.status == "running" for job in self._jobs.values())
             if not active:
-                self._scheduler.join(timeout=max(0, deadline - time.monotonic()))
+                self.scheduler.join(timeout=max(0, deadline - time.monotonic()))
                 logger.info("shutdown complete; no job left running")
                 return True
             time.sleep(0.05)
@@ -220,7 +199,7 @@ class JobManager:
     def _refresh_disk_count(self, root_id: int, root_path: str) -> None:
         """Re-walk this root off the caller's thread, one walk at a time."""
         with self._lock:
-            if root_id in self._walking or self._stopping.is_set():
+            if root_id in self._walking or self.scheduler.stopping():
                 return
             self._walking.add(root_id)
 
@@ -302,11 +281,6 @@ class JobManager:
     def stage_paused(self, card: str) -> bool:
         return card in self._paused_stages
 
-    def _error_ready(self, root_id: int, kind: str) -> bool:
-        """True once a kind's post-error cooldown has elapsed (or none is set)."""
-        at = self._error_at.get((root_id, kind))
-        return at is None or (time.monotonic() - at) >= self._ERROR_COOLDOWN
-
     def stop_archive(self, root_id: int, timeout: float = 10.0) -> bool:
         """Cancel this archive's work and wait briefly for safe DB quiescence.
 
@@ -345,7 +319,7 @@ class JobManager:
         root_path: str | None = None,
         force: bool = False,
     ) -> dict:
-        if self._stopping.is_set():
+        if self.scheduler.stopping():
             return {"error": "application is shutting down"}
         # All GUI jobs belong to the archive currently on screen.  This also
         # closes the small race where the user switches archives between a
@@ -495,132 +469,12 @@ class JobManager:
                     self._cancels[jid].set()
 
     def nudge(self):
-        """Wake the scheduler now after an archive has been opened."""
-        self._auto_interval = self._AUTO_MIN
-        self._wake.set()
+        """Wake the scheduler now after an archive has been opened.
 
-    def _auto_loop(self):
-        while not self._stopping.is_set():
-            self._wake.wait(self._auto_interval)
-            self._wake.clear()
-            if self._stopping.is_set():
-                break
-            try:
-                acted = self._auto_tick()
-            except Exception:
-                # The scheduler thread must outlive any single bad tick, so this
-                # stays broad -- but an unlogged one made the whole pipeline look
-                # merely idle.
-                logger.exception("scheduler tick failed")
-                acted = False
-            self._auto_interval = (
-                self._AUTO_MIN if acted else min(self._auto_interval * 1.5, self._AUTO_MAX)
-            )
-
-    def _auto_tick(self) -> bool:
-        """One scheduling decision, driven entirely by the same pipeline snapshot
-        the GUI renders. Starts every stage that is ready to run and returns True
-        while any work is outstanding, so the loop keeps the fast interval until
-        the pipeline is fully idle.
-
-        Readiness (deps satisfied, backend available, not already running) is
-        already resolved in the snapshot: a stage is ``queued`` exactly when it
-        should start now. Parallel kinds (scan ∥ enrich ∥ semantic) start
-        together; the DB-writer stages (dedup → places/pets → faces) start one at
-        a time, matching the single write lock.
-        """
-        if self._paused:
-            logger.debug("tick: skipped, pipeline is paused")
-            return False
-        from ..services import archives
-        from . import stages
-
-        open_root_id = self._open_root_id
-        if open_root_id is None:
-            logger.debug("tick: skipped, no archive is open")
-            return False
-        archive = next(
-            (a for a in archives.archives(self.cfg) if a["id"] == open_root_id and a["exists"]),
-            None,
-        )
-        if not archive:
-            logger.debug("tick: skipped, archive root=%s is missing or unregistered", open_root_id)
-            return False
-
-        states = stages.stage_states(self.cfg, self, open_root_id, archive["path"], allow_walk=True)
-        stalled = self._stalled_kinds(states)
-        lock_running = any(
-            s["kind"] in stages.LOCK_KINDS and s["state"] == "running" for s in states
-        )
-        acted = False
-        started_lock = False
-        for s in states:
-            kind, state = s["kind"], s["state"]
-            if state not in ("queued", "error"):
-                continue
-            # A stage the user paused on its own is simply never started; its
-            # siblings are untouched, which is the whole point of #32.
-            if self.stage_paused(stages.card_of(kind)):
-                continue
-            if state == "error" and not self._error_ready(open_root_id, kind):
-                continue
-            if kind in stages.PARALLEL_KINDS:
-                if self.active_kind(kind):
-                    continue
-            else:  # single-writer stage: at most one at a time
-                if lock_running or started_lock:
-                    continue
-            # Scanning or enriching may change the file set, so a fresh duplicate
-            # rebuild is owed once they finish.
-            if kind in (stages.SCAN, stages.ENRICH):
-                self._mark_dedup_owed(open_root_id)
-            # dedup/places operate per-root via root_id and ignore root_path.
-            path = None if kind in (stages.DEDUP, stages.PLACES) else archive["path"]
-            if "error" not in self.start(kind, open_root_id, path):
-                acted = True
-                if kind in stages.LOCK_KINDS:
-                    started_lock = True
-        # Keep polling promptly while anything is running or waiting to run.
-        # Work held back by a per-stage pause does not count -- neither the
-        # paused stage nor anything queued behind it can start until the user
-        # says so, and counting it would pin the scheduler (and its disk walk)
-        # to the fast interval indefinitely.
-        outstanding = any(
-            s["state"] in ("running", "queued", "blocked", "error") and not stalled[s["kind"]]
-            for s in states
-        )
-        # One line per tick, listing what the scheduler saw and what it did with
-        # it. "Why did the next stage not start?" is otherwise unanswerable: a
-        # tick that starts nothing looks identical to no tick at all. Guarded by
-        # isEnabledFor because this runs every 10s and the join is not free.
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tick: root=%s acted=%s outstanding=%s states=%s stalled=%s",
-                open_root_id,
-                acted,
-                outstanding,
-                ",".join(f"{s['kind']}={_state_note(s)}" for s in states),
-                ",".join(sorted(k for k, v in stalled.items() if v)) or "-",
-            )
-        return acted or outstanding
-
-    def _stalled_kinds(self, states: list[dict]) -> dict[str, bool]:
-        """Which stages cannot progress because of a per-stage pause: the paused
-        ones, plus everything waiting on a stage that is itself stalled.
-
-        ``states`` is in dependency order (stages.STAGES), so one forward pass
-        propagates the whole chain -- pausing Deduplication also stops the map,
-        detection and semantic stages that queue behind it.
-        """
-        from . import stages
-
-        stalled: dict[str, bool] = {}
-        for s in states:
-            blocker = s["blocker"]
-            stalled[s["kind"]] = self.stage_paused(stages.card_of(s["kind"])) or bool(
-                blocker and stalled.get(blocker)
-            )
-        return stalled
+        Kept on the manager because ``_run``'s ``finally`` and several HTTP
+        paths call it; it is the one scheduler operation the rest of the app
+        asks for by name."""
+        self.scheduler.nudge()
 
     # -- worker -----------------------------------------------------------
     def _dispatch(self, runner: Runner, job: Job, cancel: threading.Event) -> None:

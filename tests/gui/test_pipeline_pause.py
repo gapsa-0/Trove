@@ -28,10 +28,9 @@ def _job_manager(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))
     jm = jobs_mod.JobManager(Config())
-    # These tests drive _auto_tick() by hand. Park the scheduler thread so it
-    # cannot also fire on its own timer after the test has torn its stubs down.
-    jm._stopping.set()
-    jm._wake.set()
+    # These tests drive scheduler.tick() by hand. Park the scheduler thread so
+    # it cannot also fire on its own timer after the test has torn its stubs down.
+    jm.scheduler.stop()
     return jm
 
 
@@ -47,8 +46,8 @@ _QUEUED_SCAN_STAGE = {
 }
 
 
-def _rig_auto_tick(jm, monkeypatch, started):
-    """Wire _auto_tick() to see one open archive with one queued (startable)
+def _rig_tick(jm, monkeypatch, started):
+    """Wire scheduler.tick() to see one open archive with one queued (startable)
     stage, and capture what it tries to start instead of really starting it."""
     jm._open_root_id = 1
     monkeypatch.setattr(
@@ -67,42 +66,42 @@ def _rig_auto_tick(jm, monkeypatch, started):
 
 
 # ---------------------------------------------------------------------------
-# set_paused() gates _auto_tick()
+# set_paused() gates scheduler.tick()
 # ---------------------------------------------------------------------------
 
 
 def test_auto_tick_starts_queued_work_when_not_paused(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     started = []
-    _rig_auto_tick(jm, monkeypatch, started)
+    _rig_tick(jm, monkeypatch, started)
 
     assert jm.paused() is False
-    assert jm._auto_tick() is True
+    assert jm.scheduler.tick() is True
     assert started == ["scan"]
 
 
 def test_set_paused_true_makes_auto_tick_return_false_and_start_nothing(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     started = []
-    _rig_auto_tick(jm, monkeypatch, started)
+    _rig_tick(jm, monkeypatch, started)
 
     jm.set_paused(True)
     assert jm.paused() is True
-    assert jm._auto_tick() is False
+    assert jm.scheduler.tick() is False
     assert started == []
 
 
 def test_set_paused_false_restores_normal_auto_tick_behaviour(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
     started = []
-    _rig_auto_tick(jm, monkeypatch, started)
+    _rig_tick(jm, monkeypatch, started)
 
     jm.set_paused(True)
-    assert jm._auto_tick() is False
+    assert jm.scheduler.tick() is False
 
     jm.set_paused(False)
     assert jm.paused() is False
-    assert jm._auto_tick() is True
+    assert jm.scheduler.tick() is True
     assert started == ["scan"]
 
 
@@ -140,11 +139,11 @@ def test_set_paused_true_leaves_finished_jobs_alone(tmp_path, monkeypatch):
 
 def test_set_paused_false_nudges_the_scheduler(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
-    jm._auto_interval = jm._AUTO_MAX
+    jm.scheduler.interval = jm.scheduler.AUTO_MAX
 
     jm.set_paused(False)
 
-    assert jm._auto_interval == jm._AUTO_MIN
+    assert jm.scheduler.interval == jm.scheduler.AUTO_MIN
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +322,7 @@ def test_pausing_one_stage_leaves_the_others_running(tmp_path, monkeypatch):
     jm.set_stage_paused("scan", True)
 
     assert jm.stage_paused("scan") is True
-    assert jm._auto_tick() is True
+    assert jm.scheduler.tick() is True
     assert started == ["semantic"]  # scan skipped, its sibling still starts
 
 
@@ -333,12 +332,12 @@ def test_resuming_a_stage_starts_it_again(tmp_path, monkeypatch):
     _rig_two_stages(jm, monkeypatch, started)
 
     jm.set_stage_paused("scan", True)
-    jm._auto_tick()
+    jm.scheduler.tick()
     started.clear()
     jm.set_stage_paused("scan", False)
 
     assert jm.paused_stages() == set()
-    assert jm._auto_tick() is True
+    assert jm.scheduler.tick() is True
     assert started == ["scan", "semantic"]
 
 
@@ -366,7 +365,7 @@ def test_pausing_the_scan_card_stops_enrich_too(tmp_path, monkeypatch):
 
     jm.set_stage_paused("scan", True)
 
-    assert jm._auto_tick() is False
+    assert jm.scheduler.tick() is False
     assert started == []
 
 
@@ -385,14 +384,14 @@ def test_pausing_a_stage_cancels_only_that_stage_s_running_jobs(tmp_path, monkey
 
 def test_paused_stage_does_not_keep_the_scheduler_at_its_fast_interval(tmp_path, monkeypatch):
     """A queued-but-paused stage is not outstanding work: reporting it as such
-    would pin the idle backoff (and its ~150k-file disk walk) to _AUTO_MIN."""
+    would pin the idle backoff (and its ~150k-file disk walk) to AUTO_MIN."""
     jm = _job_manager(tmp_path, monkeypatch)
     started = []
-    _rig_auto_tick(jm, monkeypatch, started)
+    _rig_tick(jm, monkeypatch, started)
 
     jm.set_stage_paused("scan", True)
 
-    assert jm._auto_tick() is False
+    assert jm.scheduler.tick() is False
     assert started == []
 
 
@@ -430,7 +429,7 @@ def test_stages_blocked_behind_a_paused_stage_are_not_outstanding(tmp_path, monk
 
     jm.set_stage_paused("dedup", True)
 
-    assert jm._auto_tick() is False
+    assert jm.scheduler.tick() is False
 
 
 def test_paused_stages_persist_and_seed_a_fresh_job_manager(monkeypatch, tmp_path):

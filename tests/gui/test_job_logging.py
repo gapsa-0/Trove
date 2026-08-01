@@ -31,7 +31,7 @@ def jm(monkeypatch):
 
     _open_db is stubbed rather than pointed at a tmp file: these tests are about
     what gets logged around a runner, not about the runner's own work. The
-    scheduler thread is left alone -- its first tick is _AUTO_MIN (10s) away and
+    scheduler thread is left alone -- its first tick is AUTO_MIN (10s) away and
     no archive is open, so it cannot act inside a test -- but it is shut down
     afterwards so it cannot outlive the fixtures it would read.
     """
@@ -132,7 +132,7 @@ def test_pause_and_resume_transitions_are_logged(jm, caplog):
 
 def test_a_tick_that_starts_nothing_says_why(jm, caplog):
     """A tick that starts nothing used to look identical to no tick at all."""
-    with caplog.at_level(logging.DEBUG, logger="organize_archive.pipeline.manager"):
-        assert jm._auto_tick() is False
+    with caplog.at_level(logging.DEBUG, logger="organize_archive.pipeline"):
+        assert jm.scheduler.tick() is False
 
     assert "no archive is open" in caplog.text
