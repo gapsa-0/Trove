@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 
 from ..config import Config
 from ..db import database as db
@@ -37,7 +38,7 @@ class DiskCounts:
     the manager's ``_lock`` used to provide incidentally, not by design.
     """
 
-    def __init__(self, stopping):
+    def __init__(self, stopping: Callable[[], bool]):
         self._cache: dict[int, tuple[float, int]] = {}
         # Roots with a background refresh walk in flight (see count()).
         self._inflight: set[int] = set()
@@ -93,7 +94,7 @@ class DiskCounts:
                 return
             self._inflight.add(root_id)
 
-        def run():
+        def run() -> None:
             try:
                 self.count(root_id, root_path, max_age=0)
             except OSError:
@@ -139,7 +140,7 @@ def mark_dedup_owed(cfg: Config, root_id: int) -> None:
     same obligation and tries again.
     """
 
-    def _write():
+    def _write() -> None:
         conn = db.connect(cfg.archive_db_path(root_id))
         try:
             db.dedup_invalidate(conn, root_id)

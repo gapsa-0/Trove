@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ...db import database as db
 from ..job import JobContext, Runner
 
@@ -9,9 +11,12 @@ from ..job import JobContext, Runner
 def run(ctx: JobContext) -> None:
     from ...dedup import exact
 
-    conn, job = ctx.conn, ctx.job
+    conn, job = ctx.require_conn(), ctx.job
+    # dedup is only ever started by the scheduler, always with the currently
+    # open root's id -- see scan.py's comment for the same invariant.
+    root_id = cast(int, job.root_id)
     prog = ctx.progress()
-    stats = exact.run(conn, ctx.cfg, progress=prog, root_id=job.root_id)
+    stats = exact.run(conn, ctx.cfg, progress=prog, root_id=root_id)
     # Hidden files are duplicate copies. They must never consume semantic
     # storage or appear as a stale vector if a prior run overlapped dedup.
     conn.execute(
@@ -25,8 +30,8 @@ def run(ctx: JobContext) -> None:
     # between them, the grouping already landed correctly and the only
     # cost is one redundant, harmless re-run that re-derives the same
     # grouping and then marks it.
-    covered_files, covered_max_id = db.dedup_coverage(conn, job.root_id)
-    db.dedup_mark_done(conn, job.root_id, covered_files, covered_max_id)
+    covered_files, covered_max_id = db.dedup_coverage(conn, root_id)
+    db.dedup_mark_done(conn, root_id, covered_files, covered_max_id)
     conn.commit()
     job.message = (
         f"{stats.groups} groups, {stats.duplicate_files} duplicates, "

@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
+from typing import cast
 
+from ...config import Config
 from ...db import database as db
 from ..job import Job, JobContext, Runner
 
@@ -44,18 +47,24 @@ def run(ctx: JobContext) -> None:
     )
 
 
-def _semantic_pass(cfg, job: Job, cancel, force: bool):
+def _semantic_pass(
+    cfg: Config, job: Job, cancel: threading.Event, force: bool
+) -> tuple[int, int, int, int]:
     """One snapshot pass. Returns (indexed, skipped, failed, rows_in_pass)."""
     from pathlib import Path
 
     from ...services import semantic
 
+    # semantic is only ever started by the scheduler, always with the
+    # currently open root's id -- see scan.py's comment for the same
+    # invariant (needs_connection=False does not change who starts it).
+    root_id = cast(int, job.root_id)
     # Snapshot candidates under a read-only connection. The API calls below
     # happen without the writer lock so local metadata/faces work continues.
-    read_conn = db.open_readonly(cfg.archive_db_path(job.root_id))
+    read_conn = db.open_readonly(cfg.archive_db_path(root_id))
     try:
-        rows = semantic.pending_rows(read_conn, job.root_id, force=force)
-        total, already = semantic.work_counts(read_conn, job.root_id, force=force)
+        rows = semantic.pending_rows(read_conn, root_id, force=force)
+        total, already = semantic.work_counts(read_conn, root_id, force=force)
     finally:
         read_conn.close()
     job.total, job.done = total, already
@@ -71,7 +80,7 @@ def _semantic_pass(cfg, job: Job, cancel, force: bool):
     # forwards — while one-at-a-time keeps the progress card truthful.
     # Per-item error capture stays: a truncated JPEG can still raise inside
     # PIL, and that must cost one file, not the pass.
-    cache_dir = cfg.archive_cache_dir(job.root_id)
+    cache_dir = cfg.archive_cache_dir(root_id)
     for offset, row in enumerate(rows):
         if cancel.is_set():
             raise KeyboardInterrupt
@@ -87,14 +96,16 @@ def _semantic_pass(cfg, job: Job, cancel, force: bool):
                 row["duration_s"],
             )
             if reason:
-                _save_semantic_outcome(cfg, job.root_id, row, None, kind, reason)
+                _save_semantic_outcome(cfg, root_id, row, None, kind, reason)
                 skipped += 1
             else:
-                values = semantic.embed_part(cfg, part, kind)
+                # media_part's invariant: part is None iff reason is set, just
+                # checked above (mirrors services/semantic.py's embed_media).
+                values = semantic.embed_part(cfg, cast(list[Path], part), kind)
                 if values is None:
                     _save_semantic_outcome(
                         cfg,
-                        job.root_id,
+                        root_id,
                         row,
                         None,
                         kind,
@@ -102,7 +113,7 @@ def _semantic_pass(cfg, job: Job, cancel, force: bool):
                     )
                     skipped += 1
                 else:
-                    _save_semantic_outcome(cfg, job.root_id, row, values, kind, None)
+                    _save_semantic_outcome(cfg, root_id, row, values, kind, None)
                     indexed += 1
         except KeyboardInterrupt:
             raise
@@ -112,13 +123,20 @@ def _semantic_pass(cfg, job: Job, cancel, force: bool):
             # before anything useful survived. The reason is also persisted
             # per row by _save_semantic_outcome, which the GUI surfaces.
             logger.warning("semantic indexing failed for file_id=%s: %s", row["id"], exc)
-            _save_semantic_outcome(cfg, job.root_id, row, None, None, str(exc))
+            _save_semantic_outcome(cfg, root_id, row, None, None, str(exc))
             failed += 1
         job.done = already + offset + 1
     return (indexed, skipped, failed, len(rows))
 
 
-def _save_semantic_outcome(cfg, root_id, row, values, kind, reason):
+def _save_semantic_outcome(
+    cfg: Config,
+    root_id: int,
+    row: sqlite3.Row,
+    values: list[float] | None,
+    kind: str | None,
+    reason: str | None,
+) -> None:
     """Persist one result without taking the manager-wide pipeline lock.
 
     SQLite WAL plus its busy timeout serializes this tiny transaction against
@@ -142,7 +160,7 @@ def _save_semantic_outcome(cfg, root_id, row, values, kind, reason):
         if current is None or current["hidden"] or current["sha256"] != row["sha256"]:
             return
 
-        def _write():
+        def _write() -> None:
             semantic.save_outcome(conn, cfg, row, values, kind, reason)
             conn.commit()
 

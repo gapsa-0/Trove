@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ..job import JobContext, Runner
 
 
@@ -14,14 +16,17 @@ def run(ctx: JobContext) -> None:
     # one this job belongs to.
     from ...geo.clusters import assign_unplaced, cluster_places
 
-    conn, job = ctx.conn, ctx.job
+    conn, job = ctx.require_conn(), ctx.job
+    # places is only ever started by the scheduler, always with the currently
+    # open root's id -- see scan.py's comment for the same invariant.
+    root_id = cast(int, job.root_id)
     job.total, job.done = 1, 0
     has_places = conn.execute(
-        "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (job.root_id,)
+        "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (root_id,)
     ).fetchone()
-    touched = assign_unplaced(conn, job.root_id).points if has_places else 0
+    touched = assign_unplaced(conn, root_id).points if has_places else 0
     if not has_places:
-        cluster_places(conn, job.root_id)
+        cluster_places(conn, root_id)
     job.done = 1
     job.message = f"{touched} new geotagged files placed"
 

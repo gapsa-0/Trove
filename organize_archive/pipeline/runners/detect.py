@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ..job import JobContext, Runner
 
 # Images per detect-then-recluster chunk in the detect job (see run() below):
@@ -22,7 +24,10 @@ def run(ctx: JobContext) -> None:
     from ...faces import cluster as fc
     from ...pets import cluster as pc
 
-    conn, job = ctx.conn, ctx.job
+    conn, job = ctx.require_conn(), ctx.job
+    # detect is only ever started by the scheduler, always with the currently
+    # open root's id -- see scan.py's comment for the same invariant.
+    root_id = cast(int, job.root_id)
 
     # Progress is cumulative over ALL canonical media, not just this run's
     # backlog: total = every canonical image (+ video, once video detection
@@ -47,7 +52,7 @@ def run(ctx: JobContext) -> None:
             limit=_DETECT_CHUNK,
             face_be=face_be,
             pet_be=pet_be,
-            cache_dir=ctx.cfg.archive_cache_dir(job.root_id),
+            cache_dir=ctx.cfg.archive_cache_dir(root_id),
         )
         if st.processed == 0:
             break

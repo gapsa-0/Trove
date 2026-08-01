@@ -21,9 +21,17 @@ the six cards finally behave identically instead of each computing its own truth
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from ..config import Config
 from ..db import database as db
+
+if TYPE_CHECKING:
+    # TYPE_CHECKING-only: manager.py imports this module (via scheduler.py at
+    # runtime, locally to dodge the cycle -- see manager.py's own docstring),
+    # so a real import here would close the loop. Safe under `from __future__
+    # import annotations`: the annotation is never evaluated at runtime.
+    from .manager import JobManager
 
 # Stage kinds (also the job ``kind`` values the worker dispatches on).
 SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC = (
@@ -104,7 +112,12 @@ def _availability(cfg: Config) -> dict[str, bool]:
 
 
 def _pending(
-    cfg: Config, jobs, root_id: int, root_path: str, avail: dict[str, bool], allow_walk: bool
+    cfg: Config,
+    jobs: JobManager,
+    root_id: int,
+    root_path: str,
+    avail: dict[str, bool],
+    allow_walk: bool,
 ) -> dict[str, int]:
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
@@ -173,8 +186,8 @@ def _pending(
 
 
 def stage_states(
-    cfg: Config, jobs, root_id: int, root_path: str, allow_walk: bool = False
-) -> list[dict]:
+    cfg: Config, jobs: JobManager, root_id: int, root_path: str, allow_walk: bool = False
+) -> list[dict[str, Any]]:
     """Resolve every stage to one state, used by BOTH the scheduler and the API.
 
     Returns one dict per stage (not per card) so the scheduler can act on the
@@ -319,6 +332,7 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
                 # fingerprint would be a lie; the flat text stands instead.
                 message = f"Fingerprinting {done:,} of {total:,} photos…"
 
+        bc_id = blocker_card[card_id]
         result.append(
             {
                 "id": card_id,
@@ -328,7 +342,7 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
                 "counted": counted,
                 "progress": progress,
                 "next": False,
-                "waiting_on": CARD_LABEL.get(_CARD_OF.get(blocker)) if blocker else None,
+                "waiting_on": CARD_LABEL.get(bc_id) if bc_id else None,
                 "message": message,
             }
         )
@@ -341,7 +355,7 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
     running_cards = {c["id"] for c in result if c["state"] == "running"}
     for c in result:
         bc = blocker_card.get(c["id"])
-        if c["state"] == "blocked" and bc in running_cards:
+        if c["state"] == "blocked" and bc is not None and bc in running_cards:
             c["next"] = True
             c["message"] = f"Up next · after {CARD_LABEL[bc]}"
 
@@ -375,14 +389,17 @@ def kinds_of(card: str) -> frozenset[str]:
     return frozenset(k for k, c in _CARD_OF.items() if c == card)
 
 
-def _message(card_id: str, state: str, pending, blocker, error) -> str | None:
+def _message(
+    card_id: str, state: str, pending: int | None, blocker: str | None, error: str | None
+) -> str | None:
     """Fixed wording the client shows for every non-terminal state. The
     up_to_date ("done") message is left to the client, which already holds the
     per-domain summary numbers (duplicate count, faces found, …)."""
     if state == "running":
         return _RUN_TEXT.get(card_id, "Working now")
     if state == "blocked":
-        waiting = CARD_LABEL.get(_CARD_OF.get(blocker), "earlier steps")
+        blocker_card = _CARD_OF.get(blocker) if blocker else None
+        waiting = CARD_LABEL.get(blocker_card, "earlier steps") if blocker_card else "earlier steps"
         return f"Waiting for {waiting}…"
     if state == "queued":
         if pending and pending > 0:
@@ -408,9 +425,10 @@ _EXTRA_JOB_LABEL = {
 }
 
 
-def _extra_jobs(jobs, root_id: int) -> list[dict]:
+def _extra_jobs(jobs: JobManager, root_id: int) -> list[dict[str, Any]]:
     """Running jobs that belong to no stage card, in the cards' output shape."""
-    out, seen = [], set()
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for j in jobs.list(root_id):
         kind = j["kind"]
         if j["status"] != "running" or kind in _CARD_OF or kind in seen:
@@ -434,7 +452,7 @@ def _extra_jobs(jobs, root_id: int) -> list[dict]:
     return out
 
 
-def snapshot(cfg: Config, jobs, root_id: int, root_path: str) -> dict:
+def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dict[str, Any]:
     """The `/api/pipeline` payload: resolved cards plus one overall verdict.
 
     ``paused`` reflects the whole-pipeline pause (JobManager.paused()). While

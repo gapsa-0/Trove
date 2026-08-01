@@ -16,6 +16,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from typing import Any
 
 from ..config import Config
 
@@ -36,7 +37,7 @@ class Job:
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
 
-    def public(self) -> dict:
+    def public(self) -> dict[str, Any]:
         d = asdict(self)
         d["percent"] = round(100 * self.done / self.total, 1) if self.total else None
         d["elapsed"] = round((self.finished_at or time.time()) - self.started_at, 1)
@@ -58,22 +59,22 @@ class JobProgress:
         self._fixed_total = fixed_total
 
     @property
-    def total(self):
+    def total(self) -> int:
         return self.job.total
 
     @total.setter
-    def total(self, v):
+    def total(self, v: int) -> None:
         if not self._fixed_total:
             self.job.total = v or 0
 
-    def update(self, done, _bytes=0, current=""):
+    def update(self, done: int, _bytes: int = 0, current: str = "") -> None:
         if self._cancel.is_set():
             raise KeyboardInterrupt
         self.job.done = self.base + done
         if current:
             self.job.current = current
 
-    def close(self):
+    def close(self) -> None:
         pass
 
 
@@ -96,6 +97,24 @@ class JobContext:
     cancel: threading.Event
     conn: sqlite3.Connection | None
     log: logging.Logger
+
+    def require_conn(self) -> sqlite3.Connection:
+        """``ctx.conn``, narrowed to non-optional for the runners that need it.
+
+        Every runner except ``semantic`` declares ``needs_connection = True``
+        (the default -- see ``Runner``), and the manager only ever calls a
+        runner without one when it declared it did not need it (``_dispatch``).
+        So by the time any other runner's ``run()`` reaches this call, ``conn``
+        is never ``None`` -- the ``RuntimeError`` below is unreachable under
+        that contract and exists only so a future runner that starts using
+        this while wrongly leaving ``needs_connection = False`` fails loudly
+        instead of hitting ``AttributeError`` on ``None`` deep in a query.
+        """
+        if self.conn is None:
+            raise RuntimeError(
+                "JobContext.conn is None -- this runner must declare needs_connection = True"
+            )
+        return self.conn
 
     def progress(self, base: int = 0, fixed_total: bool = False) -> JobProgress:
         """A progress adapter bound to this job and this job's cancel event.

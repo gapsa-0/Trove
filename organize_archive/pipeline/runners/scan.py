@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from ...db import database as db
 from ...scan import walker
 from ..job import JobContext, Runner
@@ -10,15 +12,20 @@ from ..job import JobContext, Runner
 def run(ctx: JobContext) -> None:
     from pathlib import Path
 
-    cfg, conn, job = ctx.cfg, ctx.conn, ctx.job
+    cfg, conn, job = ctx.cfg, ctx.require_conn(), ctx.job
     prog = ctx.progress()
     run_started = db.now_iso()
+    # scan is only ever started by the scheduler (scheduler.tick), which
+    # always supplies an open root's id -- see JobManager.start's root_id
+    # check. root_id is int here even though Job.root_id is optional for
+    # face_cluster/pet_cluster, which the scheduler never starts.
+    root_id = cast(int, job.root_id)
     # An archive database has exactly one root; job.root_path is always
     # supplied by the scheduler, this is just a defensive fallback.
-    roots = [job.root_path] if job.root_path else [cfg.archive_path(job.root_id)]
+    roots: list[str] = [job.root_path] if job.root_path else [cast(str, cfg.archive_path(root_id))]
     on_disk = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
     prog.total = on_disk
-    run_id = db.scan_run_start(conn, job.root_id, roots)
+    run_id = db.scan_run_start(conn, root_id, roots)
     totals = walker.ScanStats()
     for r in roots:
         stats = walker.scan_root(
@@ -33,7 +40,7 @@ def run(ctx: JobContext) -> None:
             commit_every=80,
             # This archive's root id, not a path lookup:
             # the rows must land where the GUI reads.
-            root_id=job.root_id,
+            root_id=root_id,
         )
         totals.seen += stats.seen
         totals.new += stats.new

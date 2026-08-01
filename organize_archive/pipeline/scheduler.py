@@ -21,11 +21,19 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # TYPE_CHECKING-only, same reasoning as stages.py: manager.py imports this
+    # module at the top level to construct its Scheduler, so a real import
+    # here would close the loop. `from __future__ import annotations` means
+    # this name is never looked up at runtime.
+    from .manager import JobManager
 
 logger = logging.getLogger(__name__)
 
 
-def _state_note(stage: dict) -> str:
+def _state_note(stage: dict[str, Any]) -> str:
     """``running(1234/4213)`` for a stage with a live job, else just its state.
 
     The counts are what make a repeated tick line useful: two ticks showing the
@@ -56,9 +64,11 @@ class Scheduler:
     # same kind, so a persistent failure backs off instead of spinning.
     ERROR_COOLDOWN = 120.0
 
-    def __init__(self, manager):
+    def __init__(self, manager: JobManager):
         self._manager = manager
-        self.interval = self.AUTO_MIN
+        # float, not int: the idle backoff below multiplies it by 1.5 each
+        # quiet tick, capped at AUTO_MAX.
+        self.interval: float = self.AUTO_MIN
         self._wake = threading.Event()
         self._stopping = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -81,12 +91,12 @@ class Scheduler:
     def join(self, timeout: float) -> None:
         self._thread.join(timeout=timeout)
 
-    def nudge(self):
+    def nudge(self) -> None:
         """Wake the scheduler now after an archive has been opened."""
         self.interval = self.AUTO_MIN
         self._wake.set()
 
-    def _loop(self):
+    def _loop(self) -> None:
         while not self._stopping.is_set():
             self._wake.wait(self.interval)
             self._wake.clear()

@@ -53,9 +53,11 @@ so an interrupted job leaves usable partial progress rather than nothing.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 import time
 from contextlib import nullcontext
+from typing import cast
 
 from ..config import Config
 from ..db import database as db
@@ -254,7 +256,7 @@ class JobManager:
     # pipeline (scan → enrich → dedup → pets → faces) for it. Closing or switching the
     # archive requests cancellation; long jobs commit in batches and resume the
     # next time that archive is opened.
-    def _open_db(self, root_id: int):
+    def _open_db(self, root_id: int) -> sqlite3.Connection:
         """Connect to an archive, bringing schema and root identity up to date.
 
         The schema part matters because the read-only query paths (thumbnails,
@@ -288,7 +290,7 @@ class JobManager:
             raise
         return conn
 
-    def open_archive(self, root_id: int):
+    def open_archive(self, root_id: int) -> None:
         """Allow automatic work for this archive while it is being viewed."""
         self._open_db(root_id).close()
         with self._lock:
@@ -302,7 +304,7 @@ class JobManager:
                         self._cancels[jid].set()
         self.nudge()
 
-    def close_archive(self, root_id: int | None = None):
+    def close_archive(self, root_id: int | None = None) -> None:
         """Stop work when the currently viewed archive is closed."""
         with self._lock:
             if self._open_root_id is None or (
@@ -378,7 +380,7 @@ class JobManager:
                     )
                     self._cancels[jid].set()
 
-    def nudge(self):
+    def nudge(self) -> None:
         """Wake the scheduler now after an archive has been opened.
 
         Kept on the manager because ``_run``'s ``finally`` and several HTTP
@@ -395,7 +397,7 @@ class JobManager:
         registry rather than by reading every runner's body.
         """
 
-        def context(conn):
+        def context(conn: sqlite3.Connection | None) -> JobContext:
             return JobContext(cfg=self.cfg, job=job, cancel=cancel, conn=conn, log=logger)
 
         if not runner.needs_connection:
@@ -405,13 +407,22 @@ class JobManager:
         # reconciliation), so opening it outside would put a writer ahead of
         # the lock that exists to order writers.
         with self._write_lock if runner.takes_write_lock else nullcontext():
-            conn = self._open_db(job.root_id)
+            # Job.root_id is optional on the dataclass (JobManager.start's
+            # signature allows a rootless job), but every caller that reaches
+            # a needs_connection runner supplies one in practice: the
+            # scheduler always passes its checked-non-None open_root_id, and
+            # the two HTTP callers (face_cluster/pet_cluster after a review
+            # undo) only call start() after confirming current_root_id() is
+            # truthy, and archive ids are never 0/falsy. No kind that declares
+            # needs_connection=True is started any other way today.
+            root_id = cast(int, job.root_id)
+            conn = self._open_db(root_id)
             try:
                 runner.run(context(conn))
             finally:
                 conn.close()
 
-    def _run(self, job: Job, cancel: threading.Event):
+    def _run(self, job: Job, cancel: threading.Event) -> None:
         try:
             runner = RUNNERS.get(job.kind)
             if runner is None:
@@ -421,7 +432,11 @@ class JobManager:
             # A successful rebuild is the only thing that marks dedup_runs (see
             # runners/dedup.py), so a cancelled or errored dedup leaves no
             # marker and stays queued/retries next tick.
-            self._error_at.pop((job.root_id, job.kind), None)
+            # job.root_id is optional on the dataclass but every job actually
+            # dispatched here was created by start() with a real root_id -- see
+            # _dispatch's comment for the same invariant; _error_at is keyed on
+            # (int, str) throughout, so this narrows rather than widens it.
+            self._error_at.pop((cast(int, job.root_id), job.kind), None)
             logger.info(
                 "job done kind=%s root=%s job=%s done=%s total=%s elapsed=%.1fs %s",
                 job.kind,
@@ -450,7 +465,7 @@ class JobManager:
         except Exception as e:
             job.status = "error"
             job.message = f"{e}"
-            self._error_at[(job.root_id, job.kind)] = time.monotonic()
+            self._error_at[(cast(int, job.root_id), job.kind)] = time.monotonic()
             logger.error(
                 "job failed kind=%s root=%s job=%s after=%.1fs",
                 job.kind,
@@ -464,7 +479,7 @@ class JobManager:
             # A finished scan changed what's on disk-vs-indexed; drop the cached
             # walk so freshness reflects it immediately.
             if job.kind == "scan":
-                self._disk.invalidate(job.root_id)
+                self._disk.invalidate(cast(int, job.root_id))
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()

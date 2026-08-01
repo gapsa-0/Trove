@@ -8,7 +8,7 @@ from ..job import JobContext, Runner
 def run(ctx: JobContext) -> None:
     from ...metadata import enrich as enrich_mod
 
-    conn, job = ctx.conn, ctx.job
+    conn, job = ctx.require_conn(), ctx.job
     prog = ctx.progress()
     root_ids = (job.root_id,) if job.root_id else None
     stats = enrich_mod.enrich(conn, ctx.cfg, progress=prog, root_ids=root_ids)

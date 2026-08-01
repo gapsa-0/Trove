@@ -124,7 +124,6 @@ module = [
   "organize_archive.faces.*",
   "organize_archive.geo.*",
   "organize_archive.pets.*",
-  "organize_archive.pipeline.*",
   "organize_archive.thumbnails.*",
   "organize_archive.web.*",
 ]
@@ -140,6 +139,7 @@ module = [
   "organize_archive.db.*",
   "organize_archive.services.*",
   "organize_archive.web.routes.*",
+  "organize_archive.pipeline.*",
 ]
 ignore_errors = false
 disallow_untyped_defs = true
