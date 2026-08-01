@@ -3,6 +3,9 @@
 // poll. The single-pet page lives here too.
 
 import {
+  startInfiniteList,
+} from "./infinite.js";
+import {
   openItem,
 } from "./item.js";
 import {
@@ -21,7 +24,7 @@ import {
   S,
 } from "./state.js";
 import {
-  ACTIVE_SECTION, detectStatusRow, showSection, startInfiniteList, syncCardGrid, tile,
+  ACTIVE_SECTION, detectStatusRow, showSection, syncCardGrid, tile,
 } from "./main.js";
 
 const PET_LIST_PAGE_SIZE = 120, LOOSE_PET_PAGE_SIZE = 120, NONHUMAN_PAGE_SIZE = 60;

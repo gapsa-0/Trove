@@ -2,6 +2,9 @@
 // copies are, and one row per group.
 
 import {
+  startInfiniteList,
+} from "./infinite.js";
+import {
   jget,
 } from "./api.js";
 import {
@@ -10,9 +13,6 @@ import {
 import {
   S, TYPE_COL, TYPE_ICON, typeLabel,
 } from "./state.js";
-import {
-  startInfiniteList,
-} from "./main.js";
 
 const DUP_PAGE_SIZE = 40;
 export async function renderDedup(m) {
