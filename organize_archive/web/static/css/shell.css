@@ -1,0 +1,108 @@
+/* ---- app shell ---- */
+#app {
+  display: none;
+}
+
+#app.on {
+  display: flex;
+  min-height: 100vh;
+}
+
+nav {
+  width: 210px;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 14px 10px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  transition: width .15s;
+  display: flex;
+  flex-direction: column;
+}
+
+nav .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  padding: 4px 8px 12px;
+}
+
+nav .navtoggle {
+  margin-left: auto;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  flex: none;
+}
+
+nav .navtoggle:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+nav .back {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  display: block;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+}
+
+nav .arch {
+  font-size: 13px;
+  padding: 4px 8px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+/* Navigation is made from buttons so it works with a keyboard. Reset the
+ browser button chrome here; otherwise Chromium renders bright native
+ buttons in the dark sidebar. */
+.navitem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.25;
+}
+
+.navitem:hover {
+  background: var(--panel2);
+}
+
+.navitem.active {
+  background: var(--accent2);
+  color: #fff;
+}
+
+.navitem.soon {
+  color: var(--muted);
+  cursor: default;
+}
+
+.navitem .tag {
+  margin-left: auto;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 5px;
+}

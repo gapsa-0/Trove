@@ -1,0 +1,539 @@
+/* Persistent pipeline status, pinned to the bottom of the sidebar so it is
+ visible on every section (the app runs itself; this is the ambient bar).
+ One .grow row per running stage: label + percent on a line, a hairline
+ progress bar beneath it. The bar carries the "still working" signal, so
+ running rows have no spinner — a stack of spinners next to stalled-looking
+ percentages was the thing that read as noise. */
+.gstat {
+  margin-top: auto;
+  padding: 10px 8px 4px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.gstat .grow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gstat .gline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gstat .gtxt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gstat .gpct {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  flex: none;
+}
+
+.gstat .gbar {
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
+  overflow: hidden;
+}
+
+.gstat .gbar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width .45s ease;
+}
+
+/* No percentage to show: a slow sweep says "running" without inventing
+ progress the pipeline never reported. */
+.gstat .gbar.ind i {
+  width: 34%;
+  animation: gsweep 1.6s ease-in-out infinite;
+}
+
+@keyframes gsweep {
+  0% {
+    transform: translateX(-105%)
+  }
+
+  100% {
+    transform: translateX(300%)
+  }
+}
+
+/* Resting states (up to date / paused / queued): one dot + label line. */
+.gstat .gstate {
+  display: flex;
+  align-items: center;
+}
+
+.gstat .gmini,
+.gstat .gcount {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gstat .gbar i {
+    transition: none;
+  }
+
+  .gstat .gbar.ind i {
+    width: 100%;
+    animation: none;
+    opacity: .45;
+  }
+}
+
+/* Collapsed rail: labels and bars have no room, so a single spinner (plus
+ a ×N badge when several stages run) stands in for the whole stack. */
+nav.collapsed .gstat {
+  align-items: center;
+  padding: 10px 0 4px;
+}
+
+nav.collapsed .gstat .grow {
+  display: none;
+}
+
+nav.collapsed .gstat .gmini {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+nav.collapsed .gstat .gmini .spin {
+  margin-right: 0;
+}
+
+nav.collapsed .gstat .gtxt {
+  display: none;
+}
+
+nav.collapsed .gstat .gstate .dot {
+  margin-right: 0;
+}
+
+nav.collapsed .gstat .gcount {
+  display: inline-block;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+nav.collapsed {
+  width: 56px;
+}
+
+nav.collapsed .brand {
+  justify-content: center;
+}
+
+nav.collapsed .brandtxt,
+nav.collapsed .back,
+nav.collapsed .arch,
+nav.collapsed .navitem span:nth-of-type(2),
+nav.collapsed .navitem .tag {
+  display: none;
+}
+
+nav.collapsed .navtoggle {
+  margin-left: 0;
+  transform: scaleX(-1);
+}
+
+nav.collapsed .navitem {
+  justify-content: center;
+  padding: 8px 4px;
+}
+
+main {
+  flex: 1;
+  padding: 22px 26px;
+  max-width: 100%;
+  overflow: auto;
+  height: 100vh;
+}
+
+h2.sec {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+
+.statrow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin-bottom: 20px;
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.stat .k {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--muted);
+}
+
+.stat .v {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.stat .v small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.panel h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+table.types {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.types td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Storage panel: numbers belong in the table, not floating over the bar. */
+table.types th {
+  padding: 0 4px 7px;
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+table.types th:first-child,
+table.types td:first-child {
+  text-align: left;
+}
+
+table.types td {
+  text-align: right;
+}
+
+table.types .swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+table.types .share {
+  color: var(--muted);
+}
+
+/* Size / Files switch in the panel heading: one bar at a time, so the two
+   readings never compete for the same strip of pixels. */
+.metric-switch {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.metric-switch button {
+  padding: 3px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.metric-switch button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.storage-bar {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.storage-bar .type-summary-bar {
+  height: 13px;
+}
+
+.storage-bar .type-summary-segment {
+  cursor: default;
+}
+
+/* Per-type detail on hover instead of a permanent legend. */
+.storage-tip {
+  position: absolute;
+  z-index: 5;
+  top: 21px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--panel2);
+  box-shadow: var(--shadow-md);
+  font-size: 11.5px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.storage-tip[hidden] {
+  display: none;
+}
+
+.storage-tip .swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 7px;
+}
+
+.type-summary-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--panel2);
+}
+
+.type-summary-segment {
+  min-width: 0;
+  transition: width .2s;
+}
+
+/* A labelled bar row: used by the Duplicates page to show one set of copies
+   cut two ways (by match, by media type) over the same colours. */
+.type-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.type-bar-label {
+  width: 74px;
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.type-bar-row .type-summary-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.type-summary-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 10px 0 8px;
+  font-size: 12px;
+}
+
+/* Same bars on the Duplicates page; the last legend shouldn't add a gap
+   above the group list. */
+.dup-breakdown {
+  margin-bottom: 16px;
+}
+
+.dup-breakdown .type-summary-legend:last-child {
+  margin-bottom: 0;
+}
+
+.type-summary-key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* tasks */
+.taskcard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.taskcard:last-child {
+  border-bottom: none;
+}
+
+.taskcard .ico {
+  font-size: 20px;
+  width: 26px;
+  text-align: center;
+  flex: none;
+}
+
+.taskcard .body {
+  flex: 1;
+  min-width: 0;
+}
+
+.taskcard .t {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.taskcard .d {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.taskcard .d.pending {
+  color: #e6b45e;
+}
+
+.taskcard .d.ok {
+  color: var(--good);
+}
+
+.taskcard .act {
+  flex: none;
+}
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.dot.ok {
+  background: var(--good);
+}
+
+.dot.pending {
+  background: #e6b45e;
+}
+
+.dot.check {
+  background: var(--muted);
+}
+
+.dot.next {
+  background: var(--accent);
+}
+
+.linkbtn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12.5px;
+  padding: 6px 0;
+}
+
+.linkbtn:hover {
+  text-decoration: underline;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg)
+  }
+}
+
+.spin {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.job {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.job .what {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.job.error .what {
+  color: var(--bad, #e06c6c);
+}
+
+.progress {
+  background: var(--panel2);
+  border-radius: 6px;
+  height: 14px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.progfill {
+  height: 100%;
+  background: var(--good);
+  width: 0;
+  transition: width .3s;
+}
+
+.job .cur {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
