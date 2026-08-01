@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**66 routes**: 28 GET (exact) + 11 GET (prefix) + 27 POST.
+**67 routes**: 28 GET (exact) + 12 GET (prefix) + 27 POST.
 
 ## GET -- exact path
 
@@ -58,6 +58,7 @@ see the module docstring in `routes/__init__.py`.
 | `/api/faces/person/` | One person's detail page: their faces, paginated. | `organize_archive/web/routes/people.py::person` |
 | `/api/pet/` | One pet's detail page: their detections, paginated. | `organize_archive/web/routes/pets.py::group` |
 | `/icon-` | The app icon PNG, 512px or 192px depending on which the request path names. | `organize_archive/web/routes/static.py::icon` |
+| `/static/` | One of the app's own stylesheets or scripts, by ``css/<name>`` or ``js/<name>``. | `organize_archive/web/routes/static.py::app_asset` |
 | `/vendor/` | A vendored static asset by filename, or 404 if it isn't under the vendor directory. | `organize_archive/web/routes/static.py::vendor` |
 | `/archivethumb/` | A thumbnail scoped to a named archive, for the start-page cover mosaic where nothing is 'open' yet. | `organize_archive/web/routes/media.py::archive_thumb` |
 | `/thumb/` | A file's thumbnail, generated and cached on first request. | `organize_archive/web/routes/media.py::thumb` |

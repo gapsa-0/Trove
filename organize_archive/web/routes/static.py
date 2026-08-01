@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from ... import __version__
 from .. import assets, icons
 from ._request import NOT_FOUND, FileBody, Json, Raw, Request
+
+_APP_ASSET = re.compile(r"(?P<kind>css|js)/(?P<name>[A-Za-z0-9_.-]+\.(?:css|js))")
 
 
 def health(req: Request) -> dict:
@@ -47,6 +50,29 @@ def icon(req: Request) -> Raw:
     """The app icon PNG, 512px or 192px depending on which the request path names."""
     size = 512 if "512" in req.path else 192
     return Raw(icons.app_icon(req.cfg.cache_dir, size), "image/png")
+
+
+def app_asset(req: Request) -> FileBody | Json:
+    """One of the app's own stylesheets or scripts, by ``css/<name>`` or ``js/<name>``.
+
+    The path is matched against an allowlist pattern rather than resolved and
+    range-checked: two fixed directory names and a filename that may hold only
+    ``[A-Za-z0-9_.-]`` cannot express a traversal at all, encoded or not, so
+    there is nothing to get wrong later. The content type is stated here rather
+    than guessed, because a browser refuses an ES module served under the wrong
+    MIME type and says so only in the console.
+    """
+    m = _APP_ASSET.fullmatch(req.path.removeprefix("/static/"))
+    if not m:
+        return NOT_FOUND
+    path = assets.STATIC_DIR / m["kind"] / m["name"]
+    if not path.is_file():
+        return NOT_FOUND
+    ctype = "text/css" if m["kind"] == "css" else "text/javascript"
+    # Same reasoning as the shell itself: never cache, so a reload picks up a
+    # server update without a hard refresh. These are local files on a local
+    # server; there is no bandwidth to save.
+    return FileBody(path, f"{ctype}; charset=utf-8", cache_control="no-store")
 
 
 def vendor(req: Request) -> FileBody | Json:

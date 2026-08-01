@@ -14,6 +14,7 @@ from pathlib import Path
 
 INDEX = Path(__file__).with_name("index.html")
 VENDOR_DIR = Path(__file__).with_name("vendor")
+STATIC_DIR = Path(__file__).with_name("static")
 
 MANIFEST = {
     "name": "Trove",

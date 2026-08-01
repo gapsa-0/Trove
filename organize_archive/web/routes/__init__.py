@@ -94,6 +94,7 @@ GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
     ("/api/faces/person/", people.person),
     ("/api/pet/", pets.group),
     ("/icon-", static.icon),
+    ("/static/", static.app_asset),
     ("/vendor/", static.vendor),
     ("/archivethumb/", media.archive_thumb),
     ("/thumb/", media.thumb),

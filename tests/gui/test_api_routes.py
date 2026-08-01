@@ -303,7 +303,7 @@ def live_server(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# GET -- static assets (6 of the 11 non-/api routes)
+# GET -- static assets (7 of the 12 non-/api routes)
 # ---------------------------------------------------------------------------
 
 STATIC_GET_CASES = [
@@ -315,6 +315,7 @@ STATIC_GET_CASES = [
     pytest.param("/sw.js", "text/javascript", id="GET /sw.js (exact)"),
     pytest.param("/icon-192.png", "image/png", id="GET /icon- (prefix)"),
     pytest.param("/vendor/leaflet.css", "text/css", id="GET /vendor/ (prefix)"),
+    pytest.param("/static/css/base.css", "text/css", id="GET /static/ (prefix)"),
 ]
 
 
@@ -523,32 +524,45 @@ def test_a_cross_origin_get_is_still_allowed(live_server):
 # able to actually reach /etc/passwd if the route lets it.
 _UP = "../" * 12
 
-TRAVERSAL_PAYLOADS = [
-    pytest.param(f"/vendor/{_UP}etc/passwd", id="dot-dot segments"),
-    pytest.param(f"/vendor/{_UP.replace('/', '%2f')}etc%2fpasswd", id="percent-encoded slashes"),
-    pytest.param("/vendor/" + "....//" * 12 + "etc/passwd", id="doubled dots"),
-    pytest.param("/vendor/..", id="bare dot-dot"),
-    pytest.param("/vendor/", id="empty name"),
-    pytest.param(f"/vendor/{_UP}etc/passwd%00.css", id="null byte"),
-]
+
+def _payloads(prefix: str) -> list:
+    """The same six payloads against either file-serving prefix."""
+    return [
+        pytest.param(f"{prefix}{_UP}etc/passwd", id=f"{prefix} dot-dot segments"),
+        pytest.param(
+            f"{prefix}{_UP.replace('/', '%2f')}etc%2fpasswd",
+            id=f"{prefix} percent-encoded slashes",
+        ),
+        pytest.param(prefix + "....//" * 12 + "etc/passwd", id=f"{prefix} doubled dots"),
+        pytest.param(f"{prefix}..", id=f"{prefix} bare dot-dot"),
+        pytest.param(prefix, id=f"{prefix} empty name"),
+        pytest.param(f"{prefix}{_UP}etc/passwd%00.css", id=f"{prefix} null byte"),
+    ]
+
+
+TRAVERSAL_PAYLOADS = _payloads("/vendor/") + _payloads("/static/css/")
 
 
 @pytest.mark.parametrize("path", TRAVERSAL_PAYLOADS)
-def test_vendor_route_cannot_escape_its_directory(live_server, path):
-    """``/vendor/<name>`` is the only route that builds a filesystem path out of
-    the request rather than out of a database id, so it is this server's only
-    path-traversal surface.
+def test_the_file_serving_routes_cannot_escape_their_directory(live_server, path):
+    """``/vendor/<name>`` and ``/static/<kind>/<name>`` are the only two routes
+    that build a filesystem path out of the request rather than out of a
+    database id, so between them they are this server's whole path-traversal
+    surface.
 
-    Two things stop it, and they are checked together because either alone
-    would be enough today and neither is obviously permanent: the handler takes
-    only the last ``/``-separated segment, and it refuses a segment containing
-    ``..``.
+    They are closed by different means, deliberately. ``/vendor/`` takes only
+    the last ``/``-separated segment and refuses a segment containing ``..``;
+    both are checked together because either alone would be enough today and
+    neither is obviously permanent. ``/static/`` instead matches the whole
+    suffix against ``(css|js)/[A-Za-z0-9_.-]+\\.(css|js)`` -- a pattern in which
+    a traversal is not expressible, encoded or not, so there is no ordering of
+    checks to get wrong.
 
-    Verified non-vacuous by mutation, and the result is worth recording.
-    Breaking *only* the segment split (taking the whole path suffix instead)
-    still passes -- the ``..`` refusal catches it. Breaking both makes the
-    ``dot-dot segments`` case serve ``/etc/passwd`` with a 200, which this test
-    then fails on. The other five payloads survive either mutation because
+    Verified non-vacuous by mutation, and the ``/vendor/`` result is worth
+    recording. Breaking *only* the segment split (taking the whole path suffix
+    instead) still passes -- the ``..`` refusal catches it. Breaking both makes
+    the ``dot-dot segments`` case serve ``/etc/passwd`` with a 200, which this
+    test then fails on. The other five payloads survive either mutation because
     nothing here percent-decodes, so they never become ``..`` at all. So the
     encoded variants document that the surface is closed rather than proving
     it, and the plain one is the case with teeth.
@@ -563,8 +577,8 @@ def test_vendor_route_cannot_escape_its_directory(live_server, path):
 
 
 def test_media_routes_take_an_id_not_a_path(live_server):
-    """The counterpart to the vendor test, and why there is only one traversal
-    surface: every thumbnail and original resolves through an integer id looked
+    """The counterpart to the test above, and why there are only two traversal
+    surfaces: every thumbnail and original resolves through an integer id looked
     up in the database, so a path in the URL is never opened. A non-numeric id
     cannot reach the filesystem at all -- it fails to parse first.
 
@@ -1057,13 +1071,14 @@ GET_EXACT = {
     "/manifest.webmanifest",
     "/sw.js",
 }
-# GET, prefix (11: 4 /api + 7 non-api).
+# GET, prefix (12: 4 /api + 8 non-api).
 GET_PREFIX = {
     "/api/map/cluster/",
     "/api/pet/",
     "/api/faces/person/",
     "/api/item/",
     "/icon-",
+    "/static/",
     "/vendor/",
     "/archivethumb/",
     "/thumb/",
