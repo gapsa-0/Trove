@@ -3,6 +3,10 @@
 // than delegated to a charting library, so the path maths lives here too.
 
 import {
+  MONTH_NAMES, checkedPeople, clearPeopleChecks, peopleFilterHTML, selVal,
+  updatePeopleFilterLabel,
+} from "./library.js";
+import {
   jget,
 } from "./api.js";
 import {
@@ -11,10 +15,6 @@ import {
 import {
   S, TYPE_COL,
 } from "./state.js";
-import {
-  MONTH_NAMES, checkedPeople, clearPeopleChecks, peopleFilterHTML, selVal,
-  updatePeopleFilterLabel,
-} from "./main.js";
 
 const DATE_SRC_LABEL = {
   takeout_json: "Google Takeout JSON", exif: "Embedded EXIF",

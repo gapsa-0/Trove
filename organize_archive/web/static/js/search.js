@@ -4,15 +4,15 @@
 // the archive a search could actually see.
 
 import {
+  checkedPeople, loadGrid, renderIndexedFilter, renderSortOptions, resetGridResults,
+  updateClearBtn, updatePeopleFilterLabel,
+} from "./library.js";
+import {
   jget,
 } from "./api.js";
 import {
   S, TYPE_COL,
 } from "./state.js";
-import {
-  checkedPeople, loadGrid, renderIndexedFilter, renderSortOptions, resetGridResults,
-  updateClearBtn, updatePeopleFilterLabel,
-} from "./main.js";
 
 let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
 function clearlyEnglishSearch(text) {

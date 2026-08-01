@@ -4,6 +4,9 @@
 // two ways the router and the theme switch reach them.
 
 import {
+  tile,
+} from "./library.js";
+import {
   startInfiniteList,
 } from "./infinite.js";
 import {
@@ -22,7 +25,7 @@ import {
   S,
 } from "./state.js";
 import {
-  currentTheme, tile,
+  currentTheme,
 } from "./main.js";
 
 /* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
