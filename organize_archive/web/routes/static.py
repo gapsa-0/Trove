@@ -21,6 +21,10 @@ def health(req: Request) -> dict:
     }
 
 
+def settings(req: Request) -> dict:
+    return {}
+
+
 def index(req: Request) -> FileBody:
     # Never cache the app shell, so a server update takes effect on a plain
     # reload (no hard-refresh needed to shake off stale JS).

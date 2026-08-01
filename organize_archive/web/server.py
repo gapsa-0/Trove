@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from .. import thumbnails
 from ..config import Config, discard_superseded_secrets
 from ..db import database as db
-from ..services import archives, browse, people, pets, places, search
+from ..services import archives, browse, people, pets, places
 from . import routes
 from .jobs import JobManager
 
@@ -175,75 +175,6 @@ class Handler(BaseHTTPRequestHandler):
             )
             if handler is not None:
                 self._respond(handler(self._build_request("GET", {})))
-            elif path == "/api/archives":
-                self._json({"archives": archives.archives(self.cfg)})
-            elif path == "/api/settings":
-                self._json({})
-            elif path == "/api/browse/semantic/status":
-                from ..services import semantic
-
-                rid = one("root", int)
-                status = search.semantic_summary(self._db(rid), rid)
-                # Nothing left to configure — the stage runs as soon as the
-                # dependencies are importable, and downloads its own weights.
-                status["configured"] = semantic.available()
-                self._json(status)
-            elif path == "/api/browse/semantic/search":
-                search_queries = []
-                for value in q.get("q", []):
-                    value = value.strip()
-                    if value and value not in search_queries:
-                        search_queries.append(value)
-                # The first query is the user's wording.  At most one locally
-                # translated expansion is accepted to keep ranking predictable.
-                search_queries = search_queries[:2]
-                if not search_queries:
-                    self._json({"error": "A search query is required"}, 400)
-                else:
-                    from ..services import semantic
-
-                    rid = one("root", int)
-                    db_path = self._db(rid)
-                    vectors = semantic.embed_queries(self.cfg, search_queries)
-                    self._json(
-                        search.semantic_search(
-                            db_path,
-                            vectors[0],
-                            root_id=rid,
-                            year=one("year"),
-                            month=one("month"),
-                            mtype=one("type"),
-                            person_ids=many("person"),
-                            cluster_id=one("place", int),
-                            min_similarity=max(
-                                -1.0, min(1.0, float(self.cfg.semantic_search_min_similarity))
-                            ),
-                            relative_floor=max(
-                                0.0, min(1.0, float(self.cfg.semantic_search_relative_floor))
-                            ),
-                            sort=(
-                                one("sort") if one("sort") in ("newest", "oldest") else "relevance"
-                            ),
-                            limit=min(one("limit", int, 120), 500),
-                            offset=one("offset", int, 0),
-                            located={"yes": True, "no": False}.get(one("located")),
-                            alternate_vectors=[
-                                (vector, search.ALTERNATE_VECTOR_PENALTY) for vector in vectors[1:]
-                            ],
-                        )
-                    )
-            elif path == "/api/pipeline":
-                # Single source of truth for pipeline status: the same resolved
-                # stage list the scheduler acts on, so cards never disagree with
-                # what's actually running.
-                from . import pipeline
-
-                rid = one("root", int)
-                arch = next((a for a in archives.archives(self.cfg) if a["id"] == rid), None)
-                if arch is None:
-                    self._json({"error": "unknown archive"}, 404)
-                else:
-                    self._json(pipeline.snapshot(self.cfg, self.jobs, rid, arch["path"]))
             elif path.startswith("/archivethumb/"):
                 parts = path.split("/")  # ['', 'archivethumb', root_id, file_id]
                 if len(parts) == 4 and parts[2].isdigit() and parts[3].isdigit():
