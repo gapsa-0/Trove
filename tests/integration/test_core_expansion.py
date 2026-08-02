@@ -7,6 +7,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.faces import cluster as fc
+from organize_archive.faces import knn, passes
 
 np = pytest.importorskip("numpy")
 
@@ -30,13 +31,13 @@ def test_faiss_knn_matches_the_reference_gemm_exactly():
     IndexFlatIP is a *flat* index — it scans everything — so it is exact, and the
     two paths must agree on the neighbours, not merely approximately.
     """
-    if fc._faiss() is None:
+    if knn.faiss_module() is None:
         pytest.skip("faiss is an optional dependency")
     rng = np.random.default_rng(0)
     for n, dim, k in ((200, 64, 5), (500, 128, 8)):
         X = np.stack([_unit(v) for v in rng.normal(size=(n, dim))]).astype("float32")
-        fi, fs = fc._knn_search(X, k, use_faiss=True)
-        gi, gs = fc._knn_search(X, k, use_faiss=False)
+        fi, fs = knn.knn_search(X, k, use_faiss=True)
+        gi, gs = knn.knn_search(X, k, use_faiss=False)
         assert (fi == gi).all()
         assert np.abs(fs - gs).max() < 1e-5
 
@@ -62,11 +63,11 @@ def test_bridge_vectors_cannot_fuse_two_identities():
     high = list(range(50))  # the two real identities
     border = list(range(50, 58))  # the bridges
 
-    cores = fc.CoreBuilder(cfg).build(X[np.asarray(high)])
+    cores = passes.CoreBuilder(cfg).build(X[np.asarray(high)])
     assert len(cores) == 2, f"expected two pure cores, got {len(cores)}"
 
     cores_global = [[high[i] for i in c] for c in cores]
-    assigned = fc.BorderAssigner(cfg).assign(X, cores_global, border)
+    assigned = passes.BorderAssigner(cfg).assign(X, cores_global, border)
     for core in cores_global:
         for member in core:
             assert member < 50  # no bridge was ever allowed to seed
@@ -85,11 +86,11 @@ def test_a_borderline_face_joins_the_core_it_belongs_to():
 
     X = np.concatenate([a, b, extra[None, :]]).astype("float32")
     high = list(range(40))
-    cores = fc.CoreBuilder(cfg).build(X[np.asarray(high)])
+    cores = passes.CoreBuilder(cfg).build(X[np.asarray(high)])
     cores_global = [[high[i] for i in c] for c in cores]
     assert len(cores_global) == 2
 
-    assigned = fc.BorderAssigner(cfg).assign(X, cores_global, [40])
+    assigned = passes.BorderAssigner(cfg).assign(X, cores_global, [40])
     assert 40 in assigned, "a clearly-similar borderline face was left as noise"
     # It joined A's core, not B's.
     joined = cores_global[assigned[40]]
@@ -102,10 +103,10 @@ def test_an_unrelated_borderline_face_is_left_as_noise():
     stranger = _identity(99, 1)[0]
     X = np.concatenate([a, b, stranger[None, :]]).astype("float32")
     high = list(range(40))
-    cores = fc.CoreBuilder(cfg).build(X[np.asarray(high)])
+    cores = passes.CoreBuilder(cfg).build(X[np.asarray(high)])
     cores_global = [[high[i] for i in c] for c in cores]
 
-    assigned = fc.BorderAssigner(cfg).assign(X, cores_global, [40])
+    assigned = passes.BorderAssigner(cfg).assign(X, cores_global, [40])
     assert 40 not in assigned, "an unrelated face was absorbed into a person"
 
 
@@ -117,16 +118,18 @@ def test_a_cannot_link_blocks_a_border_assignment():
     extra = _unit(a.mean(0) + 0.08 * rng.normal(size=64)).astype("float32")
     X = np.concatenate([a, extra[None, :]]).astype("float32")
     high = list(range(20))
-    cores = fc.CoreBuilder(cfg).build(X[np.asarray(high)])
+    cores = passes.CoreBuilder(cfg).build(X[np.asarray(high)])
     cores_global = [[high[i] for i in c] for c in cores]
     assert cores_global
 
     face_ids = list(range(100, 100 + len(X)))  # arbitrary stable ids
-    without = fc.BorderAssigner(cfg).assign(X, cores_global, [20], cannot=set(), face_ids=face_ids)
+    without = passes.BorderAssigner(cfg).assign(
+        X, cores_global, [20], cannot=set(), face_ids=face_ids
+    )
     assert 20 in without, "precondition: it attaches when unconstrained"
 
     cannot = {frozenset((face_ids[20], face_ids[m])) for m in cores_global[0]}
-    with_block = fc.BorderAssigner(cfg).assign(
+    with_block = passes.BorderAssigner(cfg).assign(
         X, cores_global, [20], cannot=cannot, face_ids=face_ids
     )
     assert 20 not in with_block, "a cannot-link did not block the assignment"

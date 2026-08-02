@@ -97,7 +97,8 @@ grandfathered.
 | how a video is sampled, and repeats across its frames collapsed | `organize_archive/detect/video.py` |
 | when the detect stage runs a file, and in what batches | `organize_archive/detect/extract.py` |
 | how detections are stored (and what survives a re-detect) | `organize_archive/detect/persist.py` |
-| face clustering behaviour | `organize_archive/faces/cluster.py` |
+| face clustering behaviour (the two passes and their thresholds) | `organize_archive/faces/passes.py` |
+| what a face re-cluster destroys, and what survives it | `organize_archive/faces/cluster.py` |
 | pet clustering behaviour | `organize_archive/pets/cluster.py` |
 | how a screen looks | `organize_archive/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
 | the SQLite schema | `organize_archive/db/schema.sql`, plus the migration in `init_db` (`organize_archive/db/database.py`) |

@@ -43,7 +43,6 @@ MAX_ASSET = 800  # css / js / html under web/static and web/index.html
 # ---------------------------------------------------------------------------
 ALLOWLIST: dict[str, int] = {
     # Modules
-    "organize_archive/faces/cluster.py": 688,
     "tests/gui/test_api_routes.py": 1159,
     "tests/integration/test_merge_undo.py": 838,
     # Functions
@@ -51,8 +50,6 @@ ALLOWLIST: dict[str, int] = {
     "organize_archive/cli/scan.py::run": 85,
     "organize_archive/db/database.py::init_db": 98,
     "organize_archive/dedup/exact.py::run": 138,
-    "organize_archive/faces/cluster.py::build": 89,
-    "organize_archive/faces/cluster.py::cluster_faces": 142,
     "organize_archive/faces/extract.py::extract": 134,
     "organize_archive/faces/migrate_adaface.py::reattach": 91,
     "organize_archive/faces/migrate_adaface.py::snapshot_and_wipe": 95,
