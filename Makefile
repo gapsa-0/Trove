@@ -86,3 +86,12 @@ api-docs:        ## Regenerate docs/dev/api.md from the route tables
 	$(PY) tools/dev/gen_api_docs.py
 
 check: lint handlers sizes test ## Everything CI runs
+
+# `build/lib/` is a setuptools staging directory that is never cleaned between
+# builds, so a `pip wheel` in a working copy copies the current tree in beside
+# whatever was there before and ships both. A local wheel has already been
+# observed carrying a package that had been renamed two commits earlier. This
+# is release step 6 (docs/release.md) as a command rather than a paragraph
+# someone has to remember.
+clean:           ## Remove build artifacts that would otherwise be shipped stale
+	rm -rf build/ dist/ *.egg-info

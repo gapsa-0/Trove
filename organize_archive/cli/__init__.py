@@ -82,7 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use this database file instead of the configured default "
         "(useful for isolated testing while a scan runs).",
     )
-    sub = p.add_subparsers(dest="command", required=True)
+    # Not `required=True`: that turns a bare `oa` into "error: the following
+    # arguments are required: command" on stderr with exit 2, which is the
+    # least helpful thing to show someone who typed the name of the tool to
+    # find out what it does. main() prints the help screen instead. An
+    # *unknown* subcommand is still a usage error -- that one is a mistake,
+    # not a question.
+    sub = p.add_subparsers(dest="command")
 
     sp = sub.add_parser("init", help="Create the database and register roots")
     sp.set_defaults(func=cmd_init)
@@ -115,6 +121,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        return 0
     # One of the only two places in the codebase that may configure logging;
     # every library module just does getLogger(__name__). Before Config.load(),
     # so anything that load() has to report about a broken or migrating config

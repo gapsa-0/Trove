@@ -125,19 +125,21 @@ def test_db_override_captures_the_given_path():
     assert args.db == "/tmp/somewhere.db"
 
 
-def test_bare_invocation_is_a_usage_error_not_a_help_screen():
-    """`oa` with no arguments does NOT print help and exit 0.
+def test_bare_invocation_prints_help_and_exits_zero(capsys):
+    """`oa` with no arguments is a question, not a mistake.
 
-    It is tempting to assume that -- it's the common argparse convention -- but
-    `add_subparsers(dest="command", required=True)` makes the subcommand a
-    required positional, so an empty argv is a missing-argument usage error
-    (exit 2), same family as an unknown subcommand. Verified by hand before
-    writing this: `main([])` raises SystemExit(2), not SystemExit(0).
+    It used to be a usage error on stderr with exit 2, because
+    `add_subparsers(required=True)` made the subcommand a required positional.
+    That is the least useful answer to someone who typed the tool's name to
+    find out what it does, so the subcommand is now optional and main() prints
+    the help screen. Contrast the next test: an *unknown* subcommand really is
+    a mistake and is still exit 2.
     """
-    with pytest.raises(SystemExit) as excinfo:
-        main([])
+    assert main([]) == 0
 
-    assert excinfo.value.code == 2
+    out = capsys.readouterr().out
+    assert out.startswith("usage: oa")
+    assert "scan" in out and "gui" in out
 
 
 def test_help_flag_exits_zero():

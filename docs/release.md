@@ -32,7 +32,7 @@ a release that is wrong in a way nobody notices until it is published.
    setuptools staging directory that is never cleaned between builds, so
    setuptools copies the current tree in *beside* the old one and ships both — a
    local wheel has already been observed carrying a package that had been renamed
-   two commits earlier. Either `rm -rf build/` first, or export and build
+   two commits earlier. Either `make clean` first, or export and build
    elsewhere:
 
    ```

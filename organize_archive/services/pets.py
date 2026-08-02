@@ -569,7 +569,7 @@ def merge_pets(
     """User confirmed two pet clusters are the same animal. Merge immediately
     (move detections, keep the named/larger one) AND store a durable 'same'
     pet_links constraint so the merge survives the next cluster_pets rebuild.
-    Mirrors merge_persons; see its docstring for the explicit-`name` override."""
+    Shares merge_persons' mechanics, not its rule; see it for `name`."""
     pa, pb, err = merging.load_sides(conn, _PET.entity, id_a, id_b)
     if err:
         return err
