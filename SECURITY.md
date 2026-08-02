@@ -46,9 +46,9 @@ the Privacy section of `README.md` for the full picture.
 
 Please do not open a public issue. Use GitHub's private vulnerability reporting
 for this repository instead: the Security tab, then "Report a vulnerability".
-
-<!-- TODO: add a contact address here if you want reports outside GitHub's
-     private reporting flow. -->
+That is the only channel — there is deliberately no email address here, because
+an address nobody watches is worse than none at all. Expect a reply within a
+couple of weeks; this is a single-developer project, not a staffed one.
 
 ## Supported versions
 

@@ -36,9 +36,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Overview storage panel was reworked: one bar with a Size/Files switch
   instead of two competing bars, exact numbers moved into the table, and per-type
   share shown on hover.
+- Merging two people of the same size, neither of them named, now keeps the older
+  of the two rather than depending on which card you dragged onto which — the rule
+  pets and places already followed.
 
 ### Fixed
 
+- Closing the app no longer hangs for several seconds when detection or semantic
+  indexing has just started. Those stages spend their first seconds loading a
+  model, which cannot be interrupted, so shutdown no longer waits on them.
+- Opening the map on a freshly scanned archive could fail with a database error
+  while a scan was running, because the first view clustered the places itself.
+  Clustering now belongs solely to the pipeline stage; until it runs, the map
+  shows the photos as ungrouped dots.
 - `oa scan` crashed immediately with `UnboundLocalError` before doing any work,
   on every invocation. Five other commands carried the same redundant import but
   happened to survive it; all six are cleaned up.
