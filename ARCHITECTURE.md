@@ -92,6 +92,8 @@ grandfathered.
 | when a pipeline stage runs | `organize_archive/pipeline/stages.py` |
 | how a job does its work | `organize_archive/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
 | a new API endpoint | `organize_archive/web/routes/<domain>.py`, then add it to the route tables in `organize_archive/web/routes/__init__.py` — see below |
+| what the detectors find, and photo orientation | `organize_archive/detect/extract.py` |
+| how detections are stored (and what survives a re-detect) | `organize_archive/detect/persist.py` |
 | face clustering behaviour | `organize_archive/faces/cluster.py` |
 | pet clustering behaviour | `organize_archive/pets/cluster.py` |
 | how a screen looks | `organize_archive/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
@@ -152,6 +154,17 @@ own previous `user_version` so it cannot fire twice.
   carries that name after each rebuild
   (`organize_archive/faces/manual_tags.py`,
   `organize_archive/pets/manual_tags.py`).
+- **Re-detecting a file rewrites all of its detections wholesale**, and one
+  thing must survive that. `detect/persist.py` deletes the file's faces,
+  animals, suppressed candidates and orientation before writing what the pass
+  found, which is what makes a detector or config change take full effect
+  instead of layering new rows on stale ones. But the animal-overlap veto is
+  re-run each time, so a face a *user* has already reviewed as human would be
+  suppressed again: their answer is carried across the rewrite (keyed on the
+  box, since the row id does not survive) and the face they restored is
+  re-created. A veto with no record is a veto nobody can appeal — which is
+  exactly what shipped between `67a2c5c` and `e9a8391`, with the Pets review
+  queue silently unfillable for nine days.
 - `config.json` persists most `Config` fields (`organize_archive/config/settings.py`),
   so changing a dataclass default does nothing on an existing install —
   retuning a threshold there means editing that install's `config.json`.
