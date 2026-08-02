@@ -80,7 +80,17 @@ def test_a_failing_job_logs_an_error_with_a_traceback(jm, monkeypatch, caplog):
         job = _run_to_completion(jm)
 
     assert job.status == "error"
-    failures = [r for r in caplog.records if r.levelno == logging.ERROR]
+    # Filtered on the logger's name as well as the level. On level alone this
+    # test passed with a deliberately wrong logger in `at_level` above, because
+    # ERROR clears the root logger's default threshold no matter who emitted
+    # it -- so it pinned "an ERROR was logged somewhere", not "the job manager
+    # logged it". The other four captures in this file break correctly when the
+    # name is wrong; this one did not.
+    failures = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.ERROR and r.name == "organize_archive.pipeline.manager"
+    ]
     assert len(failures) == 1
     assert "job failed kind=dedup" in failures[0].getMessage()
     # Without exc_info the log says "something failed" and not where, which is
