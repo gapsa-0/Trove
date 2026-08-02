@@ -100,20 +100,8 @@ def _apply_links(conn, groups, emb_rows):
     return list(merged.values())
 
 
-def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
-    import numpy as np
-
-    stats = PetClusterStats()
-    # Pet identities are catalog-global just like persons. Rebuild from every
-    # scanned root so opening one archive cannot erase another archive's pets.
-    rc, params = "", ()
-    rows = conn.execute(
-        f"""SELECT a.* FROM animal_detections a JOIN files f ON f.id=a.file_id
-            WHERE f.present=1 AND f.hidden=0 AND a.species!='teddy bear'{rc}
-            ORDER BY a.species,a.id""",
-        params,
-    ).fetchall()
-    stats.detections = len(rows)
+def _remember_named_pets(conn) -> dict:
+    """Each named pet's detection-id set, so the name can be carried over."""
     old_members = {}
     for pet in conn.execute("SELECT id,name FROM pets WHERE name IS NOT NULL"):
         old_members[pet["id"]] = {
@@ -125,6 +113,96 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
                 )
             },
         }
+    return old_members
+
+
+def _species_groups(V, emb_rows, cfg: Config) -> list[list[int]]:
+    """Cluster within each species, as one flat list of groups.
+
+    Each group is a list of GLOBAL positions into emb_rows/V (not positions
+    local to the species slice), so ``_apply_links`` can compare and union
+    groups from different species passes on equal footing.
+    """
+    groups: list[list[int]] = []
+    for species in sorted({row["species"] for row in emb_rows}):
+        positions = [i for i, row in enumerate(emb_rows) if row["species"] == species]
+        for local_group in _clusters(V[positions], cfg.pets_cluster_similarity):
+            groups.append([positions[i] for i in local_group])
+    return groups
+
+
+def _majority_species(emb_rows, group: list[int]) -> str:
+    """The species of a merged group: the MAJORITY among its members, not a
+    single per-species pass's label -- a pet_links merge can pull in a detection
+    the detector mis-typed (e.g. a dog once read as a cat).
+
+    Ties go to the best-scoring detection *among the tied species*, not to the
+    group's cover, which may itself be the lone high-scoring outlier of a
+    minority species that lost the vote.
+    """
+    counts = Counter(emb_rows[i]["species"] for i in group)
+    top = max(counts.values())
+    tied = {sp for sp, c in counts.items() if c == top}
+    return max(
+        (emb_rows[i] for i in group if emb_rows[i]["species"] in tied),
+        key=lambda row: row["det_score"],
+    )["species"]
+
+
+def _carried_name(ids: set, old_members: dict) -> str | None:
+    """The previous name that best explains this group, by detection overlap."""
+    best_name, best_overlap = None, 0
+    for old in old_members.values():
+        overlap = len(ids & old["ids"])
+        if overlap > best_overlap:
+            best_name, best_overlap = old["name"], overlap
+    return best_name
+
+
+def _write_pet(conn, V, emb_rows, group: list[int], old_members: dict, now: str, stats) -> None:
+    """Insert one pets row for a surviving group and point its detections at it."""
+    import numpy as np
+
+    ids = {emb_rows[i]["id"] for i in group}
+    best_name = _carried_name(ids, old_members)
+    centroid = V[group].mean(axis=0)
+    centroid /= np.linalg.norm(centroid) + 1e-9
+    cover = max((emb_rows[i] for i in group), key=lambda row: row["det_score"])
+    cursor = conn.execute(
+        """INSERT INTO pets
+           (name,species,cover_detection_id,detection_count,centroid,created_at)
+           VALUES(?,?,?,?,?,?)""",
+        (
+            best_name,
+            _majority_species(emb_rows, group),
+            cover["id"],
+            len(group),
+            centroid.astype("float32").tobytes(),
+            now,
+        ),
+    )
+    marks = ",".join("?" for _ in ids)
+    conn.execute(
+        f"UPDATE animal_detections SET pet_id=? WHERE id IN ({marks})", (cursor.lastrowid, *ids)
+    )
+    stats.pets += 1
+    stats.clustered += len(group)
+    stats.names_preserved += int(best_name is not None)
+
+
+def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
+    import numpy as np
+
+    stats = PetClusterStats()
+    # Pet identities are catalog-global just like persons. Rebuild from every
+    # scanned root so opening one archive cannot erase another archive's pets.
+    rows = conn.execute(
+        """SELECT a.* FROM animal_detections a JOIN files f ON f.id=a.file_id
+            WHERE f.present=1 AND f.hidden=0 AND a.species!='teddy bear'
+            ORDER BY a.species,a.id"""
+    ).fetchall()
+    stats.detections = len(rows)
+    old_members = _remember_named_pets(conn)
     conn.execute("UPDATE animal_detections SET pet_id=NULL WHERE manual_pet IS NULL")
     conn.execute("DELETE FROM pets")
     now = db.now_iso()
@@ -134,11 +212,11 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     # isn't a defensive backstop -- pet ids are GUARANTEED to change every
     # chunk, so every return path below must repair before it commits.
 
-    # One global embedding matrix (rather than per-species, as before) so a
-    # pet_links merge (below) can union two groups formed in different
-    # per-species passes -- a merge needs both sides addressable by the same
-    # position space. Detections without an embedding can't be grouped at all
-    # and fall straight into stats.unassigned.
+    # One global embedding matrix (rather than per-species) so a pet_links merge
+    # can union two groups formed in different per-species passes -- a merge
+    # needs both sides addressable by the same position space. Detections
+    # without an embedding can't be grouped at all and fall straight into
+    # stats.unassigned.
     emb_rows = [row for row in rows if row["embedding"]]
     if not emb_rows:
         stats.unassigned = stats.detections
@@ -148,64 +226,12 @@ def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
     V = np.array([np.frombuffer(row["embedding"], "float32") for row in emb_rows], dtype="float32")
     V /= np.linalg.norm(V, axis=1, keepdims=True) + 1e-9
 
-    # -- per-species clustering, collected into one flat list of GROUPS -----
-    # Each group is a list of GLOBAL positions into emb_rows/V (not positions
-    # local to the species slice), so _apply_links below can compare and union
-    # groups from different species passes on equal footing.
-    groups: list[list[int]] = []
-    for species in sorted({row["species"] for row in emb_rows}):
-        positions = [i for i, row in enumerate(emb_rows) if row["species"] == species]
-        for local_group in _clusters(V[positions], cfg.pets_cluster_similarity):
-            groups.append([positions[i] for i in local_group])
-
-    # -- fold in the user's "same pet?" answers, THEN filter/finalize -------
-    groups = _apply_links(conn, groups, emb_rows)
-
+    # Fold in the user's "same pet?" answers, THEN filter/finalize.
+    groups = _apply_links(conn, _species_groups(V, emb_rows, cfg), emb_rows)
     for group in groups:
-        if len(group) < cfg.pets_min_detections:
-            continue
-        ids = {emb_rows[i]["id"] for i in group}
-        best_name, best_overlap = None, 0
-        for old in old_members.values():
-            overlap = len(ids & old["ids"])
-            if overlap > best_overlap:
-                best_name, best_overlap = old["name"], overlap
-        centroid = V[group].mean(axis=0)
-        centroid /= np.linalg.norm(centroid) + 1e-9
-        cover = max((emb_rows[i] for i in group), key=lambda row: row["det_score"])
-        # Species is now the MAJORITY among the merged group's members, not a
-        # single per-species pass's label: a pet_links merge can pull in a
-        # detection the detector mis-typed (e.g. a dog once read as a cat).
-        # Ties go to the best-scoring detection *among the tied species* --
-        # not to `cover`, which may itself be the lone high-scoring outlier
-        # of a minority species that lost the vote.
-        counts = Counter(emb_rows[i]["species"] for i in group)
-        top = max(counts.values())
-        tied = {sp for sp, c in counts.items() if c == top}
-        species = max(
-            (emb_rows[i] for i in group if emb_rows[i]["species"] in tied),
-            key=lambda row: row["det_score"],
-        )["species"]
-        cursor = conn.execute(
-            """INSERT INTO pets
-               (name,species,cover_detection_id,detection_count,centroid,created_at)
-               VALUES(?,?,?,?,?,?)""",
-            (
-                best_name,
-                species,
-                cover["id"],
-                len(group),
-                centroid.astype("float32").tobytes(),
-                now,
-            ),
-        )
-        marks = ",".join("?" for _ in ids)
-        conn.execute(
-            f"UPDATE animal_detections SET pet_id=? WHERE id IN ({marks})", (cursor.lastrowid, *ids)
-        )
-        stats.pets += 1
-        stats.clustered += len(group)
-        stats.names_preserved += int(best_name is not None)
+        if len(group) >= cfg.pets_min_detections:
+            _write_pet(conn, V, emb_rows, group, old_members, now, stats)
+
     stats.unassigned = stats.detections - stats.clustered
     repair_manual_pet_files(conn)
     conn.commit()

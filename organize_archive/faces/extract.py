@@ -198,6 +198,127 @@ def calibrate_quality(conn, cfg: Config, limit: int = 100, be=None, progress=Non
     return stats
 
 
+def _insert_face(conn, fid: int, fc, be, now: str) -> None:
+    """One detected face's row. Every quality column is read with getattr so a
+    lightweight third-party or test backend that supplies only a box, a score
+    and an embedding still works."""
+    conn.execute(
+        """INSERT INTO faces
+           (file_id, box_x, box_y, box_w, box_h, det_score,
+            focus_score, brightness, extreme_fraction,
+            clipped_fraction, quality_score, quality_source,
+            fiqa_norm, fiqa_score, fiqa_source, quality_tier,
+            embedding, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            fid,
+            fc.x,
+            fc.y,
+            fc.w,
+            fc.h,
+            fc.score,
+            getattr(fc, "focus_score", None),
+            getattr(fc, "brightness", None),
+            getattr(fc, "extreme_fraction", None),
+            getattr(fc, "clipped_fraction", None),
+            getattr(fc, "quality_score", None),
+            getattr(fc, "quality_source", None),
+            getattr(fc, "fiqa_norm", None),
+            getattr(fc, "fiqa_score", None),
+            getattr(getattr(be, "assessor", None), "model", None),
+            getattr(fc, "quality_tier", None),
+            fc.embedding.tobytes(),
+            now,
+        ),
+    )
+
+
+def _write_face_scan(conn, fid: int, n_faces: int, report, now: str) -> None:
+    """Mark this image scanned, with what was found and what was rejected.
+
+    Written whether or not detection succeeded, so an unreadable file is not
+    retried for ever; a failed file arrives with zero counts.
+    """
+    conn.execute(
+        """INSERT OR REPLACE INTO face_scan
+           (file_id, n_faces, n_candidates, rejected_score, rejected_size,
+            rejected_focus, rejected_exposure, rejected_clipped,
+            rejected_nonhuman, scanned_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (
+            fid,
+            n_faces,
+            report.candidates,
+            report.rejected.get("score", 0),
+            report.rejected.get("size", 0),
+            report.rejected.get("focus", 0),
+            report.rejected.get("exposure", 0),
+            report.rejected.get("clipped", 0),
+            report.rejected.get("nonhuman", 0),
+            now,
+        ),
+    )
+
+
+def _detect_faces(be, path: Path):
+    """``(faces, report)`` for one image, via whichever API this backend offers."""
+    report = backend.DetectionReport()
+    if hasattr(be, "process_path_report"):
+        report = be.process_path_report(str(path))
+        return report.faces, report
+    # compatibility with lightweight third-party/test backends
+    faces = be.process_path(str(path))
+    report.faces = faces
+    report.candidates = len(faces)
+    return faces, report
+
+
+def _extract_one(conn, be, row, now: str, stats: ExtractStats) -> None:
+    """Detect and store one image's faces, then mark it scanned either way."""
+    fid = row["id"]
+    path = Path(row["root_path"]) / row["rel_path"]
+    n_faces = 0
+    report = backend.DetectionReport()
+    try:
+        faces, report = _detect_faces(be, path)
+        # Standalone CLI path: plain face detection, no animal cross-check.
+        # The GUI's fused detect stage (organize_archive/detect) is what
+        # drops animal-face false positives, since it has the animal boxes
+        # in hand from the same decode.
+        for fc in faces:
+            _insert_face(conn, fid, fc, be, now)
+        n_faces = len(faces)
+        _add_rejections(stats, report)
+    except Exception as e:  # bad/corrupt image, unreadable, etc.
+        stats.errors += 1
+        if len(stats.error_samples) < 5:
+            stats.error_samples.append(f"{path.name}: {e}")
+        # No exc_info here either, for the same reason as calibrate_quality
+        # above: one line per bad file, not a traceback per bad file.
+        logger.warning("face extraction failed for %s: %s", path.name, e)
+
+    _write_face_scan(conn, fid, n_faces, report, now)
+    stats.processed += 1
+    stats.faces_found += n_faces
+    if n_faces:
+        stats.images_with_faces += 1
+
+
+def _maybe_bootstrap_fiqa(conn, cfg: Config, be) -> None:
+    """Fix the FIQA calibration once enough norms exist, then tier the backlog
+    extracted before it (see faces/fiqa.py). A no-op thereafter."""
+    # Left nested on purpose: the outer test asks whether this backend does
+    # FIQA at all, the inner one whether calibration is still owed. Merging
+    # them into one condition reads as a single question when it is two.
+    if hasattr(be, "assessor"):  # noqa: SIM102
+        if (
+            fiqa.load_calibration(conn, cfg.faces_fiqa_model) is None
+            and fiqa.bootstrap_calibration(conn, cfg) is not None
+        ):
+            conn.commit()
+            be.assessor = fiqa.make_assessor(conn, cfg)
+
+
 def extract(
     conn, cfg: Config, progress=None, batch_size: int = 64, limit: int | None = None, be=None
 ) -> ExtractStats:
@@ -234,101 +355,11 @@ def extract(
             break
 
         for row in rows:
-            fid = row["id"]
-            path = Path(row["root_path"]) / row["rel_path"]
-            n_faces = 0
-            report = backend.DetectionReport()
-            try:
-                if hasattr(be, "process_path_report"):
-                    report = be.process_path_report(str(path))
-                    faces = report.faces
-                else:  # compatibility with lightweight third-party/test backends
-                    faces = be.process_path(str(path))
-                    report.faces = faces
-                    report.candidates = len(faces)
-                # Standalone CLI path: plain face detection, no animal cross-check.
-                # The GUI's fused detect stage (organize_archive/detect) is what
-                # drops animal-face false positives, since it has the animal boxes
-                # in hand from the same decode.
-                for fc in faces:
-                    conn.execute(
-                        """INSERT INTO faces
-                           (file_id, box_x, box_y, box_w, box_h, det_score,
-                            focus_score, brightness, extreme_fraction,
-                            clipped_fraction, quality_score, quality_source,
-                            fiqa_norm, fiqa_score, fiqa_source, quality_tier,
-                            embedding, created_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                        (
-                            fid,
-                            fc.x,
-                            fc.y,
-                            fc.w,
-                            fc.h,
-                            fc.score,
-                            getattr(fc, "focus_score", None),
-                            getattr(fc, "brightness", None),
-                            getattr(fc, "extreme_fraction", None),
-                            getattr(fc, "clipped_fraction", None),
-                            getattr(fc, "quality_score", None),
-                            getattr(fc, "quality_source", None),
-                            getattr(fc, "fiqa_norm", None),
-                            getattr(fc, "fiqa_score", None),
-                            getattr(getattr(be, "assessor", None), "model", None),
-                            getattr(fc, "quality_tier", None),
-                            fc.embedding.tobytes(),
-                            now,
-                        ),
-                    )
-                n_faces = len(faces)
-                _add_rejections(stats, report)
-            except Exception as e:  # bad/corrupt image, unreadable, etc.
-                stats.errors += 1
-                if len(stats.error_samples) < 5:
-                    stats.error_samples.append(f"{path.name}: {e}")
-                # No exc_info here either, for the same reason as calibrate_quality
-                # above: one line per bad file, not a traceback per bad file.
-                logger.warning("face extraction failed for %s: %s", path.name, e)
-
-            conn.execute(
-                """INSERT OR REPLACE INTO face_scan
-                   (file_id, n_faces, n_candidates, rejected_score, rejected_size,
-                    rejected_focus, rejected_exposure, rejected_clipped,
-                    rejected_nonhuman, scanned_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    fid,
-                    n_faces,
-                    report.candidates,
-                    report.rejected.get("score", 0),
-                    report.rejected.get("size", 0),
-                    report.rejected.get("focus", 0),
-                    report.rejected.get("exposure", 0),
-                    report.rejected.get("clipped", 0),
-                    report.rejected.get("nonhuman", 0),
-                    now,
-                ),
-            )
-            stats.processed += 1
-            stats.faces_found += n_faces
-            if n_faces:
-                stats.images_with_faces += 1
+            _extract_one(conn, be, row, now, stats)
             if progress is not None:
-                progress.update(stats.processed, 0, path.name)
+                progress.update(stats.processed, 0, Path(row["rel_path"]).name)
 
         conn.commit()
-
-        # Fix the FIQA calibration once enough norms exist, then tier the
-        # backlog extracted before it (see faces/fiqa.py). A no-op thereafter.
-        # Left nested on purpose: the outer test asks whether this backend does
-        # FIQA at all, the inner one whether calibration is still owed. Merging
-        # them into one condition reads as a single question when it is two.
-        if hasattr(be, "assessor"):  # noqa: SIM102
-            if (
-                fiqa.load_calibration(conn, cfg.faces_fiqa_model) is None
-                and fiqa.bootstrap_calibration(conn, cfg) is not None
-            ):
-                conn.commit()
-                be.assessor = fiqa.make_assessor(conn, cfg)
+        _maybe_bootstrap_fiqa(conn, cfg, be)
 
     return stats

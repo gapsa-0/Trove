@@ -48,12 +48,10 @@ ALLOWLIST: dict[str, int] = {
     # Functions
     "organize_archive/cli/scan.py::run": 85,
     "organize_archive/db/database.py::init_db": 98,
-    "organize_archive/faces/extract.py::extract": 134,
     "organize_archive/faces/migrate_adaface.py::reattach": 91,
     "organize_archive/faces/migrate_adaface.py::snapshot_and_wipe": 95,
     "organize_archive/geo/clusters.py::assign_unplaced": 83,
     "organize_archive/pets/backend.py::_forward": 83,
-    "organize_archive/pets/cluster.py::cluster_pets": 110,
     "organize_archive/pipeline/scheduler.py::tick": 95,
     "organize_archive/pipeline/stages.py::cards": 104,
     "tests/gui/test_api_routes.py::_seed_archive": 111,
