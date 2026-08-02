@@ -111,6 +111,116 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, de
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
+def _migrate_files_and_runs(conn: sqlite3.Connection) -> None:
+    """Duplicate grouping on files, and the two columns that let a *finished*
+    scan be recognised as finished: which root it covered, and how many files
+    were on disk when it completed (see scan_settled)."""
+    _add_column_if_missing(conn, "files", "dup_group_id", "INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_files_dupgroup ON files(dup_group_id)")
+    _add_column_if_missing(conn, "scan_runs", "root_id", "INTEGER")
+    _add_column_if_missing(conn, "scan_runs", "files_on_disk", "INTEGER")
+
+
+def _migrate_places(conn: sqlite3.Connection) -> None:
+    """Durable places: `source` distinguishes GPS-derived ('auto') members from
+    ones the user attached by hand ('manual'), which are never wiped; `pinned`
+    marks a user-created place whose coordinate is fixed, never recomputed from
+    its members."""
+    _add_column_if_missing(conn, "place_cluster_members", "source", "TEXT DEFAULT 'auto'")
+    conn.execute("UPDATE place_cluster_members SET source='auto' WHERE source IS NULL")
+    _add_column_if_missing(conn, "place_clusters", "pinned", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _migrate_faces(conn: sqlite3.Connection) -> None:
+    """Everything the faces table gained after the first schema.
+
+    `manual_person` pins a face to a person *by name* -- the only identity
+    stable across the DELETE/rebuild in faces/cluster.py -- and is re-applied
+    after every recluster. `persons.centroid` is the cached L2-normalized mean
+    embedding, so "same person?" suggestions need not reload every embedding.
+    `not_person` is the user's "that is a doll / an animal / a cartoon" verdict,
+    which excludes the face from clustering thereafter.
+
+    Quality metrics are stored with algorithm provenance. Pre-existing rows have
+    no feature norm to score, so they are left with a NULL `quality_tier`, which
+    every consumer reads as BORDERLINE: still clustered and still visible, never
+    used to seed a core. That is the safe reading for a face whose quality is
+    simply unknown, and it keeps an un-migrated database working until the
+    AdaFace re-extract fills the column.
+    """
+    _add_column_if_missing(conn, "faces", "manual_person", "TEXT")
+    _add_column_if_missing(conn, "persons", "centroid", "BLOB")
+    _add_column_if_missing(conn, "faces", "not_person", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "faces", "nonhuman_kind", "TEXT")
+    _add_column_if_missing(conn, "faces", "nonhuman_source", "TEXT")
+    for column in ("focus_score", "brightness", "extreme_fraction", "clipped_fraction"):
+        _add_column_if_missing(conn, "faces", column, "REAL")
+    _add_column_if_missing(conn, "faces", "quality_score", "REAL")
+    _add_column_if_missing(conn, "faces", "quality_source", "TEXT")
+    _add_column_if_missing(conn, "faces", "fiqa_norm", "REAL")
+    _add_column_if_missing(conn, "faces", "fiqa_score", "REAL")
+    _add_column_if_missing(conn, "faces", "fiqa_source", "TEXT")
+    _add_column_if_missing(conn, "faces", "quality_tier", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_faces_tier ON faces(quality_tier)")
+
+
+def _migrate_scan_counters(conn: sqlite3.Connection) -> None:
+    """Per-image rejection counters, which make the quality gate inspectable
+    without storing rejected doll/cartoon/blurry candidates as faces."""
+    _add_column_if_missing(conn, "face_scan", "n_candidates", "INTEGER NOT NULL DEFAULT 0")
+    for reason in ("score", "size", "focus", "exposure", "clipped", "nonhuman"):
+        _add_column_if_missing(
+            conn, "face_scan", f"rejected_{reason}", "INTEGER NOT NULL DEFAULT 0"
+        )
+    _add_column_if_missing(conn, "pet_scan", "source_sha256", "TEXT")
+
+
+def _migrate_nonhuman(conn: sqlite3.Connection) -> None:
+    """The suppressed-face review queue: enough of the original detection to
+    rebuild the face if the user overrules the veto, plus their verdict."""
+    _add_column_if_missing(conn, "nonhuman_detections", "embedding", "BLOB")
+    _add_column_if_missing(conn, "nonhuman_detections", "source_sha256", "TEXT")
+    for column in (
+        "det_score",
+        "focus_score",
+        "brightness",
+        "extreme_fraction",
+        "clipped_fraction",
+        "quality_score",
+    ):
+        _add_column_if_missing(conn, "nonhuman_detections", column, "REAL")
+    _add_column_if_missing(conn, "nonhuman_detections", "quality_source", "TEXT")
+    _add_column_if_missing(
+        conn, "nonhuman_detections", "review_status", "TEXT NOT NULL DEFAULT 'pending'"
+    )
+    _add_column_if_missing(conn, "nonhuman_detections", "restored_face_id", "INTEGER")
+
+
+def _migrate_video(conn: sqlite3.Connection) -> None:
+    """Detection now also runs on videos, via sampled keyframes. A box on a video
+    is meaningless without the frame it was found in, so both detection tables
+    record the ffmpeg offset to re-extract that frame for cropping."""
+    _add_column_if_missing(conn, "faces", "frame_offset", "TEXT")
+    _add_column_if_missing(conn, "animal_detections", "frame_offset", "TEXT")
+    _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
+
+
+def _drop_legacy_video_embeddings(conn: sqlite3.Connection) -> None:
+    """One-time cleanup, gated to schema version 12 so it runs exactly once ever
+    rather than on every init_db call.
+
+    init_db runs at every job start, and an unconditional DELETE here was a
+    full-table write taking the single writer's lock every time, independent of
+    whether there was anything to clean up. Earlier runs embedded a video's raw
+    bytes wholesale (input_kind='video'), which no embedder this app has used
+    could accept beyond a tiny clip, so those rows failed forever. Frame-sampled
+    video indexing (services/semantic.py) writes a new input_kind
+    ('video_frames'), so this DELETE only ever matches the old rows; they become
+    pending again exactly once, the first time a pre-12 database is opened.
+    """
+    conn.execute("DELETE FROM semantic_embeddings WHERE input_kind='video'")
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     """Create/upgrade the schema. Idempotent."""
     # Read before touching anything: executescript's CREATE TABLE/INDEX IF NOT
@@ -121,92 +231,16 @@ def init_db(conn: sqlite3.Connection) -> None:
     # is one page read, not a table scan.
     previous_version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.executescript(_SCHEMA_SQL.read_text())
-    # Migrations for columns added to existing tables.
-    _add_column_if_missing(conn, "files", "dup_group_id", "INTEGER")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_files_dupgroup ON files(dup_group_id)")
-    # Durable-place / editable-detail support:
-    #  - place_cluster_members.source distinguishes GPS-derived ('auto') members from
-    #    ones the user attached by hand ('manual'); manual members are never wiped.
-    #  - place_clusters.pinned marks a user-created place whose coordinate is a fixed
-    #    pin (never recomputed from members).
-    #  - faces.manual_person pins a face to a person *by name* (the only identity stable
-    #    across the DELETE/rebuild in faces/cluster.py), re-applied after every recluster.
-    # scan_runs gains the two things that let a *finished* scan be recognised as
-    # finished: which root it covered, and how many files were on disk when it
-    # completed (see scan_settled).
-    _add_column_if_missing(conn, "scan_runs", "root_id", "INTEGER")
-    _add_column_if_missing(conn, "scan_runs", "files_on_disk", "INTEGER")
-    _add_column_if_missing(conn, "place_cluster_members", "source", "TEXT DEFAULT 'auto'")
-    conn.execute("UPDATE place_cluster_members SET source='auto' WHERE source IS NULL")
-    _add_column_if_missing(conn, "place_clusters", "pinned", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "faces", "manual_person", "TEXT")
-    # persons.centroid: cached L2-normalized mean embedding, used to suggest
-    # "same person?" merges without reloading every embedding.
-    _add_column_if_missing(conn, "persons", "centroid", "BLOB")
-    # faces.not_person: user marked this cluster as not a person (doll/animal/
-    # cartoon face that YuNet detected); excluded from clustering thereafter.
-    _add_column_if_missing(conn, "faces", "not_person", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "faces", "nonhuman_kind", "TEXT")
-    _add_column_if_missing(conn, "faces", "nonhuman_source", "TEXT")
-    # Face-quality metrics are stored with algorithm provenance. Scan-level
-    # rejection counters make quality-gate behavior inspectable without saving
-    # rejected doll/cartoon/blurry candidates as faces.
-    _add_column_if_missing(conn, "faces", "focus_score", "REAL")
-    _add_column_if_missing(conn, "faces", "brightness", "REAL")
-    _add_column_if_missing(conn, "faces", "extreme_fraction", "REAL")
-    _add_column_if_missing(conn, "faces", "clipped_fraction", "REAL")
-    _add_column_if_missing(conn, "faces", "quality_score", "REAL")
-    _add_column_if_missing(conn, "faces", "quality_source", "TEXT")
-    # FIQA gate (faces/fiqa.py). Pre-existing rows have no norm to score, so they
-    # are left with a NULL tier, which every consumer reads as BORDERLINE: still
-    # clustered and still visible, never used to seed a core. That is the safe
-    # reading for a face whose quality is simply unknown, and it keeps an
-    # un-migrated database working until the AdaFace re-extract fills the column.
-    _add_column_if_missing(conn, "faces", "fiqa_norm", "REAL")
-    _add_column_if_missing(conn, "faces", "fiqa_score", "REAL")
-    _add_column_if_missing(conn, "faces", "fiqa_source", "TEXT")
-    _add_column_if_missing(conn, "faces", "quality_tier", "TEXT")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_faces_tier ON faces(quality_tier)")
-    _add_column_if_missing(conn, "face_scan", "n_candidates", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "face_scan", "rejected_score", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "face_scan", "rejected_size", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "face_scan", "rejected_focus", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "face_scan", "rejected_exposure", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "face_scan", "rejected_clipped", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "face_scan", "rejected_nonhuman", "INTEGER NOT NULL DEFAULT 0")
-    _add_column_if_missing(conn, "nonhuman_detections", "embedding", "BLOB")
-    _add_column_if_missing(conn, "nonhuman_detections", "source_sha256", "TEXT")
-    _add_column_if_missing(conn, "nonhuman_detections", "det_score", "REAL")
-    _add_column_if_missing(conn, "nonhuman_detections", "focus_score", "REAL")
-    _add_column_if_missing(conn, "nonhuman_detections", "brightness", "REAL")
-    _add_column_if_missing(conn, "nonhuman_detections", "extreme_fraction", "REAL")
-    _add_column_if_missing(conn, "nonhuman_detections", "clipped_fraction", "REAL")
-    _add_column_if_missing(conn, "nonhuman_detections", "quality_score", "REAL")
-    _add_column_if_missing(conn, "nonhuman_detections", "quality_source", "TEXT")
-    _add_column_if_missing(
-        conn, "nonhuman_detections", "review_status", "TEXT NOT NULL DEFAULT 'pending'"
-    )
-    _add_column_if_missing(conn, "nonhuman_detections", "restored_face_id", "INTEGER")
-    _add_column_if_missing(conn, "pet_scan", "source_sha256", "TEXT")
-    # Detection now also runs on videos, via sampled keyframes. A box on a video
-    # is meaningless without the frame it was found in, so both detection tables
-    # record the ffmpeg offset to re-extract that frame for cropping.
-    _add_column_if_missing(conn, "faces", "frame_offset", "TEXT")
-    _add_column_if_missing(conn, "animal_detections", "frame_offset", "TEXT")
-    _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
+    # Migrations for columns added to existing tables. Each is idempotent, so
+    # the whole sequence is a no-op on a current database.
+    _migrate_files_and_runs(conn)
+    _migrate_places(conn)
+    _migrate_faces(conn)
+    _migrate_scan_counters(conn)
+    _migrate_nonhuman(conn)
+    _migrate_video(conn)
     if previous_version < 12:
-        # One-time cleanup, gated to schema version 12 so it runs exactly once
-        # ever instead of on every init_db call (init_db runs at every job
-        # start -- an unconditional DELETE here was a full-table write taking
-        # the single writer's lock on every job, independent of whether there
-        # was anything to clean up). Earlier runs embedded a video's raw bytes
-        # wholesale (input_kind='video'), which no embedder this app has used
-        # could accept beyond a tiny clip, so those rows failed forever.
-        # Frame-sampled video indexing (services/semantic.py) writes a new
-        # input_kind ('video_frames'), so this DELETE only ever matches the
-        # old rows; rows with input_kind='video' become pending again exactly
-        # once, the first time a pre-12 database is opened.
-        conn.execute("DELETE FROM semantic_embeddings WHERE input_kind='video'")
+        _drop_legacy_video_embeddings(conn)
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
 

@@ -353,12 +353,8 @@ class PetBackend:
             if species == "person"
         ]
 
-    def _forward(self, image_bgr):
-        """One YOLOX pass -> ``(species, (x, y, w, h), score)`` in image pixels.
-
-        Boxes are already NMS'd and mapped back out of the letterboxed 640x640
-        input; ``min_px`` and re-ID embedding are the callers' business.
-        """
+    def _letterbox(self, image_bgr):
+        """Resize into the 640x640 letterbox YOLOX expects; returns (blob, ratio)."""
         original_h, original_w = image_bgr.shape[:2]
         rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         ratio = min(
@@ -372,9 +368,10 @@ class PetBackend:
         padded[:resized_h, :resized_w] = cv2.resize(
             rgb, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR
         )
-        blob = padded.transpose(2, 0, 1)[None]
-        self.net.setInput(blob)
-        output = self.net.forward(self.net.getUnconnectedOutLayersNames())[0]
+        return padded.transpose(2, 0, 1)[None], ratio
+
+    def _decode(self, output):
+        """Raw head output -> ``(boxes_xywh, class_ids, confidences)``."""
         dets = output[0].copy()
         dets[:, :2] = (dets[:, :2] + self.grids[0]) * self.expanded_strides[0]
         dets[:, 2:4] = np.exp(dets[:, 2:4]) * self.expanded_strides[0]
@@ -383,43 +380,63 @@ class PetBackend:
         boxes[:, 1] = dets[:, 1] - dets[:, 3] / 2
         boxes[:, 2:4] = dets[:, 2:4]
         scores = dets[:, 4:5] * dets[:, 5:]
-        class_ids = np.argmax(scores, axis=1)
-        confidences = np.max(scores, axis=1)
+        return boxes, np.argmax(scores, axis=1), np.max(scores, axis=1)
+
+    def _eligible(self, class_ids, confidences) -> list[int]:
+        """Indices worth running NMS on: pet species at ``min_score``, plus
+        ``person`` at the lower ``human_min_score``."""
+        return [
+            i
+            for i, class_id in enumerate(class_ids)
+            if (COCO_CLASSES[int(class_id)] in self.species and confidences[i] >= self.min_score)
+            or (COCO_CLASSES[int(class_id)] == "person" and confidences[i] >= self.human_min_score)
+        ]
+
+    def _nms(self, boxes: list, scores: list, classes: list, floor: float):
+        """Per-class NMS, via the batched API where OpenCV has it."""
+        if hasattr(cv2.dnn, "NMSBoxesBatched"):
+            return cv2.dnn.NMSBoxesBatched(boxes, scores, classes, floor, 0.50)
+        # OpenCV 4.8 compatibility: perform NMS independently per class.
+        kept: list[int] = []
+        for class_id in set(classes):
+            local = [index for index, value in enumerate(classes) if value == class_id]
+            selected = cv2.dnn.NMSBoxes(
+                [boxes[index] for index in local],
+                [scores[index] for index in local],
+                floor,
+                0.50,
+            )
+            kept.extend(local[int(index)] for index in np.asarray(selected).reshape(-1))
+        return kept
+
+    def _forward(self, image_bgr):
+        """One YOLOX pass -> ``(species, (x, y, w, h), score)`` in image pixels.
+
+        Boxes are already NMS'd and mapped back out of the letterboxed 640x640
+        input; ``min_px`` and re-ID embedding are the callers' business.
+        """
+        original_h, original_w = image_bgr.shape[:2]
+        blob, ratio = self._letterbox(image_bgr)
+        self.net.setInput(blob)
+        output = self.net.forward(self.net.getUnconnectedOutLayersNames())[0]
+        boxes, class_ids, confidences = self._decode(output)
+
+        eligible = self._eligible(class_ids, confidences)
+        if not eligible:
+            return []
         # Two floors in one pass: pet species at min_score, `person` lower. NMS
         # applies its own score threshold, so it has to run at the lower of the
         # two or every weak person box would be discarded there. NMS is per
         # class either way, so the added person candidates cannot change which
         # animal boxes survive.
         nms_floor = min(self.min_score, self.human_min_score)
-        eligible = [
-            i
-            for i, class_id in enumerate(class_ids)
-            if (COCO_CLASSES[int(class_id)] in self.species and confidences[i] >= self.min_score)
-            or (COCO_CLASSES[int(class_id)] == "person" and confidences[i] >= self.human_min_score)
-        ]
-        if not eligible:
-            return []
-        candidate_boxes = boxes[eligible].tolist()
-        candidate_scores = confidences[eligible].tolist()
-        candidate_classes = class_ids[eligible].tolist()
-        if hasattr(cv2.dnn, "NMSBoxesBatched"):
-            keep = cv2.dnn.NMSBoxesBatched(
-                candidate_boxes, candidate_scores, candidate_classes, nms_floor, 0.50
-            )
-        else:  # OpenCV 4.8 compatibility: perform NMS independently per class.
-            kept = []
-            for class_id in set(candidate_classes):
-                local = [
-                    index for index, value in enumerate(candidate_classes) if value == class_id
-                ]
-                selected = cv2.dnn.NMSBoxes(
-                    [candidate_boxes[index] for index in local],
-                    [candidate_scores[index] for index in local],
-                    nms_floor,
-                    0.50,
-                )
-                kept.extend(local[int(index)] for index in np.asarray(selected).reshape(-1))
-            keep = kept
+        keep = self._nms(
+            boxes[eligible].tolist(),
+            confidences[eligible].tolist(),
+            class_ids[eligible].tolist(),
+            nms_floor,
+        )
+
         out = []
         for local_index in np.asarray(keep).reshape(-1):
             source_index = eligible[int(local_index)]

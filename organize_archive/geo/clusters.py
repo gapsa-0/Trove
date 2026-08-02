@@ -158,6 +158,83 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
     return stats
 
 
+def _unplaced_points(conn, root_id: int):
+    """Geotagged files in this root that belong to no place yet."""
+    return conn.execute(
+        """SELECT f.id, g.lat, g.lon
+           FROM files f JOIN geo g ON g.file_id = f.id
+           WHERE f.present = 1 AND f.root_id = ? AND g.lat IS NOT NULL
+             AND f.id NOT IN (SELECT file_id FROM place_cluster_members)""",
+        (root_id,),
+    ).fetchall()
+
+
+def _working_places(conn, root_id: int) -> list[dict]:
+    """Mutable working copies of this root's places.
+
+    A plain list is fine because the unplaced backlog is small (this runs every
+    pipeline tick), so the nearest-place search never has many points to scan.
+    """
+    return [
+        {
+            "lat": p["lat"],
+            "lon": p["lon"],
+            "count": p["member_count"],
+            "pinned": p["pinned"],
+            "id": p["id"],
+        }
+        for p in conn.execute(
+            "SELECT id, lat, lon, member_count, pinned FROM place_clusters WHERE root_id=?",
+            (root_id,),
+        )
+    ]
+
+
+def _attach(conn, cid: int, fid: int) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
+        "VALUES(?,?, 'auto')",
+        (cid, fid),
+    )
+
+
+def _nearest_place(places: list[dict], lat: float, lon: float, radius_m: float):
+    """The closest place within ``radius_m``, or None."""
+    best, best_d = None, radius_m
+    for p in places:
+        d = _haversine_m(lat, lon, p["lat"], p["lon"])
+        if d <= best_d:
+            best_d, best = d, p
+    return best
+
+
+def _absorb(conn, place: dict, fid: int, lat: float, lon: float) -> None:
+    """Add one point to an existing place, drifting its centroid to match.
+
+    A pinned place's coordinate is a deliberate user pin and never moves; every
+    other place rolls its centroid by incremental mean so it tracks its members.
+    """
+    _attach(conn, place["id"], fid)
+    n = place["count"] + 1
+    if not place["pinned"]:
+        place["lat"] = (place["lat"] * place["count"] + lat) / n
+        place["lon"] = (place["lon"] * place["count"] + lon) / n
+    place["count"] = n
+
+
+def _new_place(conn, root_id: int, fid: int, lat: float, lon: float, now: str) -> dict:
+    """Create an unnamed place at this point, and put the point in it."""
+    cur = conn.execute(
+        """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
+                                      pinned, created_at)
+           VALUES(?, NULL, ?, ?, 1, 0, ?)""",
+        (root_id, lat, lon, now),
+    )
+    cid = cur.lastrowid
+    _attach(conn, cid, fid)
+    return {"lat": lat, "lon": lon, "count": 1, "pinned": 0, "id": cid}
+
+
 def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
     """Incrementally attach geotagged files that aren't in any place yet, without
     ever deleting a place or an existing member.
@@ -172,65 +249,19 @@ def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats
     stats = ClusterStats()
     now = db.now_iso()
 
-    rows = conn.execute(
-        """SELECT f.id, g.lat, g.lon
-           FROM files f JOIN geo g ON g.file_id = f.id
-           WHERE f.present = 1 AND f.root_id = ? AND g.lat IS NOT NULL
-             AND f.id NOT IN (SELECT file_id FROM place_cluster_members)""",
-        (root_id,),
-    ).fetchall()
+    rows = _unplaced_points(conn, root_id)
     stats.points = len(rows)
     if not rows:
         return stats
 
-    # Mutable working copies of existing places; a plain list is fine because the
-    # unplaced backlog is small (this runs every pipeline tick).
-    places = [
-        {
-            "lat": p["lat"],
-            "lon": p["lon"],
-            "count": p["member_count"],
-            "pinned": p["pinned"],
-            "id": p["id"],
-        }
-        for p in conn.execute(
-            "SELECT id, lat, lon, member_count, pinned FROM place_clusters WHERE root_id=?",
-            (root_id,),
-        )
-    ]
-
-    def attach(cid, fid):
-        conn.execute(
-            "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
-            "VALUES(?,?, 'auto')",
-            (cid, fid),
-        )
-
+    places = _working_places(conn, root_id)
     for r in rows:
         lat, lon = r["lat"], r["lon"]
-        best, best_d = None, radius_m
-        for p in places:
-            d = _haversine_m(lat, lon, p["lat"], p["lon"])
-            if d <= best_d:
-                best_d, best = d, p
+        best = _nearest_place(places, lat, lon, radius_m)
         if best is not None:
-            attach(best["id"], r["id"])
-            n = best["count"] + 1
-            if not best["pinned"]:
-                # Roll the centroid by incremental mean so it tracks new members.
-                best["lat"] = (best["lat"] * best["count"] + lat) / n
-                best["lon"] = (best["lon"] * best["count"] + lon) / n
-            best["count"] = n
+            _absorb(conn, best, r["id"], lat, lon)
         else:
-            cur = conn.execute(
-                """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
-                                              pinned, created_at)
-                   VALUES(?, NULL, ?, ?, 1, 0, ?)""",
-                (root_id, lat, lon, now),
-            )
-            cid = cur.lastrowid
-            attach(cid, r["id"])
-            places.append({"lat": lat, "lon": lon, "count": 1, "pinned": 0, "id": cid})
+            places.append(_new_place(conn, root_id, r["id"], lat, lon, now))
             stats.clusters += 1
 
     # Persist updated counts + drifted centroids for the auto places we touched.
