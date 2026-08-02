@@ -1,6 +1,7 @@
 """Fixtures for the tier that runs a JobManager, the pipeline or a live server."""
 
 import pytest
+from live_archive import live_server  # noqa: F401  (re-exported as a fixture)
 
 from organize_archive.config import Config
 

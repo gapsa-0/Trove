@@ -94,11 +94,12 @@ repeats the list so it gets checked rather than remembered.
 - **A new feature has tests for its normal path and at least one edge case** —
   empty input, a missing file, a duplicate, whichever failure the feature is
   actually likely to meet.
-- **No new file over 600 lines and no new function over 80.** `make sizes`
-  enforces it against a shrink-only allowlist of today's exceptions
-  (`tools/dev/check_sizes.py`). If a change genuinely needs a new entry, say
-  why in the commit body — that visible justification is the entire mechanism,
-  and an entry that stops being needed has to be deleted.
+- **No file over 600 lines and no function over 80.** `make sizes`
+  (`tools/dev/check_sizes.py`) enforces it. There are currently no exceptions —
+  its allowlist is empty, and keeping it that way is the goal. If a change
+  genuinely needs an entry, say why in the commit body; that visible
+  justification is the entire mechanism, and an entry that stops being needed
+  has to be deleted.
 - **A user-visible change updates `README.md` and/or the relevant page under
   `docs/`**, in the same commit or a following one in the same batch of work —
   not "later" — **and adds a `CHANGELOG.md` entry under `[Unreleased]`**.

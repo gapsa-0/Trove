@@ -40,14 +40,15 @@ MAX_ASSET = 800  # css / js / html under web/static and web/index.html
 # Keys are repo-relative paths for modules/assets, or "path::function" for
 # a single function/method (nested functions and methods are addressed by
 # their own name, not a dotted path -- ast.walk does not track nesting).
+#
+# It is currently EMPTY, and that is the point: every one of the 5 modules and
+# 21 functions it used to carry was split rather than grandfathered, so the
+# ratchet is now a plain limit with no exceptions to explain. Same intent as
+# tests/unit/test_layering.py's ALLOWED_VIOLATIONS -- an entry here is debt,
+# not permission, and an empty dict is the state worth defending. Adding one
+# back means the budget was exceeded on purpose and the commit body says why.
 # ---------------------------------------------------------------------------
-ALLOWLIST: dict[str, int] = {
-    # Modules
-    "tests/gui/test_api_routes.py": 1159,
-    "tests/integration/test_merge_undo.py": 838,
-    # Functions
-    "tests/gui/test_api_routes.py::_seed_archive": 111,
-}
+ALLOWLIST: dict[str, int] = {}
 
 
 def tracked_files() -> list[str]:

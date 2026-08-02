@@ -20,11 +20,14 @@ matters here — it shows what is *approaching* 600 lines and is not on any list
 yet. Something at 550 is a splitting job now, while it is still one concern
 growing; at 900 it is three concerns tangled together and a much worse afternoon.
 
-Then read the allowlist in `tools/dev/check_sizes.py`. Did it gain an entry this
-quarter? Find the commit (`git log -p tools/dev/check_sizes.py`) and check that
-the body gives the reason it was supposed to give. An entry that can be deleted
-because the file shrank is deleted by CI's stale-entry check already, so
-anything still there is a live exception.
+Then read the allowlist in `tools/dev/check_sizes.py`. **It is empty**, and the
+job here is to keep it that way: the 5 modules and 21 functions it used to carry
+were all split rather than grandfathered. So the question is simply "did it gain
+an entry this quarter?" — if it did, find the commit
+(`git log -p tools/dev/check_sizes.py`) and check that the body gives the reason
+it was supposed to give. An entry that can be deleted because the file shrank is
+deleted by CI's stale-entry check already, so anything still there is a live
+exception someone chose on purpose.
 
 ## 2. Is the suite still fast?
 
