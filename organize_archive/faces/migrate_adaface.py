@@ -146,20 +146,8 @@ def _backup(db_path: str, log=None) -> str:
     return str(dst)
 
 
-def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -> MigrationStats:
-    """Preserve identity, clear the invalid embeddings, re-arm the scanners."""
-    db.init_db(conn)
-    stats = MigrationStats()
-    _ensure_carry_tables(conn)
-
-    if db_path:
-        stats.backup_path = _backup(db_path, log=log)
-
-    # -- snapshot ----------------------------------------------------------
-    conn.execute(f"DELETE FROM {_CARRY_FACES}")
-    conn.execute(f"DELETE FROM {_CARRY_LINKS}")
-    conn.execute(f"DELETE FROM {_CARRY_PETS}")
-    conn.execute(f"DELETE FROM {_CARRY_PET_LINKS}")
+def _snapshot_faces(conn, stats: MigrationStats) -> None:
+    """Copy every identity-bearing face into the carry table."""
     conn.execute(f"""
         INSERT INTO {_CARRY_FACES}
             (old_face_id, file_id, box_x, box_y, box_w, box_h, frame_offset,
@@ -180,16 +168,19 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -
            OR fa.id IN (SELECT face_a FROM face_links
                         UNION SELECT face_b FROM face_links)""")
     stats.faces_snapshotted = conn.execute(f"SELECT COUNT(*) FROM {_CARRY_FACES}").fetchone()[0]
-
     conn.execute(f"""
         INSERT INTO {_CARRY_LINKS} (old_face_a, old_face_b, kind, created_at)
         SELECT face_a, face_b, kind, created_at FROM face_links""")
     stats.links_snapshotted = conn.execute(f"SELECT COUNT(*) FROM {_CARRY_LINKS}").fetchone()[0]
 
-    # Pets ride along. The fused detect pass deletes and rewrites
-    # animal_detections for every file it revisits, so pet names — anchored to
-    # detection ids through pet_links — would be collateral damage of a
-    # faces-only migration.
+
+def _snapshot_pets(conn, stats: MigrationStats) -> None:
+    """Pets ride along with a faces-only migration.
+
+    The fused detect pass deletes and rewrites animal_detections for every file
+    it revisits, so pet names -- anchored to detection ids through pet_links --
+    would otherwise be collateral damage.
+    """
     conn.execute(f"""
         INSERT INTO {_CARRY_PETS}
             (old_det_id, file_id, box_x, box_y, box_w, box_h, frame_offset,
@@ -207,18 +198,21 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -
         f"SELECT COUNT(*) FROM {_CARRY_PET_LINKS}"
     ).fetchone()[0]
 
-    # -- wipe --------------------------------------------------------------
-    # What gets destroyed here is only what the embedder change INVALIDATED:
-    # the face vectors, and the clusters built out of them. Animal detections,
-    # pets and non-human review verdicts are NOT deleted — the pet embedder did
-    # not change, so those vectors are still meaningful, and the detect pass
-    # replaces each file's rows as it revisits them anyway. That keeps the Pets
-    # view populated during the re-run instead of blanking it for hours.
-    #
-    # person_files is deliberately NOT cleared either: it is anchored by person
-    # NAME (person_files.person_name) and
-    # faces.manual_tags.repair_manual_person_files re-points it after
-    # clustering, which is exactly the path a normal recluster already takes.
+
+def _wipe_invalidated(conn) -> None:
+    """Destroy exactly what the embedder change invalidated, and no more.
+
+    The face vectors and the clusters built out of them. Animal detections, pets
+    and non-human review verdicts are NOT deleted -- the pet embedder did not
+    change, so those vectors are still meaningful, and the detect pass replaces
+    each file's rows as it revisits them anyway. That keeps the Pets view
+    populated during the re-run instead of blanking it for hours.
+
+    person_files is deliberately NOT cleared either: it is anchored by person
+    NAME (person_files.person_name) and
+    faces.manual_tags.repair_manual_person_files re-points it after clustering,
+    which is exactly the path a normal recluster already takes.
+    """
     conn.execute("UPDATE faces SET person_id=NULL")
     conn.execute("DELETE FROM persons")
     conn.execute("DELETE FROM faces")
@@ -233,6 +227,23 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -
     # The FIQA calibration describes the OLD embedder's norms and is meaningless
     # for AdaFace vectors; drop it so the next extract re-derives it.
     conn.execute("DELETE FROM fiqa_calibration")
+
+
+def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -> MigrationStats:
+    """Preserve identity, clear the invalid embeddings, re-arm the scanners."""
+    db.init_db(conn)
+    stats = MigrationStats()
+    _ensure_carry_tables(conn)
+
+    if db_path:
+        stats.backup_path = _backup(db_path, log=log)
+
+    for table in (_CARRY_FACES, _CARRY_LINKS, _CARRY_PETS, _CARRY_PET_LINKS):
+        conn.execute(f"DELETE FROM {table}")
+    _snapshot_faces(conn, stats)
+    _snapshot_pets(conn, stats)
+    _wipe_invalidated(conn)
+
     conn.commit()
     if log:
         log(
@@ -325,25 +336,15 @@ def _remap(
     return mapping
 
 
-def reattach(conn, cfg: Config, log=None) -> MigrationStats:
-    """Restore names, pins and links onto the freshly extracted faces."""
-    db.init_db(conn)
-    stats = MigrationStats()
-    _ensure_carry_tables(conn)
-    now = db.now_iso()
+def _restore_face_pins(conn, stats: MigrationStats) -> None:
+    """Re-apply names and verdicts to the newly extracted faces.
 
-    # -- faces -------------------------------------------------------------
-    face_map = _remap(conn, _CARRY_FACES, "old_face_id", "faces")
-    stats.faces_reattached = len(face_map)
-    stats.unmatched = conn.execute(
-        f"SELECT COUNT(*) FROM {_CARRY_FACES} WHERE new_face_id IS NULL"
-    ).fetchone()[0]
-
-    # A person's name is re-applied as a manual_person PIN rather than by
-    # recreating `persons` rows. Pins are the mechanism clustering already
-    # honours on every rebuild (_apply_manual_pins), so the name lands on the
-    # right faces no matter how the new AdaFace vectors happen to cluster —
-    # which is the whole point, since they will not cluster identically.
+    A person's name comes back as a manual_person PIN rather than by recreating
+    `persons` rows. Pins are the mechanism clustering already honours on every
+    rebuild (_apply_manual_pins), so the name lands on the right faces no matter
+    how the new AdaFace vectors happen to cluster -- which is the whole point,
+    since they will not cluster identically.
+    """
     for row in conn.execute(
         f"""SELECT new_face_id, person_name, manual_person, not_person,
                        nonhuman_kind, nonhuman_source
@@ -363,6 +364,9 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
             )
             stats.not_person_restored += 1
 
+
+def _restore_face_links(conn, face_map: dict, stats: MigrationStats) -> None:
+    """Remap face_links through the old->new id map, dropping half-matched ones."""
     for link in conn.execute(f"SELECT * FROM {_CARRY_LINKS}"):
         a = face_map.get(link["old_face_a"])
         b = face_map.get(link["old_face_b"])
@@ -380,7 +384,9 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
         )
         stats.links_restored += 1
 
-    # -- pets --------------------------------------------------------------
+
+def _restore_pets(conn, stats: MigrationStats) -> None:
+    """The pet half: re-pin names onto rewritten detections, remap pet_links."""
     pet_map = _remap(conn, _CARRY_PETS, "old_det_id", "animal_detections")
     stats.pets_reattached = len(pet_map)
     for row in conn.execute(
@@ -405,6 +411,22 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
         )
         stats.pet_links_restored += 1
 
+
+def reattach(conn, cfg: Config, log=None) -> MigrationStats:
+    """Restore names, pins and links onto the freshly extracted faces."""
+    db.init_db(conn)
+    stats = MigrationStats()
+    _ensure_carry_tables(conn)
+
+    face_map = _remap(conn, _CARRY_FACES, "old_face_id", "faces")
+    stats.faces_reattached = len(face_map)
+    stats.unmatched = conn.execute(
+        f"SELECT COUNT(*) FROM {_CARRY_FACES} WHERE new_face_id IS NULL"
+    ).fetchone()[0]
+    _restore_face_pins(conn, stats)
+    _restore_face_links(conn, face_map, stats)
+    _restore_pets(conn, stats)
+
     conn.commit()
     if log:
         log(
@@ -414,7 +436,6 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
             f"{stats.links_restored} links restored / {stats.links_dropped} dropped, "
             f"{stats.pets_reattached} pet detections; {stats.unmatched} unmatched"
         )
-    _ = now
     return stats
 
 

@@ -46,8 +46,6 @@ ALLOWLIST: dict[str, int] = {
     "tests/gui/test_api_routes.py": 1159,
     "tests/integration/test_merge_undo.py": 838,
     # Functions
-    "organize_archive/faces/migrate_adaface.py::reattach": 91,
-    "organize_archive/faces/migrate_adaface.py::snapshot_and_wipe": 95,
     "tests/gui/test_api_routes.py::_seed_archive": 111,
     "tools/dev/faces_cluster_montage.py::main": 133,
     "tools/dev/faces_umap_plot.py::main": 146,
