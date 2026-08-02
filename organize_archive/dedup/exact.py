@@ -189,22 +189,11 @@ def _perceptual_hashes(
     return hashes, computed, errors
 
 
-def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats:
-    """Rebuild duplicate groups for one archive.
-
-    ``root_id=None`` remains available for callers that explicitly want a
-    whole-catalog pass, but the GUI always supplies its open archive.  Groups
-    never cross archive boundaries in normal operation.
-    """
-    db.init_db(conn)
-    stats = DedupStats()
-    now = db.now_iso()
-
-    # Load all candidates once.  Exact and visual matches are combined with a
-    # union-find, ensuring each file belongs to at most one final group.
+def _load_candidates(conn, root_id: int | None):
+    """Every present, hashed file in scope, with the fields canonical-picking needs."""
     root_clause = "" if root_id is None else " AND f.root_id=?"
     root_params = () if root_id is None else (root_id,)
-    rows = conn.execute(
+    return conn.execute(
         """SELECT f.sha256 sha, f.id, f.size, f.rel_path,
                   (t.file_id IS NOT NULL) has_side, (d.file_id IS NOT NULL) has_date
                   , d.best_datetime, mm.width, mm.height
@@ -217,7 +206,17 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
         + " ORDER BY f.id",
         root_params,
     ).fetchall()
-    by_id = {r["id"]: r for r in rows}
+
+
+def _group_candidates(conn, cfg, rows, by_id, progress, root_id: int | None) -> _UnionFind:
+    """Union files that are the same content: identical sha256, then look-alikes.
+
+    Exact and visual matches go into one union-find, so each file ends up in at
+    most one final group. The perceptual pass is intentionally opt-in through
+    the existing media extra; it compares all image representations, including
+    exact-group representatives, so JPG/PNG/HEIC exports of one photo end up in
+    the same group.
+    """
     uf = _UnionFind(by_id)
     by_sha: dict[str, list[int]] = {}
     for r in rows:
@@ -226,9 +225,6 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
         for fid in ids[1:]:
             uf.union(ids[0], fid)
 
-    # The perceptual pass is intentionally opt-in through the existing media
-    # extra.  It compares all image representations, including exact-group
-    # representatives, so JPG/PNG/HEIC exports end up in the same group.
     if cfg is not None:
         hashes, _, _ = _perceptual_hashes(conn, cfg, progress, root_id=root_id)
         threshold = cfg.phash_hamming_threshold
@@ -238,21 +234,16 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
             for other in tree.within(value, threshold):
                 uf.union(fid, other)
             tree.add(value, fid)
+    return uf
 
-    # Do not clear the previous, safe grouping until visual fingerprints have
-    # been computed.  That way an interrupted pHash pass never exposes a large
-    # backlog of duplicate copies to downstream jobs such as face extraction.
-    # Older versions grouped the whole catalog. If such a group touches this
-    # archive, discard the whole group: retaining it would keep files in a
-    # different archive hidden because of a cross-archive match.
-    #
-    # From here to the final commit below is deliberately ONE transaction: no
-    # commit lands between clearing the old groups and writing the new ones,
-    # so a crash or a cancelled run partway through regrouping leaves the
-    # previous grouping fully intact (rolled back with everything else this
-    # connection hasn't committed) instead of publishing a window where every
-    # reader sees zero duplicates -- the People/pets backlog inflating and the
-    # Overview's duplicate-count tile dropping to zero for the whole run.
+
+def _clear_old_groups(conn, root_id: int | None) -> None:
+    """Drop the previous grouping for this archive, un-hiding its members.
+
+    Older versions grouped the whole catalog. If such a group touches this
+    archive, the whole group is discarded: retaining it would keep files in a
+    *different* archive hidden because of a cross-archive match.
+    """
     group_clause = (
         ""
         if root_id is None
@@ -263,14 +254,82 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     )
     group_params = () if root_id is None else (root_id,)
     old_groups = conn.execute("SELECT id FROM dup_groups" + group_clause, group_params).fetchall()
-    if old_groups:
-        ids = [row[0] for row in old_groups]
-        marks = ",".join("?" for _ in ids)
-        conn.execute(
-            f"UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IN ({marks})",
-            ids,
+    if not old_groups:
+        return
+    ids = [row[0] for row in old_groups]
+    marks = ",".join("?" for _ in ids)
+    conn.execute(
+        f"UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IN ({marks})",
+        ids,
+    )
+    conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", ids)
+
+
+def _write_group(conn, members, by_id, now, stats):
+    """Insert one dup_groups row, and return its member/canonical/duplicate rows."""
+    count = len(members)
+    packed = [
+        (
+            m["id"],
+            m["width"],
+            m["height"],
+            m["size"],
+            m["has_side"],
+            m["has_date"],
+            m["best_datetime"],
+            m["rel_path"],
         )
-        conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", ids)
+        for m in members
+    ]
+    canon = _pick_canonical(packed)
+    redundant = sum(m["size"] for m in members if m["id"] != canon)
+    method = "exact" if len({m["sha"] for m in members}) == 1 else "perceptual"
+    cur = conn.execute(
+        """INSERT INTO dup_groups(method, canonical_file_id, member_count,
+           size_each, redundant_bytes, created_at)
+           VALUES(?,?,?,?,?,?)""",
+        (method, canon, count, by_id[canon]["size"], redundant, now),
+    )
+    gid = cur.lastrowid
+    member_rows = [
+        (gid, m["id"], "canonical" if m["id"] == canon else "duplicate") for m in members
+    ]
+    canon_updates = [(gid, canon)]
+    dup_updates = [(gid, m["id"]) for m in members if m["id"] != canon]
+
+    stats.groups += 1
+    stats.duplicate_files += count - 1
+    stats.reclaimable_bytes += redundant
+    return member_rows, canon_updates, dup_updates, method
+
+
+def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats:
+    """Rebuild duplicate groups for one archive.
+
+    ``root_id=None`` remains available for callers that explicitly want a
+    whole-catalog pass, but the GUI always supplies its open archive.  Groups
+    never cross archive boundaries in normal operation.
+    """
+    db.init_db(conn)
+    stats = DedupStats()
+    now = db.now_iso()
+
+    rows = _load_candidates(conn, root_id)
+    by_id = {r["id"]: r for r in rows}
+    uf = _group_candidates(conn, cfg, rows, by_id, progress, root_id)
+
+    # Do not clear the previous, safe grouping until visual fingerprints have
+    # been computed.  That way an interrupted pHash pass never exposes a large
+    # backlog of duplicate copies to downstream jobs such as face extraction.
+    #
+    # From here to the final commit below is deliberately ONE transaction: no
+    # commit lands between clearing the old groups and writing the new ones,
+    # so a crash or a cancelled run partway through regrouping leaves the
+    # previous grouping fully intact (rolled back with everything else this
+    # connection hasn't committed) instead of publishing a window where every
+    # reader sees zero duplicates -- the People/pets backlog inflating and the
+    # Overview's duplicate-count tile dropping to zero for the whole run.
+    _clear_old_groups(conn, root_id)
 
     buckets: dict[int, list] = {}
     for r in rows:
@@ -282,43 +341,13 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     member_rows, canon_updates, dup_updates = [], [], []
     done = 0
     for members in buckets.values():
-        count = len(members)
-        packed = [
-            (
-                m["id"],
-                m["width"],
-                m["height"],
-                m["size"],
-                m["has_side"],
-                m["has_date"],
-                m["best_datetime"],
-                m["rel_path"],
-            )
-            for m in members
-        ]
-        canon = _pick_canonical(packed)
-        canonical_size = by_id[canon]["size"]
-        redundant = sum(m["size"] for m in members if m["id"] != canon)
-        method = "exact" if len({m["sha"] for m in members}) == 1 else "perceptual"
-        cur = conn.execute(
-            """INSERT INTO dup_groups(method, canonical_file_id, member_count,
-               size_each, redundant_bytes, created_at)
-               VALUES(?,?,?,?,?,?)""",
-            (method, canon, count, canonical_size, redundant, now),
-        )
-        gid = cur.lastrowid
-        for m in members:
-            fid = m["id"]
-            role = "canonical" if fid == canon else "duplicate"
-            member_rows.append((gid, fid, role))
-            (canon_updates if fid == canon else dup_updates).append((gid, fid))
-
-        stats.groups += 1
-        stats.duplicate_files += count - 1
-        stats.reclaimable_bytes += redundant
+        mrows, cups, dups, method = _write_group(conn, members, by_id, now, stats)
+        member_rows.extend(mrows)
+        canon_updates.extend(cups)
+        dup_updates.extend(dups)
         done += 1
         if progress is not None and done % 100 == 0:
-            progress.update(done, 0, f"{count}× {method}")
+            progress.update(done, 0, f"{len(members)}× {method}")
 
     conn.executemany("INSERT INTO dup_members(group_id, file_id, role) VALUES(?,?,?)", member_rows)
     conn.executemany("UPDATE files SET dup_group_id=?, hidden=0 WHERE id=?", canon_updates)

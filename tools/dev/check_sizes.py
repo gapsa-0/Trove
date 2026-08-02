@@ -48,7 +48,6 @@ ALLOWLIST: dict[str, int] = {
     # Functions
     "organize_archive/cli/scan.py::run": 85,
     "organize_archive/db/database.py::init_db": 98,
-    "organize_archive/dedup/exact.py::run": 138,
     "organize_archive/faces/extract.py::extract": 134,
     "organize_archive/faces/migrate_adaface.py::reattach": 91,
     "organize_archive/faces/migrate_adaface.py::snapshot_and_wipe": 95,
@@ -57,7 +56,6 @@ ALLOWLIST: dict[str, int] = {
     "organize_archive/pets/cluster.py::cluster_pets": 110,
     "organize_archive/pipeline/scheduler.py::tick": 95,
     "organize_archive/pipeline/stages.py::cards": 104,
-    "organize_archive/scan/walker.py::scan_root": 139,
     "tests/gui/test_api_routes.py::_seed_archive": 111,
     "tools/dev/faces_cluster_montage.py::main": 133,
     "tools/dev/faces_umap_plot.py::main": 146,
