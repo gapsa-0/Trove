@@ -1,13 +1,14 @@
 """Pending-work counts: how much detection work is left to do.
 
-The pipeline scheduler polls these (DB-only, no disk walk) to decide which
-stage -- faces, pets, or the fused detect pass -- is startable next.
+The pipeline scheduler polls this (DB-only, no disk walk) to decide whether the
+fused detect stage is startable. There was a count per detector back when
+people and pets were separate stages; they are one pass over one decode now
+(ADR 0004), so there is one backlog and one function that answers for it.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
 
 from ._common import _NOT_HIDDEN, _root_clause, reading
 
@@ -15,48 +16,6 @@ from ._common import _NOT_HIDDEN, _root_clause, reading
 # a COUNT(*) always returns exactly one row holding an int. It is there
 # because sqlite3.Row.__getitem__ is typed Any, which the `-> int` would
 # otherwise silently swallow.
-
-
-@reading
-def faces_pending(conn: sqlite3.Connection, root_id: int | None = None) -> int:
-    """Present images not yet face-scanned (DB-only, no disk walk), used by the
-    auto-scheduler to decide whether to queue a faces job."""
-    rc, rp = _root_clause(root_id)
-    # _NOT_HIDDEN, matching faces.extract.pending_count: the face pass only
-    # touches canonical images, so counting unscanned duplicates here would
-    # make the scheduler queue faces jobs that find nothing to do, forever.
-    row = conn.execute(
-        f"""SELECT COUNT(*) FROM files f
-            LEFT JOIN face_scan s ON s.file_id=f.id
-            WHERE s.file_id IS NULL AND {_NOT_HIDDEN} AND f.media_type='image'{rc}""",
-        rp,
-    ).fetchone()
-    return int(row[0])
-
-
-@reading
-def pets_pending(
-    conn: sqlite3.Connection, root_id: int | None = None, model_source: str | None = None
-) -> int:
-    """Present canonical images not yet pet-scanned with the current source
-    hash and, when given, the current ``model_source`` -- used by the
-    auto-scheduler to decide whether to queue a pets job."""
-    rc, rp = _root_clause(root_id)
-    model_clause = ""
-    params: list[Any] = []
-    if model_source is not None:
-        model_clause = " OR s.model_source IS NOT ?"
-        params.append(model_source)
-    params.extend(rp)
-    row = conn.execute(
-        f"""SELECT COUNT(*) FROM files f
-            LEFT JOIN pet_scan s ON s.file_id=f.id
-            WHERE (s.file_id IS NULL OR s.source_sha256 IS NOT f.sha256
-                   {model_clause})
-              AND {_NOT_HIDDEN} AND f.media_type='image'{rc}""",
-        params,
-    ).fetchone()
-    return int(row[0])
 
 
 @reading

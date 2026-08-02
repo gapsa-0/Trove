@@ -143,7 +143,7 @@ function renderStoragePanel(s) {
 // Everything runs automatically in the background; this panel only reports
 // what's happening. Every card is rendered the SAME way from one resolved
 // state the server computes (running/queued/blocked/up_to_date/unavailable/
-// error), no per-card logic here, so the six cards can never disagree with
+// error), no per-card logic here, so the five cards can never disagree with
 // each other or with what the pipeline is actually doing.
 const HEALTH_CARDCLASS = { running: "running", queued: "pending", blocked: "", up_to_date: "", unavailable: "", error: "error" };
 const HEALTH_DOT = { queued: "pending", blocked: "check", up_to_date: "ok", unavailable: "check", error: "check" };

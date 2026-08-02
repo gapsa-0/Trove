@@ -121,7 +121,7 @@ class Scheduler:
         Readiness (deps satisfied, backend available, not already running) is
         already resolved in the snapshot: a stage is ``queued`` exactly when it
         should start now. Parallel kinds (scan ∥ enrich ∥ semantic) start
-        together; the DB-writer stages (dedup → places/pets → faces) start one at
+        together; the DB-writer stages (dedup → places → detect) start one at
         a time, matching the single write lock.
         """
         if self._manager._paused:

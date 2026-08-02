@@ -7,7 +7,8 @@ never disagree with what the pipeline is actually doing.
 A stage's state is derived, in one place, from two things:
 
 * **countable pending work in the catalog**, a file with no ``dates`` row *is*
-  enrich-pending; a canonical image with no ``face_scan`` row *is* faces-pending.
+  enrich-pending; a canonical image either detector still owes work *is*
+  detect-pending.
   Nothing about "what's left to do" is persisted separately, because the catalog
   already implies it and re-derives it for free on restart.
 * **the live in-process jobs**, whether a worker of that kind is running right
@@ -15,7 +16,7 @@ A stage's state is derived, in one place, from two things:
 
 Every stage resolves through the SAME rule
 (``unavailable → error → running → blocked → queued → up_to_date``), which is why
-the six cards finally behave identically instead of each computing its own truth.
+the five cards finally behave identically instead of each computing its own truth.
 """
 
 from __future__ import annotations
