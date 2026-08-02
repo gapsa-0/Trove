@@ -47,8 +47,6 @@ ALLOWLIST: dict[str, int] = {
     "tests/integration/test_merge_undo.py": 838,
     # Functions
     "tests/gui/test_api_routes.py::_seed_archive": 111,
-    "tools/dev/faces_cluster_montage.py::main": 133,
-    "tools/dev/faces_umap_plot.py::main": 146,
 }
 
 

@@ -66,7 +66,7 @@ def _pick_representatives(faces, cover_id, per):
     return chosen[:per]
 
 
-def main():
+def _parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("out", nargs="?", default="faces_clusters.png")
     ap.add_argument("--per", type=int, default=4, help="faces per cluster tile (2x2=4)")
@@ -74,13 +74,16 @@ def main():
     ap.add_argument("--cols", type=int, default=0, help="tile columns (0=auto near-square)")
     ap.add_argument("--min-faces", type=int, default=0, help="skip clusters below this size")
     ap.add_argument("--workers", type=int, default=8)
-    args = ap.parse_args()
+    return ap.parse_args()
 
-    from PIL import Image, ImageDraw, ImageFont
 
-    cfg = Config.load()
-    conn = db.open_readonly(cfg.db_path)
+def _build_plan(conn, cfg, args):
+    """``(plan, jobs)``: which faces represent each cluster, and the crops to render.
 
+    ``plan`` is ``[(person_row, [face_row, ...]), ...]`` in display order;
+    ``jobs`` maps face id to the crop arguments ``_worker`` needs. Returns
+    ``(None, None)`` when there is nothing to draw.
+    """
     persons = conn.execute(
         """SELECT id, name, face_count, cover_face_id
            FROM persons WHERE face_count >= ?
@@ -88,8 +91,7 @@ def main():
         (args.min_faces,),
     ).fetchall()
     if not persons:
-        print("No clusters found.")
-        return 1
+        return None, None
 
     # All assigned faces with the info needed to crop, in one pass.
     rows = conn.execute(
@@ -101,14 +103,12 @@ def main():
            JOIN roots r ON r.id = f.root_id
            WHERE fa.person_id IS NOT NULL AND f.hidden = 0"""
     ).fetchall()
-
     by_person: dict[int, list] = {}
     for r in rows:
         by_person.setdefault(r["person_id"], []).append(r)
 
-    # Choose representative faces per cluster, collect the crop jobs.
-    plan = []  # list of (person_row, [face_row, ...])
-    jobs = {}  # face_id -> (cache_dir, fid, src, box, sha)
+    plan = []
+    jobs = {}
     for p in persons:
         faces = by_person.get(p["id"], [])
         if not faces:
@@ -119,85 +119,116 @@ def main():
             src = str(Path(r["root"]) / r["rel_path"])
             box = (r["box_x"], r["box_y"], r["box_w"], r["box_h"])
             jobs[r["fid"]] = (cfg.cache_dir, r["fid"], src, box, r["sha256"])
+    return plan, jobs
 
-    print(f"{len(plan)} clusters · {len(jobs)} face crops to render (min-faces={args.min_faces}) …")
 
-    # Generate crops in parallel (cached on disk; reused across runs).
+def _render_crops(jobs, workers: int) -> dict[int, str]:
+    """Generate the face crops in parallel. Cached on disk, reused across runs."""
     crops: dict[int, str] = {}
     done = 0
-    with ProcessPoolExecutor(max_workers=args.workers) as ex:
+    with ProcessPoolExecutor(max_workers=workers) as ex:
         for fid, path in ex.map(_worker, jobs.values(), chunksize=16):
             if path:
                 crops[fid] = path
             done += 1
             if done % 500 == 0:
                 print(f"  crops {done}/{len(jobs)}")
+    return crops
 
-    # ---- lay out the grid -------------------------------------------------
-    per = args.per
-    sub = args.crop
+
+def _geometry(n: int, args):
+    """Tile and canvas dimensions for ``n`` clusters, as a dict of measurements."""
+    per, sub, pad, cap_h = args.per, args.crop, 3, 20
     mini_cols = 2 if per >= 2 else 1
     mini_rows = ceil(per / mini_cols)
-    pad = 3
-    cap_h = 20
     tile_w = mini_cols * sub + (mini_cols + 1) * pad
     tile_h = mini_rows * sub + (mini_rows + 1) * pad + cap_h
-
-    n = len(plan)
     cols = args.cols or max(1, round(sqrt(n * tile_h / tile_w)))
     grid_rows = ceil(n / cols)
-    W = cols * tile_w
-    H = grid_rows * tile_h
-    print(f"canvas {W}x{H}px  ({cols} cols x {grid_rows} rows, tile {tile_w}x{tile_h})")
+    return {
+        "sub": sub,
+        "pad": pad,
+        "cap_h": cap_h,
+        "mini_cols": mini_cols,
+        "tile_w": tile_w,
+        "tile_h": tile_h,
+        "cols": cols,
+        "W": cols * tile_w,
+        "H": grid_rows * tile_h,
+        "grid_rows": grid_rows,
+    }
 
-    bg = (18, 18, 20)
-    canvas = Image.new("RGB", (W, H), bg)
+
+def _hue_color(pid: int):
+    """Stable pseudo-colour per cluster id, for the caption bar."""
+    import colorsys
+
+    r, g, b = colorsys.hsv_to_rgb(((pid * 47) % 360) / 360.0, 0.55, 0.85)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def _draw_tile(canvas, draw, Image, font, placeholder, p, reps, crops, g, idx, per):
+    """One cluster's caption bar and its grid of face crops."""
+    gx = (idx % g["cols"]) * g["tile_w"]
+    gy = (idx // g["cols"]) * g["tile_h"]
+    sub, pad, cap_h = g["sub"], g["pad"], g["cap_h"]
+
+    draw.rectangle([gx, gy, gx + g["tile_w"] - 1, gy + cap_h - 1], fill=_hue_color(p["id"]))
+    label = p["name"] if p["name"] else f"#{p['id']}"
+    draw.text((gx + 4, gy + 3), f"{label}  ·{p['face_count']}", fill=(15, 15, 15), font=font)
+
+    for k in range(per):
+        mr, mc = divmod(k, g["mini_cols"])
+        cx = gx + pad + mc * (sub + pad)
+        cy = gy + cap_h + pad + mr * (sub + pad)
+        if k < len(reps) and reps[k]["fid"] in crops:
+            try:
+                im = Image.open(crops[reps[k]["fid"]]).convert("RGB")
+                im.thumbnail((sub, sub))
+                canvas.paste(im, (cx + (sub - im.width) // 2, cy + (sub - im.height) // 2))
+                continue
+            except Exception:
+                pass  # unreadable crop: fall through to the placeholder
+        canvas.paste(placeholder, (cx, cy))
+
+
+def main():
+    args = _parse_args()
+    from PIL import Image, ImageDraw, ImageFont
+
+    cfg = Config.load()
+    conn = db.open_readonly(cfg.db_path)
+    plan, jobs = _build_plan(conn, cfg, args)
+    if plan is None:
+        print("No clusters found.")
+        return 1
+
+    print(f"{len(plan)} clusters · {len(jobs)} face crops to render (min-faces={args.min_faces}) …")
+    crops = _render_crops(jobs, args.workers)
+
+    n = len(plan)
+    g = _geometry(n, args)
+    print(
+        f"canvas {g['W']}x{g['H']}px  ({g['cols']} cols x {g['grid_rows']} rows, "
+        f"tile {g['tile_w']}x{g['tile_h']})"
+    )
+
+    canvas = Image.new("RGB", (g["W"], g["H"]), (18, 18, 20))
     draw = ImageDraw.Draw(canvas)
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
     except Exception:
         font = ImageFont.load_default()
-
-    def hue_color(pid):
-        # stable pseudo-color per cluster id for the caption bar
-        import colorsys
-
-        h = ((pid * 47) % 360) / 360.0
-        r, g, b = colorsys.hsv_to_rgb(h, 0.55, 0.85)
-        return (int(r * 255), int(g * 255), int(b * 255))
-
-    placeholder = Image.new("RGB", (sub, sub), (40, 40, 44))
+    placeholder = Image.new("RGB", (g["sub"], g["sub"]), (40, 40, 44))
 
     for idx, (p, reps) in enumerate(plan):
-        gx = (idx % cols) * tile_w
-        gy = (idx // cols) * tile_h
-        # caption bar
-        col = hue_color(p["id"])
-        draw.rectangle([gx, gy, gx + tile_w - 1, gy + cap_h - 1], fill=col)
-        label = p["name"] if p["name"] else f"#{p['id']}"
-        draw.text((gx + 4, gy + 3), f"{label}  ·{p['face_count']}", fill=(15, 15, 15), font=font)
-        # face crops
-        for k in range(per):
-            mr, mc = divmod(k, mini_cols)
-            cx = gx + pad + mc * (sub + pad)
-            cy = gy + cap_h + pad + mr * (sub + pad)
-            if k < len(reps) and reps[k]["fid"] in crops:
-                try:
-                    im = Image.open(crops[reps[k]["fid"]]).convert("RGB")
-                    im.thumbnail((sub, sub))
-                    off_x = cx + (sub - im.width) // 2
-                    off_y = cy + (sub - im.height) // 2
-                    canvas.paste(im, (off_x, off_y))
-                except Exception:
-                    canvas.paste(placeholder, (cx, cy))
-            else:
-                canvas.paste(placeholder, (cx, cy))
+        _draw_tile(canvas, draw, Image, font, placeholder, p, reps, crops, g, idx, args.per)
         if (idx + 1) % 200 == 0:
             print(f"  laid out {idx + 1}/{n}")
 
     out = Path(args.out)
     canvas.save(out, "PNG")
-    print(f"wrote {out.resolve()}  ({out.stat().st_size / 1e6:.1f} MB, {W}x{H})")
+    print(f"wrote {out.resolve()}  ({out.stat().st_size / 1e6:.1f} MB, {g['W']}x{g['H']})")
     return 0
 
 
