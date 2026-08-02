@@ -42,6 +42,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Faces that detection discards as an animal's own can be reviewed again. Since the
+  people-and-pets detectors were merged into one pass, every such face was dropped
+  with no record, so the "not an animal" review list on the Pets screen was always
+  empty and a person mistaken for a pet could not be recovered. Correcting one now
+  also survives a re-scan.
 - Closing the app no longer hangs for several seconds when detection or semantic
   indexing has just started. Those stages spend their first seconds loading a
   model, which cannot be interrupted, so shutdown no longer waits on them.

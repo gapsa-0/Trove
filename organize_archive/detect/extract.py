@@ -54,6 +54,7 @@ from ..faces import backend as face_backend
 from ..faces import fiqa
 from ..pets import backend as pet_backend
 from ..pets.extract import scan_source as pet_scan_source
+from .persist import rewrite_file_detections
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +346,10 @@ class _Found:
     humans: list = field(default_factory=list)  # person boxes (context)
     report: object = None  # the raw DetectionReport
     human_animals: int = 0  # pets that were really people
-    suppressed_faces: int = 0  # animals' own faces
+    # (face, index into `animals`) for each face the veto dropped. Kept, not
+    # just counted: they are written to nonhuman_detections so the veto stays
+    # reviewable -- see detect/persist.py::_save_suppressed.
+    suppressed: list = field(default_factory=list)
     max_subject_share: float = 0.0  # biggest box, as a frame share
     animal_score: float = 0.0  # best animal reading, pre-veto
 
@@ -392,17 +396,22 @@ def _detect_on(img, scale, cfg: Config, face_be, pet_be) -> _Found:
         found.report = face_be.detect_report(img, scale)
 
     for fc in found.report.faces:
-        in_animal = any(
-            _overlap_fraction(fc.x, fc.y, fc.w, fc.h, a.x, a.y, a.w, a.h) >= cfg.pets_face_overlap
-            for a in found.animals
+        vetoed_by = next(
+            (
+                i
+                for i, a in enumerate(found.animals)
+                if _overlap_fraction(fc.x, fc.y, fc.w, fc.h, a.x, a.y, a.w, a.h)
+                >= cfg.pets_face_overlap
+            ),
+            None,
         )
         in_person = any(
             _overlap_fraction(fc.x, fc.y, fc.w, fc.h, p.x, p.y, p.w, p.h) >= cfg.pets_face_overlap
             for p in found.humans
         )
-        if in_animal and not in_person:
+        if vetoed_by is not None and not in_person:
             found.report.rejected["nonhuman"] = found.report.rejected.get("nonhuman", 0) + 1
-            found.suppressed_faces += 1
+            found.suppressed.append((fc, vetoed_by))
             continue
         found.faces.append(fc)
     return found
@@ -636,7 +645,7 @@ class _FileResult:
     animal_hits: list = field(default_factory=list)
     report: object = field(default_factory=face_backend.DetectionReport)
     human_animals: int = 0
-    suppressed_faces: int = 0
+    suppressed_hits: list = field(default_factory=list)  # (face, animal index)
     rotate: int = 0
     confidence: float = 0.0
     orient_source: str = ""
@@ -673,7 +682,7 @@ def _detect_photo(path, cfg, face_be, pet_be) -> _FileResult:
         animal_hits=[(a, None) for a in found.animals],
         report=found.report,
         human_animals=found.human_animals,
-        suppressed_faces=found.suppressed_faces,
+        suppressed_hits=found.suppressed,
         rotate=rotate,
         confidence=conf,
         orient_source=orient_src,
@@ -713,7 +722,7 @@ def _detect_video(path, cfg, cache_dir, row, face_be, pet_be, stats, commit_if_d
         for reason, n in found.report.rejected.items():
             result.report.rejected[reason] = result.report.rejected.get(reason, 0) + n
         stats.human_animals_dropped += found.human_animals
-        stats.nonhuman_suppressed += found.suppressed_faces
+        stats.nonhuman_suppressed += len(found.suppressed)
         raw_faces.extend((fc, offset) for fc in found.faces)
         raw_animals.extend((a, offset) for a in found.animals)
         # A video costs one decode+detect PER sampled frame, so
@@ -731,76 +740,6 @@ def _detect_video(path, cfg, cache_dir, row, face_be, pet_be, stats, commit_if_d
     # still writes them with zero counts, so this video
     # is never retried forever.
     return result
-
-
-def _rewrite_file_detections(conn, fid, now, result: _FileResult, pet_src, fiqa_model):
-    """Rewrite this file's detections as a unit."""
-    conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
-    conn.execute("DELETE FROM animal_detections WHERE file_id=?", (fid,))
-    conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?", (fid,))
-    conn.execute("DELETE FROM orientation WHERE file_id=?", (fid,))
-    if result.rotate:
-        conn.execute(
-            """INSERT INTO orientation
-               (file_id, rotate_deg, source, confidence, created_at)
-               VALUES (?,?,?,?,?)""",
-            (fid, result.rotate, result.orient_source, result.confidence, now),
-        )
-    for a, offset in result.animal_hits:
-        conn.execute(
-            """INSERT INTO animal_detections
-               (file_id,species,box_x,box_y,box_w,box_h,det_score,
-                embedding,model_source,frame_offset,created_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                fid,
-                a.species,
-                a.x,
-                a.y,
-                a.w,
-                a.h,
-                a.score,
-                a.embedding.tobytes(),
-                pet_src,
-                offset,
-                now,
-            ),
-        )
-    for fc, offset in result.face_hits:
-        conn.execute(
-            """INSERT INTO faces
-               (file_id, box_x, box_y, box_w, box_h, det_score,
-                focus_score, brightness, extreme_fraction,
-                clipped_fraction, quality_score, quality_source,
-                fiqa_norm, fiqa_score, fiqa_source, quality_tier,
-                embedding, frame_offset, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                fid,
-                fc.x,
-                fc.y,
-                fc.w,
-                fc.h,
-                fc.score,
-                fc.focus_score,
-                fc.brightness,
-                fc.extreme_fraction,
-                fc.clipped_fraction,
-                fc.quality_score,
-                fc.quality_source,
-                # getattr, like _best_face_quality above: lightweight
-                # stand-in backends (tests, third-party) yield objects
-                # without the FIQA fields, and an un-tiered face is a
-                # supported state (NULL reads as BORDERLINE downstream).
-                getattr(fc, "fiqa_norm", None),
-                getattr(fc, "fiqa_score", None),
-                fiqa_model,
-                getattr(fc, "quality_tier", None),
-                fc.embedding.tobytes(),
-                offset,
-                now,
-            ),
-        )
 
 
 def _prepare_backends(conn, cfg: Config, progress, limit, face_be, pet_be):
@@ -977,9 +916,9 @@ def extract(
                     if result.rotate:
                         stats.rotated += 1
                     stats.human_animals_dropped += result.human_animals
-                    stats.nonhuman_suppressed += result.suppressed_faces
+                    stats.nonhuman_suppressed += len(result.suppressed_hits)
                 fiqa_model = getattr(getattr(face_be, "assessor", None), "model", None)
-                _rewrite_file_detections(conn, fid, now, result, pet_src, fiqa_model)
+                rewrite_file_detections(conn, fid, now, result, pet_src, fiqa_model, row["sha256"])
             except Exception as e:  # bad/corrupt file, unreadable, etc.
                 stats.errors += 1
                 if len(stats.error_samples) < 5:

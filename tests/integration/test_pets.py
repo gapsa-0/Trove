@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import factories
 import pytest
 
 from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.faces import backend as face_backend
-from organize_archive.faces import extract as face_extract
 from organize_archive.pets import backend, cluster, extract
-from organize_archive.services import pets
 
 np = pytest.importorskip("numpy")
 
@@ -90,70 +84,3 @@ def test_pet_clustering_is_species_separated_and_preserves_names(tmp_path):
     assert second.pets == 2
     assert conn.execute("SELECT name FROM pets WHERE species='cat'").fetchone()[0] == "Michi"
     conn.close()
-
-
-class _FaceBackend:
-    def process_path_report(self, _path):
-        face = SimpleNamespace(
-            x=20,
-            y=20,
-            w=30,
-            h=30,
-            score=0.95,
-            focus_score=100.0,
-            brightness=120.0,
-            extreme_fraction=0.01,
-            clipped_fraction=0.0,
-            quality_score=0.8,
-            quality_source="test",
-            embedding=np.array([1.0, 0.0], dtype="float32"),
-        )
-        return face_backend.DetectionReport(faces=[face], candidates=1)
-
-
-@pytest.mark.xfail(
-    reason=(
-        "Superseded by the fused detector: the animal-overlap veto now lives in "
-        "organize_archive.detect.extract, which runs both detectors over one decode, "
-        "and organize_archive.faces.extract (driven here) is no longer on the app's "
-        "path. The behaviour asserted below is still wanted — it needs porting to the "
-        "fused pass, which requires fakes for both backends and a decodable fixture."
-    ),
-    strict=False,
-)
-def test_animal_overlap_filters_face_but_manual_review_can_restore_it(tmp_path, monkeypatch):
-    conn = _catalog(tmp_path)
-    factories.add_animal_detection(conn, file_id=1, species="dog", box=(0, 0, 100, 100))
-    conn.commit()
-    monkeypatch.setattr(face_backend, "available", lambda: True)
-    cfg = Config(pets_face_overlap=0.6)
-
-    stats = face_extract.extract(conn, cfg, be=_FaceBackend())
-
-    assert stats.faces_found == 0
-    assert stats.rejected_nonhuman == 1
-    candidate = conn.execute("SELECT * FROM nonhuman_detections").fetchone()
-    assert candidate["kind"] == "animal"
-    assert conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 0
-    conn.close()
-
-    result = pets.review_nonhuman(str(tmp_path / "archive.db"), candidate["id"], "human")
-    assert result["ok"]
-    check = db.open_readonly(tmp_path / "archive.db")
-    assert check.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 1
-    assert check.execute("SELECT rejected_nonhuman FROM face_scan").fetchone()[0] == 0
-    check.close()
-
-    # A detector/config rescan of the same source must preserve this correction.
-    write = db.connect(tmp_path / "archive.db")
-    write.execute(
-        """INSERT OR REPLACE INTO pet_scan
-           (file_id,n_animals,source_sha256,model_source,scanned_at)
-           VALUES(1,1,NULL,'old-model','2026-01-01')"""
-    )
-    write.commit()
-    monkeypatch.setattr(backend, "available", lambda: True)
-    extract.extract(write, cfg, be=_PetBackend())
-    assert write.execute("SELECT review_status FROM nonhuman_detections").fetchone()[0] == "human"
-    assert write.execute("SELECT not_person FROM faces").fetchone()[0] == 0
-    write.close()
