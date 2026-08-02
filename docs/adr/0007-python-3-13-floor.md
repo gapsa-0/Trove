@@ -43,3 +43,9 @@ default `python3` is older), not about end-user compatibility.
   verification, not just a version-string edit.
 - End users of the packaged builds are entirely unaffected by this choice,
   since they never run the project's own Python at all.
+- "Pinned consistently across the toolchain" is enforced, not just asserted
+  here: `tests/unit/test_python_version.py` reads `requires-python` and checks
+  the running interpreter, mypy's `python_version`, ruff's `target-version`
+  and every workflow's `setup-python` pin against it. It was added after the
+  development venv was found sitting on 3.12 while mypy checked against the
+  3.13 standard library — green `make check`, wrong answer.
