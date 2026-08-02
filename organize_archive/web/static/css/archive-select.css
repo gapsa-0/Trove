@@ -1,18 +1,5 @@
 /* Archive selection */
-#picker {
-  max-width: 1040px;
-  min-height: 100vh;
-  padding: 72px 36px;
-  display: flex;
-  align-items: flex-start
-}
 
-.welcome {
-  width: 100%;
-  max-width: 860px;
-  margin: 0 auto;
-  padding-top: 4vh
-}
 
 .welcome .eyebrow,
 .eyebrow {
@@ -21,55 +8,6 @@
   color: var(--accent);
   letter-spacing: .01em;
   text-transform: none
-}
-
-.welcome h1 {
-  font-size: clamp(42px, 6vw, 66px);
-  font-weight: 750;
-  line-height: 1.02;
-  letter-spacing: -.052em;
-  margin: 14px 0 16px;
-  max-width: 760px
-}
-
-.welcome .sub {
-  font: 400 clamp(18px, 2.3vw, 23px)/1.38 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: -.018em;
-  color: var(--muted);
-  max-width: 720px
-}
-
-.setup-form {
-  display: flex;
-  gap: 10px;
-  max-width: 720px;
-  margin: 34px 0 12px;
-  padding: 7px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  box-shadow: var(--shadow-sm)
-}
-
-.setup-form input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text);
-  padding: 10px 11px;
-  font-size: 14px
-}
-
-.setup-form input:focus {
-  outline: 0
-}
-
-.privacy-note {
-  font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--muted);
-  max-width: 700px
 }
 
 .archive-list-title {
@@ -159,17 +97,4 @@
   box-shadow: none;
   color: var(--accent);
   font-weight: 600
-}
-
-.remove-archive {
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--bad);
-  padding: 5px 8px
-}
-
-.remove-archive:hover {
-  background: color-mix(in srgb, var(--bad) 10%, transparent);
-  color: var(--bad)
 }

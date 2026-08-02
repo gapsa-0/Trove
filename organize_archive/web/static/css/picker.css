@@ -30,10 +30,6 @@
   transition: border-color .15s;
 }
 
-.card:hover {
-  border-color: var(--accent);
-}
-
 .card h3 {
   margin: 0 0 4px;
   font-size: 15px;
@@ -61,22 +57,6 @@
   justify-content: space-between;
   gap: 10px;
   margin-top: 13px;
-}
-
-.remove-archive {
-  margin-left: auto;
-  background: transparent;
-  color: #df7773;
-  border: 1px solid #814845;
-  border-radius: 7px;
-  padding: 4px 8px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.remove-archive:hover {
-  background: #542827;
-  color: #fff;
 }
 
 .card.add {

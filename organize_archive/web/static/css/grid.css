@@ -160,10 +160,6 @@
   max-width: 190px;
 }
 
-.fsel:hover {
-  border-color: var(--accent);
-}
-
 .fsel:focus {
   outline: none;
   border-color: var(--accent);

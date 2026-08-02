@@ -336,10 +336,6 @@
   box-shadow: var(--shadow-sm)
 }
 
-.taskcard {
-  border-bottom-color: var(--line)
-}
-
 .facetopbar {
   top: calc(0px - var(--main-pad-top));
   min-height: 82px;

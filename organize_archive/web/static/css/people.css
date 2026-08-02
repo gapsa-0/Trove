@@ -48,24 +48,6 @@
   min-height: 0;
 }
 
-.pcard .pmeta {
-  padding: 8px 10px;
-}
-
-.pcard .pname {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pcard .pname.un {
-  color: var(--muted);
-  font-weight: 400;
-  font-style: italic;
-}
-
 .pcard .pcount {
   font-size: 11px;
   color: var(--muted);
@@ -315,11 +297,6 @@
   color: var(--muted);
   font-weight: 400;
   font-style: italic;
-}
-
-.facetopbar .ftb-count {
-  flex: none;
-  font-size: 12px;
 }
 
 .soonbox {

@@ -134,14 +134,6 @@ nav.collapsed .gstat .gcount {
   color: var(--muted);
 }
 
-nav.collapsed {
-  width: 56px;
-}
-
-nav.collapsed .brand {
-  justify-content: center;
-}
-
 nav.collapsed .brandtxt,
 nav.collapsed .back,
 nav.collapsed .arch,
@@ -180,43 +172,11 @@ h2.sec {
   margin-bottom: 20px;
 }
 
-.stat {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px;
-}
-
 .stat .k {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .6px;
   color: var(--muted);
-}
-
-.stat .v {
-  font-size: 22px;
-  font-weight: 600;
-  margin-top: 4px;
-}
-
-.stat .v small {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
-}
-
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.panel h3 {
-  margin: 0 0 12px;
-  font-size: 14px;
 }
 
 table.types {
@@ -394,54 +354,6 @@ table.types .share {
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-/* tasks */
-.taskcard {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--line);
-}
-
-.taskcard:last-child {
-  border-bottom: none;
-}
-
-.taskcard .ico {
-  font-size: 20px;
-  width: 26px;
-  text-align: center;
-  flex: none;
-}
-
-.taskcard .body {
-  flex: 1;
-  min-width: 0;
-}
-
-.taskcard .t {
-  font-weight: 600;
-  font-size: 13.5px;
-}
-
-.taskcard .d {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-.taskcard .d.pending {
-  color: #e6b45e;
-}
-
-.taskcard .d.ok {
-  color: var(--good);
-}
-
-.taskcard .act {
-  flex: none;
 }
 
 .dot {

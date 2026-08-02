@@ -1,105 +1,16 @@
 /* Light Photos library: the base visual language: a clean, Apple-style light
  theme (with a dark variant below).  Keep the application dependency-free;
  this is presentation, not a new frontend framework. */
-:root {
-  --bg: #f5f5f7;
-  --panel: #ffffff;
-  --panel2: #f0f0f2;
-  --line: #d9d9de;
-  --text: #1d1d1f;
-  --muted: #6e6e73;
-  --accent: #007aff;
-  --accent2: #0066d6;
-  --good: #34a853;
-  --focus: #007aff;
-}
 
-body {
-  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: var(--bg);
-  color: var(--text)
-}
 
 body:before {
   display: none
-}
-
-h1,
-h2,
-h3,
-.display {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: -.025em
-}
-
-.btn {
-  border-radius: 8px;
-  background: var(--accent);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none
-}
-
-.btn:hover {
-  background: var(--accent2)
 }
 
 .btn.sec {
   background: var(--panel);
   color: var(--accent);
   border-color: var(--line)
-}
-
-#picker {
-  max-width: 930px;
-  padding: 60px 28px;
-  align-items: flex-start
-}
-
-.welcome {
-  max-width: 760px;
-  margin: auto;
-  padding-top: 50px
-}
-
-.welcome .eyebrow,
-.eyebrow {
-  color: var(--muted);
-  letter-spacing: 0;
-  text-transform: none;
-  font-size: 15px
-}
-
-.welcome h1 {
-  font-size: 48px;
-  line-height: 1.1;
-  margin: 8px 0 12px
-}
-
-.welcome .sub {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 21px;
-  color: var(--muted);
-  line-height: 1.35
-}
-
-.setup-form {
-  max-width: 700px;
-  margin: 30px 0 12px
-}
-
-.setup-form input {
-  background: #fff;
-  border-color: var(--line);
-  border-radius: 9px;
-  padding: 12px
-}
-
-.privacy-note {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: var(--muted);
-  font-size: 13px
 }
 
 .archive-list-title {
@@ -118,37 +29,10 @@ h3,
   box-shadow: 0 1px 2px #0000000a
 }
 
-.card:hover {
-  border-color: #a9a9af
-}
-
-.card.add {
-  border-radius: 12px
-}
-
-.remove-archive {
-  border-radius: 7px;
-  color: #d93025;
-  border-color: #f3c7c3
-}
-
-#app.on {
-  grid-template-columns: 248px minmax(0, 1fr);
-  background: var(--bg)
-}
-
 nav {
   background: #fbfbfc;
   border-right-color: var(--line);
   padding: 18px 12px
-}
-
-nav .brand {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 18px;
-  letter-spacing: -.02em;
-  border: 0;
-  padding: 8px 10px 18px
 }
 
 nav .brand img {
@@ -165,36 +49,8 @@ nav .brand img {
   padding-bottom: 14px !important
 }
 
-.navitem {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: 0;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 7px;
-  padding: 9px 10px;
-  color: #3a3a3c
-}
-
-.navitem.active {
-  background: #e5e5ea;
-  color: var(--text)
-}
-
-.navitem.active:before {
-  display: none
-}
-
-.navitem:hover {
-  background: #ededf0
-}
-
 .gstat {
   border-top-color: var(--line)
-}
-
-main {
-  padding: 34px 42px 70px;
-  background: var(--bg)
 }
 
 h2.sec {
@@ -214,26 +70,9 @@ h2.sec {
   box-shadow: 0 1px 2px #00000008
 }
 
-.panel {
-  padding: 18px
-}
-
-.stat {
-  padding: 14px
-}
-
 .stat .k,
 .isec>.h {
   color: var(--muted)
-}
-
-.stat .v {
-  font-size: 24px
-}
-
-.grid {
-  gap: 5px;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr))
 }
 
 .tile {
@@ -272,31 +111,10 @@ h2.sec {
   color: var(--accent)
 }
 
-.modal {
-  background: #000b
-}
-
 .viewer {
   border-radius: 12px;
   overflow: hidden;
   background: #000
-}
-
-.viewer .info {
-  background: #fff;
-  color: var(--text)
-}
-
-.viewer .media {
-  background: #000
-}
-
-.close {
-  color: #fff
-}
-
-.kv {
-  border-bottom-color: var(--line)
 }
 
 @media(max-width:800px) {

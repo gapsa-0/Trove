@@ -70,11 +70,6 @@
   word-break: break-word;
 }
 
-/* editable detail sections */
-.isec {
-  margin-top: 16px;
-}
-
 .isec>.h {
   display: flex;
   align-items: center;

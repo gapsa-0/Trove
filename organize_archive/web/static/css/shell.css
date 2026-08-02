@@ -3,11 +3,6 @@
   display: none;
 }
 
-#app.on {
-  display: flex;
-  min-height: 100vh;
-}
-
 nav {
   width: 210px;
   flex: none;
@@ -39,11 +34,6 @@ nav .navtoggle {
   padding: 3px 6px;
   border-radius: 5px;
   flex: none;
-}
-
-nav .navtoggle:hover {
-  background: var(--panel2);
-  color: var(--text);
 }
 
 nav .back {
@@ -80,15 +70,6 @@ nav .arch {
   color: var(--text);
   font-size: 13.5px;
   line-height: 1.25;
-}
-
-.navitem:hover {
-  background: var(--panel2);
-}
-
-.navitem.active {
-  background: var(--accent2);
-  color: #fff;
 }
 
 .navitem.soon {
