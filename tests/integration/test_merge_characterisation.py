@@ -221,10 +221,12 @@ def test_merge_persons_larger_count_wins_when_unnamed_both_orders(tmp_path):
     assert ok2["person"]["id"] == 1  # the larger cluster still wins
 
 
-def test_merge_persons_equal_count_tie_keeps_first_argument(tmp_path):
-    """Pins the documented quirk: with face_count tied and neither side
-    named, merge_persons' `>=` comparison (no id tiebreak) means the
-    survivor is whichever id was passed FIRST, not the lower id."""
+def test_merge_persons_equal_count_tie_keeps_the_lower_id(tmp_path):
+    """With face_count tied and neither side named, the lower id survives --
+    in either argument order, and matching pets and places.
+
+    This used to keep whichever id was passed first, so the outcome of a
+    drag-merge depended on which way round the user dragged the two cards."""
     conn = _db(tmp_path)
     _person(conn, 1, None, 3, 100)
     _person(conn, 2, None, 3, 200)
@@ -243,7 +245,7 @@ def test_merge_persons_equal_count_tie_keeps_first_argument(tmp_path):
     db_path2 = sub / "archive.db"
     conn.close()
     ok2 = people.merge_persons(str(db_path2), 2, 1)  # args swapped
-    assert ok2["person"]["id"] == 2  # first-argument id wins the tie, not the lower id
+    assert ok2["person"]["id"] == 1  # the lower id wins either way round
 
 
 def test_merge_pets_named_beats_unnamed_both_orders(tmp_path):

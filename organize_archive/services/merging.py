@@ -25,13 +25,16 @@ agree rather than around the fact that all three are spelled "merge":
   a generic function carrying a place-shaped branch, which is worse than the
   one honest copy that lives in `places.py`.
 
-What is emphatically *not* shared is the survivor rule. All three differ,
-and two of them differ in ways nothing had ever tested (see
-``tests/integration/test_merge_characterisation.py``): people break a tie on
-argument order, pets on the lower id. Each module passes in its own already
-chosen survivor, so unifying those rules stays a deliberate decision for
-someone to make on purpose rather than something this module quietly
-imposes.
+What is *not* shared is the survivor rule. Each entity ranks on what it has --
+a named side first, then face_count, detection_count, or pinned-then-member
+count -- and each passes in its own already chosen survivor. They do now agree
+on the last step: a tie falls to the lower id, so no merge depends on which
+side the caller happened to pass first (people used to, and a drag-merge's
+outcome changed with the direction of the drag). Keeping the rules here would
+mean a generic function carrying three entities' notions of "bigger"; keeping
+them apart means a new entity states its own, and states the id tiebreak with
+it. See ``tests/integration/test_merge_characterisation.py``, which pins all
+three in both argument orders.
 """
 
 from __future__ import annotations

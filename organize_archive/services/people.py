@@ -506,11 +506,10 @@ def merge_persons(
     faces, keep the named/larger one) AND store a durable 'same' constraint so
     the merge survives future re-clusters.
 
-    An explicit `name` picks the surviving NAME outright (it doesn't change
-    which person id survives -- that's still named/larger-cluster/id as
-    below). This is what lets two already-but-differently-named clusters
-    merge at all: normally that's refused because there's no automatic way to
-    choose between them."""
+    An explicit `name` picks the surviving NAME outright; which person id
+    survives is unaffected (see the ranking below). This is what lets two
+    already-but-differently-named clusters merge at all: normally that's
+    refused because there's no automatic way to choose between them."""
     pa, pb, err = merging.load_sides(conn, _PERSON.entity, id_a, id_b)
     if err:
         return err
@@ -522,12 +521,13 @@ def merge_persons(
     name, err = merging.resolve_name(pa, pb, name)
     if err:
         return err
-    # keep the named one, else the larger cluster
+    # Survivor: the named one, else the larger cluster, else the LOWER id --
+    # ranking on (count, -id) settles both in one comparison. See ADR 0013.
     if pa["name"] and not pb["name"]:
         keep, drop = pa, pb
     elif pb["name"] and not pa["name"]:
         keep, drop = pb, pa
-    elif (pa["face_count"] or 0) >= (pb["face_count"] or 0):
+    elif (pa["face_count"] or 0, -pa["id"]) > (pb["face_count"] or 0, -pb["id"]):
         keep, drop = pa, pb
     else:
         keep, drop = pb, pa
