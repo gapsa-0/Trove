@@ -44,11 +44,20 @@ the Privacy section of `README.md` for the full picture.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue. Use GitHub's private vulnerability reporting
-for this repository instead: the Security tab, then "Report a vulnerability".
-That is the only channel — there is deliberately no email address here, because
-an address nobody watches is worse than none at all. Expect a reply within a
-couple of weeks; this is a single-developer project, not a staffed one.
+**There is no private reporting channel.** GitHub's private vulnerability
+reporting is not available on this repository, and there is deliberately no
+email address here — an address nobody watches is worse than none at all. So
+the honest instruction is: open a normal issue, and leave out the details that
+would let someone exploit the problem before it is fixed. A description of what
+is wrong and roughly where is enough to act on; a working exploit in a public
+issue is not.
+
+That is a real trade-off, not an oversight, and it is a reasonable one for what
+this is: a local-first app with no server, no accounts and no user data beyond
+the files already on your own disk. The realistic worst case is a bug in how
+the app handles your own archive.
+
+Expect a reply within a couple of weeks. This is a single-developer project.
 
 ## Supported versions
 
