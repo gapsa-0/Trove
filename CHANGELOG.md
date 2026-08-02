@@ -48,7 +48,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The package was reorganised into layers (services, a route table for the HTTP
 API, a pipeline package for background jobs), the frontend was split out of one
 large `index.html` into ES modules with their own stylesheets, and mypy and ruff
-gates were added to CI along with a faster, better-organised test suite.
+gates were added to CI along with a faster, better-organised test suite. A size
+ratchet now fails the build when a file or function grows past budget, and the
+repository carries the documents a newcomer expects: architecture, contributing,
+security, and decision records.
 
 ## [0.1.2] - 2026-07-29
 
