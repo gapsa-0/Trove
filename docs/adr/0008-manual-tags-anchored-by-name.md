@@ -49,7 +49,7 @@ people and pets can carry manual tags.**
 where no face was detected at all" — checks `if not p or not p["name"]:
 return {"error": "target must be a named person"}`, and its docstring gives
 the reason: "an unnamed auto-cluster id is ephemeral and wouldn't survive the
-next re-cluster anyway." `organize_archive/services/pets.py`'s
+next re-cluster anyway." `organize_archive/services/pets_edit.py`'s
 `add_pet_to_file` is, per its own docstring, "Same shape as
 add_person_to_file" and enforces the identical rule ("target must be a named
 pet").

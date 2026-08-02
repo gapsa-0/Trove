@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 
 from organize_archive.db import database as db
-from organize_archive.services import people_edit, pets, places
+from organize_archive.services import people_edit, pets_edit, places_edit
 
 np = pytest.importorskip("numpy")
 
@@ -165,7 +165,7 @@ def _insert_place(conn, cid, root_id, name, lat, lon, count, pinned=0):
 
 # -- Gap 1: survivor-selection chains (people vs. pets) ----------------------
 #
-# people_edit.merge_persons and pets.merge_pets both chain "named beats unnamed,
+# people_edit.merge_persons and pets_edit.merge_pets both chain "named beats unnamed,
 # else the larger cluster", but resolve a tie differently: people compares
 # face_count with `>=` and has NO id tiebreak, so on a tie the survivor is
 # whichever id was passed as the FIRST argument; pets compares
@@ -255,7 +255,7 @@ def test_merge_pets_named_beats_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2)
+    ok = pets_edit.merge_pets(str(db_path), 1, 2)
     assert ok["pet"]["id"] == 1
     assert ok["pet"]["name"] == "Fido"
 
@@ -267,7 +267,7 @@ def test_merge_pets_named_beats_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok2 = pets.merge_pets(str(db_path2), 2, 1)  # args swapped
+    ok2 = pets_edit.merge_pets(str(db_path2), 2, 1)  # args swapped
     assert ok2["pet"]["id"] == 1
     assert ok2["pet"]["name"] == "Fido"
 
@@ -279,7 +279,7 @@ def test_merge_pets_larger_count_wins_when_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2)
+    ok = pets_edit.merge_pets(str(db_path), 1, 2)
     assert ok["pet"]["id"] == 1
 
     sub = tmp_path / "swapped"
@@ -290,7 +290,7 @@ def test_merge_pets_larger_count_wins_when_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok2 = pets.merge_pets(str(db_path2), 2, 1)  # args swapped
+    ok2 = pets_edit.merge_pets(str(db_path2), 2, 1)  # args swapped
     assert ok2["pet"]["id"] == 1  # the larger cluster still wins
 
 
@@ -306,7 +306,7 @@ def test_merge_pets_equal_count_tie_keeps_lower_id_both_orders(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2)
+    ok = pets_edit.merge_pets(str(db_path), 1, 2)
     assert ok["pet"]["id"] == 1
 
     sub = tmp_path / "swapped"
@@ -317,7 +317,7 @@ def test_merge_pets_equal_count_tie_keeps_lower_id_both_orders(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok2 = pets.merge_pets(str(db_path2), 2, 1)  # args swapped
+    ok2 = pets_edit.merge_pets(str(db_path2), 2, 1)  # args swapped
     assert ok2["pet"]["id"] == 1  # still the lower id, unlike people's tie
 
 
@@ -342,20 +342,24 @@ def test_merge_persons_error_strings(tmp_path):
 
 def test_merge_pets_error_strings(tmp_path):
     db_path = _empty_db(tmp_path)
-    assert pets.merge_pets(str(db_path), None, 1) == {"error": "need two distinct pets"}
-    assert pets.merge_pets(str(db_path), 0, 1) == {"error": "need two distinct pets"}
-    assert pets.merge_pets(str(db_path), 5, 5) == {"error": "need two distinct pets"}
-    assert pets.merge_pets(str(db_path), 1, 2) == {"error": "unknown pet"}
+    assert pets_edit.merge_pets(str(db_path), None, 1) == {"error": "need two distinct pets"}
+    assert pets_edit.merge_pets(str(db_path), 0, 1) == {"error": "need two distinct pets"}
+    assert pets_edit.merge_pets(str(db_path), 5, 5) == {"error": "need two distinct pets"}
+    assert pets_edit.merge_pets(str(db_path), 1, 2) == {"error": "unknown pet"}
 
 
 def test_merge_place_clusters_error_strings(tmp_path):
     db_path = _empty_db(tmp_path)
-    assert places.merge_place_clusters(str(db_path), None, 1) == {
+    assert places_edit.merge_place_clusters(str(db_path), None, 1) == {
         "error": "need two distinct places"
     }
-    assert places.merge_place_clusters(str(db_path), 0, 1) == {"error": "need two distinct places"}
-    assert places.merge_place_clusters(str(db_path), 5, 5) == {"error": "need two distinct places"}
-    assert places.merge_place_clusters(str(db_path), 1, 2) == {"error": "unknown place"}
+    assert places_edit.merge_place_clusters(str(db_path), 0, 1) == {
+        "error": "need two distinct places"
+    }
+    assert places_edit.merge_place_clusters(str(db_path), 5, 5) == {
+        "error": "need two distinct places"
+    }
+    assert places_edit.merge_place_clusters(str(db_path), 1, 2) == {"error": "unknown place"}
 
 
 def test_unmerge_persons_error_strings(tmp_path):
@@ -367,16 +371,16 @@ def test_unmerge_persons_error_strings(tmp_path):
 
 def test_unmerge_pets_error_strings(tmp_path):
     db_path = _empty_db(tmp_path)
-    assert pets.unmerge_pets(str(db_path), None) == {"error": "missing merge_id"}
-    assert pets.unmerge_pets(str(db_path), 0) == {"error": "missing merge_id"}
-    assert pets.unmerge_pets(str(db_path), 999999) == {"error": "merge not found"}
+    assert pets_edit.unmerge_pets(str(db_path), None) == {"error": "missing merge_id"}
+    assert pets_edit.unmerge_pets(str(db_path), 0) == {"error": "missing merge_id"}
+    assert pets_edit.unmerge_pets(str(db_path), 999999) == {"error": "merge not found"}
 
 
 def test_unmerge_place_clusters_error_strings(tmp_path):
     db_path = _empty_db(tmp_path)
-    assert places.unmerge_place_clusters(str(db_path), None) == {"error": "missing merge_id"}
-    assert places.unmerge_place_clusters(str(db_path), 0) == {"error": "missing merge_id"}
-    assert places.unmerge_place_clusters(str(db_path), 999999) == {"error": "merge not found"}
+    assert places_edit.unmerge_place_clusters(str(db_path), None) == {"error": "missing merge_id"}
+    assert places_edit.unmerge_place_clusters(str(db_path), 0) == {"error": "missing merge_id"}
+    assert places_edit.unmerge_place_clusters(str(db_path), 999999) == {"error": "merge not found"}
 
 
 # The "both named without an explicit name -> refused" error is already
@@ -416,7 +420,7 @@ def test_merge_pets_response_shape(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2)
+    ok = pets_edit.merge_pets(str(db_path), 1, 2)
     assert set(ok.keys()) == {"ok", "pet"}
     assert ok["ok"] is True
     assert set(ok["pet"].keys()) == {"id", "name", "species", "detections"}
@@ -429,7 +433,7 @@ def test_merge_place_clusters_response_shape(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = places.merge_place_clusters(str(db_path), 1, 2)
+    ok = places_edit.merge_place_clusters(str(db_path), 1, 2)
     assert set(ok.keys()) == {"ok", "place"}
     assert ok["ok"] is True
     assert set(ok["place"].keys()) == {"id", "name", "count"}
@@ -455,9 +459,9 @@ def test_unmerge_pets_response_shape(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    pets.merge_pets(str(db_path), 1, 2)
+    pets_edit.merge_pets(str(db_path), 1, 2)
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM pet_merges").fetchone()["id"]
-    undo = pets.unmerge_pets(str(db_path), merge_id)
+    undo = pets_edit.unmerge_pets(str(db_path), merge_id)
     assert undo == {"ok": True, "recluster": True}
 
 
@@ -472,9 +476,9 @@ def test_unmerge_place_clusters_response_shape_has_no_recluster_key(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    places.merge_place_clusters(str(db_path), 1, 2)
+    places_edit.merge_place_clusters(str(db_path), 1, 2)
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM place_merges").fetchone()["id"]
-    undo = places.unmerge_place_clusters(str(db_path), merge_id)
+    undo = places_edit.unmerge_place_clusters(str(db_path), merge_id)
     assert set(undo.keys()) == {"ok", "place_id"}
     assert undo["ok"] is True
     assert "recluster" not in undo
@@ -532,7 +536,7 @@ def test_merge_pets_survivor_name_explicit_overrides(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2, name="Buddy")
+    ok = pets_edit.merge_pets(str(db_path), 1, 2, name="Buddy")
     assert ok["pet"]["name"] == "Buddy"
 
 
@@ -543,7 +547,7 @@ def test_merge_pets_survivor_name_keeps_named_side_when_loser_unnamed(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2)
+    ok = pets_edit.merge_pets(str(db_path), 1, 2)
     assert ok["pet"]["name"] == "Fido"
 
 
@@ -554,7 +558,7 @@ def test_merge_pets_survivor_name_is_none_when_both_unnamed(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = pets.merge_pets(str(db_path), 1, 2)
+    ok = pets_edit.merge_pets(str(db_path), 1, 2)
     assert ok["pet"]["name"] is None
 
 
@@ -565,7 +569,7 @@ def test_merge_place_clusters_survivor_name_explicit_overrides(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = places.merge_place_clusters(str(db_path), 1, 2, name="Nueva")
+    ok = places_edit.merge_place_clusters(str(db_path), 1, 2, name="Nueva")
     assert ok["place"]["name"] == "Nueva"
 
 
@@ -576,7 +580,7 @@ def test_merge_place_clusters_survivor_name_keeps_named_side_when_loser_unnamed(
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = places.merge_place_clusters(str(db_path), 1, 2)
+    ok = places_edit.merge_place_clusters(str(db_path), 1, 2)
     assert ok["place"]["name"] == "Casa"
 
 
@@ -587,5 +591,5 @@ def test_merge_place_clusters_survivor_name_is_none_when_both_unnamed(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = places.merge_place_clusters(str(db_path), 1, 2)
+    ok = places_edit.merge_place_clusters(str(db_path), 1, 2)
     assert ok["place"]["name"] is None

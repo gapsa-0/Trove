@@ -34,7 +34,7 @@ from organize_archive.db import database as db
 from organize_archive.detect import extract as detect_extract
 from organize_archive.faces import backend as face_backend
 from organize_archive.pets import backend as pet_backend
-from organize_archive.services import pets
+from organize_archive.services import pets_edit
 
 np = pytest.importorskip("numpy")
 Image = pytest.importorskip("PIL.Image")
@@ -143,7 +143,7 @@ def test_reviewing_a_suppressed_face_as_human_restores_it(tmp_path, detectors):
     candidate_id = conn.execute("SELECT id FROM nonhuman_detections").fetchone()["id"]
     conn.close()
 
-    result = pets.review_nonhuman(str(tmp_path / "archive.db"), candidate_id, "human")
+    result = pets_edit.review_nonhuman(str(tmp_path / "archive.db"), candidate_id, "human")
 
     assert result["ok"]
     check = db.open_readonly(tmp_path / "archive.db")
@@ -165,7 +165,7 @@ def test_a_rescan_does_not_undo_the_review(tmp_path, detectors, monkeypatch):
     detect_extract.extract(conn, cfg, face_be=face_be, pet_be=pet_be)
     candidate_id = conn.execute("SELECT id FROM nonhuman_detections").fetchone()["id"]
     conn.close()
-    pets.review_nonhuman(str(tmp_path / "archive.db"), candidate_id, "human")
+    pets_edit.review_nonhuman(str(tmp_path / "archive.db"), candidate_id, "human")
 
     write = db.connect(tmp_path / "archive.db")
     # Force the file back into the backlog the way a detector/config change

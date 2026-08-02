@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...db import database as db
-from ...services import places
+from ...services import places, places_edit
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
@@ -33,7 +33,7 @@ def merge_preview(req: Request) -> Json:
     # spread out would this merge be" so the GUI can decide
     # whether to warn before the user confirms the drag-merge.
     rid = req.root_id
-    res = places.place_merge_preview(
+    res = places_edit.place_merge_preview(
         req.db(rid), req.one("a", int), req.one("b", int), req.cfg.place_merge_warn_km
     )
     return ok_or_error(res)
@@ -54,7 +54,7 @@ def cluster_members(req: Request) -> dict[str, Any] | Json:
 def rename_cluster(req: Request) -> Json:
     """Rename a place cluster."""
     res = db.write_with_retry(
-        lambda: places.rename_place_cluster(
+        lambda: places_edit.rename_place_cluster(
             req.db(req.open_root_id),
             req.body.get("cluster_id"),
             (req.body.get("name") or "").strip(),
@@ -66,7 +66,7 @@ def rename_cluster(req: Request) -> Json:
 def merge_clusters(req: Request) -> Json:
     """Merge two place clusters the user confirmed are the same location, immediately."""
     res = db.write_with_retry(
-        lambda: places.merge_place_clusters(
+        lambda: places_edit.merge_place_clusters(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
         )
     )
@@ -81,7 +81,9 @@ def unmerge_clusters(req: Request) -> Json:
     # restore, not a "delete a constraint and recluster" that
     # needs a background pass to finish the job.
     res = db.write_with_retry(
-        lambda: places.unmerge_place_clusters(req.db(req.open_root_id), req.body.get("merge_id"))
+        lambda: places_edit.unmerge_place_clusters(
+            req.db(req.open_root_id), req.body.get("merge_id")
+        )
     )
     return ok_or_error(res)
 
@@ -90,10 +92,12 @@ def set_item_place(req: Request) -> Json:
     """Attach or clear one file's place, depending on whether `clear` is set."""
     db_path = req.db(req.open_root_id)
     if req.body.get("clear"):
-        res = db.write_with_retry(lambda: places.clear_place(db_path, req.body.get("file_id")))
+        res = db.write_with_retry(lambda: places_edit.clear_place(db_path, req.body.get("file_id")))
     else:
         res = db.write_with_retry(
-            lambda: places.set_place(db_path, req.body.get("file_id"), req.body.get("place_id"))
+            lambda: places_edit.set_place(
+                db_path, req.body.get("file_id"), req.body.get("place_id")
+            )
         )
     return ok_or_error(res)
 
@@ -101,7 +105,7 @@ def set_item_place(req: Request) -> Json:
 def create_place(req: Request) -> Json:
     """Create a user-pinned place at a dropped coordinate, optionally attaching a file to it."""
     res = db.write_with_retry(
-        lambda: places.create_place(
+        lambda: places_edit.create_place(
             req.db(req.body.get("root")),
             req.body.get("root"),
             # A place's name is optional, so absent keeps its old meaning

@@ -1,7 +1,7 @@
 from organize_archive.db import database as db
 from organize_archive.faces.manual_tags import repair_manual_person_files
 from organize_archive.pets.manual_tags import repair_manual_pet_files
-from organize_archive.services import browse, people, people_edit, pets
+from organize_archive.services import browse, people, people_edit, pets_edit
 
 
 def _base_catalog(tmp_path):
@@ -87,11 +87,11 @@ def test_add_and_remove_pet_round_trip(tmp_path):
     conn.commit()
     conn.close()
 
-    res = pets.add_pet_to_file(db_path, 1, 1)
+    res = pets_edit.add_pet_to_file(db_path, 1, 1)
     assert res["ok"]
     assert res["pet"] == {"id": 1, "name": "Fido"}
 
-    res2 = pets.remove_pet_from_file(db_path, 1, 1)
+    res2 = pets_edit.remove_pet_from_file(db_path, 1, 1)
     assert res2["ok"]
     check = db.open_readonly(db_path)
     assert check.execute("SELECT COUNT(*) FROM pet_files").fetchone()[0] == 0
@@ -105,7 +105,7 @@ def test_add_pet_unnamed_is_rejected(tmp_path):
     conn.commit()
     conn.close()
 
-    res = pets.add_pet_to_file(db_path, 1, 1)
+    res = pets_edit.add_pet_to_file(db_path, 1, 1)
     assert "error" in res
 
 
@@ -197,7 +197,7 @@ def test_repair_manual_pet_files_repoints_after_recluster(tmp_path):
     _add_pet(conn, 1, "Fido")
     conn.commit()
     conn.close()
-    pets.add_pet_to_file(db_path, 1, 1)
+    pets_edit.add_pet_to_file(db_path, 1, 1)
 
     conn = db.connect(db_path)
     conn.execute("DELETE FROM pets WHERE id=1")

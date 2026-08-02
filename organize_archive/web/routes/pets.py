@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...db import database as db
-from ...services import pets
+from ...services import pets, pets_edit
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
@@ -57,7 +57,7 @@ def group(req: Request) -> dict[str, Any] | Json:
 def rename_pet(req: Request) -> Json:
     """Rename a pet-identity group."""
     res = db.write_with_retry(
-        lambda: pets.rename_pet(
+        lambda: pets_edit.rename_pet(
             req.db(req.open_root_id),
             req.body.get("pet_id"),
             (req.body.get("name") or "").strip(),
@@ -69,7 +69,7 @@ def rename_pet(req: Request) -> Json:
 def merge(req: Request) -> Json:
     """Merge two pet groups the user confirmed are the same animal, immediately and durably."""
     res = db.write_with_retry(
-        lambda: pets.merge_pets(
+        lambda: pets_edit.merge_pets(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
         )
     )
@@ -79,7 +79,7 @@ def merge(req: Request) -> Json:
 def unmerge(req: Request) -> Json:
     """Undo a pet merge and, if needed, kick off a recluster."""
     res = db.write_with_retry(
-        lambda: pets.unmerge_pets(req.db(req.open_root_id), req.body.get("merge_id"))
+        lambda: pets_edit.unmerge_pets(req.db(req.open_root_id), req.body.get("merge_id"))
     )
     if res.get("recluster") and req.jobs.current_root_id():
         req.jobs.start("pet_cluster", req.jobs.current_root_id())
@@ -89,7 +89,7 @@ def unmerge(req: Request) -> Json:
 def review_nonhuman(req: Request) -> Json:
     """Confirm a non-human detection, or restore it to People as unassigned."""
     res = db.write_with_retry(
-        lambda: pets.review_nonhuman(
+        lambda: pets_edit.review_nonhuman(
             req.db(req.open_root_id),
             req.body.get("detection_id"),
             req.body.get("verdict", "confirmed"),
@@ -103,7 +103,7 @@ def review_nonhuman(req: Request) -> Json:
 def add_pet(req: Request) -> Json:
     """Tag a file with a named pet by hand."""
     res = db.write_with_retry(
-        lambda: pets.add_pet_to_file(
+        lambda: pets_edit.add_pet_to_file(
             req.db(req.open_root_id), req.body.get("pet_id"), req.body.get("file_id")
         )
     )
@@ -113,7 +113,7 @@ def add_pet(req: Request) -> Json:
 def remove_pet(req: Request) -> Json:
     """Remove a hand-added pet tag from a file."""
     res = db.write_with_retry(
-        lambda: pets.remove_pet_from_file(
+        lambda: pets_edit.remove_pet_from_file(
             req.db(req.open_root_id), req.body.get("pet_id"), req.body.get("file_id")
         )
     )

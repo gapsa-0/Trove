@@ -11,7 +11,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.pets import cluster
-from organize_archive.services import people_edit, pets
+from organize_archive.services import people_edit, pets_edit
 
 np = pytest.importorskip("numpy")
 
@@ -55,7 +55,7 @@ def test_merge_pets_survives_a_subsequent_full_recluster(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    merged = pets.merge_pets(str(db_path), pet_ids[0], pet_ids[1])
+    merged = pets_edit.merge_pets(str(db_path), pet_ids[0], pet_ids[1])
     assert merged["ok"] is True
     assert merged["pet"]["detections"] == 4
 
@@ -95,11 +95,11 @@ def test_merge_pets_both_named_differently_requires_explicit_name(tmp_path):
     db_path = tmp_path / "archive.db"
     conn.close()
 
-    refused = pets.merge_pets(str(db_path), 1, 2)
+    refused = pets_edit.merge_pets(str(db_path), 1, 2)
     assert "error" in refused
     assert "Fido" in refused["error"] and "Rex" in refused["error"]
 
-    ok = pets.merge_pets(str(db_path), 1, 2, name="Buddy")
+    ok = pets_edit.merge_pets(str(db_path), 1, 2, name="Buddy")
     assert ok["ok"] is True
     assert ok["pet"]["name"] == "Buddy"
 
