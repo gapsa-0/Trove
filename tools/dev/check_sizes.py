@@ -46,7 +46,6 @@ ALLOWLIST: dict[str, int] = {
     "tests/gui/test_api_routes.py": 1159,
     "tests/integration/test_merge_undo.py": 838,
     # Functions
-    "organize_archive/cli/faces.py::run": 153,
     "organize_archive/cli/scan.py::run": 85,
     "organize_archive/db/database.py::init_db": 98,
     "organize_archive/dedup/exact.py::run": 138,
@@ -54,7 +53,6 @@ ALLOWLIST: dict[str, int] = {
     "organize_archive/faces/migrate_adaface.py::reattach": 91,
     "organize_archive/faces/migrate_adaface.py::snapshot_and_wipe": 95,
     "organize_archive/geo/clusters.py::assign_unplaced": 83,
-    "organize_archive/metadata/enrich.py::enrich": 160,
     "organize_archive/pets/backend.py::_forward": 83,
     "organize_archive/pets/cluster.py::cluster_pets": 110,
     "organize_archive/pipeline/scheduler.py::tick": 95,
