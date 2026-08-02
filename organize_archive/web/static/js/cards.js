@@ -1,6 +1,6 @@
 // The pieces People and Pets render the same way: the detection status row that
 // heads both screens, the incremental card-grid resync both use to update in
-// place, and the placeholder for a screen that is not built yet.
+// place, and the fallback for a hash that names no screen at all.
 
 import {
   esc,
@@ -50,11 +50,14 @@ export function syncCardGrid(grid, items, { keyOf, make, update, complete, empty
   if (!cards && complete && empty) grid.innerHTML = empty;
   return cards;
 }
-export function renderSoon(m, id) {
-  const S2 = {
-    places: ["📍", "Places", "Reverse-geocode coordinates into place names and browse by location."],
-    situations: ["🔎", "Situations", "Search by content: “beach sunset”, “birthday”, using local image embeddings."]
-  }[id];
-  m.innerHTML = `<h2 class="sec">${S2[1]}</h2><div class="soonbox"><div class="big">${S2[0]}</div>
-    <p>${S2[2]}</p><p class="muted">Coming in a later phase.</p></div>`;
+// The fallback for a hash naming a section RENDERERS does not have: a stale
+// bookmark, a typo, a link from an older build. It used to hold "coming in a
+// later phase" copy for two screens -- and both of them shipped, `places` into
+// RENDERERS and `situations` as semantic search. That left it reachable only
+// for ids its lookup had no entry for, which it then indexed unguarded: every
+// route that actually reached it threw a TypeError instead of rendering.
+export function renderUnknownSection(m, id) {
+  m.innerHTML = `<h2 class="sec">Not found</h2><div class="soonbox"><div class="big">🧭</div>
+    <p>There is no “${esc(id)}” screen in this version of Trove.</p>
+    <p class="muted">Pick a section from the sidebar.</p></div>`;
 }

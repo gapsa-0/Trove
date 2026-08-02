@@ -209,9 +209,13 @@ Trove keeps mutable data outside both the source archive and the installed app:
 
 Inside it, each archive you add is fully isolated in `archives/<id>/`, with its own
 `archive.db` and its own thumbnail and face-crop cache, so one archive can be removed
-without touching another. Shared across all of them are `config.json`, `secrets.json`
-(the optional API key, owner-readable only), and the downloaded machine-learning
-models, which are large and worth keeping.
+without touching another. Shared across all of them are `config.json` and the
+downloaded machine-learning models, which are large and worth keeping.
+
+Older installs may also have a `secrets.json` holding the API key an earlier
+build needed for cloud embedding. There is nothing to put in it now — every
+model runs locally — so Trove deletes it at startup rather than leaving a live
+credential on disk for a feature that no longer exists.
 
 The whole directory is valuable derived data: back it up by copying it while Trove is
 closed. Restoring it does not change the original media — at worst you re-scan.

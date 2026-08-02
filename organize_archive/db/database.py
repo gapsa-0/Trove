@@ -200,8 +200,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         # start -- an unconditional DELETE here was a full-table write taking
         # the single writer's lock on every job, independent of whether there
         # was anything to clean up). Earlier runs embedded a video's raw bytes
-        # wholesale (input_kind='video'), which busts Voyage's context window
-        # on anything but a tiny clip and so failed identically forever.
+        # wholesale (input_kind='video'), which no embedder this app has ever
+        # used could accept beyond a tiny clip, so those rows failed
+        # identically forever.
         # Frame-sampled video indexing (services/semantic.py) writes a new
         # input_kind ('video_frames'), so this DELETE only ever matches the
         # old rows; rows with input_kind='video' become pending again exactly

@@ -487,16 +487,3 @@ CREATE TABLE IF NOT EXISTS semantic_embeddings (
 );
 CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_status
     ON semantic_embeddings(status);
-
--- Reserved for provider quota accounting. Existing archives may retain the
--- historical Gemini usage records; Voyage does not use this table.
-CREATE TABLE IF NOT EXISTS semantic_api_usage (
-    id           INTEGER PRIMARY KEY,
-    requested_at REAL NOT NULL,
-    usage_day    TEXT NOT NULL,
-    token_count  INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_semantic_api_usage_time
-    ON semantic_api_usage(requested_at);
-CREATE INDEX IF NOT EXISTS idx_semantic_api_usage_day
-    ON semantic_api_usage(usage_day);

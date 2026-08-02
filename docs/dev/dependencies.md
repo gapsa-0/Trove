@@ -28,7 +28,7 @@ decides which version of it.
 
 Scanning, indexing and status (`oa scan`, `oa init`, `oa status`) run on the
 Python standard library alone, plus two system binaries: `exiftool` and
-`ffprobe`. `organize_archive/cli.py`'s `_preflight()` checks for both on PATH
+`ffprobe`. `organize_archive/cli/__init__.py`'s `_preflight()` checks for both on PATH
 and, in `cmd_init`, prints a note (not an error) if either is missing —
 metadata resolution still works, falling back to Takeout sidecars, filename
 parsing and mtime. Nothing in `dependencies = []` at the top of
@@ -55,7 +55,7 @@ semantic indexing all check this before starting a job; the GUI surfaces it as
 | `media` | `pyexiftool>=0.5`, `Pillow>=10`, `pillow-heif>=0.16`, `ImageHash>=4.3` | Perceptual dedup and HEIC/image decoding | Exact (SHA-256) dedup still works — `hashing/hasher.py` is stdlib `hashlib` only — but `dedup/exact.py`'s `perceptual_available()` returns `False` and cross-format near-duplicates (the same photo re-compressed by a different takeout) go undetected |
 | `faces` | `insightface>=1.0`, `onnxruntime>=1.20`, `opencv-python>=4.8`, `scikit-learn>=1.3`, `numpy>=1.24`, `faiss-cpu>=1.13` | Face detection (SCRFD), embedding (AdaFace ir101) and clustering into People | `oa faces` reports the stage unavailable; nothing crashes |
 | `pets` | `onnxruntime>=1.20`, `opencv-python>=4.8`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | YOLOX animal detection plus DINOv2 pet re-identification | `oa pets` reports the stage unavailable |
-| `semantic` | `onnxruntime>=1.20`, `tokenizers>=0.20`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | Local SigLIP 2 search-by-description | Indexing and search both report unavailable — see the gap noted below for one place this degrades less gracefully |
+| `semantic` | `onnxruntime>=1.20`, `tokenizers>=0.20`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | Local SigLIP 2 search-by-description | Indexing and search both report unavailable — search says so by raising, for the reason given below |
 | `dev` | `pytest>=8`, `ruff>=0.6`, `pre-commit>=3` | Running the test suite and linting | You can't develop the project, but a packaged build needs none of it |
 
 `faces` is the extra with the most going on, and its own comment in
@@ -108,11 +108,11 @@ reference dependency")` at module level, so a missing `transformers` skips the
 whole module at collection time rather than failing.
 
 Concretely: on a machine that has `transformers` installed, the full suite
-collects 294 tests and reports `293 passed, 1 xfailed` (the xfail is
+collects 549 tests and reports `548 passed, 1 xfailed` (the xfail is
 unrelated — a pets test superseded by the fused detector, in
 `tests/integration/test_pets.py`). Without `transformers`, the eight tests in
 `test_siglip_preprocessing.py` collapse into a single collection-time skip:
-`285 passed, 1 xfailed, 1 skipped`. Both are green. If you want those eight
+`540 passed, 1 xfailed, 1 skipped`. Both are green. If you want those eight
 preprocessing-parity tests to actually run, install `transformers` by hand and
 accept that it holds `tokenizers` back a version — do not add it to any extra
 or constraint to make that friction go away.

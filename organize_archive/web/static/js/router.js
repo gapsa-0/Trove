@@ -4,7 +4,7 @@
 // place that names every screen's entry point.
 
 import {
-  renderSoon,
+  renderUnknownSection,
 } from "./cards.js";
 import {
   syncThemeControl,
@@ -182,7 +182,7 @@ export function showSection(id, reload = false) {
   SECTION_READY.delete(id);
   m.scrollTop = 0;
   m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
-  const fn = RENDERERS[id] || (mm => renderSoon(mm, id));
+  const fn = RENDERERS[id] || (mm => renderUnknownSection(mm, id));
   // Isolate each section render: a throw (bad fetch, JSON error, …) shows an inline
   // error with Retry instead of leaving the previous section's DOM half-replaced.
   Promise.resolve().then(() => fn(m)).then(() => {

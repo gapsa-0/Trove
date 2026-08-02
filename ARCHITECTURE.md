@@ -110,7 +110,7 @@ follow automatically.
 
 ## The schema, summarised
 
-`organize_archive/db/schema.sql` currently defines 32 tables, grouped by what
+`organize_archive/db/schema.sql` currently defines 31 tables, grouped by what
 they describe:
 
 | Group | Tables |
@@ -120,7 +120,7 @@ they describe:
 | Places | `place_clusters`, `place_cluster_members`, `place_merges` |
 | People | `persons`, `faces`, `face_links`, `person_merges`, `person_files`, `fiqa_calibration` |
 | Pets | `pets`, `animal_detections`, `pet_links`, `pet_merges`, `pet_files`, `nonhuman_detections` |
-| Semantic | `semantic_embeddings`, `semantic_api_usage` |
+| Semantic | `semantic_embeddings` |
 | Bookkeeping | `app_state`, `scan_runs`, `face_scan`, `pet_scan` |
 
 `orientation` is grouped with the catalogue rather than with people or pets:
@@ -132,9 +132,7 @@ face's raw quality score onto its HIGH/BORDERLINE/LOW_QUALITY tier, so it
 travels with `faces`. `nonhuman_detections` is where a face-like region
 suppressed by an overlapping animal/toy box goes for review — reachable from
 both People and Pets, filed here with pets because that is the detector that
-vetoed it. `semantic_api_usage` is a reserved table for provider-quota
-accounting from an earlier cloud-embedding provider; the current local SigLIP
-path does not write to it.
+vetoed it.
 
 `SCHEMA_VERSION` (currently 13) lives in `organize_archive/db/database.py`.
 `init_db` is close to additive-only: on every run it creates any missing
