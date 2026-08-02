@@ -217,15 +217,18 @@ def test_shutdown_does_not_wait_for_a_runner_loading_a_model(jm, monkeypatch):
             release.wait(timeout=5)
 
     _register(monkeypatch, Runner(kind="probe", run=run))
-    jm.start("probe")
+    job = jm._jobs[jm.start("probe")["id"]]
     wait_until(lambda: loading.is_set(), timeout=5, what="the runner to reach the model load")
 
     try:
-        started = time.monotonic()
+        began = time.monotonic()
         assert jm.shutdown(timeout=5.0) is True
-        assert time.monotonic() - started < 1.0, "shutdown waited on an un-cancellable section"
+        assert time.monotonic() - began < 1.0, "shutdown waited on an un-cancellable section"
     finally:
+        # Finish the "load" inside the test: the real thread is reaped by
+        # process exit, but here the process carries on into the next test.
         release.set()
+        wait_until(lambda: job.finished_at is not None, timeout=5, what="the loader to finish")
 
 
 def test_a_cancel_arriving_around_a_model_load_is_honoured_at_its_edges(jm, monkeypatch):
@@ -258,12 +261,17 @@ def test_a_job_that_ignores_its_cancel_event_still_times_shutdown_out(jm, monkey
     on reporting it rather than returning a clean True."""
     release = threading.Event()
     _register(monkeypatch, Runner(kind="probe", run=lambda ctx: release.wait(timeout=5)))
-    jm.start("probe")
+    started = jm.start("probe")
+    job = jm._jobs[started["id"]]
 
     try:
         assert jm.shutdown(timeout=0.2) is False
     finally:
+        # Let the straggler finish inside the test. Left to outlive it, it logs
+        # its "job done" line after pytest has closed the capture stream, which
+        # surfaces as a "Logging error" against whichever test runs next.
         release.set()
+        wait_until(lambda: job.finished_at is not None, timeout=5, what="the straggler to finish")
 
 
 def test_the_uninterruptible_marker_stays_out_of_the_polled_payload(jm, monkeypatch):

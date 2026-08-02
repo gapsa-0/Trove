@@ -2,9 +2,9 @@
 merge/undo flows a user drives from it.
 
 Reads and writes `place_clusters`/`place_cluster_members`, built and kept
-current by `geo/clusters.py` -- this module never re-clusters on its own
-(beyond the one-time bootstrap `recompute_place_clusters` triggers), it only
-reports what geo/ already computed and lets a user correct it by hand.
+current by `geo/clusters.py` -- this module never re-clusters on its own. It
+only reports what geo/ already computed and lets a user correct it by hand;
+the clustering itself belongs to the places pipeline stage.
 """
 
 from __future__ import annotations
@@ -21,17 +21,16 @@ from .types import MediaItem
 
 
 def place_clusters(db_path: str, root_id: int, min_media: int = 10) -> dict[str, Any]:
-    """List of place clusters for a root, computing them the first time
-    they're requested (subsequent calls just read the cached rows)."""
-    conn = db.open_readonly(db_path)
-    try:
-        has_rows = conn.execute(
-            "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (root_id,)
-        ).fetchone()
-    finally:
-        conn.close()
-    if not has_rows:
-        recompute_place_clusters(db_path, root_id)
+    """List of place clusters for a root. A pure read.
+
+    It used to cluster the root on first call if no rows existed yet, which
+    made a GET perform a write: it could fail with "database is locked" while
+    the pipeline held the writer (GET routes are correctly not wrapped in
+    write_with_retry), and any page on any website could trigger it with an
+    <img> pointing at the clusters endpoint. The places stage already
+    bootstraps a root that has no clusters -- see pipeline/runners/places.py --
+    so this is now only the report, and the map is empty until that stage runs.
+    """
     return _read_place_clusters(db_path, root_id, min_media)
 
 
@@ -125,16 +124,6 @@ def place_points(conn: sqlite3.Connection, root_id: int, min_media: int = 10) ->
     points = [[round(r["lat"], 5), round(r["lon"], 5), r["cluster_id"], r["id"]] for r in rows]
     unplaced = sum(1 for p in points if not p[2])
     return {"points": points, "unplaced": unplaced}
-
-
-@writing
-def recompute_place_clusters(conn: sqlite3.Connection, root_id: int) -> dict[str, Any]:
-    """Rebuild place_clusters/place_cluster_members for a root from scratch.
-    Returns the resulting cluster and point counts."""
-    from ..geo.clusters import cluster_places
-
-    stats = cluster_places(conn, root_id)
-    return {"clusters": stats.clusters, "points": stats.points}
 
 
 @reading
