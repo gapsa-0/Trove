@@ -15,6 +15,44 @@ layering new rows on stale ones. The one thing that must survive it is a
 from __future__ import annotations
 
 
+def write_scan_markers(conn, fid, result, sha256, pet_src, now):
+    """Mark this file scanned by BOTH detectors, with what each one found.
+
+    Always written together, and written whether or not detection succeeded:
+    the pair is what ``pending`` tests, so writing one without the other would
+    leave the file to be reprocessed for one detector while the other's row is
+    stale, and writing neither would retry a permanently unreadable file for
+    ever. A file whose rewrite failed arrives here with a blank ``result``, so
+    the counts say zero rather than claiming rows the catalog does not have.
+    """
+    face_report = result.report
+    conn.execute(
+        """INSERT OR REPLACE INTO face_scan
+           (file_id, n_faces, n_candidates, rejected_score, rejected_size,
+            rejected_focus, rejected_exposure, rejected_clipped,
+            rejected_nonhuman, scanned_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (
+            fid,
+            len(result.face_hits),
+            face_report.candidates,
+            face_report.rejected.get("score", 0),
+            face_report.rejected.get("size", 0),
+            0,
+            0,
+            face_report.rejected.get("clipped", 0),
+            face_report.rejected.get("nonhuman", 0),
+            now,
+        ),
+    )
+    conn.execute(
+        """INSERT OR REPLACE INTO pet_scan
+           (file_id, n_animals, source_sha256, model_source, scanned_at)
+           VALUES (?,?,?,?,?)""",
+        (fid, len(result.animal_hits), sha256, pet_src, now),
+    )
+
+
 def rewrite_file_detections(conn, fid, now, result, pet_src, fiqa_model, sha256):
     """Replace every detection row for one file with this pass's findings."""
     carried = _carry_reviews(conn, fid)

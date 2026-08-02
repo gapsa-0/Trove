@@ -24,6 +24,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.detect import extract as dx
+from organize_archive.detect import video as dv
 from organize_archive.pets.backend import AnimalDetection
 from organize_archive.services import pending
 
@@ -56,7 +57,7 @@ def test_near_identical_faces_across_frames_collapse_keeping_higher_quality():
     a = _face(_unit(1.0, 0.0), quality_score=0.4)
     b = _face(_unit(0.99, 0.02), quality_score=0.9)  # near-duplicate, better crop
 
-    kept = dx.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
+    kept = dv.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
 
     assert len(kept) == 1
     face, offset = kept[0]
@@ -68,7 +69,7 @@ def test_dissimilar_faces_across_frames_stay_separate():
     a = _face(_unit(1.0, 0.0))
     b = _face(_unit(0.0, 1.0))  # orthogonal: a different person
 
-    kept = dx.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:02.000")], threshold=0.55)
+    kept = dv.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:02.000")], threshold=0.55)
 
     assert len(kept) == 2
     assert {offset for _f, offset in kept} == {"00:00:01.000", "00:00:02.000"}
@@ -78,7 +79,7 @@ def test_collapse_keeps_the_earlier_ones_offset_when_later_is_not_better():
     a = _face(_unit(1.0, 0.0), quality_score=0.9)
     b = _face(_unit(0.99, 0.02), quality_score=0.2)  # near-dup, worse crop
 
-    kept = dx.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
+    kept = dv.collapse_video_faces([(a, "00:00:01.000"), (b, "00:00:03.000")], threshold=0.55)
 
     assert len(kept) == 1
     face, offset = kept[0]
@@ -107,7 +108,7 @@ def test_near_identical_animals_same_species_collapse_keeping_higher_score():
     a = _animal("dog", _unit(1.0, 0.0), score=0.6)
     b = _animal("dog", _unit(0.98, 0.05), score=0.95)
 
-    kept = dx.collapse_video_animals([(a, "00:00:01.000"), (b, "00:00:04.000")], threshold=0.80)
+    kept = dv.collapse_video_animals([(a, "00:00:01.000"), (b, "00:00:04.000")], threshold=0.80)
 
     assert len(kept) == 1
     animal, offset = kept[0]
@@ -120,7 +121,7 @@ def test_animals_of_different_species_never_collapse_even_if_embeddings_match():
     cat = _animal("cat", same_vec)
     dog = _animal("dog", same_vec)
 
-    kept = dx.collapse_video_animals([(cat, "00:00:01.000"), (dog, "00:00:02.000")], threshold=0.80)
+    kept = dv.collapse_video_animals([(cat, "00:00:01.000"), (dog, "00:00:02.000")], threshold=0.80)
 
     assert len(kept) == 2
     assert {a.species for a, _o in kept} == {"cat", "dog"}
@@ -132,7 +133,7 @@ def test_animals_of_different_species_never_collapse_even_if_embeddings_match():
 
 
 def test_offsets_for_known_duration_are_n_distinct_and_spread_across_it():
-    offsets = dx._video_offsets(100.0, 5)
+    offsets = dv.video_offsets(100.0, 5)
 
     assert len(offsets) == 5
     assert len(set(offsets)) == 5
@@ -143,22 +144,22 @@ def test_offsets_for_known_duration_are_n_distinct_and_spread_across_it():
 
 
 def test_offsets_fall_back_to_one_fixed_offset_when_duration_is_unknown():
-    assert dx._video_offsets(None, 5) == ["00:00:01"]
-    assert dx._video_offsets(0, 5) == ["00:00:01"]
-    assert dx._video_offsets("not-a-number", 5) == ["00:00:01"]
+    assert dv.video_offsets(None, 5) == ["00:00:01"]
+    assert dv.video_offsets(0, 5) == ["00:00:01"]
+    assert dv.video_offsets("not-a-number", 5) == ["00:00:01"]
 
 
 def test_offsets_have_no_duplicates_for_a_very_short_clip():
     # A 0.2s clip: several fractions round to indistinguishable timestamps,
     # so fewer (not repeated) offsets must come back.
-    offsets = dx._video_offsets(0.2, 5)
+    offsets = dv.video_offsets(0.2, 5)
 
     assert len(offsets) == len(set(offsets))
     assert len(offsets) >= 1
 
 
 def test_zero_requested_frames_yields_no_offsets():
-    assert dx._video_offsets(100.0, 0) == []
+    assert dv.video_offsets(100.0, 0) == []
 
 
 # ---------------------------------------------------------------------------

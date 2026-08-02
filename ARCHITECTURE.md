@@ -92,7 +92,10 @@ grandfathered.
 | when a pipeline stage runs | `organize_archive/pipeline/stages.py` |
 | how a job does its work | `organize_archive/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
 | a new API endpoint | `organize_archive/web/routes/<domain>.py`, then add it to the route tables in `organize_archive/web/routes/__init__.py` — see below |
-| what the detectors find, and photo orientation | `organize_archive/detect/extract.py` |
+| what the detectors find in one frame (and the people-vs-pets cross-check) | `organize_archive/detect/frame.py` |
+| which way up a photo really is | `organize_archive/detect/orientation.py` |
+| how a video is sampled, and repeats across its frames collapsed | `organize_archive/detect/video.py` |
+| when the detect stage runs a file, and in what batches | `organize_archive/detect/extract.py` |
 | how detections are stored (and what survives a re-detect) | `organize_archive/detect/persist.py` |
 | face clustering behaviour | `organize_archive/faces/cluster.py` |
 | pet clustering behaviour | `organize_archive/pets/cluster.py` |

@@ -43,7 +43,6 @@ MAX_ASSET = 800  # css / js / html under web/static and web/index.html
 # ---------------------------------------------------------------------------
 ALLOWLIST: dict[str, int] = {
     # Modules
-    "organize_archive/detect/extract.py": 1011,
     "organize_archive/faces/cluster.py": 688,
     "organize_archive/services/people.py": 758,
     "organize_archive/services/pets.py": 668,
@@ -55,8 +54,6 @@ ALLOWLIST: dict[str, int] = {
     "organize_archive/cli/scan.py::run": 85,
     "organize_archive/db/database.py::init_db": 98,
     "organize_archive/dedup/exact.py::run": 138,
-    "organize_archive/detect/extract.py::_resolve_rotation": 81,
-    "organize_archive/detect/extract.py::extract": 87,
     "organize_archive/faces/cluster.py::build": 89,
     "organize_archive/faces/cluster.py::cluster_faces": 142,
     "organize_archive/faces/extract.py::extract": 134,

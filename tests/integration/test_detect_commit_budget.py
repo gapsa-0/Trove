@@ -92,7 +92,7 @@ def _catalog(tmp_path, n: int) -> _CountingConnection:
 
 def _run_with_fake_clock(conn, cfg, step: float, monkeypatch):
     monkeypatch.setattr(dx, "available", lambda: True)
-    monkeypatch.setattr(dx, "_load_bgr", lambda _p, _s: (np.zeros((10, 10, 3), "uint8"), 1.0))
+    monkeypatch.setattr(dx, "load_bgr", lambda _p, _s: (np.zeros((10, 10, 3), "uint8"), 1.0))
     clock = [0.0]
 
     def fake_monotonic():

@@ -12,6 +12,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.detect import extract as dx
+from organize_archive.detect import geometry
 from organize_archive.faces import backend as face_backend
 from organize_archive.pets import backend as pet_backend
 
@@ -134,7 +135,7 @@ class _FaceBackend:
 
 def _run(conn, cfg, pet_be, face_be, monkeypatch, shape=(_IMG_H, _IMG_W)):
     monkeypatch.setattr(dx, "available", lambda: True)
-    monkeypatch.setattr(dx, "_load_bgr", lambda _p, _s: (np.zeros((*shape, 3), "uint8"), 1.0))
+    monkeypatch.setattr(dx, "load_bgr", lambda _p, _s: (np.zeros((*shape, 3), "uint8"), 1.0))
     return dx.extract(conn, cfg, face_be=face_be, pet_be=pet_be)
 
 
@@ -407,7 +408,7 @@ def test_a_photo_with_nothing_in_it_is_never_probed(tmp_path, monkeypatch):
 @pytest.mark.parametrize("deg,expected", [(90, (2, 3)), (180, (3, 2)), (270, (2, 3))])
 def test_rotate_image_turns_clockwise(deg, expected):
     img = np.arange(6, dtype="uint8").reshape(3, 2)  # 3 rows x 2 cols
-    turned = dx.rotate_image(img, deg)
+    turned = geometry.rotate_image(img, deg)
     assert turned.shape == expected
     # top-left of the original must land where a clockwise turn puts it
     corner = {90: turned[0, -1], 180: turned[-1, -1], 270: turned[-1, 0]}[deg]
@@ -430,6 +431,6 @@ def test_boxes_from_a_quarter_turn_map_back_to_the_upright_frame(k):
         w=int(cols.max() - cols.min() + 1),
         h=int(rows.max() - rows.min() + 1),
     )
-    (back,) = dx._rotate_boxes_back([rotated], k, w, h)
+    (back,) = geometry.rotate_boxes_back([rotated], k, w, h)
 
     assert (back.x, back.y, back.w, back.h) == (x, y, bw, bh)
