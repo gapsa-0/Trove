@@ -22,34 +22,27 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
-    if not Path(cfg.db_path).exists():
-        print("No database yet. Run:  oa init")
-        return 1
-    if not (args.root or cfg.roots):
-        print("No archive folders configured. Add one with: oa config --add-root PATH")
-        return 1
-    cfg.ensure_dirs()
-    conn = db.connect(cfg.db_path)
-    db.init_db(conn)
+def _count_progress(args, roots) -> ScanProgress | None:
+    """A pre-counted progress bar, or None with --no-progress.
 
-    roots = args.root or cfg.roots
-    run_started = db.now_iso()
-    cur = conn.execute(
-        "INSERT INTO scan_runs(started_at, roots) VALUES(?, ?)",
-        (run_started, json.dumps(roots)),
-    )
-    run_id = cur.lastrowid
-    conn.commit()
+    The count is scandir only -- no hashing -- so it is cheap enough to pay for
+    an accurate bar over an archive this size.
+    """
+    if args.no_progress:
+        return None
+    print("Counting files…", flush=True)
+    total = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
+    print(f"  {total} media files to check.")
+    return ScanProgress(total)
 
-    # Pre-count for an accurate progress bar (fast: scandir only, no hashing).
-    progress = None
-    if not args.no_progress:
-        print("Counting files…", flush=True)
-        total = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
-        print(f"  {total} media files to check.")
-        progress = ScanProgress(total)
 
+def _scan_roots(conn, cfg: Config, roots, run_started: str, progress):
+    """Scan each root in turn, accumulating one ScanStats across all of them.
+
+    Returns ``(totals, interrupted)``. A root that has gone missing is reported
+    and skipped rather than ending the run -- the other roots are still worth
+    scanning.
+    """
     totals = walker.ScanStats()
     interrupted = False
     try:
@@ -78,18 +71,11 @@ def run(args, cfg: Config) -> int:
             totals.error_samples.extend(stats.error_samples[:5])
     except KeyboardInterrupt:
         interrupted = True
+    return totals, interrupted
 
-    if progress is not None:
-        progress.close()
 
-    conn.execute(
-        """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
-           files_updated=?, bytes_hashed=? WHERE id=?""",
-        (db.now_iso(), totals.seen, totals.new, totals.updated, totals.bytes_hashed, run_id),
-    )
-    conn.commit()
-    conn.close()
-
+def _report(totals, interrupted: bool) -> None:
+    """The end-of-run summary, which doubles as the resume hint after a Ctrl-C."""
     if interrupted:
         print(
             "\n\nInterrupted; progress saved. Re-run 'oa scan' to resume "
@@ -106,4 +92,40 @@ def run(args, cfg: Config) -> int:
         print(f"  errors           : {totals.errors}")
         for s in totals.error_samples:
             print(f"      - {s}")
+
+
+def run(args, cfg: Config) -> int:
+    if not Path(cfg.db_path).exists():
+        print("No database yet. Run:  oa init")
+        return 1
+    if not (args.root or cfg.roots):
+        print("No archive folders configured. Add one with: oa config --add-root PATH")
+        return 1
+    cfg.ensure_dirs()
+    conn = db.connect(cfg.db_path)
+    db.init_db(conn)
+
+    roots = args.root or cfg.roots
+    run_started = db.now_iso()
+    cur = conn.execute(
+        "INSERT INTO scan_runs(started_at, roots) VALUES(?, ?)",
+        (run_started, json.dumps(roots)),
+    )
+    run_id = cur.lastrowid
+    conn.commit()
+
+    progress = _count_progress(args, roots)
+    totals, interrupted = _scan_roots(conn, cfg, roots, run_started, progress)
+    if progress is not None:
+        progress.close()
+
+    conn.execute(
+        """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
+           files_updated=?, bytes_hashed=? WHERE id=?""",
+        (db.now_iso(), totals.seen, totals.new, totals.updated, totals.bytes_hashed, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+    _report(totals, interrupted)
     return 0

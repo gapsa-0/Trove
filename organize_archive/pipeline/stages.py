@@ -266,6 +266,119 @@ _STATE_RANK = {
 }
 
 
+def _scan_card_progress(
+    members: list[dict], progress: Any, message: str | None
+) -> tuple[Any, str | None]:
+    """The Scan card's bar, which two parallel stages must not share.
+
+    Scan is the only card that fuses two stages running at once (scan ∥ enrich),
+    and they count different things. Reusing one bar across both makes the fill
+    shoot past 100% and then rewind when the source flips. So the bar shows
+    *only while scanning*; once the on-disk walk is done but metadata extraction
+    is still catching up, drop the bar and say so plainly.
+    """
+    by_kind = {m["kind"]: m for m in members}
+    if by_kind.get(SCAN, {}).get("state") == "running":
+        return by_kind[SCAN]["progress"], message
+    if by_kind.get(ENRICH, {}).get("state") == "running":
+        return None, "Finalizing metadata extraction…"
+    return progress, message
+
+
+def _dedup_card_message(progress: dict, message: str | None) -> str | None:
+    """Which of dedup's two phases is running, inferred from its progress shape.
+
+    Dedup is `counted=False` (a wholesale rebuild has no per-file backlog), so
+    it would otherwise sit on the flat "Finding duplicates…" text for the whole
+    run. It actually has two real phases sharing one job's progress:
+    `_perceptual_hashes` fingerprints images (current=rel_path), then `run()`'s
+    grouping loop unions them into groups (current="<n>× exact/perceptual").
+    Telling them apart from that shape beats threading a phase flag through
+    jobs.py.
+
+    `done > total` catches the instant the grouping phase starts, before its own
+    first progress update: `total` has already flipped from the image count to
+    the (usually smaller) group count while `current`/`done` still hold the
+    fingerprinting pass's final values.
+    """
+    current = progress.get("current") or ""
+    total = progress.get("total") or 0
+    done = progress.get("done") or 0
+    if "×" in current or (total and done > total):
+        return "Grouping duplicates…"
+    if total and current and done < total:
+        # `current` is only a photo path while fingerprinting is actually
+        # running. Without it (no imagehash installed, so `run()` skips
+        # straight to grouping and sets `total` itself) claiming to
+        # fingerprint would be a lie; the flat text stands instead.
+        return f"Fingerprinting {done:,} of {total:,} photos…"
+    return message
+
+
+def _card(card_id: str, members: list[dict], blocker_card: dict[str, str | None]) -> dict:
+    """Roll one card's member stages into the dict the GUI renders."""
+    lead = max(members, key=lambda s: _STATE_RANK[s["state"]])
+    state = lead["state"]
+    counted = any(m["counted"] for m in members)
+    pending = sum(m["pending"] for m in members if m["counted"]) if counted else None
+    progress = next((m["progress"] for m in members if m["progress"]), None)
+    blocker = lead["blocker"]
+    blocker_card[card_id] = _CARD_OF.get(blocker) if blocker else None
+    message = _message(card_id, state, pending, blocker, lead.get("error"))
+
+    if card_id == "scan":
+        progress, message = _scan_card_progress(members, progress, message)
+    elif card_id == "dedup" and state == "running" and progress:
+        message = _dedup_card_message(progress, message)
+
+    bc_id = blocker_card[card_id]
+    return {
+        "id": card_id,
+        "label": CARD_LABEL[card_id],
+        "state": state,
+        "pending": pending,
+        "counted": counted,
+        "progress": progress,
+        "next": False,
+        "waiting_on": CARD_LABEL.get(bc_id) if bc_id else None,
+        "message": message,
+    }
+
+
+def _mark_up_next(result: list[dict], blocker_card: dict[str, str | None]) -> None:
+    """A blocked card is *next in line* when the stage it waits on is running now.
+
+    It is the one that starts the moment the current work finishes. Flagging it
+    (the GUI colours it and swaps the flat "Waiting for …" line for a "goes
+    next" line) makes the queue read as an ordered pipeline rather than a wall
+    of identical "waiting" cards.
+    """
+    running_cards = {c["id"] for c in result if c["state"] == "running"}
+    for c in result:
+        bc = blocker_card.get(c["id"])
+        if c["state"] == "blocked" and bc is not None and bc in running_cards:
+            c["next"] = True
+            c["message"] = f"Up next · after {CARD_LABEL[bc]}"
+
+
+def _mark_stalled(
+    result: list[dict],
+    blocker_card: dict[str, str | None],
+    paused_stages: frozenset[str] | set[str],
+) -> None:
+    """Propagate the pause flags down each dependency chain.
+
+    CARD_ORDER is dependency-ordered, so a card's blocker has already been
+    resolved by the time we reach it and one forward walk is enough.
+    """
+    stalled: dict[str, bool] = {}
+    for c in result:
+        bc = blocker_card.get(c["id"])
+        c["paused"] = c["id"] in paused_stages
+        c["stalled"] = c["paused"] or bool(bc and stalled.get(bc))
+        stalled[c["id"]] = c["stalled"]
+
+
 def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozenset()) -> list[dict]:
     """Roll per-stage states up into the display cards the GUI renders verbatim.
 
@@ -280,95 +393,14 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
     for s in states:
         by_card.setdefault(s["card"], []).append(s)
 
-    result = []
     blocker_card: dict[str, str | None] = {}
-    for card_id in CARD_ORDER:
-        members = by_card.get(card_id, [])
-        if not members:
-            continue
-        lead = max(members, key=lambda s: _STATE_RANK[s["state"]])
-        state = lead["state"]
-        counted = any(m["counted"] for m in members)
-        pending = sum(m["pending"] for m in members if m["counted"]) if counted else None
-        progress = next((m["progress"] for m in members if m["progress"]), None)
-        blocker = lead["blocker"]
-        blocker_card[card_id] = _CARD_OF.get(blocker) if blocker else None
-        message = _message(card_id, state, pending, blocker, lead.get("error"))
-
-        # The Scan card is the only one that fuses two stages running in parallel
-        # (scan ∥ enrich), which count different things. Never share one bar across
-        # both: reusing it makes the fill shoot past 100% and then rewind when the
-        # source flips. Instead show the scan bar *only while scanning*; once the
-        # on-disk walk is done but metadata extraction is still catching up, drop
-        # the bar and say so plainly.
-        if card_id == "scan":
-            by_kind = {m["kind"]: m for m in members}
-            if by_kind.get(SCAN, {}).get("state") == "running":
-                progress = by_kind[SCAN]["progress"]
-            elif by_kind.get(ENRICH, {}).get("state") == "running":
-                progress = None
-                message = "Finalizing metadata extraction…"
-
-        # Dedup is `counted=False` (a wholesale rebuild has no per-file backlog),
-        # so it would otherwise sit on the flat "Finding duplicates…" text for
-        # the whole run. It actually has two real phases sharing one job's
-        # progress: `_perceptual_hashes` fingerprints images (current=rel_path),
-        # then `run()`'s grouping loop unions them into groups (current=
-        # "<n>× exact/perceptual"). Tell them apart from that shape rather than
-        # threading a phase flag through jobs.py. `done > total` catches the
-        # instant the grouping phase starts, before its own first progress
-        # update: `total` has already flipped from the image count to the
-        # (usually smaller) group count while `current`/`done` still hold the
-        # fingerprinting pass's final values.
-        if card_id == "dedup" and state == "running" and progress:
-            current = progress.get("current") or ""
-            total = progress.get("total") or 0
-            done = progress.get("done") or 0
-            if "×" in current or (total and done > total):
-                message = "Grouping duplicates…"
-            elif total and current and done < total:
-                # `current` is only a photo path while fingerprinting is actually
-                # running. Without it (no imagehash installed, so `run()` skips
-                # straight to grouping and sets `total` itself) claiming to
-                # fingerprint would be a lie; the flat text stands instead.
-                message = f"Fingerprinting {done:,} of {total:,} photos…"
-
-        bc_id = blocker_card[card_id]
-        result.append(
-            {
-                "id": card_id,
-                "label": CARD_LABEL[card_id],
-                "state": state,
-                "pending": pending,
-                "counted": counted,
-                "progress": progress,
-                "next": False,
-                "waiting_on": CARD_LABEL.get(bc_id) if bc_id else None,
-                "message": message,
-            }
-        )
-
-    # Second pass, the "up next" marker. A blocked card is *next in line* when the
-    # stage it's waiting on is running right now: it's the one that starts the
-    # moment the current work finishes. Flag it (the GUI colours it and swaps the
-    # flat "Waiting for …" line for a "goes next" line) so the queue reads as an
-    # ordered pipeline, not a wall of identical "waiting" cards.
-    running_cards = {c["id"] for c in result if c["state"] == "running"}
-    for c in result:
-        bc = blocker_card.get(c["id"])
-        if c["state"] == "blocked" and bc is not None and bc in running_cards:
-            c["next"] = True
-            c["message"] = f"Up next · after {CARD_LABEL[bc]}"
-
-    # Third pass, the pause flags. CARD_ORDER is dependency-ordered, so a card's
-    # blocker has already been resolved by the time we reach it and one forward
-    # walk is enough to propagate "stalled" down a chain.
-    stalled: dict[str, bool] = {}
-    for c in result:
-        bc = blocker_card.get(c["id"])
-        c["paused"] = c["id"] in paused_stages
-        c["stalled"] = c["paused"] or bool(bc and stalled.get(bc))
-        stalled[c["id"]] = c["stalled"]
+    result = [
+        _card(card_id, by_card[card_id], blocker_card)
+        for card_id in CARD_ORDER
+        if by_card.get(card_id)
+    ]
+    _mark_up_next(result, blocker_card)
+    _mark_stalled(result, blocker_card, paused_stages)
     return result
 
 

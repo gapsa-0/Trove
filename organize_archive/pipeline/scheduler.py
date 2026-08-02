@@ -112,6 +112,80 @@ class Scheduler:
                 acted = False
             self.interval = self.AUTO_MIN if acted else min(self.interval * 1.5, self.AUTO_MAX)
 
+    def _open_archive(self) -> tuple[dict[str, Any], int] | None:
+        """The open archive's registry entry, or None with a reason logged.
+
+        Every "nothing to do" exit from tick() lands here, so the debug log has
+        one place that answers why a tick did nothing at all.
+        """
+        from ..services import archives
+
+        if self._manager._paused:
+            logger.debug("tick: skipped, pipeline is paused")
+            return None
+        open_root_id = self._manager._open_root_id
+        if open_root_id is None:
+            logger.debug("tick: skipped, no archive is open")
+            return None
+        archive = next(
+            (
+                a
+                for a in archives.archives(self._manager.cfg)
+                if a["id"] == open_root_id and a["exists"]
+            ),
+            None,
+        )
+        if not archive:
+            logger.debug("tick: skipped, archive root=%s is missing or unregistered", open_root_id)
+            return None
+        return archive, open_root_id
+
+    def _may_start(
+        self, s: dict, open_root_id: int, lock_running: bool, started_lock: bool
+    ) -> bool:
+        """Whether this stage may start on this tick."""
+        from . import stages
+
+        kind, state = s["kind"], s["state"]
+        if state not in ("queued", "error"):
+            return False
+        # A stage the user paused on its own is simply never started; its
+        # siblings are untouched, which is the whole point of #32.
+        if self._manager.stage_paused(stages.card_of(kind)):
+            return False
+        if state == "error" and not self._error_ready(open_root_id, kind):
+            return False
+        if kind in stages.PARALLEL_KINDS:
+            return not self._manager.active_kind(kind)
+        # single-writer stage: at most one at a time
+        return not (lock_running or started_lock)
+
+    def _start_ready(self, states: list[dict], open_root_id: int, archive: dict[str, Any]) -> bool:
+        """Start every stage that may start now. True if anything did."""
+        from . import archives as archives_state
+        from . import stages
+
+        lock_running = any(
+            s["kind"] in stages.LOCK_KINDS and s["state"] == "running" for s in states
+        )
+        acted = False
+        started_lock = False
+        for s in states:
+            kind = s["kind"]
+            if not self._may_start(s, open_root_id, lock_running, started_lock):
+                continue
+            # Scanning or enriching may change the file set, so a fresh duplicate
+            # rebuild is owed once they finish.
+            if kind in (stages.SCAN, stages.ENRICH):
+                archives_state.mark_dedup_owed(self._manager.cfg, open_root_id)
+            # dedup/places operate per-root via root_id and ignore root_path.
+            path = None if kind in (stages.DEDUP, stages.PLACES) else archive["path"]
+            if "error" not in self._manager.start(kind, open_root_id, path):
+                acted = True
+                if kind in stages.LOCK_KINDS:
+                    started_lock = True
+        return acted
+
     def tick(self) -> bool:
         """One scheduling decision, driven entirely by the same pipeline snapshot
         the GUI renders. Starts every stage that is ready to run and returns True
@@ -124,28 +198,12 @@ class Scheduler:
         together; the DB-writer stages (dedup → places → detect) start one at
         a time, matching the single write lock.
         """
-        if self._manager._paused:
-            logger.debug("tick: skipped, pipeline is paused")
-            return False
-        from ..services import archives
-        from . import archives as archives_state
         from . import stages
 
-        open_root_id = self._manager._open_root_id
-        if open_root_id is None:
-            logger.debug("tick: skipped, no archive is open")
+        opened = self._open_archive()
+        if opened is None:
             return False
-        archive = next(
-            (
-                a
-                for a in archives.archives(self._manager.cfg)
-                if a["id"] == open_root_id and a["exists"]
-            ),
-            None,
-        )
-        if not archive:
-            logger.debug("tick: skipped, archive root=%s is missing or unregistered", open_root_id)
-            return False
+        archive, open_root_id = opened
 
         # The manager, not self: stage_states reads disk_count() and
         # dedup_needed() off it.
@@ -153,37 +211,8 @@ class Scheduler:
             self._manager.cfg, self._manager, open_root_id, archive["path"], allow_walk=True
         )
         stalled = self._stalled_kinds(states)
-        lock_running = any(
-            s["kind"] in stages.LOCK_KINDS and s["state"] == "running" for s in states
-        )
-        acted = False
-        started_lock = False
-        for s in states:
-            kind, state = s["kind"], s["state"]
-            if state not in ("queued", "error"):
-                continue
-            # A stage the user paused on its own is simply never started; its
-            # siblings are untouched, which is the whole point of #32.
-            if self._manager.stage_paused(stages.card_of(kind)):
-                continue
-            if state == "error" and not self._error_ready(open_root_id, kind):
-                continue
-            if kind in stages.PARALLEL_KINDS:
-                if self._manager.active_kind(kind):
-                    continue
-            else:  # single-writer stage: at most one at a time
-                if lock_running or started_lock:
-                    continue
-            # Scanning or enriching may change the file set, so a fresh duplicate
-            # rebuild is owed once they finish.
-            if kind in (stages.SCAN, stages.ENRICH):
-                archives_state.mark_dedup_owed(self._manager.cfg, open_root_id)
-            # dedup/places operate per-root via root_id and ignore root_path.
-            path = None if kind in (stages.DEDUP, stages.PLACES) else archive["path"]
-            if "error" not in self._manager.start(kind, open_root_id, path):
-                acted = True
-                if kind in stages.LOCK_KINDS:
-                    started_lock = True
+        acted = self._start_ready(states, open_root_id, archive)
+
         # Keep polling promptly while anything is running or waiting to run.
         # Work held back by a per-stage pause does not count -- neither the
         # paused stage nor anything queued behind it can start until the user
