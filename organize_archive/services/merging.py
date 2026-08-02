@@ -73,6 +73,14 @@ def load_sides(
     pair cannot be merged. The two refusals here are the ones every entity
     type shares: an id that is missing or repeated, and an id that names
     nothing.
+
+    **For merges only.** Other operations take two ids and validate them the
+    same way -- ``people._persons_link`` records a cannot-link between two
+    clusters -- and deliberately do not call this, because both of their sides
+    survive. Reusing this helper there would save four lines and cost the
+    distinction: a reader who sees ``load_sides`` should be able to conclude
+    that two entities are about to become one. Widening it to mean "validate
+    two ids" is how that stops being true.
     """
     if not id_a or not id_b or id_a == id_b:
         return None, None, {"error": f"need two distinct {spec.plural}"}

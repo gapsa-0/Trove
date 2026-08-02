@@ -59,11 +59,15 @@ def writing[**P, R](
       function, or several -- is that function's business rule, not
       something a generic wrapper should decide for it.
     - **It does not retry on a locked database.** ``db.write_with_retry`` is
-      applied by the caller (``web/server.py`` wraps 21 mutation call sites
-      in it), one layer up from here. Retrying inside this decorator would
-      move where a lock gets handled without anyone deciding that on
-      purpose, and would retry a whole request handler rather than the one
-      write that actually needs it.
+      applied by the caller -- the handlers in ``web/routes/`` wrap their
+      mutation call sites in it -- one layer up from here. Retrying inside
+      this decorator would move where a lock gets handled without anyone
+      deciding that on purpose, and would retry a whole request handler
+      rather than the one write that actually needs it.
+
+      One handler deliberately does not wrap: ``routes/archives.py``'s add,
+      which writes a database no other connection can be holding yet. The
+      reason is recorded at ``services/archives.py::add_archive``.
     """
 
     @functools.wraps(fn)

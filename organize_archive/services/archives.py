@@ -98,6 +98,14 @@ def add_archive(cfg: Config, path: str) -> dict[str, Any]:
     # Build the private store first and register it only once it is usable, so a
     # failure here cannot leave a half-added archive in config.json that appears
     # out of nowhere on the next page load.
+    #
+    # The one mutation the routes do NOT wrap in db.write_with_retry, on purpose:
+    # every other one writes a catalog that a pipeline job may be writing at the
+    # same moment, which is what that retry is for. This one writes a database
+    # file that did not exist a moment ago and whose path nothing else knows yet
+    # -- there is no second writer to lose a race to. Retrying it would only add
+    # a delay in front of a failure that is genuinely fatal (unwritable
+    # directory, full disk), which the rmtree-and-report below already handles.
     aid = cfg.allocate_archive_id()
     try:
         conn = db.connect(cfg.archive_db_path(aid))
