@@ -25,6 +25,9 @@ from organize_archive.config import Config
 from organize_archive.pipeline import manager as jobs_mod
 from organize_archive.pipeline.job import JobContext, Runner
 
+# The archive these tests pretend to be working on.
+_ROOT = 1
+
 
 class _FakeConn:
     """Stands in for the per-archive connection _open_db hands the runner."""
@@ -42,9 +45,14 @@ def jm(monkeypatch):
 
     Mirrors test_job_logging's fixture, and for the same reason: these tests are
     about what happens *around* a runner, not about any runner's own work.
+
     """
     monkeypatch.setattr(jobs_mod.JobManager, "_open_db", lambda self, root_id: _FakeConn())
     manager = jobs_mod.JobManager(Config())
+    # start() refuses a job for an archive that is not the open one, and a
+    # dispatched job must have a root at all -- Job.require_root() raises
+    # rather than fabricating one.
+    manager._open_root_id = _ROOT
     try:
         yield manager
     finally:
@@ -68,7 +76,7 @@ def _run_to_completion(manager, kind, timeout=5.0):
     terminal status first and does its bookkeeping after; polling status alone
     can return while the worker is still inside the ``finally``.
     """
-    started = manager.start(kind)
+    started = manager.start(kind, _ROOT)
     assert "error" not in started, started
     job = manager._jobs[started["id"]]
     wait_until(
@@ -200,6 +208,22 @@ def test_an_unknown_job_kind_is_an_error_not_a_silent_no_op(jm):
     assert "no-such-stage" in job.message
 
 
+def test_a_rootless_job_fails_loudly_instead_of_opening_a_fabricated_archive(jm, monkeypatch):
+    """``Job.root_id`` is optional on the dataclass and every runner needs an
+    int. That was ten `cast(int, ...)`s, and a cast does not fail: a rootless
+    job would have opened a database on `None` and keyed the per-root tables
+    with it, surfacing as something unrelated much later. It raises here."""
+    _register(monkeypatch, Runner(kind="probe", run=lambda ctx: None))
+    # start() permits a rootless job -- its root_id argument defaults to None.
+    # Dispatch is where that stops being survivable, so it is dispatch that
+    # refuses rather than every runner re-deriving the invariant.
+    job = jm._jobs[jm.start("probe")["id"]]
+    wait_until(lambda: job.finished_at is not None, timeout=5, what="the rootless job to finish")
+
+    assert job.status == "error"
+    assert "no root_id" in job.message
+
+
 def test_shutdown_does_not_wait_for_a_runner_loading_a_model(jm, monkeypatch):
     """The "app takes forever to close" bug, pinned.
 
@@ -217,7 +241,7 @@ def test_shutdown_does_not_wait_for_a_runner_loading_a_model(jm, monkeypatch):
             release.wait(timeout=5)
 
     _register(monkeypatch, Runner(kind="probe", run=run))
-    job = jm._jobs[jm.start("probe")["id"]]
+    job = jm._jobs[jm.start("probe", _ROOT)["id"]]
     wait_until(lambda: loading.is_set(), timeout=5, what="the runner to reach the model load")
 
     try:
@@ -261,7 +285,7 @@ def test_a_job_that_ignores_its_cancel_event_still_times_shutdown_out(jm, monkey
     on reporting it rather than returning a clean True."""
     release = threading.Event()
     _register(monkeypatch, Runner(kind="probe", run=lambda ctx: release.wait(timeout=5)))
-    started = jm.start("probe")
+    started = jm.start("probe", _ROOT)
     job = jm._jobs[started["id"]]
 
     try:

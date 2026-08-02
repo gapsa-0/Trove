@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from ..job import JobContext, Runner
 
 # Images per detect-then-recluster chunk in the detect job (see run() below):
@@ -27,7 +25,7 @@ def run(ctx: JobContext) -> None:
     conn, job = ctx.require_conn(), ctx.job
     # detect is only ever started by the scheduler, always with the currently
     # open root's id -- see scan.py's comment for the same invariant.
-    root_id = cast(int, job.root_id)
+    root_id = job.require_root()
 
     # Progress is cumulative over ALL canonical media, not just this run's
     # backlog: total = every canonical image (+ video, once video detection
@@ -35,8 +33,8 @@ def run(ctx: JobContext) -> None:
     # bar/% match the "Detected N / total" tile and survive resuming across
     # restarts (no misleading per-run total). cfg is passed so the
     # population matches pending_count's (both honour detect_video_frames).
-    total = dx.image_count(conn, ctx.cfg, job.root_id)
-    already = max(0, total - dx.pending_count(conn, ctx.cfg, job.root_id))
+    total = dx.image_count(conn, ctx.cfg, root_id)
+    already = max(0, total - dx.pending_count(conn, ctx.cfg, root_id))
     job.total, job.done = total, already
     # Load both detector model sets once and reuse across every chunk. This is
     # the stage's un-cancellable window: two ONNX sessions, seconds of native
@@ -68,7 +66,7 @@ def run(ctx: JobContext) -> None:
         turned += st.rotated
         job.current = "grouping people & pets…"
         fc.cluster_faces(conn, ctx.cfg)
-        pc.cluster_pets(conn, ctx.cfg, root_id=job.root_id)
+        pc.cluster_pets(conn, ctx.cfg, root_id=root_id)
 
     # The backlog is empty, so an embedder migration staged earlier now has
     # every re-extracted face it needs: give the names, pins and review

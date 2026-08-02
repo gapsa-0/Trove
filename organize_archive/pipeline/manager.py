@@ -64,7 +64,6 @@ import sqlite3
 import threading
 import time
 from contextlib import nullcontext
-from typing import cast
 
 from ..config import Config
 from ..db import database as db
@@ -429,14 +428,10 @@ class JobManager:
         # the lock that exists to order writers.
         with self._write_lock if runner.takes_write_lock else nullcontext():
             # Job.root_id is optional on the dataclass (JobManager.start's
-            # signature allows a rootless job), but every caller that reaches
-            # a needs_connection runner supplies one in practice: the
-            # scheduler always passes its checked-non-None open_root_id, and
-            # the two HTTP callers (face_cluster/pet_cluster after a review
-            # undo) only call start() after confirming current_root_id() is
-            # truthy, and archive ids are never 0/falsy. No kind that declares
-            # needs_connection=True is started any other way today.
-            root_id = cast(int, job.root_id)
+            # signature allows a rootless job), but a runner that wants a
+            # connection needs a real archive to open. require_root raises
+            # rather than fabricating one -- see its docstring.
+            root_id = job.require_root()
             conn = self._open_db(root_id)
             try:
                 runner.run(context(conn))
@@ -453,11 +448,11 @@ class JobManager:
             # A successful rebuild is the only thing that marks dedup_runs (see
             # runners/dedup.py), so a cancelled or errored dedup leaves no
             # marker and stays queued/retries next tick.
-            # job.root_id is optional on the dataclass but every job actually
-            # dispatched here was created by start() with a real root_id -- see
-            # _dispatch's comment for the same invariant; _error_at is keyed on
-            # (int, str) throughout, so this narrows rather than widens it.
-            self._error_at.pop((cast(int, job.root_id), job.kind), None)
+            # Skipped rather than required for a rootless job: the cooldown is
+            # per (archive, stage), so there is nothing to clear for a job that
+            # belongs to no archive.
+            if job.root_id is not None:
+                self._error_at.pop((job.root_id, job.kind), None)
             logger.info(
                 "job done kind=%s root=%s job=%s done=%s total=%s elapsed=%.1fs %s",
                 job.kind,
@@ -486,7 +481,8 @@ class JobManager:
         except Exception as e:
             job.status = "error"
             job.message = f"{e}"
-            self._error_at[(cast(int, job.root_id), job.kind)] = time.monotonic()
+            if job.root_id is not None:
+                self._error_at[(job.root_id, job.kind)] = time.monotonic()
             logger.error(
                 "job failed kind=%s root=%s job=%s after=%.1fs",
                 job.kind,
@@ -499,8 +495,8 @@ class JobManager:
             job.finished_at = time.time()
             # A finished scan changed what's on disk-vs-indexed; drop the cached
             # walk so freshness reflects it immediately.
-            if job.kind == "scan":
-                self._disk.invalidate(cast(int, job.root_id))
+            if job.kind == "scan" and job.root_id is not None:
+                self._disk.invalidate(job.root_id)
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()

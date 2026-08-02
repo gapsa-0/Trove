@@ -44,6 +44,25 @@ class Job:
     # ``public()`` drops it rather than growing the polled job payload.
     uninterruptible: bool = False
 
+    def require_root(self) -> int:
+        """``root_id``, narrowed to non-optional for the code that needs one.
+
+        Every job that reaches a runner belongs to an archive: the scheduler
+        starts jobs with its checked open root id, and the two HTTP callers
+        check ``current_root_id()`` first. That was prose backed by ten
+        ``cast(int, ...)``s, and a cast does not fail -- a rootless job would
+        have opened a database on a fabricated id and keyed the per-root
+        tables with it, surfacing as a confusing failure somewhere else
+        entirely. This raises at the point the convention actually breaks.
+
+        Bookkeeping that merely *tolerates* a rootless job (the error
+        cooldown, the disk-count cache) tests ``root_id`` directly instead of
+        calling this: there is nothing to fail loudly about in skipping it.
+        """
+        if self.root_id is None:
+            raise RuntimeError(f"job {self.id} ({self.kind}) has no root_id, but one is required")
+        return self.root_id
+
     def public(self) -> dict[str, Any]:
         d = asdict(self)
         d.pop("uninterruptible")

@@ -17,6 +17,9 @@ from organize_archive.config import Config
 from organize_archive.pipeline import manager as jobs_mod
 from organize_archive.pipeline.job import Runner
 
+# The archive these tests pretend to be working on.
+_ROOT = 1
+
 
 class _FakeConn:
     """Stands in for the per-archive connection _open_db hands the runner."""
@@ -51,7 +54,12 @@ def _run_to_completion(manager, kind="dedup", timeout=5.0):
     the log record this module is asserting about has been emitted. finished_at is
     set in _run's ``finally``, which is strictly after every outcome log.
     """
-    started = manager.start(kind)
+    # start() refuses a job for an archive that is not the open one, and a
+    # dispatched job must have a root at all -- Job.require_root() raises
+    # rather than fabricating one. Set here rather than in the fixture: the
+    # scheduler tests below assert on the no-archive-open path.
+    manager._open_root_id = _ROOT
+    started = manager.start(kind, _ROOT)
     assert "error" not in started, started
     job = manager._jobs[started["id"]]
     wait_until(

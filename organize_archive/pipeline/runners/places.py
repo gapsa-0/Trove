@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from ..job import JobContext, Runner
 
 
@@ -19,7 +17,7 @@ def run(ctx: JobContext) -> None:
     conn, job = ctx.require_conn(), ctx.job
     # places is only ever started by the scheduler, always with the currently
     # open root's id -- see scan.py's comment for the same invariant.
-    root_id = cast(int, job.root_id)
+    root_id = job.require_root()
     job.total, job.done = 1, 0
     has_places = conn.execute(
         "SELECT 1 FROM place_clusters WHERE root_id=? LIMIT 1", (root_id,)

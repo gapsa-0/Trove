@@ -81,7 +81,7 @@ def _semantic_pass(
     # semantic is only ever started by the scheduler, always with the
     # currently open root's id -- see scan.py's comment for the same
     # invariant (needs_connection=False does not change who starts it).
-    root_id = cast(int, job.root_id)
+    root_id = job.require_root()
     # Snapshot candidates under a read-only connection. The API calls below
     # happen without the writer lock so local metadata/faces work continues.
     read_conn = db.open_readonly(cfg.archive_db_path(root_id))

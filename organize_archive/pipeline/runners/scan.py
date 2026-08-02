@@ -19,7 +19,7 @@ def run(ctx: JobContext) -> None:
     # always supplies an open root's id -- see JobManager.start's root_id
     # check. root_id is int here even though Job.root_id is optional for
     # face_cluster/pet_cluster, which the scheduler never starts.
-    root_id = cast(int, job.root_id)
+    root_id = job.require_root()
     # An archive database has exactly one root; job.root_path is always
     # supplied by the scheduler, this is just a defensive fallback.
     roots: list[str] = [job.root_path] if job.root_path else [cast(str, cfg.archive_path(root_id))]

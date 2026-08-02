@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from ...db import database as db
 from ..job import JobContext, Runner
 
@@ -14,7 +12,7 @@ def run(ctx: JobContext) -> None:
     conn, job = ctx.require_conn(), ctx.job
     # dedup is only ever started by the scheduler, always with the currently
     # open root's id -- see scan.py's comment for the same invariant.
-    root_id = cast(int, job.root_id)
+    root_id = job.require_root()
     prog = ctx.progress()
     stats = exact.run(conn, ctx.cfg, progress=prog, root_id=root_id)
     # Hidden files are duplicate copies. They must never consume semantic
