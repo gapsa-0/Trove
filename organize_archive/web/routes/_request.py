@@ -155,6 +155,30 @@ class Request:
             raise ValueError("root is required")
         return self.cfg.archive_cache_dir(root_id)
 
+    # -- request body -------------------------------------------------------
+    def body_str(self, name: str, default: str | None = None) -> str:
+        """One string field out of the JSON body, checked.
+
+        The body is whatever the client posted, and ``{"datetime": 5}`` is a
+        perfectly valid JSON document. Two fields used to reach a service
+        declaring ``str`` behind a ``cast`` -- a promise this boundary was in
+        no position to keep, since the service then called ``.strip()`` on an
+        int and the caller got a 500 with a traceback. This raises the
+        ``ValueError`` the app answers **400** with, like every other
+        malformed-request path.
+
+        ``default`` is for a genuinely optional field (a place's name): absent
+        or null becomes it, so a client that omits the field keeps whatever
+        the service already did with that. A field that *is* present and of
+        the wrong type is still an error -- "optional" is not "anything".
+        """
+        value = self.body.get(name)
+        if value is None and default is not None:
+            return default
+        if not isinstance(value, str):
+            raise ValueError(f"{name} must be a string")
+        return value
+
     def require_root(self) -> int:
         """``?root=`` as a plain ``int``, for a route that needs the id itself
         (not just to resolve ``db()``/``cache()``) -- e.g. passing it on to a

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from ...db import database as db
 from ...services import places
@@ -104,10 +104,9 @@ def create_place(req: Request) -> Json:
         lambda: places.create_place(
             req.db(req.body.get("root")),
             req.body.get("root"),
-            # The JSON body is untyped at the boundary; create_place has
-            # always received whatever the client sent under "name" with no
-            # static check, same as before this pass -- just now spelled out.
-            cast(str, req.body.get("name")),
+            # A place's name is optional, so absent keeps its old meaning
+            # (unnamed); a present non-string is a 400, not a 500.
+            req.body_str("name", default=""),
             req.body.get("lat"),
             req.body.get("lon"),
             req.body.get("file_id"),

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from ...db import database as db
 from ...services import browse
 from ...services.types import MediaPage
@@ -71,10 +69,9 @@ def set_date(req: Request) -> Json:
         lambda: browse.set_date(
             req.db(req.open_root_id),
             req.body.get("file_id"),
-            # The JSON body is untyped at the boundary; set_date has always
-            # received whatever the client sent under "datetime" with no
-            # static check, same as before this pass -- just now spelled out.
-            cast(str, req.body.get("datetime")),
+            # Absent stays the service's own "bad date" error; a present
+            # non-string is a 400 rather than an AttributeError inside strip().
+            req.body_str("datetime", default=""),
         )
     )
     return ok_or_error(res)

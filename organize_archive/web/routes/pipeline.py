@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from ...pipeline import stages
 from ...services import archives
 from ._request import Json, Request
@@ -14,16 +12,17 @@ def snapshot(req: Request) -> dict | Json:
     # Single source of truth for pipeline status: the same resolved
     # stage list the scheduler acts on, so cards never disagree with
     # what's actually running.
-    rid = req.root_id
+    # A missing ?root= is a malformed request (400), the same as everywhere
+    # else in the app; a ?root= naming an archive that does not exist is a 404.
+    # This route used to answer 404 for both, because it read root_id directly
+    # and let the "unknown archive" branch catch None on the way past. Nothing
+    # in web/static/js distinguishes the two -- every caller sends a root -- so
+    # the only thing that changed is that the codes now mean what they say.
+    rid = req.require_root()
     arch = next((a for a in archives.archives(req.cfg) if a["id"] == rid), None)
     if arch is None:
         return Json({"error": "unknown archive"}, 404)
-    # arch is only found when its "id" == rid, and archive ids are always
-    # int, never None, so a match proves rid is an int here -- a narrowing
-    # mypy can't follow through the generator above. Not require_root():
-    # that would turn a missing ?root= into a 400 "root is required"
-    # instead of this route's existing 404 "unknown archive".
-    return stages.snapshot(req.cfg, req.jobs, cast(int, rid), arch["path"])
+    return stages.snapshot(req.cfg, req.jobs, rid, arch["path"])
 
 
 def pause(req: Request) -> dict | Json:

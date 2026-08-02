@@ -12,7 +12,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ..runtime import no_window, tool
 
@@ -46,8 +46,16 @@ class ExifReader:
     """Batch reader for the fixed tag set in ``_TAGS``, backed by one exiftool subprocess per batch."""
 
     def __init__(self) -> None:
-        if not available():
+        # Resolved once and reused for every batch. It used to be looked up
+        # again inside read_batch, which meant a reader could be constructed
+        # against one binary and then run against another (or against none, if
+        # PATH changed under a long-lived process) -- a TOCTOU that a
+        # `cast(str, ...)` was quietly papering over. One lookup, one binary,
+        # for the life of the reader.
+        found = tool("exiftool")
+        if found is None:
             raise RuntimeError("exiftool not found on PATH")
+        self._exiftool = found
 
     def read_batch(self, paths: list[Path]) -> dict[str, dict[str, Any]]:
         """Return {absolute_path_str: {tag: value}} for the given files.
@@ -64,12 +72,7 @@ class ExifReader:
 
         try:
             cmd = [
-                # tool() is `str | None` in general, but ExifReader.__init__ already
-                # refused to construct unless available() (itself a tool() lookup)
-                # returned truthy -- so exiftool was on PATH at construction time.
-                # This is a fresh lookup, not the cached result, so the cast is
-                # trusting that PATH hasn't changed since construction.
-                cast(str, tool("exiftool")),
+                self._exiftool,
                 "-json",
                 "-n",
                 "-q",
