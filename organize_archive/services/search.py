@@ -8,11 +8,13 @@ already stored.
 
 from __future__ import annotations
 
+import importlib.util
 import math
 import os
 import sqlite3
 from typing import Any, cast
 
+from ..errors import ModelUnavailableError
 from ._common import _HAS_LOCATION, _NOT_HIDDEN, _quality_ok, _root_clause, reading
 from .types import MediaItem, MediaPage
 
@@ -23,6 +25,21 @@ from .types import MediaItem, MediaPage
 # rounding error before would now be a real handicap. Kept at roughly the same
 # fraction of semantic_search_min_similarity as it was then.
 ALTERNATE_VECTOR_PENALTY = 0.002
+
+
+def scoring_available() -> bool:
+    """True when the dependency the ranking path needs (numpy) is importable.
+
+    The indexing half has its own probe in ``services/semantic.py``, which
+    asks for the whole embedding stack. This is the *read* half, and it needs
+    only numpy: a catalogue can hold embeddings written by an installation
+    that has since lost its extras, and that is exactly the case this answers.
+
+    ``find_spec`` rather than a try/import so asking the question does not
+    import a 40 MB package as a side effect.
+    """
+    return importlib.util.find_spec("numpy") is not None
+
 
 # How many stored vectors semantic_search scores per round trip. The relative
 # floor means *every* candidate has to be scored before anything can be cut, so
@@ -339,7 +356,19 @@ def semantic_search(
     and the cut that actually decides relevance is ``relative_floor``: a
     fraction of *this query's own* best score, which travels with the query
     instead of assuming every query lives on the same scale.
+
+    Raises ``ModelUnavailableError`` when numpy is not installed. That is the
+    one place this module cannot degrade: ranking *is* the operation, so there
+    is no reduced answer to give, and an empty page would read as "your
+    archive contains nothing like that" -- the wrong thing to tell someone
+    whose install is simply missing an extra. The HTTP layer turns it into a
+    400 carrying this message, so the user is told what to install.
     """
+    if not scoring_available():
+        raise ModelUnavailableError(
+            "semantic search needs numpy, which is not installed. "
+            "Install the 'semantic' extra to use description search."
+        )
     sql, params = _search_where_clause(
         root_id, year, month, mtype, person_id, person_ids, cluster_id, located
     )

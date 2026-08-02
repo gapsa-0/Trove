@@ -11,9 +11,11 @@ Nothing here needs the extras installed. Each test hides a dependency from an
 installation that *does* have it, which is the only way to exercise this on a
 developer machine or in CI -- both of which install everything.
 
-The one thing these tests deliberately do not claim: that every code path
-degrades. ``search.semantic_search`` does not (it imports numpy outright);
-docs/dev/dependencies.md records that gap.
+``search.semantic_search`` was the one exception for a long time -- it imported
+numpy outright, from two places -- and the last two tests here are what closed
+that. It degrades differently from the rest, and on purpose: ranking *is* the
+operation, so it raises a named error rather than returning an empty page that
+would read as "your archive has nothing like that".
 """
 
 from __future__ import annotations
@@ -182,3 +184,35 @@ def test_preflight_names_the_system_tools_that_are_missing(monkeypatch):
 
     monkeypatch.setattr(cli, "runtime_tool", lambda name: None if name == "ffprobe" else "/usr/bin")
     assert cli._preflight() == ["ffprobe"]
+
+
+def test_semantic_search_reports_the_missing_extra_instead_of_ModuleNotFoundError(monkeypatch):
+    """The one path in the app that used to break the promise.
+
+    ``search.semantic_search`` imported numpy outright, from two places, so an
+    install that had indexed an archive and then lost its extras answered a
+    search with a 500 and a traceback. It now asks first and raises the same
+    ``TroveError`` subclass every other missing dependency raises, which the
+    HTTP layer turns into a 400 carrying the message.
+
+    Not an empty page: ranking *is* the operation here, and "no results" would
+    tell the user their archive contains nothing like that, which is a
+    different -- and wrong -- answer.
+    """
+    from organize_archive.errors import ModelUnavailableError
+    from organize_archive.services import search
+
+    monkeypatch.setattr(search, "scoring_available", lambda: False)
+
+    with pytest.raises(ModelUnavailableError, match="numpy"):
+        search.semantic_search(":memory:", [0.1] * 768)
+
+
+def test_the_scoring_probe_asks_without_importing(monkeypatch):
+    """``find_spec`` rather than a try/import: asking the question must not
+    pull a 40 MB package into a process that then does not need it."""
+    from organize_archive.services import search
+
+    assert search.scoring_available() is True  # this venv has numpy
+    monkeypatch.setattr(search.importlib.util, "find_spec", lambda name: None)
+    assert search.scoring_available() is False

@@ -117,25 +117,25 @@ preprocessing-parity tests to actually run, install `transformers` by hand and
 accept that it holds `tokenizers` back a version — do not add it to any extra
 or constraint to make that friction go away.
 
-## A known gap
+## The one path that degrades by raising
 
-The graceful-degradation story above is not universal. `semantic_search` in
-`organize_archive/services/search.py` does `import numpy as np` partway through
-the function body, with no `try`/`except` around it. Every other
-optional dependency in this codebase is probed through an `available()`-style
-check before it's used; this one isn't. Calling semantic search on an install
-that has embeddings already indexed but has since lost the `semantic`/`faces`
-extras raises `ModuleNotFoundError` instead of reporting the feature
-unavailable.
+`semantic_search` in `organize_archive/services/search.py` used to be a genuine
+hole: it did `import numpy as np` partway through the function body, from two
+places, with no probe. An install that had indexed an archive and then lost its
+extras answered a search with `ModuleNotFoundError` — a 500 and a traceback.
 
-In practice this is narrow: reaching it needs a catalogue that already has
-rows in `semantic_embeddings`, and producing those rows in the first place
-requires the `semantic` extra (numpy included) to have been present during
-indexing. So the failure mode is specifically installing the extras, indexing
-an archive, and then uninstalling them — not a fresh install missing a
-dependency. It is known and unfixed. Closing it is a deliberate change to
-`semantic_search`'s contract, not a drive-by edit: decide what the function
-should return when it cannot score anything, and cover it with a test.
+It is now probed like everything else, through `search.scoring_available()`
+(a `find_spec` check, so asking does not import numpy as a side effect). What
+differs is the answer: instead of reporting the feature unavailable and
+carrying on, it raises `ModelUnavailableError`, which the HTTP layer turns
+into a 400 carrying the message.
+
+That is deliberate, and it is the rule for any feature whose *whole* operation
+is the missing dependency. Ranking is what semantic search does; there is no
+reduced version of it to fall back to, and returning an empty page would tell
+the user their archive contains nothing like what they asked for — a different
+answer, and a wrong one. Degrade to less when there is a less; say so plainly
+when there is not.
 
 ## Bumping a pin
 

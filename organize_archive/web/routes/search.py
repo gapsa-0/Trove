@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ...errors import ModelUnavailableError
 from ...services import search
 from ...services.types import MediaPage
 from ._request import Json, Request
@@ -34,6 +35,15 @@ def semantic_search(req: Request) -> MediaPage | Json:
 
     from ...services import semantic
 
+    # Asked before embedding, not after: embed_queries loads the text tower and
+    # would raise ModuleNotFoundError from inside onnxruntime, which reaches the
+    # user as a 500 and a traceback. The same question the status endpoint
+    # already asks, so the answer cannot disagree with what the UI displays.
+    if not semantic.available():
+        raise ModelUnavailableError(
+            "semantic search needs the local embedding model, which is not "
+            "installed. Install the 'semantic' extra to use description search."
+        )
     rid = req.root_id
     db_path = req.db(rid)
     vectors = semantic.embed_queries(req.cfg, search_queries)
