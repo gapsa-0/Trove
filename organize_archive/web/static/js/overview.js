@@ -279,7 +279,7 @@ async function refreshPipeline() {
   if (!S.arch) { stopPoll(); return; }
   let snap;
   try { snap = await jget("/api/pipeline?root=" + S.arch.id); }
-  catch (e) { return; }   // transient; the next tick retries
+  catch { return; }   // transient; the next tick retries
   S.pipeline = snap;
   renderHealthCards();
   renderGstat(snap);
@@ -301,7 +301,7 @@ async function refreshPipeline() {
       set("ov-gps", s.with_gps.toLocaleString());
       set("ov-dups", ds.duplicates.toLocaleString());
       renderStoragePanel(s);
-    } catch (_) { /* non-critical; next tick retries */ }
+    } catch { /* non-critical; next tick retries */ }
   }
   // On the busy→idle edge, re-render the Overview once so the "done" messages
   // pick up the final summary numbers. Guarding on the transition avoids an

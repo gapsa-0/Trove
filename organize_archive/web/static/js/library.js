@@ -400,7 +400,7 @@ export async function loadGrid(direction = "append") {
     if (gc) gc.textContent = gridCountLabel(g);
     const bottom = document.getElementById("grid-sentinel");
     if (bottom) bottom.textContent = g.doneDown ? "" : "Scroll to load more";
-  } catch (error) {
+  } catch {
     failed = true;
     if (S.grid === g && g.gen === gen && sentinel)
       sentinel.textContent = "Couldn’t load more files. Scroll away and back to retry.";

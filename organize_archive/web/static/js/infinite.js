@@ -37,7 +37,7 @@ export function startInfiniteList(stateKey, { sentinelId, pageSize, fetchPage, o
       state.done = items.length < pageSize;
       onPage(items, { first, done: state.done });
       s = sentinelEl(); if (s) s.textContent = "";
-    } catch (error) {
+    } catch {
       failed = true;
       s = sentinelEl();
       if (S[stateKey] === state && s) s.textContent = "Couldn’t load more. Scroll away and back to retry.";

@@ -3,20 +3,9 @@
 // place, and the placeholder for a screen that is not built yet.
 
 import {
-  jget,
-} from "./api.js";
-import {
   esc,
 } from "./dom.js";
-import {
-  S,
-} from "./state.js";
 
-async function renderFolders(m) {
-  m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Folders</h2><p>See where the original files in this archive live.</p></div></div><div class="panel"><div class="muted">Reading folders…</div></div>`;
-  const res = await jget("/api/folders?root=" + S.arch.id); const folders = res.folders || [];
-  m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Folders</h2><p>See where the original files in this archive live. Nothing here changes them.</p></div></div><div class="panel"><div class="folder-list">${folders.length ? folders.map(f => `<div class="taskcard"><span class="ico">□</span><div class="body"><div class="t">${esc(f.path)}</div></div><div class="num">${f.count.toLocaleString()}</div></div>`).join("") : '<div class="muted">No catalogued files yet.</div>'}</div></div>`;
-}
 // Shared status line for the fused people+pets `detect` stage. `failed`
 // is the People-only retry-cooldown message; Pets currently always passes
 // null. First-run addendum applies to both since it's the same model.

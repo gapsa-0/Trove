@@ -15,9 +15,6 @@ import {
   startInfiniteList,
 } from "./infinite.js";
 import {
-  closeModal,
-} from "./item.js";
-import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -149,7 +146,7 @@ async function syncPeopleGrid() {
   S.peopleSyncing = true;
   let people;
   try { people = (await jget(`/api/faces/persons?root=${S.arch.id}&offset=0&limit=${limit}`)).people; }
-  catch (e) { return; }
+  catch { return; }
   finally { S.peopleSyncing = false; }
   const grid = document.getElementById("peoplegrid");
   if (!grid || S.peopleList !== st) return;          // navigated away mid-fetch
@@ -404,7 +401,4 @@ async function savePersonName(id, inp) {
     toast((r && r.error) ? ("Couldn’t save: " + r.error) : "Couldn’t save the person’s name.", true);
   }
   showPerson(id);
-}
-function openPersonFromModal(id) {
-  closeModal(); S.nav++; S.section = "people"; renderNav(); showPerson(id);
 }

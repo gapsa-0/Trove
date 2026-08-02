@@ -199,10 +199,6 @@ function extractPeopleMentions(query, people, commitEnd = false) {
   });
   return mentions;
 }
-function peopleMentionedInQuery(query, people) {
-  return [...new Set(extractPeopleMentions(query, people, true).map(
-    mention => String(mention.person.id)))];
-}
 function semanticTextWithoutPeople(query, mentions) {
   let cursor = 0, output = "";
   mentions.forEach(mention => { output += query.slice(cursor, mention.start) + " "; cursor = mention.end; });

@@ -19,16 +19,6 @@ const JOB_LABEL = {
   scan: "Scanning files…", enrich: "Reading metadata…", detect: "Detecting people & pets…",
   face_cluster: "Updating people…", places: "Updating map places…", dedup: "Finding duplicates…", semantic: "Indexing search…"
 };
-const JOB_DESCRIPTION = {
-  scan: "Checking the archive folder and cataloging new or changed files.",
-  enrich: "Reading file details to find dates, locations, and other metadata.",
-  detect: "Finding people and animals in each photo (one pass) and grouping them into people and pets.",
-  face_cluster: "Reclustering People after a non-human review correction.",
-  places: "Grouping geotagged files into map places while keeping your edits.",
-  dedup: "Comparing file content to identify duplicate copies.",
-  semantic: "Creating search entries so media can be found by a description."
-};
-function jobDescription(kind) { return JOB_DESCRIPTION[kind] || "Updating archive data."; }
 // The sidebar chip and the Overview health cards read the SAME pipeline
 // snapshot, so they can never tell the user two different things.
 export const CARD_KIND = { scan: "scan", dedup: "dedup", detect: "detect", places: "places", semantic: "semantic" };

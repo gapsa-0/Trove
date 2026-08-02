@@ -193,7 +193,7 @@ async function syncPetGrids() {
       jget(`/api/pet/detections?root=${root}&unassigned=1&offset=0&limit=${lim.loose}`).then(r => r.items),
       jget(`/api/nonhuman?root=${root}&offset=0&limit=${lim.nonhuman}`).then(r => r.items),
     ]);
-  } catch (e) { return; }
+  } catch { return; }
   finally { S.petSyncing = false; }
   const petgrid = document.getElementById("petgrid"),
         loosegrid = document.getElementById("loosepetgrid"),
