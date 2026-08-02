@@ -17,7 +17,9 @@ in the frame — a photo stored sideways, or someone lying down:
   believed (only for the few images that have animal boxes at all).
 * a face inside a person box is human and is never suppressed; a face inside an
   animal box with no person over it is an animal's face and is dropped from
-  People.
+  People -- but *recorded*, in ``nonhuman_detections``, so the drop stays
+  reviewable. The detector is guessing here, and a guess a user cannot overrule
+  is the wrong kind of confident (see detect/persist.py).
 
 That replaces the old one-directional rule, which dropped any face merely
 *contained* in an animal box — so a bogus full-frame "dog" over a reclining
@@ -36,9 +38,10 @@ leaving a sideways one alone.
 
 Resumable and incremental, like the stages it replaces: an image is pending when
 it lacks a current ``face_scan`` OR a current ``pet_scan`` row, and is processed
-as a unit (both detectors run, both ``faces`` and ``animal_detections`` for the
-file are rewritten), so the cross-check is always consistent. Read-only over
-originals. Clustering into people/pets is a separate step (faces/pets cluster.py).
+as a unit: both detectors run, and every detection row the file has is rewritten
+together (``detect/persist.py``), so the cross-check is always consistent.
+Read-only over originals. Clustering into people/pets is a separate step
+(faces/pets cluster.py).
 """
 
 from __future__ import annotations
