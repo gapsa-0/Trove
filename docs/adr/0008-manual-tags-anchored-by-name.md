@@ -43,7 +43,8 @@ every return path that commits a re-cluster (the module comment there notes
 "every return path below must repair before it commits").
 
 **Consequence, stated explicitly by the code that enforces it: only named
-people and pets can carry manual tags.** `organize_archive/services/people.py`'s
+people and pets can carry manual tags.**
+`organize_archive/services/people_edit.py`'s
 `add_person_to_file` — "Tag a file with a named person by hand, for media
 where no face was detected at all" — checks `if not p or not p["name"]:
 return {"error": "target must be a named person"}`, and its docstring gives

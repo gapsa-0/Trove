@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...db import database as db
-from ...services import people
+from ...services import people, people_edit
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
@@ -44,7 +44,7 @@ def person(req: Request) -> dict[str, Any] | Json:
 def rename_person(req: Request) -> Json:
     """Rename a person cluster."""
     res = db.write_with_retry(
-        lambda: people.rename_person(
+        lambda: people_edit.rename_person(
             req.db(req.open_root_id),
             req.body.get("person_id"),
             (req.body.get("name") or "").strip(),
@@ -56,7 +56,7 @@ def rename_person(req: Request) -> Json:
 def reassign(req: Request) -> Json:
     """Move one face onto a named person and pin it there so re-clustering keeps it."""
     res = db.write_with_retry(
-        lambda: people.reassign_face(
+        lambda: people_edit.reassign_face(
             req.db(req.open_root_id), req.body.get("face_id"), req.body.get("person_id")
         )
     )
@@ -66,7 +66,7 @@ def reassign(req: Request) -> Json:
 def merge(req: Request) -> Json:
     """Merge two person clusters the user confirmed are the same, immediately and durably."""
     res = db.write_with_retry(
-        lambda: people.merge_persons(
+        lambda: people_edit.merge_persons(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b"), req.body.get("name")
         )
     )
@@ -76,7 +76,7 @@ def merge(req: Request) -> Json:
 def unmerge(req: Request) -> Json:
     """Undo a person merge and, if needed, kick off a recluster."""
     res = db.write_with_retry(
-        lambda: people.unmerge_persons(req.db(req.open_root_id), req.body.get("merge_id"))
+        lambda: people_edit.unmerge_persons(req.db(req.open_root_id), req.body.get("merge_id"))
     )
     if res.get("recluster") and req.jobs.current_root_id():
         req.jobs.start("face_cluster", req.jobs.current_root_id())
@@ -87,7 +87,7 @@ def detach(req: Request) -> Json:
     """Release every face of one file from a person and durably block them from
     drifting back."""
     res = db.write_with_retry(
-        lambda: people.detach_file_from_person(
+        lambda: people_edit.detach_file_from_person(
             req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
         )
     )
@@ -98,7 +98,7 @@ def mark_different(req: Request) -> Json:
     """Record that two person clusters are confirmed NOT the same, so auto-merge
     never proposes them again."""
     res = db.write_with_retry(
-        lambda: people.set_persons_different(
+        lambda: people_edit.set_persons_different(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b")
         )
     )
@@ -109,7 +109,7 @@ def skip(req: Request) -> Json:
     """Record that a 'same person?' pair was reviewed and left undecided, so it
     drops out of the suggestions queue."""
     res = db.write_with_retry(
-        lambda: people.set_persons_skip(
+        lambda: people_edit.set_persons_skip(
             req.db(req.open_root_id), req.body.get("a"), req.body.get("b")
         )
     )
@@ -119,7 +119,7 @@ def skip(req: Request) -> Json:
 def hide(req: Request) -> Json:
     """Mark a cluster as not a person (animal/toy/cartoon/false detection) and drop it."""
     res = db.write_with_retry(
-        lambda: people.hide_person(
+        lambda: people_edit.hide_person(
             req.db(req.open_root_id),
             req.body.get("person_id"),
             req.body.get("kind", "false_detection"),
@@ -131,7 +131,7 @@ def hide(req: Request) -> Json:
 def add_person(req: Request) -> Json:
     """Tag a file with a named person by hand, for media where no face was detected."""
     res = db.write_with_retry(
-        lambda: people.add_person_to_file(
+        lambda: people_edit.add_person_to_file(
             req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
         )
     )
@@ -141,7 +141,7 @@ def add_person(req: Request) -> Json:
 def remove_person(req: Request) -> Json:
     """Remove a hand-added person tag from a file."""
     res = db.write_with_retry(
-        lambda: people.remove_person_from_file(
+        lambda: people_edit.remove_person_from_file(
             req.db(req.open_root_id), req.body.get("person_id"), req.body.get("file_id")
         )
     )

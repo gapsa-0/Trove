@@ -44,7 +44,6 @@ MAX_ASSET = 800  # css / js / html under web/static and web/index.html
 ALLOWLIST: dict[str, int] = {
     # Modules
     "organize_archive/faces/cluster.py": 688,
-    "organize_archive/services/people.py": 758,
     "organize_archive/services/pets.py": 668,
     "organize_archive/services/places.py": 678,
     "tests/gui/test_api_routes.py": 1159,

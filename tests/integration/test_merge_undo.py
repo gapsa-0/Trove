@@ -16,7 +16,7 @@ import pytest
 from organize_archive.config import Config
 from organize_archive.db import database as db
 from organize_archive.pets import cluster as pets_cluster
-from organize_archive.services import people, pets, places
+from organize_archive.services import people_edit, pets, places
 
 np = pytest.importorskip("numpy")
 
@@ -88,7 +88,7 @@ def _catalog_with_named_persons(tmp_path):
 
 def test_merge_persons_records_a_person_merges_row(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    ok = people.merge_persons(str(db_path), 1, 2, name="Ana")
+    ok = people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
     assert ok["ok"] is True
 
     check = db.open_readonly(db_path)
@@ -146,12 +146,12 @@ def test_merge_pets_records_a_pet_merges_row(tmp_path):
 
 def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    people.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
 
     merge_row = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()
     merge_id = merge_row["id"]
 
-    undo = people.unmerge_persons(str(db_path), merge_id)
+    undo = people_edit.unmerge_persons(str(db_path), merge_id)
     assert undo["ok"] is True
     assert undo["recluster"] is True
 
@@ -172,16 +172,16 @@ def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
 
 def test_unmerge_persons_twice_errors_cleanly(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    people.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
 
-    first = people.unmerge_persons(str(db_path), merge_id)
+    first = people_edit.unmerge_persons(str(db_path), merge_id)
     assert first["ok"] is True
-    second = people.unmerge_persons(str(db_path), merge_id)
+    second = people_edit.unmerge_persons(str(db_path), merge_id)
     assert "error" in second
 
     # a bogus id (never existed) is likewise a clean error, not a crash
-    assert "error" in people.unmerge_persons(str(db_path), 999999)
+    assert "error" in people_edit.unmerge_persons(str(db_path), 999999)
 
 
 def test_recluster_after_undo_does_not_remerge(tmp_path):
@@ -192,9 +192,9 @@ def test_recluster_after_undo_does_not_remerge(tmp_path):
     from organize_archive.faces.cluster import _apply_links
 
     db_path = _catalog_with_named_persons(tmp_path)
-    people.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
-    people.unmerge_persons(str(db_path), merge_id)
+    people_edit.unmerge_persons(str(db_path), merge_id)
 
     conn = db.connect(db_path)
     # Simulate the clusterer having (re)split the two faces into separate
@@ -321,7 +321,7 @@ def _catalog_for_detach(tmp_path):
 
 def test_detach_file_from_person_clears_face_and_writes_cannot_link(tmp_path):
     db_path = _catalog_for_detach(tmp_path)
-    res = people.detach_file_from_person(str(db_path), 1, 2)
+    res = people_edit.detach_file_from_person(str(db_path), 1, 2)
     assert res["ok"] is True
     assert res["detached_faces"] == 1
 
@@ -347,12 +347,12 @@ def test_detach_file_from_person_clears_face_and_writes_cannot_link(tmp_path):
 
 def test_detach_file_from_person_unknown_inputs_error_cleanly(tmp_path):
     db_path = _catalog_for_detach(tmp_path)
-    assert "error" in people.detach_file_from_person(str(db_path), None, 2)
-    assert "error" in people.detach_file_from_person(str(db_path), 1, None)
-    assert "error" in people.detach_file_from_person(str(db_path), 999, 2)
+    assert "error" in people_edit.detach_file_from_person(str(db_path), None, 2)
+    assert "error" in people_edit.detach_file_from_person(str(db_path), 1, None)
+    assert "error" in people_edit.detach_file_from_person(str(db_path), 999, 2)
     # file 1 has a face of person 1, but this asks about file 2's OTHER
     # (nonexistent) association -- wrong file/person pair with no matching face
-    assert "error" in people.detach_file_from_person(str(db_path), 1, 999999)
+    assert "error" in people_edit.detach_file_from_person(str(db_path), 1, 999999)
 
 
 # -- merge_place_clusters / unmerge_place_clusters ------------------------
