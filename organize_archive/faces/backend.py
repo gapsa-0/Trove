@@ -104,10 +104,6 @@ def _models_dir(cache_dir: str) -> Path:
     return Path(cache_dir) / "models" / INSIGHTFACE_SUBDIR
 
 
-def det_model_path(cache_dir: str) -> Path:
-    return _models_dir(cache_dir) / DET_MODEL
-
-
 def adaface_model_path(cache_dir: str) -> Path:
     """Where the AdaFace ONNX lives: the frozen build's copy first, else the cache.
 

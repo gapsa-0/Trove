@@ -71,11 +71,6 @@ def dinov2_model_path(cache_dir: str) -> Path:
     return Path(cache_dir) / "models" / DINOV2_SUBDIR / DINOV2_MODEL
 
 
-def dinov2_ready(cache_dir: str) -> bool:
-    p = dinov2_model_path(cache_dir)
-    return p.is_file() and p.stat().st_size > 1_000_000
-
-
 COCO_CLASSES = (
     "person",
     "bicycle",

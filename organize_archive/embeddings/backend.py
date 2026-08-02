@@ -142,29 +142,9 @@ def vision_ready(cache_dir: str) -> bool:
     return _present(cache_dir, _VISION_FILES)
 
 
-def text_ready(cache_dir: str) -> bool:
-    """The search half: text tower plus tokenizer."""
-    return _present(cache_dir, _TEXT_FILES)
-
-
 def models_ready(cache_dir: str) -> bool:
     """Everything downloaded — both towers and the tokenizer."""
     return _present(cache_dir, _FILES)
-
-
-def download_bytes(cache_dir: str, names=None) -> int:
-    """How many bytes ``ensure_models(names)`` would still have to fetch.
-
-    For telling the user what a first run is about to cost, rather than starting
-    a 372 MB download with no warning.
-    """
-    d = models_dir(cache_dir)
-    return sum(
-        size
-        for n, (_rel, size, _sha) in _FILES.items()
-        if (names is None or n in names)
-        and not ((d / n).is_file() and (d / n).stat().st_size == size)
-    )
 
 
 def _sha256(path: Path) -> str:

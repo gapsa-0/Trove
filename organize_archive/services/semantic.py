@@ -98,11 +98,6 @@ def warm_text_model(cfg: Config) -> None:
         logger.debug("text tower warmup failed", exc_info=True)
 
 
-def embed_query(cfg: Config, query: str) -> list[float]:
-    """Embed a single search string into the SigLIP text vector space."""
-    return embed_queries(cfg, [query])[0]
-
-
 def embed_queries(cfg: Config, queries: list[str]) -> list[list[float]]:
     """Embed related search formulations together in one forward pass."""
     vectors = backend(cfg).embed_texts(queries)
