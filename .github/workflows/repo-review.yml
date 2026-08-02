@@ -1,0 +1,50 @@
+# Opens the quarterly repository-review issue, so the review does not depend on
+# anyone remembering it exists. The checklist itself lives in
+# docs/dev/repo-review.md -- this workflow only creates the reminder.
+#
+# GitHub disables scheduled workflows in a repository with no activity for 60
+# days, and does not announce it. If a quarter goes by with no issue, check the
+# Actions tab before assuming the cron is wrong.
+name: Quarterly repository review
+on:
+  schedule:
+    # 09:00 UTC on the first day of January, April, July and October.
+    - cron: '0 9 1 1,4,7,10 *'
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  open-issue:
+    runs-on: ubuntu-latest
+    steps:
+      # `gh` is preinstalled on the runner and authenticates from GITHUB_TOKEN.
+      # No label is applied: `gh issue create --label` fails outright if the
+      # label does not exist on the repository, and a reminder that errors is
+      # worse than one that is untidy.
+      #
+      # The body restates the six headings rather than only linking the
+      # document, because an issue that has to be left in order to be read gets
+      # left.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo '${{ github.repository }}' \
+            --title "Repository review — $(date -u '+%Y-%m')" \
+            --body "$(cat <<'BODY'
+          About an hour. Full checklist, with the commands and the reasoning:
+          ${{ github.server_url }}/${{ github.repository }}/blob/main/docs/dev/repo-review.md
+
+          - [ ] **What grew?** Anything approaching 600 lines is a splitting job now.
+                Check whether the `check_sizes.py` allowlist gained an entry, and
+                whether that commit gave the reason it promised.
+          - [ ] **Is the suite still fast?** `make test-fast` ~2s, full suite under a
+                minute; `--durations=25` says where it went.
+          - [ ] **Coverage** — did a module that changed a lot lose coverage?
+          - [ ] **Dead code** — `ruff check --select F401,F841`, `npm run lint`, plus a
+                look for modules nothing imports. Delete rather than comment out.
+          - [ ] **Dependabot** — merge each open PR or close it with a reason.
+          - [ ] **ADRs** — has a decision been reversed in practice? Write the
+                superseding record. Same question for `CLAUDE.md` and `ARCHITECTURE.md`:
+                does every path in them still exist?
+          BODY
+          )"

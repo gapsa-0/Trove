@@ -115,6 +115,17 @@ repeats the list so it gets checked rather than remembered.
   obvious-looking alternative was rejected.
 - **No AI attribution in the commit message** — see above.
 
+## The routine
+
+- **While working:** `make test-fast` (the unit tier, ~2s).
+- **Before committing:** `make lint` — the pre-commit hook runs it anyway, but
+  finding out before you write the message is cheaper.
+- **Before pushing:** `make check`.
+- **Per release:** the checklist in [`docs/release.md`](docs/release.md).
+- **Quarterly:** an hour on [`docs/dev/repo-review.md`](docs/dev/repo-review.md)
+  — what grew, what got slow, what died, what drifted from its ADR. A scheduled
+  workflow opens the issue so it does not depend on anyone remembering.
+
 ## The hard project rules
 
 - **Never write to, move, rename, or delete anything under a source archive
