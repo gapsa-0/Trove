@@ -48,6 +48,13 @@ it at each loop iteration -- via ``ctx.raise_if_cancelled()`` or by calling
 promptly. A runner that ignores it makes the app un-quittable, because
 shutdown waits on the worker threads. Runners must also commit incrementally,
 so an interrupted job leaves usable partial progress rather than nothing.
+
+The one exception is a native call with no checkpoint inside it -- building an
+ONNX session, which takes seconds. A runner wraps that in
+``ctx.uninterruptible()``, and ``shutdown`` then declines to wait on it rather
+than spending its whole timeout on a thread that cannot answer. That marker is
+for genuinely un-cancellable code only; using it to excuse a loop that could
+check the event would re-create the bug it exists to fix.
 """
 
 from __future__ import annotations
@@ -130,16 +137,30 @@ class JobManager:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
-                active = any(job.status == "running" for job in self._jobs.values())
+                # A job inside an uninterruptible section (loading an ONNX
+                # model) is not waited for: it cannot answer until the native
+                # call returns, and waiting out the full timeout only to kill
+                # the daemon thread anyway is the "app takes forever to close"
+                # bug. Skipping it reaches the same end state, sooner.
+                waiting = [j for j in self._jobs.values() if j.status == "running"]
+                blocked = [j.kind for j in waiting if j.uninterruptible]
+                active = any(not j.uninterruptible for j in waiting)
             if not active:
                 self.scheduler.join(timeout=max(0, deadline - time.monotonic()))
-                logger.info("shutdown complete; no job left running")
+                if blocked:
+                    logger.info(
+                        "shutdown complete; %s left loading a model, which cannot be "
+                        "interrupted -- its thread exits with the process",
+                        ",".join(blocked),
+                    )
+                else:
+                    logger.info("shutdown complete; no job left running")
                 return True
             time.sleep(0.05)
-        # "The app takes forever to close" ends up here. A job only yields at a
-        # progress checkpoint, and the stages that load a model spend their first
-        # seconds with no checkpoint to reach -- so the timeout is survivable, but
-        # it must not be silent, and the kinds above say which stage was slow.
+        # A job that reaches here is one that had a checkpoint to reach and did
+        # not reach it in time -- a runner not honouring its cancellation
+        # contract, or a single step that is simply longer than the timeout.
+        # Model loading no longer lands here; it is skipped above.
         with self._lock:
             stragglers = [j.kind for j in self._jobs.values() if j.status == "running"]
         logger.warning(

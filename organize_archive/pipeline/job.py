@@ -14,7 +14,8 @@ import logging
 import sqlite3
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -36,9 +37,16 @@ class Job:
     message: str = ""
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
+    # True while the runner is inside a call that cancellation cannot reach --
+    # in practice, building an ONNX session. Nothing can interrupt native code,
+    # so ``shutdown`` stops *waiting* on such a job instead of spending its
+    # whole timeout on a thread that cannot answer. Internal to the pipeline;
+    # ``public()`` drops it rather than growing the polled job payload.
+    uninterruptible: bool = False
 
     def public(self) -> dict[str, Any]:
         d = asdict(self)
+        d.pop("uninterruptible")
         d["percent"] = round(100 * self.done / self.total, 1) if self.total else None
         d["elapsed"] = round((self.finished_at or time.time()) - self.started_at, 1)
         return d
@@ -136,6 +144,33 @@ class JobContext:
         """
         if self.cancel.is_set():
             raise KeyboardInterrupt
+
+    @contextmanager
+    def uninterruptible(self, what: str) -> Iterator[None]:
+        """Run a section that cancellation provably cannot reach.
+
+        Loading an ONNX model is one native call of several seconds with no
+        checkpoint inside it, so a job cancelled during it cannot answer until
+        it is done. That used to cost the whole of ``shutdown``'s timeout --
+        "the app takes forever to close" -- because the wait loop could not
+        tell "busy in native code" from "ignoring cancellation".
+
+        This marks the window: ``shutdown`` skips a job that is inside one and
+        lets process exit reap the daemon thread, which is what happened after
+        the timeout anyway. It also checks the event on the way in and on the
+        way out, so a cancel arriving either side of the load is honoured at
+        once instead of waiting for the next loop checkpoint.
+
+        It does not make the section interruptible. Nothing can.
+        """
+        self.raise_if_cancelled()
+        self.job.uninterruptible = True
+        self.job.current = what
+        try:
+            yield
+        finally:
+            self.job.uninterruptible = False
+        self.raise_if_cancelled()
 
 
 @dataclass(frozen=True)

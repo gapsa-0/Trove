@@ -29,6 +29,7 @@ def run(ctx: JobContext) -> None:
     # Restarting a fresh job per snapshot is what used to flicker the card
     # done→running; looping here keeps it steadily "running" until drained.
     job = ctx.job
+    _warm_vision_model(ctx)
     total_indexed = total_skipped = total_failed = 0
     force = job.force
     while True:
@@ -45,6 +46,28 @@ def run(ctx: JobContext) -> None:
         if (total_indexed or total_skipped or total_failed)
         else "semantic index is already current"
     )
+
+
+def _warm_vision_model(ctx: JobContext) -> None:
+    """Load the vision tower before the drain loop starts.
+
+    It would otherwise load inside the first embed, where the seconds spent in
+    native code cannot see a cancel and shutdown would wait out its whole
+    timeout. Hoisting it puts that call in a window shutdown knows to skip.
+
+    Failure stays quiet on purpose: ``_semantic_pass`` already records an
+    unloadable backend as a per-file reason, and pulling the load forward must
+    not promote that to a failure of the whole job.
+    """
+    from ...services import semantic
+
+    if not semantic.available():
+        return
+    with ctx.uninterruptible("loading the semantic model"):
+        try:
+            semantic.backend(ctx.cfg, log=lambda m: setattr(ctx.job, "current", m)).load_vision()
+        except Exception:
+            logger.debug("semantic warm-up failed; the pass reports it per file", exc_info=True)
 
 
 def _semantic_pass(

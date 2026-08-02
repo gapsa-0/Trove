@@ -38,8 +38,12 @@ def run(ctx: JobContext) -> None:
     total = dx.image_count(conn, ctx.cfg, job.root_id)
     already = max(0, total - dx.pending_count(conn, ctx.cfg, job.root_id))
     job.total, job.done = total, already
-    # Load both detector model sets once and reuse across every chunk.
-    face_be, pet_be = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
+    # Load both detector model sets once and reuse across every chunk. This is
+    # the stage's un-cancellable window: two ONNX sessions, seconds of native
+    # code with nowhere to check the cancel event, so shutdown is told not to
+    # wait on it (see JobContext.uninterruptible).
+    with ctx.uninterruptible("loading detection models"):
+        face_be, pet_be = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
     processed = faces_found = animals = suppressed = human_pets = 0
     turned = 0
     while True:

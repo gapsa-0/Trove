@@ -16,6 +16,7 @@ handover.
 from __future__ import annotations
 
 import threading
+import time
 
 import pytest
 from helpers import wait_until
@@ -197,3 +198,79 @@ def test_an_unknown_job_kind_is_an_error_not_a_silent_no_op(jm):
 
     assert job.status == "error"
     assert "no-such-stage" in job.message
+
+
+def test_shutdown_does_not_wait_for_a_runner_loading_a_model(jm, monkeypatch):
+    """The "app takes forever to close" bug, pinned.
+
+    ``detect`` and ``semantic`` open ONNX sessions before their first
+    checkpoint: seconds of native code that cannot see the cancel event. The
+    fake below stands in for that call. Shutdown must not spend its timeout
+    waiting on a thread that provably cannot answer -- the daemon thread is
+    reaped by process exit, which is what happened after the timeout anyway.
+    """
+    loading, release = threading.Event(), threading.Event()
+
+    def run(ctx):
+        with ctx.uninterruptible("loading detection models"):
+            loading.set()
+            release.wait(timeout=5)
+
+    _register(monkeypatch, Runner(kind="probe", run=run))
+    jm.start("probe")
+    wait_until(lambda: loading.is_set(), timeout=5, what="the runner to reach the model load")
+
+    try:
+        started = time.monotonic()
+        assert jm.shutdown(timeout=5.0) is True
+        assert time.monotonic() - started < 1.0, "shutdown waited on an un-cancellable section"
+    finally:
+        release.set()
+
+
+def test_a_cancel_arriving_around_a_model_load_is_honoured_at_its_edges(jm, monkeypatch):
+    """The section itself cannot be interrupted, but its two edges can be.
+
+    A cancel that arrives while the model is loading has to take effect the
+    moment the load returns, not at whatever checkpoint the chunk loop reaches
+    next -- otherwise skipping the wait above would just move the delay.
+    """
+    reached = []
+
+    def run(ctx):
+        with ctx.uninterruptible("loading detection models"):
+            reached.append("loading")
+            ctx.cancel.set()  # the shutdown that arrives mid-load
+        reached.append("kept going")
+
+    _register(monkeypatch, Runner(kind="probe", run=run))
+
+    job = _run_to_completion(jm, "probe")
+
+    assert reached == ["loading"], "the runner continued past a cancel set during the load"
+    assert job.status == "cancelled"
+    assert job.uninterruptible is False, "the marker must be cleared on the way out"
+
+
+def test_a_job_that_ignores_its_cancel_event_still_times_shutdown_out(jm, monkeypatch):
+    """The complement of the two above: skipping the wait is for native code
+    only. A runner looping without a checkpoint is a bug, and shutdown must go
+    on reporting it rather than returning a clean True."""
+    release = threading.Event()
+    _register(monkeypatch, Runner(kind="probe", run=lambda ctx: release.wait(timeout=5)))
+    jm.start("probe")
+
+    try:
+        assert jm.shutdown(timeout=0.2) is False
+    finally:
+        release.set()
+
+
+def test_the_uninterruptible_marker_stays_out_of_the_polled_payload(jm, monkeypatch):
+    """It is a pipeline-internal detail. The GUI polls ``public()`` about once a
+    second and has no use for it."""
+    _register(monkeypatch, Runner(kind="probe", run=lambda ctx: None))
+
+    job = _run_to_completion(jm, "probe")
+
+    assert "uninterruptible" not in job.public()
