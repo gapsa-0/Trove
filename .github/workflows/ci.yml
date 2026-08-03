@@ -68,6 +68,12 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
       - run: npm ci
         working-directory: desktop
+      # npm ci exits 0 whether or not Electron's postinstall actually unpacked
+      # the binary (docs/adr/0014), and nothing else in this job runs Electron,
+      # so without this CI would stay green over an install that produces no
+      # runnable app.
+      - run: test -f node_modules/electron/path.txt
+        working-directory: desktop
       - run: make lint-js
       - run: npm run check:version && npm run test:ready && node --check src/main.cjs && node --check src/preload.cjs
         working-directory: desktop

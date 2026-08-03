@@ -233,7 +233,12 @@ make check          # lint and the full test suite — what CI runs
 ```
 
 `make` on its own lists the other targets. If your system has no `python3.13`,
-pass one: `make setup PYTHON=/path/to/python3.13`.
+pass one: `make setup PYTHON=/path/to/python3.13`. Building the desktop app needs
+the Node version in `.nvmrc`; `npm ci` refuses anything else.
+
+Then run it — `cd desktop && PYTHON=../.venv/bin/python npm run dev` for the desktop
+app, or `make gui` for the same interface in a browser against a throwaway data
+directory. [command line and development](docs/command-line.md) has the detail.
 
 For anything beyond that:
 

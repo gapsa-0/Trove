@@ -6,6 +6,9 @@
   "author": "capsa-0 <capsa-0@users.noreply.github.com>",
   "private": true,
   "main": "src/main.cjs",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "check:version": "node scripts/check-version.cjs",
     "sync:version": "node scripts/check-version.cjs --write",

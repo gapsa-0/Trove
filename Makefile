@@ -24,6 +24,16 @@ setup:           ## Create the venv and install everything for development
 	$(PY) -m pip install -e '.[$(EXTRAS)]' -c constraints.txt
 	$(PY) -m pre_commit install
 	cd desktop && npm ci
+	@# npm ci can report success and still leave no Electron binary: the
+	@# postinstall that unpacks it exits 0 without unpacking on an unsupported
+	@# Node (docs/adr/0014). desktop/.npmrc already refuses that Node outright;
+	@# this catches any future install script that fails the same silent way,
+	@# because a setup that "succeeded" is the part that cost days.
+	@test -f desktop/node_modules/electron/path.txt || { \
+	  echo "setup failed: desktop/node_modules/electron has no unpacked binary."; \
+	  echo "npm ci exited 0 without installing it. Select the Node in .nvmrc"; \
+	  echo "(fnm use, or nvm use), then re-run make setup."; \
+	  exit 1; }
 
 # Split because CI runs the two halves in different jobs: the Python job has no
 # node and the electron job has no Python. Developers want both, so `lint` is

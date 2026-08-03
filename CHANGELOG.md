@@ -68,6 +68,12 @@ ratchet now fails the build when a file or function grows past budget, and the
 repository carries the documents a newcomer expects: architecture, contributing,
 security, and decision records.
 
+The Node version used to build the desktop app is now pinned and enforced. On
+newer versions Electron's install step exited successfully without unpacking the
+runtime, so a source checkout produced an app that failed at launch while every
+check stayed green; `npm ci` now refuses an unsupported Node, and both `make
+setup` and CI verify the binary is actually there.
+
 ## [0.1.2] - 2026-07-29
 
 ### Changed
