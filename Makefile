@@ -34,6 +34,11 @@ setup:           ## Create the venv and install everything for development
 	  echo "npm ci exited 0 without installing it. Select the Node in .nvmrc"; \
 	  echo "(fnm use, or nvm use), then re-run make setup."; \
 	  exit 1; }
+	@# Same hint npm ci already printed, repeated as the last thing setup says.
+	@# npm prints its own summary after a lifecycle script, so on a distribution
+	@# that needs the setuid sandbox the note scrolls past under the deprecation
+	@# warnings; this is where it is still on screen when setup finishes.
+	@cd desktop && node scripts/check-sandbox.cjs
 
 # Split because CI runs the two halves in different jobs: the Python job has no
 # node and the electron job has no Python. Developers want both, so `lint` is

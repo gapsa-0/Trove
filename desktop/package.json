@@ -13,6 +13,7 @@
     "check:version": "node scripts/check-version.cjs",
     "sync:version": "node scripts/check-version.cjs --write",
     "test:ready": "node scripts/test-ready-parser.cjs",
+    "postinstall": "node scripts/check-sandbox.cjs",
     "dev": "electron .",
     "build:backend": "npm run check:version && node scripts/build-backend.cjs",
     "package:win": "npm run build:backend && electron-builder --win nsis",

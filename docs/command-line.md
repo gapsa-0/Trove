@@ -106,7 +106,10 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
 or run without it: `npm run dev -- --no-sandbox`. Packaged builds are unaffected —
-the `.deb` sets this bit at install time.
+the `.deb` sets this bit at install time. `npm ci` prints these two commands itself
+on a system that needs them (`desktop/scripts/check-sandbox.cjs`, run as
+`postinstall`), and `make setup` repeats them as its last line, since npm's own
+summary would otherwise scroll the note off screen.
 
 `npm run dev` runs the app against your real data directory. Prefix
 `XDG_DATA_HOME=$PWD/../.devdata` to keep a test run out of your own catalogue, the way
