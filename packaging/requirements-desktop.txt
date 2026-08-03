@@ -9,7 +9,14 @@ pillow-heif==1.5.0
 ImageHash==4.3.2
 pyexiftool==0.5.6
 numpy==2.5.1
-opencv-python==5.0.0.93
+# The headless variant: same OpenCV version and sources as opencv-python, built
+# without the highgui backend. Nothing in the shipped package uses a GUI or video
+# symbol — cv2 appears only as cvtColor/resize/Laplacian/dnn, and video frames come
+# from the bundled ffmpeg, not VideoCapture — so the Qt5 Core/Gui/Widgets/Test/XcbQpa
+# and xcb/xkb stack the full wheel carries is 29 MB of bundle nobody can reach.
+# If a cv2.imshow/VideoCapture ever lands in organize_archive/, this pin has to go
+# back to opencv-python; tests/unit/test_opencv_headless.py fails the build if it does.
+opencv-python-headless==5.0.0.93
 onnxruntime==1.27.0
 scikit-learn==1.9.0
 # k-NN for the face cluster core/expansion passes. faces/cluster.py degrades to a

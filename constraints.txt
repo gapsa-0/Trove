@@ -35,6 +35,12 @@ ImageHash==4.3.2
 # --- faces extra ---
 insightface==1.0.1
 onnxruntime==1.27.0
+# The one place a desktop pin and a dev pin deliberately differ by *variant* and
+# not by number: requirements-desktop.txt ships opencv-python-headless at this
+# same 5.0.0.93. Same OpenCV sources, built without highgui, which keeps 29 MB of
+# Qt out of the installer. A developer keeps the full wheel so ad-hoc debugging in
+# tools/ can still open a window; nothing in organize_archive/ may, and
+# tests/unit/test_opencv_headless.py enforces that.
 opencv-python==5.0.0.93
 scikit-learn==1.9.0
 numpy==2.5.1

@@ -33,6 +33,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The installers are roughly half the size.** Three things were shipping weight
+  nobody could use: the People and Pets model weights travelled inside the download
+  (349 MB) even though the app already knows how to fetch weights on demand; FFmpeg
+  was bundled as two self-contained binaries that each carried a complete copy of
+  the codec set; and the OpenCV build shipped a full Qt desktop toolkit for an app
+  that never opens a window. The weights are now downloaded on first use like every
+  other model, so the first People/Pets run fetches about 550 MB instead of 220 MB
+  and needs a working connection once. Nothing else about the app changes.
+- Model downloads now report progress. A first run that fetches several hundred
+  megabytes used to show one unchanging line on the stage card and read as hung.
 - The Overview storage panel was reworked: one bar with a Size/Files switch
   instead of two competing bars, exact numbers moved into the table, and per-type
   share shown on hover.
@@ -42,6 +52,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- People & pets detection no longer stops with "neither the face nor the pet models
+  could be loaded" when the app is run from a source checkout. Two of its four model
+  files had no way to be downloaded outside a packaged build, so the stage fetched
+  ~310 MB of the other two and then failed; they are fetched and hash-verified like
+  every other weight now. When a model genuinely cannot be obtained, the stage says
+  so before downloading anything, and the card names the cause instead of pointing
+  at messages the user cannot see.
+- The Semantic indexing card reports its model download instead of sitting blank
+  through it. The progress callback was captured by whichever part of the app
+  loaded the model first, which was always the silent start-up warm-up. That
+  warm-up no longer downloads anything either: it warms weights that are already on
+  disk, so a 317 MB download can never start unannounced in the background.
 - Faces that detection discards as an animal's own can be reviewed again. Since the
   people-and-pets detectors were merged into one pass, every such face was dropped
   with no record, so the "not an animal" review list on the Pets screen was always

@@ -124,9 +124,14 @@ skips hidden duplicates, and runs alongside the rest of the pipeline.
 | Linux, any distribution | [Trove-0.1.2.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/Trove-0.1.2.AppImage) | 744 MB |
 | Debian / Ubuntu | [trove-desktop_0.1.2_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/trove-desktop_0.1.2_amd64.deb) | 614 MB |
 
-The downloads are large because each one bundles its own Python runtime, FFmpeg,
-and the local detection models — nothing is fetched from a package manager at
-install time.
+Each download bundles its own Python runtime and FFmpeg — nothing is fetched from
+a package manager at install time. The model weights are not in there: they are
+downloaded once, on the first run of the feature that needs them.
+
+> The sizes above are the published 0.1.2 files, which still carried the model
+> weights inside the installer. The next release drops them, along with a
+> duplicated copy of FFmpeg and an unused GUI toolkit: the Linux build measures
+> 427 MB against 744 MB here.
 
 Checksums for all three are in
 [SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/SHA256SUMS.txt).
@@ -188,7 +193,7 @@ archive whose drive is disconnected remains registered and is shown as unavailab
 mount it again to continue.
 
 The first time People and Pets detection runs, Trove downloads their model weights
-(about 220 MB) once. After that it works offline; all media processing is local from
+(about 550 MB) once. After that it works offline; all media processing is local from
 the start.
 
 Removing an archive from Trove removes its catalogue records and derived cache for
