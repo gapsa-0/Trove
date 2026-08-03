@@ -4,6 +4,13 @@
 Archives are downloaded to a temporary directory, SHA-256 verified before any
 extraction, and staged atomically.  Downloaded archives and staged binaries are
 deliberately ignored by Git; the manifest records the reproducible inputs.
+
+FFmpeg is staged from a *shared* build: small ``ffmpeg``/``ffprobe`` binaries plus
+the ``libav*`` libraries they both link against.  The static build put the whole
+codec set inside each of the two binaries -- 266 MB to ship one copy of FFmpeg
+twice.  Everything a tool needs is staged flat in one directory, which is the
+layout both platforms load from; see ``runtime_libs`` below and
+``organize_archive.runtime.tool_env``.
 """
 
 from __future__ import annotations
@@ -22,6 +29,10 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from organize_archive import runtime  # noqa: E402  (needs ROOT on sys.path)
+
 MANIFEST = ROOT / "packaging" / "tools" / "manifest.json"
 REQUIRED_TOOL_NAMES = {"ffmpeg", "ffprobe"}
 OPTIONAL_TOOL_NAMES = {"exiftool"}
@@ -84,6 +95,24 @@ def validate_target(target: str) -> tuple[list[dict], list[dict]]:
                 raise ValueError(f"invalid {key} for {target}: {item['name']}")
             if Path(value).is_absolute() or len(Path(value).parts) != 1 or value in (".", ".."):
                 raise ValueError(f"{key} must be a plain file name for {target}: {item['name']}")
+        # Optional: shared libraries the executable needs, as globs relative to
+        # the *archive root* rather than to the executable. That is the difference
+        # from support_dir, and it is why this field has to exist: the shared
+        # FFmpeg build puts bin/ffmpeg and lib/*.so.* side by side, so the
+        # libraries are not reachable from the executable's own directory.
+        libs = item.get("runtime_libs")
+        if libs is not None:
+            if not isinstance(libs, list) or not libs:
+                raise ValueError(f"invalid runtime_libs for {target}: {item['name']}")
+            for pattern in libs:
+                if not isinstance(pattern, str) or not pattern:
+                    raise ValueError(f"invalid runtime_libs entry for {target}: {item['name']}")
+                parts = Path(pattern).parts
+                if Path(pattern).is_absolute() or ".." in parts:
+                    raise ValueError(
+                        f"runtime_libs must be relative and stay inside the archive "
+                        f"for {target}: {item['name']}"
+                    )
         names.add(item["name"])
     unavailable_names: set[str] = set()
     for item in unavailable:
@@ -161,6 +190,66 @@ def staged_name_for(item: dict, target: str) -> str:
     return name
 
 
+def archive_root(extracted: Path) -> Path:
+    """The directory ``runtime_libs`` globs are resolved against.
+
+    Both upstream archives wrap everything in a single versioned directory, so
+    globbing the extraction directory itself would match nothing. Unwrap exactly
+    one level, and only when that level is unambiguous -- an archive that spills
+    its contents at the top is used as-is rather than guessed at.
+    """
+    entries = list(extracted.iterdir())
+    if len(entries) == 1 and entries[0].is_dir():
+        return entries[0]
+    return extracted
+
+
+def stage_runtime_libs(item: dict, extracted: Path, stage_tmp: Path) -> list[str]:
+    """Copy an executable's shared libraries flat into the stage directory.
+
+    Flat, rather than mirroring the archive's ``bin/`` + ``lib/`` split, because
+    that is the layout both platforms can actually load from: on Windows the
+    loader searches the directory the .exe lives in, so the DLLs beside it are
+    found with no help at all, and on Linux one ``LD_LIBRARY_PATH`` pointing at
+    the staged directory covers everything (see ``organize_archive.runtime.tool_env``).
+    It also keeps ``runtime.tool``'s flat lookup unchanged.
+
+    Symlinks are recreated as symlinks, never followed. ``lib/`` ships both
+    ``libavcodec.so.61.19.101`` and a ``libavcodec.so.61`` soname link pointing at
+    it; dereferencing would stage 90 MB twice for that library alone and undo the
+    entire reason for using a shared build. The soname link is also the name
+    recorded in the executable's DT_NEEDED, so it has to survive as a name.
+    """
+    patterns = item.get("runtime_libs")
+    if not patterns:
+        return []
+    root = archive_root(extracted)
+    staged_names: list[str] = []
+    for pattern in patterns:
+        matches = sorted(root.glob(pattern))
+        if not matches:
+            raise ValueError(f"runtime_libs pattern {pattern!r} matched nothing for {item['name']}")
+        for source in matches:
+            destination = stage_tmp / source.name
+            # ffmpeg and ffprobe share one archive and one set of libraries, so
+            # the second tool through here finds them already staged.
+            if destination.exists() or destination.is_symlink():
+                continue
+            if source.is_symlink():
+                link = os.readlink(source)
+                # Flattening only preserves a link whose target is a bare name in
+                # the same directory. Anything else would dangle, so copy the
+                # real file instead of staging a broken link.
+                if os.path.basename(link) == link:
+                    os.symlink(link, destination)
+                else:
+                    shutil.copy2(source, destination, follow_symlinks=True)
+            else:
+                shutil.copy2(source, destination, follow_symlinks=False)
+            staged_names.append(source.name)
+    return staged_names
+
+
 def can_probe(target: str) -> bool:
     """True when staged binaries can actually run on this host.
 
@@ -175,6 +264,22 @@ def can_probe(target: str) -> bool:
 
 def version_args(name: str) -> list[str]:
     return ["-ver"] if name == "exiftool" else ["-version"]
+
+
+def probe_env(target: str, stage_tmp: Path) -> dict:
+    """The environment the version probe runs a freshly staged binary under.
+
+    Deliberately routed through the *application's* helper rather than setting
+    ``LD_LIBRARY_PATH`` here: if staging and the app disagreed about how a bundled
+    tool finds its libraries, the probe would pass on the build machine and the
+    tool would fail on a user's. Pointing ``ARCHIVE_TOOLS_DIR`` at the staging
+    directory is exactly what the desktop app does with the installed one.
+    """
+    base = dict(os.environ)
+    base["ARCHIVE_TOOLS_DIR"] = str(stage_tmp)
+    if target.startswith("win32-"):
+        return base
+    return runtime.tool_env(base)
 
 
 def stage_target(target: str) -> Path:
@@ -221,12 +326,19 @@ def stage_target(target: str) -> Path:
                 destination_dir = stage_tmp / support
                 if not destination_dir.exists():
                     shutil.copytree(source_dir, destination_dir)
+            staged_libs = stage_runtime_libs(item, extracted, stage_tmp)
             if can_probe(target):
+                # The probe is the first thing that actually *runs* a staged
+                # binary, so give it the same library path the app will. A shared
+                # build without this dies with "error while loading shared
+                # libraries" under check=True, which is the point: staging should
+                # fail here, on the build machine, rather than in a user's install.
                 probe = subprocess.run(
                     [str(staged), *version_args(item["name"])],
                     check=True,
                     text=True,
                     capture_output=True,
+                    env=probe_env(target, stage_tmp),
                 )
                 runtime_version = (probe.stdout or probe.stderr).splitlines()[0]
             else:
@@ -243,6 +355,7 @@ def stage_target(target: str) -> Path:
                     "sha256": item["sha256"].lower(),
                     "license": item["license"],
                     "runtime_version": runtime_version,
+                    "runtime_libs": staged_libs,
                 }
             )
         info = {"target": target, "tools": build_info, "unavailable": unavailable}

@@ -1,7 +1,7 @@
 "use strict";
 
 const { app, BrowserWindow, clipboard, dialog, ipcMain, shell } = require("electron");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { validReady } = require("./ready.cjs");
@@ -64,6 +64,17 @@ async function verifyHealth(port) {
   if (!response.ok || health.ok !== true) throw new Error("backend health check failed");
 }
 
+// PyInstaller's one-dir layout puts everything but the launcher under _internal/,
+// so the staged tools land at backend/_internal/tools -- not backend/tools, which
+// is what this used to point at. Nothing failed visibly, because the backend also
+// finds them through sys._MEIPASS; the cost was a diagnostics panel that reported
+// every bundled tool as "missing". It matters more now that the tools directory is
+// also where ffmpeg's shared libraries live (organize_archive.runtime.tool_env).
+function bundledToolRoot() {
+  if (!app.isPackaged) return process.env.ARCHIVE_TOOLS_DIR || null;
+  return path.join(process.resourcesPath, "backend", "_internal", "tools");
+}
+
 function startBackend() {
   const spec = backendCommand();
   backend = spawn(spec.command, [...spec.args, "--host", LOOPBACK, "--port", "0"], {
@@ -71,7 +82,7 @@ function startBackend() {
     shell: false,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ARCHIVE_TOOLS_DIR: app.isPackaged ? path.join(process.resourcesPath, "backend", "tools") : process.env.ARCHIVE_TOOLS_DIR || "" }
+    env: { ...process.env, ARCHIVE_TOOLS_DIR: bundledToolRoot() || "" }
   });
   backend.stderr.setEncoding("utf8");
   backend.stderr.on("data", text => {
@@ -148,10 +159,29 @@ function writeDiagnostics() {
   return directory;
 }
 
+// ffmpeg is a shared build: a small binary beside the libav* libraries it links
+// against. So "the file is there" stopped being the same question as "it runs" --
+// a staging bug that omitted the libraries leaves an executable that exists and
+// dies on every invocation with a loader error. Actually run it. `-version` is
+// cheap, and the diagnostic is only built when a user asks for it.
+function toolStatus(name, toolRoot) {
+  if (!toolRoot) return "development PATH";
+  const exe = path.join(toolRoot, `${name}${process.platform === "win32" ? ".exe" : ""}`);
+  if (!fs.existsSync(exe)) return "missing";
+  const probe = spawnSync(exe, [name === "exiftool" ? "-ver" : "-version"], {
+    encoding: "utf8",
+    timeout: 10000,
+    // Mirrors organize_archive.runtime.tool_env: the loader needs the staged
+    // directory, and upstream's RPATH is broken so nothing else supplies it.
+    env: process.platform === "win32" ? process.env
+      : { ...process.env, LD_LIBRARY_PATH: [toolRoot, process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter) },
+  });
+  if (probe.status === 0) return `bundled (${(probe.stdout || "").split("\n")[0].trim() || "ok"})`;
+  return `bundled but will not run: ${(probe.stderr || probe.error?.message || "unknown error").split("\n")[0].trim()}`;
+}
+
 function diagnosticText() {
-  const toolRoot = app.isPackaged ? path.join(process.resourcesPath, "backend", "tools") : process.env.ARCHIVE_TOOLS_DIR;
-  const exe = name => path.join(toolRoot || "", `${name}${process.platform === "win32" ? ".exe" : ""}`);
-  const tools = ["exiftool", "ffprobe", "ffmpeg"].map(name => `${name}: ${toolRoot ? (fs.existsSync(exe(name)) ? "bundled" : "missing") : "development PATH"}`);
+  const tools = ["exiftool", "ffprobe", "ffmpeg"].map(name => `${name}: ${toolStatus(name, bundledToolRoot())}`);
   return [`Trove ${app.getVersion()} (${process.env.ARCHIVE_BUILD_COMMIT || "dev"})`, `OS: ${process.platform} ${process.arch}`, `Data folder: ${app.getPath("userData")}`, ...tools, "Recent local errors:", ...stderrLines.slice(-20), ...mainLines.slice(-20)].join("\n");
 }
 

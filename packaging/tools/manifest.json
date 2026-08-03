@@ -5,19 +5,25 @@
       "tools": [
         {
           "name": "ffmpeg",
-          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-linux64-gpl-7.1.tar.xz",
-          "sha256": "1aa3246a617f1a1d17d2e9027685d19c633c10cd6e3d1e0589dfe1ed1db5f3fb",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-linux64-gpl-shared-7.1.tar.xz",
+          "sha256": "5bdc948c3d6a92cfbe87b79c24084d3759e0ed10b0e14f6fabb42115c200d20e",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
-          "executable": "ffmpeg"
+          "executable": "ffmpeg",
+          "runtime_libs": [
+            "lib/lib*.so.*"
+          ]
         },
         {
           "name": "ffprobe",
-          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-linux64-gpl-7.1.tar.xz",
-          "sha256": "1aa3246a617f1a1d17d2e9027685d19c633c10cd6e3d1e0589dfe1ed1db5f3fb",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-linux64-gpl-shared-7.1.tar.xz",
+          "sha256": "5bdc948c3d6a92cfbe87b79c24084d3759e0ed10b0e14f6fabb42115c200d20e",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
-          "executable": "ffprobe"
+          "executable": "ffprobe",
+          "runtime_libs": [
+            "lib/lib*.so.*"
+          ]
         }
       ],
       "unavailable": [
@@ -31,19 +37,25 @@
       "tools": [
         {
           "name": "ffmpeg",
-          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-win64-gpl-7.1.zip",
-          "sha256": "1534687eb3ca223664b384bcd943ffe21e3f14a1fab1adcf239faecb54e006e5",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-win64-gpl-shared-7.1.zip",
+          "sha256": "9fa468e18140946a66531ea2c3d7a63c75cabd0ad13f7c598db56d8431d5a954",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
-          "executable": "ffmpeg.exe"
+          "executable": "ffmpeg.exe",
+          "runtime_libs": [
+            "bin/*.dll"
+          ]
         },
         {
           "name": "ffprobe",
-          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-win64-gpl-7.1.zip",
-          "sha256": "1534687eb3ca223664b384bcd943ffe21e3f14a1fab1adcf239faecb54e006e5",
+          "version": "7.1.5-9-gb9a218bc1e (BtbN GPL 7.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-22-13-36/ffmpeg-n7.1.5-9-gb9a218bc1e-win64-gpl-shared-7.1.zip",
+          "sha256": "9fa468e18140946a66531ea2c3d7a63c75cabd0ad13f7c598db56d8431d5a954",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
-          "executable": "ffprobe.exe"
+          "executable": "ffprobe.exe",
+          "runtime_libs": [
+            "bin/*.dll"
+          ]
         },
         {
           "name": "exiftool",

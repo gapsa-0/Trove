@@ -45,17 +45,29 @@ a release that is wrong in a way nobody notices until it is published.
 
 ## Build inputs
 
-A build has three staged inputs, each verified against a manifest so that the
+A build has two staged inputs, each verified against a manifest so that the
 same tag produces the same bytes:
 
 | Input | Manifest | Staged by |
 | --- | --- | --- |
 | Python runtime | `packaging/requirements-desktop.txt` | `pip install -r` |
 | Native tools (ffmpeg, ffprobe, ExifTool) | `packaging/tools/manifest.json` | `packaging/scripts/stage-tools.py --target <t>` |
-| Bundled model weights | `packaging/models/manifest.json` | `packaging/scripts/stage-models.py` |
 
-`npm run build:backend` refuses to run until the first two have produced their
-`*-build-info.json` markers, so a build can never silently omit them.
+`npm run build:backend` refuses to run until the native tools have produced their
+`tools-build-info.json` marker, so a build can never silently omit them. Model
+weights are not a build input at all — see below.
+
+FFmpeg is staged from BtbN's **shared** build rather than the static one: two
+small executables plus the `libav*` libraries they share, instead of two binaries
+that each embed the entire codec set. That is 162 MB instead of 266 MB on Linux,
+151 MB instead of 263 MB on Windows. `stage-tools.py` copies those libraries flat
+beside the executables (the `runtime_libs` manifest field), preserving the soname
+symlinks — dereferencing them would stage `libavcodec` twice and give the saving
+straight back. Windows needs nothing more, since the loader searches the `.exe`'s
+own directory; Linux needs `LD_LIBRARY_PATH`, which
+`organize_archive.runtime.tool_env` supplies at every spawn. Upstream's RPATH is
+`-Wl:../lib`, a quoting bug in their link flags rather than `$ORIGIN/../lib`, so
+it cannot be relied on.
 
 The spec also carries an explicit `excludes` list. The app runs every model on
 onnxruntime and never imports torch or transformers, but scikit-learn and SciPy
@@ -72,23 +84,28 @@ filenames and filesystem timestamps.
 
 ### Model weights
 
-Most weights are downloaded once at first run from a stable upstream URL and are
-not packaged: the OpenCV Zoo YOLOX detector (~35 MB) and the InsightFace
-`buffalo_l` pack (~184 MB). **A new installation therefore needs network access
-once**, after which everything is local and offline. No media ever leaves the
-machine — only the model downloads are network traffic.
+**No model weights are packaged.** Every one of them is downloaded once, on the
+first run of the feature that needs it, and verified before use. **A new
+installation therefore needs network access once**, after which everything is
+local and offline. No media ever leaves the machine — only the model downloads are
+network traffic.
 
-The DINOv2 pet re-identification model is the exception: it is exported from a
-Hugging Face checkpoint by `tools/build/dinov2_pet_export.py` (a dev-only tool needing
-torch + transformers) and has no upstream URL, so a packaged build carries it
-(~85 MB) and `organize_archive.runtime.bundled_model` prefers that copy.
+Most come from a stable upstream URL: the OpenCV Zoo YOLOX detector (~35 MB) and
+the InsightFace `buffalo_l` pack (~184 MB). Two do not exist upstream in ONNX form
+at all — the AdaFace embedder (~249 MB) and the DINOv2 pet re-identification model
+(~84 MB), both exported from Hugging Face checkpoints by dev-only tools that need
+torch + transformers. Those two are re-published as release assets on this
+repository (the `models-v1` tag), and `organize_archive/model_manifest.py`
+resolves them the same way as the rest.
 
-`stage-models.py` takes it from a local `cache/models` directory (a developer
-machine that already has it) or from the manifest `url`. CI runners have no
-local copy, so they use the `url`, which points at a release asset on this
-repository — the `models-v1` tag. `stage-models.py` downloads with no
-authentication, which is why the asset has to be publicly reachable; that is
-satisfied by this repository being public.
+They used to travel inside the installer, which cost 349 MB of every download —
+for files most users would fetch over the same connection anyway. Removing them is
+the single largest reason the installers roughly halved. `tests/unit/test_no_bundled_models.py`
+fails the build if the spec starts bundling them again.
+
+`packaging/scripts/stage-models.py` survives as a developer convenience: it fills
+`packaging/models/staged/`, which is the second tier of the resolver, so a checkout
+can run the model-backed tests offline. CI runs only its `--validate` mode.
 
 **Those releases are permanent.** The manifest pins the exact bytes by SHA-256,
 so deleting or retagging an asset breaks reproducible builds of every version
@@ -110,8 +127,9 @@ that references it. Add a new tag (`models-v2`, …) instead of moving an old on
    `staged <name> from https://…`; the script re-verifies the hash after
    downloading and fails loudly on a mismatch.
 
-A model with no local copy and no reachable `url` fails the build with an
-explicit message rather than shipping a build whose Pets grouping cannot start.
+A model with no local copy and no reachable `url` fails with an explicit message
+naming the export tool, raised before anything is downloaded — see
+`tests/unit/test_detect_preflight.py`.
 
 ## Required decisions before public beta
 

@@ -12,7 +12,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from ..runtime import no_window, tool
+from ..runtime import no_window, tool, tool_env
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,10 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=20,
+            # The bundled ffmpeg is a shared build and cannot find its own
+            # libav* without this; see runtime.tool_env. Harmless for a PATH
+            # ffmpeg, which ignores a library path it does not need.
+            env=tool_env(),
             **no_window(),
         )
     except Exception as exc:
