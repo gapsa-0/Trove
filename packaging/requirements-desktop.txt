@@ -10,7 +10,7 @@ ImageHash==4.3.2
 pyexiftool==0.5.6
 numpy==2.5.1
 opencv-python==5.0.0.93
-onnxruntime==1.27.0
+onnxruntime==1.28.0
 scikit-learn==1.9.0
 # k-NN for the face cluster core/expansion passes. faces/cluster.py degrades to a
 # blocked-GEMM path when this is missing, so a build without it stays correct and
