@@ -41,6 +41,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that never opens a window. The weights are now downloaded on first use like every
   other model, so the first People/Pets run fetches about 550 MB instead of 220 MB
   and needs a working connection once. Nothing else about the app changes.
+- Face clustering no longer needs the `faiss-cpu` package. The search it did is
+  now done directly in NumPy, producing identical people and identical groupings —
+  a clustering pass is 1.3–2.3x slower, which is a few minutes against a detect run
+  measured in hours, and the wheel was 62 MB of installer.
 - Model downloads now report progress. A first run that fetches several hundred
   megabytes used to show one unchanging line on the stage card and read as hung.
 - The Overview storage panel was reworked: one bar with a Size/Files switch

@@ -51,7 +51,7 @@ put each person's fragments back together.
 from __future__ import annotations
 
 from ..config import Config
-from .knn import faiss_module, mutual_knn
+from .knn import mutual_knn, topk_search
 
 
 def _centroids(X, groups: list[list[int]]):
@@ -192,17 +192,7 @@ class BorderAssigner:
 
     def _search(self, M, Q, want: int):
         """Top-``want`` core members for each query face, with similarities."""
-        import numpy as np
-
-        faiss = faiss_module()
-        if faiss is not None:
-            index = faiss.IndexFlatIP(M.shape[1])
-            index.add(M)
-            return index.search(Q, want)
-        # pragma: no cover - exercised only without faiss
-        full = Q @ M.T
-        idx = np.argsort(-full, axis=1)[:, :want]
-        return np.take_along_axis(full, idx, axis=1), idx
+        return topk_search(M, Q, want)
 
     def _rank_cores(self, hits, sims, owner, votes: int) -> list[tuple[float, int]]:
         """Score each core this face hit by the mean of its best ``votes`` hits."""

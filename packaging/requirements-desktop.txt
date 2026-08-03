@@ -19,11 +19,6 @@ numpy==2.5.1
 opencv-python-headless==5.0.0.93
 onnxruntime==1.27.0
 scikit-learn==1.9.0
-# k-NN for the face cluster core/expansion passes. faces/cluster.py degrades to a
-# blocked-GEMM path when this is missing, so a build without it stays correct and
-# only gets slower — which is exactly why its absence went unnoticed until now.
-# The wheel carries a bundled libfaiss; organize-archive.spec collects it.
-faiss-cpu==1.14.3
 # Face detection/recognition backend (SCRFD det_10g + ArcFace w600k_r50 from the
 # buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
 # zoo loader and face_align helpers, inference itself runs on onnxruntime.

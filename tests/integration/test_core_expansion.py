@@ -42,6 +42,57 @@ def test_faiss_knn_matches_the_reference_gemm_exactly():
         assert np.abs(fs - gs).max() < 1e-5
 
 
+def test_faiss_topk_matches_the_reference_gemm_exactly():
+    """The same guarantee for pass 2's search, which is asymmetric.
+
+    ``knn_search`` scans a matrix against itself; ``topk_search`` scans borderline
+    faces against core members, and until recently its no-FAISS path was a
+    separate, unblocked one-liner in passes.py that nothing exercised. The two
+    backends have to agree here for the same reason they do above.
+    """
+    if knn.faiss_module() is None:
+        pytest.skip("faiss is an optional dependency")
+    rng = np.random.default_rng(1)
+    for n_m, n_q, dim, want in ((300, 120, 64, 5), (64, 500, 128, 12)):
+        M = np.stack([_unit(v) for v in rng.normal(size=(n_m, dim))]).astype("float32")
+        Q = np.stack([_unit(v) for v in rng.normal(size=(n_q, dim))]).astype("float32")
+        fs, fi = knn.topk_search(M, Q, want, use_faiss=True)
+        gs, gi = knn.topk_search(M, Q, want, use_faiss=False)
+        assert (fi == gi).all()
+        assert np.abs(fs - gs).max() < 1e-5
+
+
+def test_topk_blocking_does_not_change_the_answer():
+    """A block boundary must not be visible in the result.
+
+    Similarities are compared to float32 epsilon rather than exactly: BLAS
+    dispatches on matrix shape, so a (10, n) product and a (97, n) product take
+    different kernels and land ~1e-7 apart. The neighbours themselves are
+    identical, which is what the clustering actually consumes.
+    """
+    rng = np.random.default_rng(2)
+    M = np.stack([_unit(v) for v in rng.normal(size=(200, 32))]).astype("float32")
+    Q = np.stack([_unit(v) for v in rng.normal(size=(97, 32))]).astype("float32")
+
+    whole = knn.topk_search(M, Q, 7, block=1024, use_faiss=False)
+    split = knn.topk_search(M, Q, 7, block=10, use_faiss=False)
+
+    assert (whole[1] == split[1]).all()
+    assert np.abs(whole[0] - split[0]).max() < 1e-6
+
+
+def test_topk_never_asks_for_more_neighbours_than_exist():
+    """``want`` above the core count would put argpartition's kth out of range."""
+    rng = np.random.default_rng(3)
+    M = np.stack([_unit(v) for v in rng.normal(size=(3, 16))]).astype("float32")
+    Q = np.stack([_unit(v) for v in rng.normal(size=(5, 16))]).astype("float32")
+
+    sims, idx = knn.topk_search(M, Q, want=50, use_faiss=False)
+
+    assert idx.shape == (5, 3) and sims.shape == (5, 3)
+    assert idx.min() >= 0
+
+
 # 2-3s: the only test here that clusters enough vectors to cost real time.
 @pytest.mark.slow
 def test_bridge_vectors_cannot_fuse_two_identities():

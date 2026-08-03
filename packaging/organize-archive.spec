@@ -25,14 +25,12 @@ if tools.is_dir():
 # fails the build if this comes back; see docs/release.md.
 binaries = []
 hiddenimports = []
-# faiss is in this list for its bundled native library (collect_dynamic_libs):
-# the Python package is a thin SWIG wrapper over libfaiss, and without the
-# shared object the packaged app imports faiss and then fails at index creation.
-# `tokenizers` is here for the same reason as faiss: the Python package is a thin
-# wrapper over a Rust extension module, and the app only imports it lazily inside
-# the semantic backend, so the native library has to be collected explicitly.
+# `tokenizers` is in this list for its bundled native library
+# (collect_dynamic_libs): the Python package is a thin wrapper over a Rust
+# extension module, and the app only imports it lazily inside the semantic
+# backend, so the native library has to be collected explicitly.
 for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklearn",
-                "numpy", "faiss", "tokenizers"):
+                "numpy", "tokenizers"):
     hiddenimports += collect_submodules(package)
     binaries += collect_dynamic_libs(package)
 # insightface supplies the buffalo_l model-zoo loader and the face_align helpers.
@@ -51,9 +49,16 @@ datas += collect_data_files("insightface")
 # Keep this list to packages nothing on the runtime path imports. In particular
 # `onnx` and `skimage` look dev-only but are NOT: insightface imports both, and
 # excluding them silently disables face detection in the packaged app.
+#
+# faiss is excluded for a different reason: it is genuinely optional, and
+# faces/knn.py uses it when present. It is in the `dev` extra -- the tests assert
+# the FAISS and NumPy search paths agree -- so every build machine has it, and
+# without this line the build would silently pick it up and put 62 MB back,
+# 37 MB of which is its own private copy of OpenBLAS.
 excludes = [
     "torch", "torchvision", "torchaudio", "transformers", "sentence_transformers",
     "matplotlib", "tkinter", "IPython", "pytest",
+    "faiss",
 ]
 
 a = Analysis([str(root / "packaging" / "desktop_entry.py")], pathex=[str(root)], binaries=binaries,

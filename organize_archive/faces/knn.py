@@ -5,11 +5,23 @@ an L2-normalized matrix and returns neighbours, or a disjoint-set of fragments.
 That is what lets the clustering passes above it be read as an argument about
 *thresholds* rather than about linear algebra.
 
-All search runs through FAISS ``IndexFlatIP`` -- exact inner product, which on
-L2-normalized vectors *is* cosine, so it is a speed change and not an accuracy
-change. The blocked-GEMM path is kept both as the no-faiss fallback and as the
-reference the tests assert FAISS against, so a change of engine can never
-quietly become a change of clustering.
+Both searches here are blocked GEMM over NumPy. FAISS is still *used* when it is
+installed -- ``IndexFlatIP`` is an exact inner product, which on L2-normalized
+vectors is cosine, so it is a speed change and not an accuracy change -- but the
+desktop build no longer ships it: 62 MB of wheel, including its own 37 MB copy of
+OpenBLAS, to make one clustering pass 1.3-2.3x faster. That pass is a few minutes
+against a detect run measured in hours.
+
+The two engines are held to agreeing exactly, by
+``tests/integration/test_core_expansion.py``. That is what lets this be an
+installer-size decision rather than a clustering decision, and it is why the GEMM
+path is written as the reference rather than as a degraded fallback.
+
+Both paths are blocked, and that is load-bearing rather than tidy. The pass-2
+search runs borderline faces against core members; the unblocked form of it --
+one ``Q @ M.T`` and a full ``argsort`` -- is a single 28 GB allocation at 60k
+borderline against 120k cores, where FAISS streams. Removing FAISS without
+blocking that would have traded a slower archive for one that cannot finish.
 """
 
 from __future__ import annotations
@@ -97,6 +109,60 @@ def _knn_gemm(X, k: int, n: int, block: int, progress):
         if progress is not None:
             progress.update(i1, 0, "grouping faces…")
     return nbr, nbs
+
+
+def _topk_faiss(faiss, M, Q, want: int):
+    """Exact top-``want`` rows of ``M`` for each row of ``Q``, via a flat index."""
+    index = faiss.IndexFlatIP(M.shape[1])
+    index.add(M)
+    return index.search(Q, want)
+
+
+def _topk_gemm(M, Q, want: int, block: int):
+    """The reference implementation: blocked GEMM, argpartition per row.
+
+    Blocked for the same reason ``_knn_gemm`` is. The unblocked form -- one
+    ``Q @ M.T`` and a full ``argsort`` -- is fine on a small archive and
+    catastrophic on a large one: 60k borderline faces against 120k core members
+    is a single 28 GB float32 allocation, where FAISS streams and never
+    materialises the matrix at all. That made the no-FAISS path something that
+    existed rather than something that worked.
+    """
+    import numpy as np
+
+    nq = len(Q)
+    sims = np.zeros((nq, want), dtype=np.float32)
+    idx = np.full((nq, want), -1, dtype=np.int64)
+    for q0 in range(0, nq, block):
+        q1 = min(nq, q0 + block)
+        full = Q[q0:q1] @ M.T  # (b, len(M))
+        # kth must be a valid index; callers clamp want to len(M), and want == len(M)
+        # leaves kth == len(M) - 1, which is the last legal one.
+        part = np.argpartition(-full, want - 1, axis=1)[:, :want]
+        vals = np.take_along_axis(full, part, axis=1)
+        order = np.argsort(-vals, axis=1)
+        idx[q0:q1] = np.take_along_axis(part, order, axis=1)
+        sims[q0:q1] = np.take_along_axis(vals, order, axis=1)
+        del full, part, vals, order  # free the (b, len(M)) block promptly
+    return sims, idx
+
+
+def topk_search(M, Q, want: int, block: int = 1024, use_faiss: bool = True):
+    """Top-``want`` rows of ``M`` for each row of ``Q``, most-similar-first.
+
+    Returns ``(sims, idx)`` in that order, matching ``faiss.Index.search``. Both
+    inputs must be L2-normalized, which makes an inner product a cosine.
+
+    The asymmetric sibling of ``knn_search``: that one searches a matrix against
+    itself and excludes the self-match, this one searches two different sets and
+    keeps every hit. Pass 2 of the clustering (``passes.BorderAssigner``) needs
+    the second shape -- borderline faces against core members.
+    """
+    want = max(1, min(want, len(M)))
+    faiss = faiss_module() if use_faiss else None
+    if faiss is not None:
+        return _topk_faiss(faiss, M, Q, want)
+    return _topk_gemm(M, Q, want, block)
 
 
 def knn_search(X, k: int, block: int = 1024, progress=None, use_faiss: bool = True):

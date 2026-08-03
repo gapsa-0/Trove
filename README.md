@@ -131,7 +131,7 @@ downloaded once, on the first run of the feature that needs them.
 > The sizes above are the published 0.1.2 files, which still carried the model
 > weights inside the installer. The next release drops them, along with a
 > duplicated copy of FFmpeg and an unused GUI toolkit: the Linux build measures
-> 427 MB against 744 MB here.
+> 409 MB against 744 MB here.
 
 Checksums for all three are in
 [SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/SHA256SUMS.txt).
