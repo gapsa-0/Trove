@@ -41,7 +41,11 @@ def run(ctx: JobContext) -> None:
     # code with nowhere to check the cancel event, so shutdown is told not to
     # wait on it (see JobContext.uninterruptible).
     with ctx.uninterruptible("loading detection models"):
-        face_be, pet_be = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
+        loaded = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
+    # Fail here rather than inside the first chunk: extract() would otherwise
+    # load the models a second time to reach the same conclusion.
+    loaded.require()
+    face_be, pet_be = loaded.face, loaded.pet
     processed = faces_found = animals = suppressed = human_pets = 0
     turned = 0
     while True:

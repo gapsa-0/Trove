@@ -65,7 +65,10 @@ def _warm_vision_model(ctx: JobContext) -> None:
         return
     with ctx.uninterruptible("loading the semantic model"):
         try:
-            semantic.backend(ctx.cfg, log=lambda m: setattr(ctx.job, "current", m)).load_vision()
+            # The callback goes to load_vision, not to backend(): the backend is
+            # a process-wide singleton that some other caller may already have
+            # built, and this stage is where the download has to be visible.
+            semantic.backend(ctx.cfg).load_vision(log=lambda m: setattr(ctx.job, "current", m))
         except Exception:
             logger.debug("semantic warm-up failed; the pass reports it per file", exc_info=True)
 

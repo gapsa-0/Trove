@@ -57,6 +57,7 @@ from typing import Any
 
 from ..config import Config
 from ..db import database as db
+from ..errors import ModelUnavailableError
 from ..faces import backend as face_backend
 from ..faces import fiqa
 from ..pets import backend as pet_backend
@@ -144,14 +145,68 @@ def available() -> bool:
     return face_backend.available() or pet_backend.available()
 
 
-def make_backends(cfg: Config, log=None):
+@dataclass(frozen=True)
+class Backends:
+    """Whichever detectors loaded, plus why the others did not.
+
+    ``problems`` exists because those reasons used to reach the log and nothing
+    else: the stage then failed with "see the messages above", which on a status
+    card is advice about somewhere the user cannot look. They are carried here so
+    the error that stops the stage can quote them (see ``_prepare_backends``).
+    """
+
+    face: Any = None
+    pet: Any = None
+    problems: tuple[str, ...] = ()
+
+    def require(self) -> None:
+        """Raise unless at least one detector loaded, quoting every reason.
+
+        Stopping here is the point: a run with no detectors would walk the whole
+        pending population and mark every image scanned with nothing found.
+        """
+        if self.face is None and self.pet is None:
+            detail = " ".join(self.problems) or "no reason was reported"
+            raise ModelUnavailableError(f"detect backend unavailable — {detail}")
+
+
+def _unavailable(kind: str, exc: Exception, log, problems: list[str]) -> None:
+    """Record one detector's failure without taking the other one down."""
+    message = f"{kind} detection unavailable: {exc}"
+    problems.append(message)
+    if log:
+        log(message)
+    logger.warning("%s detection unavailable", kind, exc_info=True)
+
+
+def make_backends(cfg: Config, log=None) -> Backends:
     """Build whichever detectors are available (loads the ONNX models once).
 
-    Returns ``(face_be, pet_be)``; either may be None when its optional deps or
-    models are missing, so the stage degrades gracefully (faces-only or pets-only)
-    instead of failing the whole pass."""
+    Either backend may be None when its optional deps or models are missing, so
+    the stage degrades gracefully (faces-only or pets-only) instead of failing
+    the whole pass.
+    """
+    problems: list[str] = []
     face_be = pet_be = None
-    if face_backend.available():
+    want_face = face_backend.available()
+    want_pet = pet_backend.available()
+    # Both preflights run BEFORE either constructor, and neither touches the
+    # network: buffalo_l and YOLOX are ~310 MB together, and downloading them
+    # only to discover that one detector's embedder can never be obtained is
+    # bandwidth the user does not get back.
+    if want_face:
+        try:
+            face_backend.preflight(cfg.cache_dir)
+        except Exception as e:
+            _unavailable("people", e, log, problems)
+            want_face = False
+    if want_pet:
+        try:
+            pet_backend.preflight(cfg.cache_dir)
+        except Exception as e:
+            _unavailable("pet", e, log, problems)
+            want_pet = False
+    if want_face:
         try:
             face_be = face_backend.FaceBackend(
                 cfg.cache_dir,
@@ -168,10 +223,8 @@ def make_backends(cfg: Config, log=None):
         except Exception as e:
             # Weights that could not be fetched or loaded must not take the other
             # detector down with them: report and carry on pets-only.
-            if log:
-                log(f"people detection unavailable: {e}")
-            logger.warning("people detection unavailable", exc_info=True)
-    if pet_backend.available():
+            _unavailable("people", e, log, problems)
+    if want_pet:
         try:
             pet_be = pet_backend.PetBackend(
                 cfg.cache_dir,
@@ -184,10 +237,8 @@ def make_backends(cfg: Config, log=None):
                 log=log,
             )
         except Exception as e:
-            if log:
-                log(f"pet detection unavailable: {e}")
-            logger.warning("pet detection unavailable", exc_info=True)
-    return face_be, pet_be
+            _unavailable("pet", e, log, problems)
+    return Backends(face_be, pet_be, tuple(problems))
 
 
 def _fix_sideways_photo(img, scale, found, cfg, face_be, pet_be):
@@ -231,18 +282,13 @@ def _detect_photo(path, cfg, face_be, pet_be) -> FileResult:
 def _prepare_backends(conn, cfg: Config, progress, limit, face_be, pet_be):
     """Load whichever detectors weren't already provided, and size the run."""
     if not available():
-        raise RuntimeError("detect backend unavailable (needs faces and/or pets)")
+        raise ModelUnavailableError("detect backend unavailable (needs faces and/or pets)")
     if face_be is None and pet_be is None:
-        face_be, pet_be = make_backends(
-            cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None
-        )
-        if face_be is None and pet_be is None:
-            # Both sets of weights failed to load. Stop here rather than walk the
-            # pending images and mark them scanned with nothing detected.
-            raise RuntimeError(
-                "detect backend unavailable: neither the face nor the pet models "
-                "could be loaded (see the messages above)"
-            )
+        loaded = make_backends(cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None)
+        # The per-detector reasons travel with the error, because the status card
+        # that shows it is all the user has.
+        loaded.require()
+        face_be, pet_be = loaded.face, loaded.pet
     # The FIQA assessor is attached per run rather than baked into the backend:
     # it depends on the calibration row, which this very run may create (see
     # _maybe_bootstrap_fiqa), and the backend is often reused across chunked runs.

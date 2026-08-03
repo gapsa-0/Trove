@@ -5,7 +5,7 @@ On a supported Debian/Ubuntu release, install the `.deb` with `sudo apt install
 the AppImage executable and run it: `chmod +x Archive*.AppImage && ./Archive*.AppImage`.
 
 The first time People or Pets detection runs, Archive downloads their model
-weights (~220 MB) once, then works offline. Everything else — including all media
+weights (~550 MB) once, then works offline. Everything else — including all media
 processing — is local from the start.
 
 Linux builds do not bundle ExifTool (upstream ships Perl source rather than a

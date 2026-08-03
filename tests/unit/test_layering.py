@@ -50,6 +50,7 @@ LAYERS = {
     "config": 0,
     "paths": 0,
     "runtime": 0,
+    "model_manifest": 0,
     "logging_setup": 0,
     "errors": 0,
     "db": 0,

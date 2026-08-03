@@ -1,0 +1,290 @@
+"""Model weights that have no upstream URL: one manifest, four sources.
+
+Most weights this app uses are fetched at first use from a stable upstream --
+the OpenCV Zoo YOLOX detector, the InsightFace buffalo_l pack, the SigLIP 2
+towers -- and need nothing from this module. Two are different: the AdaFace
+embedder and the DINOv2 pet re-ID model exist only as self-exports (see
+``tools/build/*_export.py``), so there is no upstream to fetch them from.
+``packaging/models/manifest.json`` is what stands in for one: it records each
+file's size, SHA-256, provenance, licence, and our own re-publication as a
+release asset.
+
+That manifest used to be readable only by ``packaging/scripts/stage-models.py``,
+which meant a frozen build carried these two files and *every other way of
+running the app* -- ``npm run dev``, ``oa``, any source checkout -- had no path
+to them at all. The visible symptom was detection downloading ~310 MB of the
+weights it could fetch and then failing on the one it could not. So the manifest
+is a runtime contract now, and the two files resolve identically everywhere:
+
+1. ``ARCHIVE_MODELS_DIR``, or a frozen build's bundle (``runtime.bundled_model``)
+2. ``packaging/models/staged/`` in a source checkout -- whatever a local
+   ``stage-models.py`` run already produced, so a developer who has built a
+   package never downloads these twice
+3. the download cache, ``<cache_dir>/models/<file>`` -- where 4 puts them
+4. the manifest ``url``, downloaded once, size- and SHA-256-verified
+
+Only step 4 touches the network, and only for a file that is genuinely absent.
+``obtainable()`` answers "could this be resolved at all" *without* the network,
+which is what lets a caller refuse a run before spending bandwidth on the other
+half of its models (see ``detect/extract.make_backends``).
+
+Packaging imports this module rather than reimplementing it, so the schema, the
+hashes and the verification have exactly one implementation.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+from . import runtime
+from .errors import ModelUnavailableError
+
+logger = logging.getLogger(__name__)
+
+# The repo root, resolved the same way config.settings does it: this file is
+# organize_archive/model_manifest.py, so two parents up is the checkout. Absent
+# in a frozen build (where step 1 answers) and in a wheel installed outside a
+# checkout (where the error message below is what the user gets).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MANIFEST_PATH = PROJECT_ROOT / "packaging" / "models" / "manifest.json"
+STAGED_DIR = PROJECT_ROOT / "packaging" / "models" / "staged"
+
+SCHEMA_VERSION = 1
+_REQUIRED_TEXT_KEYS = ("name", "file", "sha256", "source", "license")
+
+
+def download_progress(log, label: str, total: int, *, interval: float = 1.0):
+    """A ``urlretrieve`` reporthook that reports percent complete through ``log``.
+
+    Since the weights stopped travelling inside the installer, first run fetches
+    ~570 MB. ``log`` writes ``job.current``, which is the single line the stage
+    card shows, so without this a user watches ``downloading adaface model
+    (249 MB) …`` sit motionless for minutes and reasonably concludes it has hung.
+
+    Throttled by wall-clock rather than by block count: ``urlretrieve`` calls back
+    every 8 KB, which on a 249 MB file is thirty thousand callbacks, and each one
+    of those would be a write the GUI then polls. One update a second is legible
+    and costs nothing. Repeated messages are suppressed too, so a stalled download
+    stops repainting rather than looking like progress.
+
+    Returns None when there is nobody to report to, which is exactly what
+    ``urlretrieve(..., reporthook=None)`` wants, so callers need no branch.
+    """
+    if log is None:
+        return None
+    megabytes = total / 1024 / 1024 if total > 0 else 0.0
+    state = {"at": 0.0, "said": ""}
+
+    def hook(blocks: int, block_size: int, size: int) -> None:
+        # `size` is the server's Content-Length, or -1 when it declines to say.
+        # The manifest knows the answer either way, so prefer whichever is real.
+        expected = size if size > 0 else total
+        done = blocks * block_size
+        if expected > 0:
+            # The last block is short, and a stray over-100% reads as a bug.
+            done = min(done, expected)
+            message = f"downloading {label} — {done * 100 // expected}% of {megabytes:.0f} MB"
+        else:
+            message = f"downloading {label} — {done / 1024 / 1024:.0f} MB"
+        now = time.monotonic()
+        if now - state["at"] < interval or message == state["said"]:
+            return
+        state["at"] = now
+        state["said"] = message
+        log(message)
+
+    return hook
+
+
+def sha256(path: Path) -> str:
+    """Hex digest of a file, read in chunks so a 350 MB model is not resident."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate(item: object) -> dict:
+    """One manifest entry, checked hard enough that later code can trust it.
+
+    Every field this module and the packaging script rely on is verified here --
+    including that ``file`` is a relative path with no ``..`` in it, since it is
+    joined onto the cache directory and onto the staging directory.
+    """
+    if not isinstance(item, dict):
+        raise ValueError("invalid model entry")
+    for key in _REQUIRED_TEXT_KEYS:
+        if not isinstance(item.get(key), str) or not item[key]:
+            raise ValueError(f"model entry missing {key}")
+    relative = Path(item["file"])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"unsafe model path: {item['file']}")
+    digest = item["sha256"]
+    if len(digest) != 64 or any(c not in "0123456789abcdefABCDEF" for c in digest):
+        raise ValueError(f"invalid SHA-256 for model {item['name']}")
+    if not isinstance(item.get("size"), int) or item["size"] <= 0:
+        raise ValueError(f"invalid size for model {item['name']}")
+    url = item.get("url")
+    if url is not None and (not isinstance(url, str) or not url.startswith("https://")):
+        raise ValueError(f"invalid url for model {item['name']}")
+    return item
+
+
+def load(manifest_path: Path | None = None) -> list[dict]:
+    """Every manifest entry, validated. Raises on a malformed manifest.
+
+    ``OSError`` (no manifest here), ``ValueError`` and ``JSONDecodeError`` all
+    reach the caller unwrapped: packaging wants to print them, while the app
+    calls ``entry()`` below, which turns them into a user-facing error.
+    """
+    path = MANIFEST_PATH if manifest_path is None else manifest_path
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema_version") != SCHEMA_VERSION or not isinstance(data.get("models"), list):
+        raise ValueError(f"invalid {path} schema")
+    return [_validate(item) for item in data["models"]]
+
+
+def entry(name: str) -> dict:
+    """One entry by name, as a user-facing error when it cannot be read.
+
+    A missing manifest is not a bug: it is what an app installed outside a
+    source checkout looks like, and the honest answer there is that this weight
+    must come from a packaged build or ``ARCHIVE_MODELS_DIR``.
+    """
+    try:
+        items = load()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ModelUnavailableError(
+            f"cannot read the model manifest at {MANIFEST_PATH} ({exc}). Install a "
+            "packaged build, or point ARCHIVE_MODELS_DIR at a directory holding "
+            "the model files."
+        ) from exc
+    for item in items:
+        if item["name"] == name:
+            return item
+    raise ModelUnavailableError(f"no model named {name!r} in {MANIFEST_PATH}")
+
+
+def cache_path(name: str, cache_dir: str) -> Path:
+    """Where a downloaded copy lives: ``<cache_dir>/models/<file>``."""
+    return Path(cache_dir) / "models" / entry(name)["file"]
+
+
+def present(name: str, cache_dir: str) -> Path | None:
+    """The first complete copy among sources 1-3, or None. Never downloads.
+
+    Size is the completeness check, as everywhere else in this codebase: a
+    truncated file must not be mistaken for a usable one. The full SHA-256 is
+    verified when a file is *downloaded*, not on every startup -- hashing 350 MB
+    to answer "is the model there" would cost seconds on every run.
+    """
+    item = entry(name)
+    candidates = (
+        runtime.bundled_model(item["file"]),
+        STAGED_DIR / item["file"],
+        Path(cache_dir) / "models" / item["file"],
+    )
+    for candidate in candidates:
+        if (
+            candidate is not None
+            and candidate.is_file()
+            and candidate.stat().st_size >= item["size"]
+        ):
+            return candidate
+    return None
+
+
+def path(name: str, cache_dir: str) -> Path:
+    """Where this model is, or where a download would put it.
+
+    For callers that want a path to show the user (or to hand to onnxruntime
+    after their own readiness check) rather than a fetch.
+    """
+    return present(name, cache_dir) or cache_path(name, cache_dir)
+
+
+def obtainable(name: str, cache_dir: str) -> bool:
+    """Could ``ensure`` succeed? Answered without touching the network.
+
+    False means "no copy anywhere and no URL to get one from" -- a condition no
+    amount of downloading fixes, and the one worth refusing a run over before it
+    starts fetching anything else.
+    """
+    try:
+        return present(name, cache_dir) is not None or bool(entry(name).get("url"))
+    except ModelUnavailableError:
+        return False
+
+
+def missing_reason(name: str, cache_dir: str, *, feature: str) -> str | None:
+    """Why ``feature`` cannot run, or None if it can. No network, no downloads.
+
+    The text is the whole point: it names the file, the tool that regenerates it
+    and the packaged build that ships it, because this message is what reaches
+    the user on a status card.
+    """
+    if obtainable(name, cache_dir):
+        return None
+    try:
+        item = entry(name)
+    except ModelUnavailableError as exc:
+        return f"{feature} needs the {name} model: {exc}"
+    tool = item["source"].split(" —")[0]
+    return (
+        f"{feature} needs {item['file']}, which is not on this machine and has no "
+        f"download URL in the manifest. Regenerate it with `python3 {tool}` "
+        "(dev-only: needs torch), or install a packaged build, which ships it."
+    )
+
+
+def ensure(name: str, cache_dir: str, log=None) -> Path:
+    """Resolve ``name``, downloading it once if that is the only source left.
+
+    Atomic (temp + rename) so an interrupted download never leaves a truncated
+    ONNX to fail obscurely later, and both size and SHA-256 are verified against
+    the manifest before the file is put in place -- a corrupt or substituted
+    model is refused rather than left to produce silently meaningless vectors.
+    """
+    found = present(name, cache_dir)
+    if found is not None:
+        return found
+    item = entry(name)
+    url = item.get("url")
+    if not url:
+        raise ModelUnavailableError(missing_reason(name, cache_dir, feature=name) or name)
+
+    destination = cache_path(name, cache_dir)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if log:
+        log(f"downloading {name} model ({item['size'] / 1024 / 1024:.0f} MB) …")
+    logger.info("downloading %s from %s", name, url)
+    fd, tmp = tempfile.mkstemp(dir=str(destination.parent), suffix=".part")
+    os.close(fd)
+    try:
+        urllib.request.urlretrieve(
+            url, tmp, reporthook=download_progress(log, f"{name} model", item["size"])
+        )
+        got = os.path.getsize(tmp)
+        if got != item["size"]:
+            raise OSError(f"got {got} bytes, expected {item['size']}")
+        actual = sha256(Path(tmp))
+        if actual != item["sha256"].lower():
+            raise OSError(f"sha256 {actual} does not match the manifest")
+        os.replace(tmp, destination)
+    except Exception as exc:
+        # Wrapped so the message says which model and which URL failed; the
+        # caller reports it once (never logged here as well, or a single
+        # failure is recorded twice).
+        raise ModelUnavailableError(f"could not download {name} from {url}: {exc}") from exc
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return destination

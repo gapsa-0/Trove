@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Stage the ML model weights a packaged build has to carry.
+"""Pre-seed a checkout with the ML model weights, and validate their manifest.
 
-Most model weights are fetched once at first run from a stable upstream URL
-(OpenCV Zoo YOLOX, InsightFace buffalo_l) and need no packaging support. The
-models listed in ``packaging/models/manifest.json`` are the exceptions: they have
-no upstream download, so a frozen build must ship them or the feature is simply
-missing for installed users.
+This is a developer convenience and a CI schema check, **not** a release step.
+Releases used to bundle the two weights in ``packaging/models/manifest.json``,
+because unlike the OpenCV Zoo YOLOX detector and the InsightFace buffalo_l pack
+they have no upstream download URL. That cost 349 MB of installer. They are now
+re-published as release assets on this repository instead, so the app fetches them
+on first use like every other weight, and ``packaging/organize-archive.spec``
+bundles nothing.
+
+What remains useful here: staging into ``packaging/models/staged/`` populates the
+second tier of ``organize_archive.model_manifest``'s resolver, which lets a source
+checkout run the model-backed tests offline; and ``--validate`` is what CI runs to
+keep the manifest honest. Nothing in the desktop build calls this script.
 
 Sources, in the order tried:
 
@@ -17,12 +24,17 @@ Sources, in the order tried:
 
 Every source is SHA-256 verified against the manifest before it is staged, so all
 three produce byte-identical output.
+
+The manifest schema, the hashing and the URL download live in
+``organize_archive.model_manifest``, which the *application* uses to resolve these
+same two files at runtime. They are imported rather than reimplemented here: two
+copies of "what a valid entry is" would eventually disagree, and the one that
+matters is whichever the app believes.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -33,41 +45,17 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / "packaging" / "models" / "manifest.json"
-STAGE = ROOT / "packaging" / "models" / "staged"
+sys.path.insert(0, str(ROOT))
 
+from organize_archive import model_manifest  # noqa: E402  (needs ROOT on sys.path)
 
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+MANIFEST = model_manifest.MANIFEST_PATH
+STAGE = model_manifest.STAGED_DIR
+sha256 = model_manifest.sha256
 
 
 def models() -> list[dict]:
-    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if data.get("schema_version") != 1 or not isinstance(data.get("models"), list):
-        raise ValueError("invalid packaging/models/manifest.json schema")
-    for item in data["models"]:
-        if not isinstance(item, dict):
-            raise ValueError("invalid model entry")
-        for key in ("name", "file", "sha256", "source", "license"):
-            if not isinstance(item.get(key), str) or not item[key]:
-                raise ValueError(f"model entry missing {key}")
-        relative = Path(item["file"])
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError(f"unsafe model path: {item['file']}")
-        if len(item["sha256"]) != 64 or any(
-            c not in "0123456789abcdefABCDEF" for c in item["sha256"]
-        ):
-            raise ValueError(f"invalid SHA-256 for model {item['name']}")
-        if not isinstance(item.get("size"), int) or item["size"] <= 0:
-            raise ValueError(f"invalid size for model {item['name']}")
-        url = item.get("url")
-        if url is not None and (not isinstance(url, str) or not url.startswith("https://")):
-            raise ValueError(f"invalid url for model {item['name']}")
-    return data["models"]
+    return model_manifest.load(MANIFEST)
 
 
 def validate() -> int:
@@ -83,7 +71,6 @@ def validate() -> int:
 def cache_models_dir() -> Path | None:
     """The app's own ``cache/models`` directory, if this checkout can tell us."""
     try:
-        sys.path.insert(0, str(ROOT))
         from organize_archive.config import Config
 
         return Path(Config().cache_dir) / "models"

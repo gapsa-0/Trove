@@ -138,7 +138,10 @@ repeats the list so it gets checked rather than remembered.
   sends photo *coordinates* to a public tile server, never the photos
   themselves — turning it off leaves a fully offline plot (see `README.md`'s
   Privacy section). Local models' weights download once, on first use, and
-  nothing after that.
+  nothing after that — including the two self-exported ONNX files (AdaFace, the
+  DINOv2 pet model), which resolve through `packaging/models/manifest.json` via
+  `organize_archive/model_manifest.py` and are SHA-256 verified before they are
+  used. A fresh clone needs no model setup step: run the app and they arrive.
 - **Long operations must be resumable and idempotent.** Scanning, hashing,
   detection, and embedding all need to be safe to interrupt and re-run,
   picking up where they left off rather than redoing finished work.

@@ -9,7 +9,7 @@ models that execute on this machine. There is no API key to set anywhere in the
 app, and no configuration that would send archive content to a service.
 
 **The only time Archive uses the network on its own** is downloading model
-weights: ~220 MB for People and Pets detection on their first run, and ~690 MB
+weights: ~550 MB for People and Pets detection on their first run, and ~690 MB
 for the search-by-description model on an archive's first indexing pass, both
 fetched from GitHub or Hugging Face. Only those downloads happen — no photo,
 thumbnail, filename, search query, or catalogue record is sent anywhere. Once

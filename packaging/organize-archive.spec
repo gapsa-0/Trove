@@ -16,12 +16,13 @@ target = os.environ.get("ARCHIVE_TOOL_TARGET", "")
 tools = root / "packaging" / "tools" / "staged" / target
 if tools.is_dir():
     datas.append((str(tools), "tools"))
-# Model weights with no upstream download URL travel inside the build; the rest
-# are fetched once into the cache at first run.  See packaging/models/manifest.json
-# and organize_archive.runtime.bundled_model.
-models = root / "packaging" / "models" / "staged"
-if models.is_dir():
-    datas.append((str(models), "models"))
+# No model weights are bundled.  Every one of them -- including the two in
+# packaging/models/manifest.json, which have no upstream URL and are therefore
+# re-published as release assets on this repository -- is fetched once into the
+# cache on first use by organize_archive.model_manifest.  Carrying them here cost
+# 349 MB of installer for weights most users download over the same connection
+# they would have downloaded them with anyway.  tests/unit/test_no_bundled_models.py
+# fails the build if this comes back; see docs/release.md.
 binaries = []
 hiddenimports = []
 # faiss is in this list for its bundled native library (collect_dynamic_libs):

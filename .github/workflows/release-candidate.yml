@@ -36,7 +36,6 @@ jobs:
         if: runner.os == 'Windows'
       - run: python packaging/scripts/stage-tools.py --target "$ARCHIVE_TOOL_TARGET"
         if: runner.os != 'Windows'
-      - run: python packaging/scripts/stage-models.py
       - run: npm ci && npm run package:${{ matrix.package }}
         working-directory: desktop
       # Hash exactly the installers that get uploaded, and nothing else.

@@ -21,7 +21,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import runtime
+from .. import model_manifest
 from ..errors import ModelUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -47,28 +47,36 @@ MODEL_MIN_BYTES = 20_000_000
 
 # Individual-animal re-identification embedder: a self-exported ONNX of the
 # AvitoTech DINOv2-small model fine-tuned for cat/dog re-ID (384-d CLS token).
-# Not distributed via a URL like the OpenCV models — regenerate it with
-# tools/build/dinov2_pet_export.py if missing. Replaces the old hand-crafted HSV
-# colour/texture descriptor: a learned embedding groups the SAME animal across
-# poses/lighting far better than colour statistics.
-DINOV2_SUBDIR = "dinov2_pet"
-DINOV2_MODEL = "dinov2_pet.onnx"
+# It has no upstream URL like the OpenCV models do, so it is resolved through the
+# manifest instead (model_manifest.py) — bundle, staged dir, cache, or the
+# manifest's release asset — and regenerated with tools/build/dinov2_pet_export.py
+# when even that is unavailable. Replaces the old hand-crafted HSV colour/texture
+# descriptor: a learned embedding groups the SAME animal across poses/lighting
+# far better than colour statistics.
+DINOV2_MODEL_NAME = "dinov2_pet"
 # DINOv2 preprocessing: RGB, resize 224, /255, ImageNet mean/std normalization.
 _IMAGENET_MEAN = (0.485, 0.456, 0.406)
 _IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def dinov2_model_path(cache_dir: str) -> Path:
-    """Where the re-ID ONNX lives: the frozen build's copy first, else the cache.
+    """Where the re-ID ONNX is, or where a download would put it.
 
-    A packaged build carries this model (it has no upstream URL to fetch it from),
-    so the bundled copy wins; a source checkout falls back to the exported file in
-    the cache directory.
+    The search order lives in model_manifest.present(); mirrors
+    faces.backend.adaface_model_path.
     """
-    bundled = runtime.bundled_model(f"{DINOV2_SUBDIR}/{DINOV2_MODEL}")
-    if bundled is not None:
-        return bundled
-    return Path(cache_dir) / "models" / DINOV2_SUBDIR / DINOV2_MODEL
+    return model_manifest.path(DINOV2_MODEL_NAME, cache_dir)
+
+
+def preflight(cache_dir: str) -> None:
+    """Raise if a weight this backend needs can never be obtained here.
+
+    Network-free, so the detect stage can ask before it starts downloading —
+    see faces.backend.preflight for why the order matters.
+    """
+    reason = model_manifest.missing_reason(DINOV2_MODEL_NAME, cache_dir, feature="pet detection")
+    if reason:
+        raise ModelUnavailableError(reason)
 
 
 COCO_CLASSES = (
@@ -215,7 +223,7 @@ class HumanDetection:
     score: float
 
 
-def _load_dinov2(cache_dir: str):
+def _load_dinov2(cache_dir: str, log=None):
     """Create the onnxruntime session for the DINOv2 pet-reID embedder."""
     try:
         import onnxruntime as ort
@@ -228,12 +236,9 @@ def _load_dinov2(cache_dir: str):
         raise ModelUnavailableError(
             f"pet re-ID needs onnxruntime (pip install onnxruntime); import failed: {e}"
         ) from e
-    mp = dinov2_model_path(cache_dir)
-    if not mp.is_file():
-        raise ModelUnavailableError(
-            f"DINOv2 pet model missing at {mp}. Regenerate it with "
-            "tools/build/dinov2_pet_export.py."
-        )
+    # Resolves or downloads, hash-verified; raises ModelUnavailableError naming
+    # the export tool when there is genuinely no way to get the file.
+    mp = model_manifest.ensure(DINOV2_MODEL_NAME, cache_dir, log=log)
     so = ort.SessionOptions()
     so.intra_op_num_threads = os.cpu_count() or 4
     return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])
@@ -266,8 +271,11 @@ class PetBackend:
         self.human_min_score = float(human_min_score)
         self.species = set(species) | {"teddy bear"}
         self.model_source = model_source
+        # The re-ID embedder first, for the same reason faces loads AdaFace
+        # before buffalo_l: it is the weight that can be unobtainable, and
+        # finding that out after downloading YOLOX helps nobody.
+        self._dino = _load_dinov2(cache_dir, log=log)
         self.net = cv2.dnn.readNet(str(ensure_model(cache_dir, log=log)))
-        self._dino = _load_dinov2(cache_dir)
         self._mean = np.array(_IMAGENET_MEAN, dtype="float32")
         self._std = np.array(_IMAGENET_STD, dtype="float32")
         grids, expanded = [], []

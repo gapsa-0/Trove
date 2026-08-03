@@ -69,27 +69,35 @@ def models_ready(cfg: Config) -> bool:
     return eb.vision_ready(cfg.cache_dir)
 
 
-def backend(
-    cfg: Config,
-    log: Any = None,  # progress callback; its contract lives in embeddings.backend (not yet typed)
-) -> eb.SiglipBackend:
+def backend(cfg: Config) -> eb.SiglipBackend:
     """The process-wide SigLIP backend, created on first use and reused after.
-    ``log`` is only honored while the backend is still being constructed."""
+
+    Takes no progress callback: whoever constructs the singleton would otherwise
+    decide, for the rest of the process, where every later download reports to.
+    Pass ``log`` to ``load_vision``/``load_text`` instead — those run per caller.
+    """
     global _backend
     if _backend is None:
         with _backend_lock:
             if _backend is None:
-                _backend = eb.SiglipBackend(cfg.cache_dir, log=log)
+                _backend = eb.SiglipBackend(cfg.cache_dir)
     return _backend
 
 
 def warm_text_model(cfg: Config) -> None:
     """Load the text tower now, so the first search does not wait for it.
 
-    Best-effort: called from a background thread at server start, where the
-    weights may still need downloading and any failure must stay invisible —
-    the next search will simply load it then, or report the real error.
+    A warm-up, never a download: if the weights are not on disk yet this returns
+    immediately and the first search fetches them, inside a request that can
+    report and fail visibly. A background thread at server start has nowhere to
+    show a 317 MB download and nowhere to report its failure, and silently using
+    someone's connection for it is not the startup behaviour to ship.
+
+    Best-effort otherwise: any failure here must stay invisible, because the next
+    search simply loads the tower again, or reports the real error.
     """
+    if not eb.text_ready(cfg.cache_dir):
+        return
     try:
         backend(cfg).load_text()
     except Exception:

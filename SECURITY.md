@@ -33,6 +33,13 @@ entry pins a SHA-256 digest, and `packaging/scripts/stage-tools.py` and
 `packaging/scripts/stage-models.py` verify the downloaded bytes against it
 before a release build is staged.
 
+The model manifest is enforced at runtime as well, not only at build time:
+`organize_archive/model_manifest.py` is what the app itself uses to resolve those
+weights, and a file it downloads is accepted only if its size and SHA-256 match
+the manifest — otherwise it is discarded rather than written into the cache. The
+packaging script imports that module, so there is one implementation of the
+check rather than two that can drift.
+
 ## Data does not leave the machine
 
 Scanning, hashing, metadata extraction, deduplication, thumbnails, face and pet

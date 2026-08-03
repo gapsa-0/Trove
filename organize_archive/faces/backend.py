@@ -38,7 +38,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .. import runtime
+from .. import model_manifest
 from ..errors import ModelUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -65,12 +65,11 @@ BUFFALO_URL = "https://github.com/deepinsight/insightface/releases/download/v0.7
 _MIN_SIZES = {DET_MODEL: 10_000_000}
 
 # AdaFace embedder: a self-exported ONNX (from the WebFace12M checkpoint),
-# consumed by onnxruntime. Unlike buffalo_l it has no upstream download URL —
-# regenerate it with tools/build/adaface_export.py, or let a packaged build ship it
-# (packaging/models/manifest.json), exactly like the DINOv2 pet model.
-ADAFACE_SUBDIR = "adaface"
-ADAFACE_MODEL = "adaface_ir101_w12m.onnx"
-_ADAFACE_MIN_SIZE = 100_000_000
+# consumed by onnxruntime. Unlike buffalo_l it has no upstream URL of its own, so
+# it is resolved through the manifest instead (model_manifest.py): a packaged
+# build's bundle, this checkout's packaging/models/staged, the download cache, or
+# the manifest's release asset. Exactly like the DINOv2 pet model.
+ADAFACE_MODEL_NAME = "adaface"
 
 # Identity of the vector space the `faces` table holds. Stored per archive in
 # app_state; when it stops matching, every embedding on disk was produced by a
@@ -105,22 +104,33 @@ def _models_dir(cache_dir: str) -> Path:
 
 
 def adaface_model_path(cache_dir: str) -> Path:
-    """Where the AdaFace ONNX lives: the frozen build's copy first, else the cache.
+    """Where the AdaFace ONNX is, or where a download would put it.
 
-    A packaged build carries this model (it has no upstream URL to fetch it from),
-    so the bundled copy wins; a source checkout falls back to the exported file in
-    the cache directory. Sibling of the insightface dir, not inside it — it does
-    not come from the buffalo_l pack. Mirrors pets.backend.dinov2_model_path.
+    Sibling of the insightface dir, not inside it — it does not come from the
+    buffalo_l pack. The search order lives in model_manifest.present(); mirrors
+    pets.backend.dinov2_model_path.
     """
-    bundled = runtime.bundled_model(f"{ADAFACE_SUBDIR}/{ADAFACE_MODEL}")
-    if bundled is not None:
-        return bundled
-    return Path(cache_dir) / "models" / ADAFACE_SUBDIR / ADAFACE_MODEL
+    return model_manifest.path(ADAFACE_MODEL_NAME, cache_dir)
 
 
 def adaface_ready(cache_dir: str) -> bool:
-    p = adaface_model_path(cache_dir)
-    return p.is_file() and p.stat().st_size >= _ADAFACE_MIN_SIZE
+    return model_manifest.present(ADAFACE_MODEL_NAME, cache_dir) is not None
+
+
+def preflight(cache_dir: str) -> None:
+    """Raise if a weight this backend needs can never be obtained here.
+
+    Network-free and cheap, so the detect stage can ask *before* it spends
+    ~275 MB fetching buffalo_l — the old order downloaded the detector first and
+    only then discovered the embedder was unobtainable, which is the worst of
+    both outcomes. Says nothing about whether a download will succeed; that is
+    the constructor's problem, and its failure is already reported per detector.
+    """
+    reason = model_manifest.missing_reason(
+        ADAFACE_MODEL_NAME, cache_dir, feature="people detection"
+    )
+    if reason:
+        raise ModelUnavailableError(reason)
 
 
 def models_ready(cache_dir: str) -> bool:
@@ -312,6 +322,10 @@ class FaceBackend:
             )
         from insightface.model_zoo import get_model
 
+        # The embedder first, deliberately: it is the weight that can be
+        # unobtainable (see preflight), and fetching 275 MB of detector before
+        # finding that out is bandwidth nobody gets back.
+        ada_path = model_manifest.ensure(ADAFACE_MODEL_NAME, cache_dir, log=log)
         d = ensure_models(cache_dir, log=log)
         self.min_score = min_score
         self.min_px = min_px
@@ -327,28 +341,23 @@ class FaceBackend:
         self._det.prepare(
             ctx_id=-1, input_size=self.det_size, det_thresh=min(self._DET_THRESH, min_score)
         )
-        self._ada = self._load_adaface(cache_dir)
+        self._ada = self._load_adaface(ada_path)
 
-    def _load_adaface(self, cache_dir: str):
+    def _load_adaface(self, model_path: Path):
         """Open the self-exported AdaFace ONNX session.
 
         Deliberately fails loudly rather than falling back to another embedder:
         a `faces` table holding vectors from two different models is silently
         broken (cosine between them is meaningless), and the damage only shows up
-        much later as nonsense clusters.
+        much later as nonsense clusters. ``model_manifest.ensure`` has already
+        made that failure a clear one — a resolved, hash-verified path or a
+        ModelUnavailableError naming the export tool.
         """
         import onnxruntime as ort
 
-        mp = adaface_model_path(cache_dir)
-        if not adaface_ready(cache_dir):
-            raise ModelUnavailableError(
-                f"AdaFace model missing or truncated at {mp}. Regenerate it with "
-                "`python3 tools/build/adaface_export.py` (needs torch + huggingface_hub, "
-                "dev-only), or install a packaged build that ships it."
-            )
         so = ort.SessionOptions()
         so.intra_op_num_threads = os.cpu_count() or 4
-        return ort.InferenceSession(str(mp), so, providers=["CPUExecutionProvider"])
+        return ort.InferenceSession(str(model_path), so, providers=["CPUExecutionProvider"])
 
     def _embed(self, aligned_bgr):
         """112x112 aligned BGR crop -> (unit vector, raw norm), or None.

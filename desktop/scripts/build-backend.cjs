@@ -7,14 +7,13 @@ const python = process.env.PYTHON || (process.platform === "win32" ? "python" : 
 const platformTarget = process.platform === "win32" ? "win32-x64" : "linux-x64";
 const target = process.env.ARCHIVE_TOOL_TARGET || platformTarget;
 
-// Staging is a separate, hash-verified step (packaging/scripts/stage-*.py). Check
-// its output up front: a build that silently omits the native tools or the bundled
-// model weights still packages fine, and only fails in the user's hands.
+// Staging is a separate, hash-verified step (packaging/scripts/stage-tools.py).
+// Check its output up front: a build that silently omits the native tools still
+// packages fine, and only fails in the user's hands. Model weights are not checked
+// here because they are no longer bundled -- the app fetches them on first use.
 for (const [what, marker, fix] of [
   ["native tools", path.join(root, "packaging", "tools", "staged", target, "tools-build-info.json"),
     `python3 packaging/scripts/stage-tools.py --target ${target}`],
-  ["model weights", path.join(root, "packaging", "models", "staged", "models-build-info.json"),
-    "python3 packaging/scripts/stage-models.py"],
 ]) {
   if (!fs.existsSync(marker)) {
     console.error(`error: ${what} are not staged for ${target}.\n  Run: ${fix}`);

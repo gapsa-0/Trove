@@ -42,7 +42,7 @@ On first launch, choose the folder that contains your media. Trove catalogues it
 place and never moves, renames, edits, or deletes any file inside it.
 
 The first time People or Pets detection runs, Trove downloads their model weights
-(about 220 MB) once, then works offline. Everything else — including all media
+(about 550 MB) once, then works offline. Everything else — including all media
 processing — is local from the start.
 
 ## Uninstalling

@@ -32,6 +32,7 @@ import threading
 import urllib.request
 from pathlib import Path
 
+from .. import model_manifest
 from ..errors import ModelUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,16 @@ def vision_ready(cache_dir: str) -> bool:
     return _present(cache_dir, _VISION_FILES)
 
 
+def text_ready(cache_dir: str) -> bool:
+    """The search half: the text tower and its tokenizer.
+
+    Asked before the startup warm-up runs, so that warming a model never turns
+    into silently downloading 317 MB with no card to report it on (see
+    services.semantic.warm_text_model).
+    """
+    return _present(cache_dir, _TEXT_FILES)
+
+
 def models_ready(cache_dir: str) -> bool:
     """Everything downloaded — both towers and the tokenizer."""
     return _present(cache_dir, _FILES)
@@ -171,7 +182,9 @@ def _fetch(name: str, dest: Path, log=None) -> None:
     fd, tmp = tempfile.mkstemp(dir=str(dest.parent), suffix=".part")
     os.close(fd)
     try:
-        urllib.request.urlretrieve(url, tmp)
+        urllib.request.urlretrieve(
+            url, tmp, reporthook=model_manifest.download_progress(log, f"search model {name}", size)
+        )
         got = os.path.getsize(tmp)
         if got != size:
             raise OSError(f"{name}: got {got} bytes, expected {size}")
@@ -264,7 +277,7 @@ class SiglipBackend:
     Names are read from the session rather than hardcoded anyway.
     """
 
-    def __init__(self, cache_dir: str, *, threads: int | None = None, log=None):
+    def __init__(self, cache_dir: str, *, threads: int | None = None):
         if not available():
             raise ModelUnavailableError(
                 "semantic embedding backend unavailable; install the 'semantic' "
@@ -272,7 +285,13 @@ class SiglipBackend:
             )
         self.cache_dir = cache_dir
         self.threads = default_threads() if threads is None else max(1, int(threads))
-        self._log = log
+        # No progress callback is kept on the instance, deliberately. This object
+        # is a process-wide singleton (services.semantic.backend), so a callback
+        # captured here belongs to whoever happened to construct it first -- which
+        # was the startup warm-up thread, with no callback at all, leaving the
+        # semantic card blank through a 372 MB download. It is a per-call
+        # argument of load_vision/load_text instead, like every other backend
+        # here passes `log` into its own ensure_models.
         self._vision = None
         self._vision_in = None
         self._vision_out = None
@@ -301,24 +320,24 @@ class SiglipBackend:
         names = [o.name for o in session.get_outputs()]
         return names.index("pooler_output") if "pooler_output" in names else 0
 
-    def load_vision(self):
+    def load_vision(self, log=None):
         if self._vision is None:
             with self._lock:
                 if self._vision is None:
-                    d = ensure_models(self.cache_dir, _VISION_FILES, log=self._log)
+                    d = ensure_models(self.cache_dir, _VISION_FILES, log=log)
                     session = _session(d / VISION_MODEL, self.threads)
                     self._vision_in = session.get_inputs()[0].name
                     self._vision_out = self._pooler_index(session)
                     self._vision = session
         return self._vision
 
-    def load_text(self):
+    def load_text(self, log=None):
         if self._text is None:
             with self._lock:
                 if self._text is None:
                     from tokenizers import Tokenizer
 
-                    d = ensure_models(self.cache_dir, _TEXT_FILES, log=self._log)
+                    d = ensure_models(self.cache_dir, _TEXT_FILES, log=log)
                     session = _session(d / TEXT_MODEL, self.threads)
                     self._text_in = session.get_inputs()[0].name
                     self._text_out = self._pooler_index(session)
