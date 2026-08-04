@@ -21,7 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gone.
 - Each pipeline stage in Library health can now be paused and resumed on its own,
   instead of only the whole pipeline at once. A stage paused this way stays paused
-  across a restart.
+  across a restart — for that archive alone.
 - The map has a Places/Photos switch: alongside the existing grouped-place view,
   it can plot one dot per geotagged photo, coloured by the place it belongs to, for
   seeing the actual spread of a place rather than just where you keep going back.
@@ -66,6 +66,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   as if nothing had happened before stopping abruptly; it now says "Pausing…" the
   moment you press it. A stage stopped part-way also keeps the progress bar it
   reached, since the run is suspended rather than thrown away.
+- Pausing no longer follows you to another archive. The pause was one app-wide
+  switch, so stopping work on one folder left the next folder you opened stopped
+  too, with nothing running and a Resume button nobody had pressed. Each archive
+  now remembers its own pause, whole-pipeline and per-stage.
 
 - Seeking in a video or audio file is reliable. The server mishandled two of the
   requests a player makes: asking for a position past the end of the file produced

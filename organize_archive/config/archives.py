@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import shutil
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -44,6 +45,8 @@ class ArchiveRegistryMixin:
         db_path: str
         cache_dir: str
         legacy_migrated: bool
+        pipeline_paused: bool
+        paused_stages: list[str]
 
         def save(self) -> None: ...
 
@@ -100,6 +103,42 @@ class ArchiveRegistryMixin:
     def remove_archive_entry(self, archive_id: int) -> None:
         self.archives = [a for a in self.archives if a["id"] != archive_id]
         self.save()
+
+    def archive_pause(self, archive_id: int | None) -> tuple[bool, list[str]]:
+        """One archive's own (whole-pipeline, per-stage) pause state.
+
+        Pause belongs to the archive, not to the app: "stop chewing through
+        this folder" says nothing about the next folder the user opens, and a
+        pause that followed them from one archive to another looked like the
+        GUI had wedged itself.
+
+        Falls back to the app-wide ``pipeline_paused`` / ``paused_stages``
+        defaults for an archive that has never been paused or resumed -- which
+        in normal use means False/[], since the GUI writes the per-archive keys
+        (see ``set_archive_pause``) and never those. They stay useful as a
+        config-file switch for starting the app without any background work.
+
+        ``None`` names no archive and so answers with those defaults, which is
+        what the JobManager wants before the user has opened anything.
+        """
+        entry = next((a for a in self.archives if a["id"] == archive_id), None) or {}
+        paused = entry.get("paused", self.pipeline_paused)
+        stages = entry.get("paused_stages", self.paused_stages)
+        return bool(paused), list(stages or [])
+
+    def set_archive_pause(self, archive_id: int, paused: bool, stages: Iterable[str]) -> None:
+        """Record one archive's pause state, so reopening it restores it.
+
+        Writes both keys together: recording only what changed would leave the
+        other one falling through to the app-wide default forever, and a
+        *resumed* archive has to stop inheriting that default too.
+        """
+        for entry in self.archives:
+            if entry["id"] == archive_id:
+                entry["paused"] = bool(paused)
+                entry["paused_stages"] = sorted(stages)
+                self.save()
+                return
 
     def migrate_legacy_archive(self) -> None:
         """One-time copy of the old shared single-catalog database into the new

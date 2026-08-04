@@ -22,13 +22,13 @@ from organize_archive.pipeline import status as status_mod
 from organize_archive.services import archives as archives_mod
 
 
-def _job_manager(tmp_path, monkeypatch):
+def _job_manager(tmp_path, monkeypatch, cfg=None):
     # Everything stays under tmp_path: archive_db_path/archive_cache_dir
     # normally resolve under the user's real ~/.local/share/organize_archive,
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))
-    jm = jobs_mod.JobManager(Config())
+    jm = jobs_mod.JobManager(cfg if cfg is not None else Config())
     # These tests drive scheduler.tick() by hand. Park the scheduler thread so
     # it cannot also fire on its own timer after the test has torn its stubs down.
     jm.scheduler.stop()
@@ -148,37 +148,110 @@ def test_set_paused_false_nudges_the_scheduler(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The flag round-trips through Config persistence
+# Pause belongs to ONE archive, and round-trips through Config persistence
 # ---------------------------------------------------------------------------
+
+
+def _registered(cfg, *paths) -> list[int]:
+    """Register archives without touching disk beyond config.json."""
+    ids = []
+    for path in paths:
+        aid = max((a["id"] for a in cfg.archives), default=0) + 1
+        cfg.archives.append({"id": aid, "path": path, "added_at": "now"})
+        ids.append(aid)
+    cfg.save()
+    return ids
+
+
+def _open(jm, root_id: int) -> None:
+    """jm.open_archive() without its database work.
+
+    open_archive's first act is _open_db (schema migration, root
+    reconciliation, an embedder check) against a real archive database. None of
+    that is what these tests are about, and building one per test would make
+    them minutes long -- what matters here is which archive is open and what
+    its pause state is.
+    """
+    jm._open_db = lambda rid: _NullConn()  # type: ignore[method-assign]
+    jm.open_archive(root_id)
+
+
+class _NullConn:
+    def close(self) -> None:
+        pass
 
 
 def test_pipeline_paused_defaults_false_and_round_trips_through_config(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     cfg = Config.load()
     assert cfg.pipeline_paused is False
+    aid = _registered(cfg, "/fake/a")[0]
+    assert cfg.archive_pause(aid) == (False, [])
 
-    cfg.pipeline_paused = True
-    cfg.save()
+    cfg.set_archive_pause(aid, True, ["detect"])
 
-    reloaded = Config.load()
-    assert reloaded.pipeline_paused is True
+    assert Config.load().archive_pause(aid) == (True, ["detect"])
 
 
-def test_set_paused_persists_and_seeds_a_fresh_job_manager(monkeypatch, tmp_path):
+def test_set_paused_persists_per_archive_and_seeds_a_fresh_job_manager(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     cfg = Config.load()
-    jm = jobs_mod.JobManager(cfg)
+    aid = _registered(cfg, "/fake/a")[0]
+    jm = _job_manager(tmp_path, monkeypatch, cfg)
+    _open(jm, aid)
     assert jm.paused() is False
 
     jm.set_paused(True)
     assert jm.paused() is True
 
-    # A new process would reload Config from disk and build a new JobManager
-    # from it -- the seed in __init__ must pick up what set_paused() wrote.
+    # A new process would reload Config from disk and reopen the archive; the
+    # state open_archive loads must be what set_paused() wrote for THAT archive.
     reloaded_cfg = Config.load()
-    assert reloaded_cfg.pipeline_paused is True
-    jm2 = jobs_mod.JobManager(reloaded_cfg)
+    assert reloaded_cfg.archive_pause(aid) == (True, [])
+    jm2 = _job_manager(tmp_path, monkeypatch, reloaded_cfg)
+    _open(jm2, aid)
     assert jm2.paused() is True
+
+
+def test_a_pause_does_not_follow_the_user_to_another_archive(monkeypatch, tmp_path):
+    """The bug this is here for: pausing archive A left archive B paused too,
+    with no running work and a Resume button the user never pressed."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    cfg = Config.load()
+    a, b = _registered(cfg, "/fake/a", "/fake/b")
+    jm = _job_manager(tmp_path, monkeypatch, cfg)
+
+    _open(jm, a)
+    jm.set_paused(True)
+    jm.set_stage_paused("detect", True)
+
+    _open(jm, b)
+    assert jm.paused() is False
+    assert jm.paused_stages() == set()
+
+    # ...and A still remembers its own when the user goes back.
+    _open(jm, a)
+    assert jm.paused() is True
+    assert jm.paused_stages() == {"detect"}
+
+
+def test_resuming_an_archive_stops_it_inheriting_the_app_wide_default(monkeypatch, tmp_path):
+    """cfg.pipeline_paused is only a default for an archive with no state of
+    its own, so pressing Resume has to record False rather than clear the key
+    and fall back through it again on the next open."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    cfg = Config.load()
+    cfg.pipeline_paused = True
+    aid = _registered(cfg, "/fake/a")[0]
+    jm = _job_manager(tmp_path, monkeypatch, cfg)
+
+    _open(jm, aid)
+    assert jm.paused() is True  # the default applies to an archive with no state
+
+    jm.set_paused(False)
+    _open(jm, aid)
+
+    assert jm.paused() is False
 
 
 # ---------------------------------------------------------------------------
@@ -437,12 +510,16 @@ def test_paused_stages_persist_and_seed_a_fresh_job_manager(monkeypatch, tmp_pat
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     cfg = Config.load()
     assert cfg.paused_stages == []
-    jm = jobs_mod.JobManager(cfg)
+    aid = _registered(cfg, "/fake/a")[0]
+    jm = _job_manager(tmp_path, monkeypatch, cfg)
+    _open(jm, aid)
 
     jm.set_stage_paused("detect", True)
 
-    assert Config.load().paused_stages == ["detect"]
-    assert jobs_mod.JobManager(Config.load()).stage_paused("detect") is True
+    assert Config.load().archive_pause(aid) == (False, ["detect"])
+    jm2 = _job_manager(tmp_path, monkeypatch, Config.load())
+    _open(jm2, aid)
+    assert jm2.stage_paused("detect") is True
 
 
 def test_snapshot_marks_the_paused_card_and_what_waits_behind_it(tmp_path, monkeypatch):

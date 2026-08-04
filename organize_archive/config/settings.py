@@ -104,15 +104,19 @@ class Config(ArchiveRegistryMixin):
     # Latches the one-time copy of a pre-existing shared catalog into the new
     # per-archive layout, so it runs at most once ever (see migrate_legacy_archive).
     legacy_migrated: bool = False
-    # Whole-pipeline pause (GUI "Library health" panel). A single flag, not
-    # per-archive: only one archive is ever open at a time. Persisted so a
-    # paused background pipeline stays paused across an app restart.
+    # The DEFAULT pause state for an archive that has none of its own. Pause
+    # itself is per-archive and lives on the archive's registry entry above
+    # (``archive_pause``/``set_archive_pause``): a user who stops work on one
+    # folder has said nothing about the next one they open, and a pause that
+    # followed them across looked like the app had wedged. The GUI therefore
+    # never writes these two; they remain as a config-file (or test-harness)
+    # switch for bringing the app up with the background pipeline off.
     pipeline_paused: bool = False
-    # Per-stage pause, by display card id ("scan", "dedup", "detect", "places",
-    # "semantic" — see pipeline/stages.py's CARD_ORDER). Independent of the
-    # whole-pipeline flag above and only meaningful while it is off: a paused
-    # stage is skipped by the scheduler while its siblings keep running.
-    # Persisted for the same reason.
+    # Same, for the per-stage pause: display card ids ("scan", "dedup",
+    # "detect", "places", "semantic" — see pipeline/stages.py's CARD_ORDER).
+    # Independent of the whole-pipeline flag above and only meaningful while it
+    # is off: a paused stage is skipped by the scheduler while its siblings
+    # keep running.
     paused_stages: list[str] = field(default_factory=list)
 
     # Semantic Browse search, run locally by organize_archive/embeddings. These

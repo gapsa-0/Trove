@@ -34,7 +34,8 @@ proves the rule -- they are one-shot jobs with no dependencies.
 * ``_paused``, ``_paused_stages`` and ``_error_at`` are plain attributes read
   and written without ``_lock``. That is deliberate and safe here: each is a
   single atomic rebind or a ``dict`` mutation under the GIL, and no invariant
-  spans two of them.
+  spans two of them. The first two describe the archive that is currently
+  open, and ``open_archive`` reloads them from it.
 * The disk-count cache has moved to ``archives.DiskCounts``, which owns a lock
   of its own -- it never needed ordering against the job registry.
 
@@ -101,16 +102,17 @@ class JobManager:
         # When a stage's job errors, hold off auto-restarting that kind for a
         # cooldown so a hard failure can't hot-loop through the nudge path.
         self._error_at: dict[tuple[int, str], float] = {}
-        # Whole-pipeline pause: one global flag, not
-        # per-archive -- only one archive is ever open at a time (see
-        # current_root_id). Seeded from the persisted config so a pause
-        # survives an app restart.
-        self._paused = bool(getattr(cfg, "pipeline_paused", False))
-        # Per-stage pause, by display card id. Separate from the global flag
-        # above and only consulted while it is off -- pausing one stage is
-        # about letting the others keep going. Persisted the same
-        # way, so a stage the user stopped stays stopped across a restart.
-        self._paused_stages: set[str] = set(getattr(cfg, "paused_stages", None) or [])
+        # Pause state for the archive currently open -- both the whole-pipeline
+        # switch and the per-stage set, which is separate from it and only
+        # consulted while it is off (pausing one stage is about letting the
+        # others keep going). They belong to the archive, not to the app:
+        # open_archive loads the archive's own, and set_paused /
+        # set_stage_paused write it back (cfg.archive_pause), so a pause is
+        # remembered per archive across a restart and never follows the user to
+        # a different one. Until an archive is open, the app-wide defaults
+        # stand -- normally "not paused".
+        self._paused, stages_off = cfg.archive_pause(None)
+        self._paused_stages: set[str] = set(stages_off)
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
@@ -322,6 +324,11 @@ class JobManager:
                 for jid, job in self._jobs.items():
                     if job.status == "running" and job.root_id == previous:
                         self._cancels[jid].set()
+        # Before the nudge, so a nudge cannot start work this archive is paused
+        # on. This is also what stops a pause from following the user: whatever
+        # the *previous* archive was left on is replaced by this one's own state.
+        self._paused, stages_off = self.cfg.archive_pause(root_id)
+        self._paused_stages = set(stages_off)
         self.nudge()
 
     def close_archive(self, root_id: int | None = None) -> None:
@@ -337,24 +344,36 @@ class JobManager:
                 if job.status == "running" and job.root_id == closing:
                     self._cancels[jid].set()
 
+    def _persist_pause(self) -> None:
+        """Record the open archive's pause state, so reopening it restores it.
+
+        Deliberately not fatal: the in-memory flags are what gate the scheduler
+        and they are already set by the time this runs, so a disk hiccup must
+        not leave a user who just asked to stop the CPU load still running. It
+        is logged because the consequence is silent and surprising -- the pause
+        is honoured now but forgotten on restart.
+
+        Nothing to record while no archive is open: pause is a property of the
+        archive (see cfg.archive_pause), and the GUI can only reach these
+        controls from an open one anyway.
+        """
+        if self._open_root_id is None:
+            return
+        try:
+            self.cfg.set_archive_pause(self._open_root_id, self._paused, self._paused_stages)
+        except OSError:
+            logger.warning("could not persist the pause state", exc_info=True)
+
     def set_paused(self, value: bool) -> None:
-        """Toggle the whole-pipeline pause.
+        """Toggle the whole-pipeline pause, for the archive that is open.
 
         The in-memory flag is what actually gates the scheduler and cancels
         running jobs, so it's set first and stays authoritative even if the
-        config write below fails -- a disk hiccup must not silently leave a
-        user who just asked to stop the CPU load still running.
+        config write fails (see _persist_pause).
         """
         self._paused = bool(value)
-        self.cfg.pipeline_paused = self._paused
         logger.info("pipeline %s", "paused" if self._paused else "resumed")
-        try:
-            self.cfg.save()
-        except OSError:
-            # Deliberately not fatal, per the docstring: the in-memory flag is
-            # authoritative. Recorded because the consequence is silent and
-            # surprising -- the pause is honoured now but forgotten on restart.
-            logger.warning("could not persist the pipeline pause state", exc_info=True)
+        self._persist_pause()
         if self._paused:
             # This is what actually stops the CPU load; jobs resume from
             # their last committed batch, same mechanism as close_archive.
@@ -377,13 +396,8 @@ class JobManager:
             self._paused_stages.add(card)
         else:
             self._paused_stages.discard(card)
-        self.cfg.paused_stages = sorted(self._paused_stages)
         logger.info("stage %s %s", card, "paused" if value else "resumed")
-        try:
-            self.cfg.save()
-        except OSError:
-            # Same reasoning as set_paused: honoured now, forgotten on restart.
-            logger.warning("could not persist the paused-stage set", exc_info=True)
+        self._persist_pause()
         if value:
             self._cancel_running(stages.kinds_of(card))
         else:
