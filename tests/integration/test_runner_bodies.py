@@ -45,6 +45,7 @@ from organize_archive.pipeline.runners import (
 from organize_archive.pipeline.runners import (
     scan as scan_runner,
 )
+from organize_archive.scan import walker
 
 _ROOT = 1
 
@@ -104,6 +105,25 @@ def test_the_scan_runner_walks_the_root_and_reports_what_it_saw(archive):
     assert (
         conn.execute("SELECT COUNT(*) FROM scan_runs WHERE finished_at IS NULL").fetchone()[0] == 0
     )
+
+
+def test_the_scan_runner_counts_the_disk_before_it_claims_any_progress(archive, monkeypatch):
+    """The walk that establishes the total is minutes on a cold ~150k-file
+    tree, and a bar drawn across it is a bar counting a total nothing has
+    started consuming. See JobContext.preparing."""
+    cfg, conn, source = archive
+    ctx, job = _context(cfg, conn, "scan", root_path=source)
+    seen = []
+    real_count = walker.count_files
+    monkeypatch.setattr(
+        walker, "count_files", lambda p: seen.append((job.phase, job.current)) or real_count(p)
+    )
+
+    scan_runner.run(ctx)
+
+    assert seen == [("preparing", "counting files on disk")]
+    assert job.phase == "working", "the bar has to come back for the walk itself"
+    assert job.total > 0
 
 
 def test_the_enrich_runner_processes_the_scanned_files(archive):

@@ -23,8 +23,12 @@ def run(ctx: JobContext) -> None:
     # An archive database has exactly one root; job.root_path is always
     # supplied by the scheduler, this is just a defensive fallback.
     roots: list[str] = [job.root_path] if job.root_path else [cast(str, cfg.archive_path(root_id))]
-    on_disk = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
-    prog.total = on_disk
+    # Counting is a full walk of the tree before a single file is scanned, and
+    # on a cold cache over ~150k files that is minutes on its own. Say so
+    # rather than showing an empty bar for it (see JobContext.preparing).
+    with ctx.preparing("counting files on disk"):
+        on_disk = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
+        prog.total = on_disk
     run_id = db.scan_run_start(conn, root_id, roots)
     totals = walker.ScanStats()
     for r in roots:

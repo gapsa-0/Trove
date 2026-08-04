@@ -50,6 +50,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Overview storage panel was reworked: one bar with a Size/Files switch
   instead of two competing bars, exact numbers moved into the table, and per-type
   share shown on hover.
+- A stage card no longer shows a progress bar while the stage is still setting
+  itself up. Counting a 150k-file folder or fetching model weights happens before
+  a single file is processed, and a bar sitting at 0% across it read as a run that
+  had hung; the card now says what it is preparing, and a model download's own
+  percentage is the headline rather than a footnote beside the bar.
 - Merging two people of the same size, neither of them named, now keeps the older
   of the two rather than depending on which card you dragged onto which — the rule
   pets and places already followed.

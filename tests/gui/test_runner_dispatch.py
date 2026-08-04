@@ -298,6 +298,54 @@ def test_a_job_that_ignores_its_cancel_event_still_times_shutdown_out(jm, monkey
         wait_until(lambda: job.finished_at is not None, timeout=5, what="the straggler to finish")
 
 
+def test_a_preparing_section_marks_the_phase_and_reports_through_current(jm, monkeypatch):
+    """What the card reads to drop the bar and lead with the setup instead."""
+    seen = []
+
+    def run(ctx):
+        with ctx.preparing("counting files on disk"):
+            seen.append((ctx.job.phase, ctx.job.current))
+            # As a model download does: the same field, refreshed as it goes.
+            ctx.job.current = "downloading adaface model — 42% of 249 MB"
+            seen.append((ctx.job.phase, ctx.job.current))
+        seen.append((ctx.job.phase, ctx.job.current))
+
+    _register(monkeypatch, Runner(kind="probe", run=run))
+
+    _run_to_completion(jm, "probe")
+
+    assert seen == [
+        ("preparing", "counting files on disk"),
+        ("preparing", "downloading adaface model — 42% of 249 MB"),
+        # Out of the section, the loop's own `current` starts clean rather than
+        # inheriting a download line that has nothing to do with it.
+        ("working", ""),
+    ]
+
+
+def test_a_job_that_fails_while_preparing_does_not_stay_preparing(jm, monkeypatch):
+    """A stage whose model could not be loaded is reported as an error, and an
+    error card that still claimed to be preparing would be two states at once."""
+
+    def run(ctx):
+        with ctx.preparing("loading detection models"):
+            raise RuntimeError("no detector could be loaded")
+
+    _register(monkeypatch, Runner(kind="probe", run=run))
+
+    job = _run_to_completion(jm, "probe")
+
+    assert job.status == "error"
+    assert job.phase == "working"
+
+
+def test_a_job_starts_out_working_so_a_runner_need_not_say_anything(jm, monkeypatch):
+    """Most stages have no setup worth a name; they must keep their bar."""
+    _register(monkeypatch, Runner(kind="probe", run=lambda ctx: None))
+
+    assert _run_to_completion(jm, "probe").phase == "working"
+
+
 def test_the_uninterruptible_marker_stays_out_of_the_polled_payload(jm, monkeypatch):
     """It is a pipeline-internal detail. The GUI polls ``public()`` about once a
     second and has no use for it."""

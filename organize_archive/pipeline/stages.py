@@ -260,6 +260,7 @@ def job_progress(job: dict | None) -> dict | None:
         "total": job.get("total", 0),
         "current": job.get("current", ""),
         "elapsed": job.get("elapsed", 0),
+        "phase": job.get("phase", "working"),
     }
 
 
@@ -324,6 +325,18 @@ def _dedup_card_message(progress: dict, message: str | None) -> str | None:
     return message
 
 
+def _preparing_message(progress: dict) -> str:
+    """What a stage says between starting and reaching its first file: whatever
+    its setup last reported (see ``JobContext.preparing``), or nothing.
+
+    The reports are written for a log line and several trail an ellipsis of
+    their own ("downloading face models (buffalo_l) …"), which behind this
+    prefix would be the second one in six words. One is enough.
+    """
+    detail = (progress.get("current") or "").strip().rstrip("…. ")
+    return f"Preparing… · {detail}" if detail else "Preparing…"
+
+
 def _card(card_id: str, members: list[dict], blocker_card: dict[str, str | None]) -> dict:
     """Roll one card's member stages into the dict the GUI renders."""
     lead = max(members, key=lambda s: _STATE_RANK[s["state"]])
@@ -339,6 +352,12 @@ def _card(card_id: str, members: list[dict], blocker_card: dict[str, str | None]
         progress, message = _scan_card_progress(members, progress, message)
     elif card_id == "dedup" and state == "running" and progress:
         message = _dedup_card_message(progress, message)
+    # Last, so it outranks the wording above: "Finding duplicates…" and
+    # "Fingerprinting 0 of 40,000 photos…" are both claims about a loop that
+    # has not started yet.
+    if progress and progress.get("phase") == "preparing":
+        message = _preparing_message(progress)
+        progress = None
 
     bc_id = blocker_card[card_id]
     return {

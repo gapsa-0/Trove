@@ -63,7 +63,12 @@ def _warm_vision_model(ctx: JobContext) -> None:
 
     if not semantic.available():
         return
-    with ctx.uninterruptible("loading the semantic model"):
+    # Setup, not indexing: on a first run this downloads the vision tower, and
+    # the card reports that instead of a bar (see JobContext.preparing).
+    with (
+        ctx.preparing("loading the search model"),
+        ctx.uninterruptible("loading the semantic model"),
+    ):
         try:
             # The callback goes to load_vision, not to backend(): the backend is
             # a process-wide singleton that some other caller may already have

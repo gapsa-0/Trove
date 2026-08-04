@@ -37,6 +37,12 @@ class Job:
     message: str = ""
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
+    # "preparing" while the runner is still setting itself up -- counting what
+    # there is to do, loading or downloading a model -- and "working" once it is
+    # actually walking files. The status card shows a progress bar only in
+    # "working" (see JobContext.preparing). Default "working" so a runner that
+    # never says otherwise behaves exactly as it always did.
+    phase: str = "working"
     # True while the runner is inside a call that cancellation cannot reach --
     # in practice, building an ONNX session. Nothing can interrupt native code,
     # so ``shutdown`` stops *waiting* on such a job instead of spending its
@@ -163,6 +169,36 @@ class JobContext:
         """
         if self.cancel.is_set():
             raise KeyboardInterrupt
+
+    @contextmanager
+    def preparing(self, what: str) -> Iterator[None]:
+        """Mark the setup a stage does *before* it starts walking files.
+
+        Between "the stage I depend on finished" and "I am processing file 1"
+        there can be minutes: counting 150k files on disk, or fetching ~310 MB
+        of detector weights on first run. The card used to paint a progress bar
+        across that whole window -- a bar whose total nothing had started
+        consuming yet, which reads as a run that has stalled at 0% -- while the
+        one line that did explain the wait (the download's percentage) was
+        relegated to the small detail line beside it.
+
+        Inside this block the card shows no bar at all and says "Preparing… ·
+        <what>", where ``what`` is refreshed by whatever the setup reports
+        through ``job.current`` -- so a download's own progress becomes the
+        card's headline instead of competing with a bar that means something
+        else. It goes back to the stage's normal running text on the way out.
+
+        This is presentation only: it starts nothing, stops nothing, and does
+        not affect cancellation (``uninterruptible`` is the separate marker for
+        that, and the two nest -- a model load is both).
+        """
+        self.job.phase = "preparing"
+        self.job.current = what
+        try:
+            yield
+        finally:
+            self.job.phase = "working"
+            self.job.current = ""
 
     @contextmanager
     def uninterruptible(self, what: str) -> Iterator[None]:

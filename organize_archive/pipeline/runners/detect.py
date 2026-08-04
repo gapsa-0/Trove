@@ -129,24 +129,29 @@ def run(ctx: JobContext) -> None:
     # open root's id -- see scan.py's comment for the same invariant.
     root_id = job.require_root()
 
-    # Progress is cumulative over ALL canonical media, not just this run's
-    # backlog: total = every canonical image (+ video, once video detection
-    # is enabled), done starts at how many are already detected. So the
-    # bar/% match the "Detected N / total" tile and survive resuming across
-    # restarts (no misleading per-run total). cfg is passed so the
-    # population matches pending_count's (both honour detect_video_frames).
-    total = dx.image_count(conn, ctx.cfg, root_id)
-    already = max(0, total - dx.pending_count(conn, ctx.cfg, root_id))
-    job.total, job.done = total, already
-    # Load both detector model sets once and reuse across every chunk. This is
-    # the stage's un-cancellable window: two ONNX sessions, seconds of native
-    # code with nowhere to check the cancel event, so shutdown is told not to
-    # wait on it (see JobContext.uninterruptible).
-    with ctx.uninterruptible("loading detection models"):
-        loaded = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
-    # Fail here rather than inside the first chunk: extract() would otherwise
-    # load the models a second time to reach the same conclusion.
-    loaded.require()
+    # Everything up to the first chunk is setup, and on a first run it is the
+    # longest wait in the app: ~310 MB of weights over whatever connection the
+    # user has. The card shows that instead of a progress bar counting a
+    # population nothing has started on yet (see JobContext.preparing).
+    with ctx.preparing("counting photos to detect"):
+        # Progress is cumulative over ALL canonical media, not just this run's
+        # backlog: total = every canonical image (+ video, once video detection
+        # is enabled), done starts at how many are already detected. So the
+        # bar/% match the "Detected N / total" tile and survive resuming across
+        # restarts (no misleading per-run total). cfg is passed so the
+        # population matches pending_count's (both honour detect_video_frames).
+        total = dx.image_count(conn, ctx.cfg, root_id)
+        already = max(0, total - dx.pending_count(conn, ctx.cfg, root_id))
+        job.total, job.done = total, already
+        # Load both detector model sets once and reuse across every chunk. This
+        # is the stage's un-cancellable window: two ONNX sessions, seconds of
+        # native code with nowhere to check the cancel event, so shutdown is
+        # told not to wait on it (see JobContext.uninterruptible).
+        with ctx.uninterruptible("loading detection models"):
+            loaded = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
+        # Fail here rather than inside the first chunk: extract() would
+        # otherwise load the models a second time to reach the same conclusion.
+        loaded.require()
     totals = _detect_backlog(ctx, root_id, already, loaded.face, loaded.pet)
     _reattach_identities(ctx, totals)
     job.message = _summarise(conn, totals)

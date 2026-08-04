@@ -57,11 +57,18 @@ def fake_backend(monkeypatch, tmp_path):
 
 
 def _context(cfg):
-    """The three attributes ``_warm_vision_model`` actually uses."""
-    job = SimpleNamespace(current=None)
+    """The four attributes ``_warm_vision_model`` actually uses.
+
+    Both context managers are stand-ins: what they mark (a window shutdown
+    must not wait on, a window the card shows as "Preparing…") is beside the
+    point here, and the real ``preparing`` clears ``job.current`` on the way
+    out — which would erase the very message this asserts on.
+    """
+    job = SimpleNamespace(current=None, phase="working")
     return SimpleNamespace(
         cfg=cfg,
         job=job,
+        preparing=lambda _what: contextlib.nullcontext(),
         uninterruptible=lambda _what: contextlib.nullcontext(),
     )
 
