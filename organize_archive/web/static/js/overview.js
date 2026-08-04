@@ -102,9 +102,14 @@ function renderStoragePanel(s) {
   };
 
   const sw = document.getElementById("storage-switch");
+  // Either side switches. It reads as one switch with two ends, so pressing
+  // the lit end has to do something -- and there is only one thing it could
+  // mean. The active button therefore carries the *other* metric's id; every
+  // metric change re-renders this, so the handlers stay correct.
+  const other = Object.keys(STORAGE_METRICS).find(id => id !== key) || key;
   if (sw) sw.innerHTML = Object.entries(STORAGE_METRICS).map(([id, m]) =>
     `<button type="button" class="${id === key ? "on" : ""}"
-        onclick="setStorageMetric('${id}')">${m.label}</button>`).join("");
+        onclick="setStorageMetric('${id === key ? other : id}')">${m.label}</button>`).join("");
 
   const typebar = document.getElementById("typebar");
   if (typebar) {

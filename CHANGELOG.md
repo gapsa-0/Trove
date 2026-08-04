@@ -49,7 +49,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   megabytes used to show one unchanging line on the stage card and read as hung.
 - The Overview storage panel was reworked: one bar with a Size/Files switch
   instead of two competing bars, exact numbers moved into the table, and per-type
-  share shown on hover.
+  share shown on hover. Either end of that switch flips it, rather than the lit
+  end doing nothing.
 - A stage card no longer shows a progress bar while the stage is still setting
   itself up. Counting a 150k-file folder or fetching model weights happens before
   a single file is processed, and a bar sitting at 0% across it read as a run that
