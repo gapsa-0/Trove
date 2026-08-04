@@ -3,27 +3,30 @@
 
 Semantic search hides weak matches with two numbers (``config.py``):
 
-    semantic_search_min_similarity   absolute floor, noise guard only
+    semantic_search_min_similarity   binds where a query's best score is low
     semantic_search_relative_floor   fraction of the query's own best score
 
 They cannot be reasoned out, because SigLIP's cosine similarities are both
-compressed *and* query-dependent. Measured on this archive: a good match sits
-around 0.10-0.15 and the median image-query pair sits at 0.05, but the best match
-for "fireworks" (0.097) scores lower than an irrelevant best match for "an
-underwater submarine" (0.092) — so an absolute threshold cannot separate
-relevant from irrelevant at all. The relative floor is what does the work.
+compressed *and* query-dependent, which leaves the two populations overlapping:
+"a dog" tops out at 0.0916 on an archive full of dogs while "the surface of
+mars", which it holds none of, reaches 0.0948. No single absolute threshold
+separates those. The pair survives it by binding on different populations --
+see ``config.py`` for which does what.
 
 This tool prints the evidence needed to re-tune both, on whatever is actually
 indexed:
 
     python3 tools/dev/semantic_calibrate.py                    # default archive 1
     python3 tools/dev/semantic_calibrate.py --archive 2 --sample 20000
+    python3 tools/dev/semantic_calibrate.py --no-center        # uncentered scale
+
+Scores are centered by default, matching ``semantic_search_center_embeddings``.
+That matters: centering roughly triples the score range, so a floor read off an
+uncentered run is not comparable to the shipped one.
 
 It reads the catalogue read-only and writes nothing. Add ``--queries FILE`` (one
 per line) to calibrate against your own searches rather than the built-in set —
 which is the point, since the right cut depends on what you actually ask for.
-
-See plan/local-semantic-embeddings.md §0 and §7.
 """
 
 from __future__ import annotations
@@ -80,11 +83,20 @@ DEFAULT_QUERIES = [
 # return little for these at the same time as it returns plenty for the above --
 # they are the control group, and the reason the absolute floor cannot be the
 # only cut.
+#
+# Choose these carefully: an earlier list included "a chemistry laboratory with
+# test tubes", which on a real archive returned genuine chromatography plates, a
+# petri dish and a page of an immunology textbook, because the owner had studied
+# biology. A control that the archive quietly *does* contain scores its own
+# signal as noise and makes every floor below it look better than it is. Prefer
+# subjects no domestic camera plausibly captures.
 ABSENT_QUERIES = [
-    "an underwater submarine",
-    "a chemistry laboratory with test tubes",
-    "the surface of mars",
-    "an aerial view of a skyscraper city at night",
+    "a polar bear on ice",
+    "a coral reef with tropical fish",
+    "a hot air balloon festival",
+    "an astronaut spacewalk",
+    "a sumo wrestling match",
+    "a tank in a war zone",
 ]
 
 
@@ -139,11 +151,16 @@ def main():
     ap.add_argument(
         "--queries", type=Path, help="file of queries, one per line, replacing the defaults"
     )
+    ap.add_argument(
+        "--no-center",
+        action="store_true",
+        help="score without modality-gap centering (a different, narrower scale)",
+    )
     args = ap.parse_args()
 
     import numpy as np
 
-    from organize_archive.embeddings import backend as eb
+    from organize_archive.services import semantic
 
     cfg = Config.load()
     db_path = cfg.archive_db_path(args.archive)
@@ -151,11 +168,13 @@ def main():
         raise SystemExit(f"no archive database at {db_path}")
 
     vectors, _ids = load_vectors(db_path, args.archive, args.sample)
+    centering = not args.no_center
     print(f"{len(vectors)} embeddings, {vectors.shape[1]}-d, from {db_path}")
     print(
         f"current settings: min_similarity="
         f"{cfg.semantic_search_min_similarity}  relative_floor="
-        f"{cfg.semantic_search_relative_floor}\n"
+        f"{cfg.semantic_search_relative_floor}"
+        f"  centering={'on' if centering else 'OFF (--no-center)'}\n"
     )
 
     queries = (
@@ -163,10 +182,27 @@ def main():
         if args.queries
         else DEFAULT_QUERIES
     )
-    backend = eb.SiglipBackend(cfg.cache_dir)
+    # The process-wide singleton rather than a fresh backend: semantic.text_center
+    # below goes through it too, and the text tower is 283 MB to load twice.
+    backend = semantic.backend(cfg)
     backend.load_text(log=print)
-    real = vectors @ backend.embed_texts(queries).T
-    absent = vectors @ backend.embed_texts(ABSENT_QUERIES).T
+
+    def embed(texts):
+        """Text vectors on the same scale the shipped search scores on."""
+        matrix = backend.embed_texts(texts)
+        if centering:
+            matrix = matrix - np.asarray(semantic.text_center(cfg), dtype="float32")
+        return matrix / np.linalg.norm(matrix, axis=1, keepdims=True)
+
+    vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    if centering:
+        # Same shift the read path applies (services/search.py archive_center);
+        # recomputed here from whatever this run sampled rather than imported,
+        # so --sample stays self-consistent.
+        vectors = vectors - vectors.mean(axis=0)
+        vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    real = vectors @ embed(queries).T
+    absent = vectors @ embed(ABSENT_QUERIES).T
 
     flat = real.reshape(-1)
     print("Score distribution over every query-image pair:")
@@ -185,14 +221,18 @@ def main():
     )
     if absent_tops.max() >= tops.min():
         print(
-            "  -> the two overlap, so no absolute floor can separate them;\n"
-            "     the relative floor is doing the real work.\n"
+            "  -> the two overlap, so no single absolute floor separates them.\n"
+            "     Each cut binds on a different population instead: the floor\n"
+            "     where the best score is low, the ratio where it is high.\n"
         )
 
     print("Median results kept per query, for score >= max(floor, ratio*best):")
-    ratios = (0.70, 0.75, 0.80, 0.85, 0.90)
+    # The two modes live on different scales -- centering roughly triples the
+    # range -- so sweep the floors that are actually near the decision here.
+    ratios = (0.55, 0.60, 0.65, 0.70, 0.75) if centering else (0.70, 0.75, 0.80, 0.85, 0.90)
+    floors = (0.0, 0.15, 0.18, 0.20, 0.22) if centering else (0.0, 0.04, 0.05, 0.06, 0.07)
     print("  floor   " + "".join(f"{r:>12.2f}" for r in ratios))
-    for floor in (0.0, 0.04, 0.05, 0.06, 0.07):
+    for floor in floors:
         cells = []
         for ratio in ratios:
             keeps = [
