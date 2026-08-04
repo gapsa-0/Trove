@@ -35,7 +35,7 @@ export async function renderPhotos(m) {
   const g = restored ? S.grid : {
     offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
     place: "", onlyIndexed: false, onlyLocated: false, rawQuery: "", searchedQuery: "", query: "", expandedQuery: "",
-    expandedEmbeddingQuery: "", sort: "",
+    expandedEmbeddingQuery: "", sort: "", error: "",
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
     anchor: null, savedScrollTop: 0,
   };
@@ -297,7 +297,7 @@ export function applyFilters() {
   loadGrid();
 }
 export function resetGridResults(g) {
-  g.offset = 0; g.loaded = 0; g.total = null; g.doneDown = false; g.doneUp = true; g.gen++;
+  g.offset = 0; g.loaded = 0; g.total = null; g.error = ""; g.doneDown = false; g.doneUp = true; g.gen++;
   g.pages = []; g.anchor = null; g.savedScrollTop = 0;
   S.gallery = [];
   const grid = document.getElementById("grid"); if (grid) grid.replaceChildren();
@@ -318,6 +318,19 @@ export function updateClearBtn() {
   const g = S.grid, b = document.getElementById("f-clear");
   if (b) b.style.display = (g.year || g.month || g.type || g.people.length || g.place || g.onlyIndexed || g.onlyLocated) ? "inline" : "none";
 }
+/* Why the empty state is painted from the render and not from the response:
+   a grid restored by renderPhotos replays its stored pages without fetching
+   again, and a search that matched nothing stores one page holding zero items
+   -- so the message has to be reachable without a response in hand, or coming
+   back to the Library leaves a blank grid explaining nothing.
+   `total` is the "a load has landed" signal: it is null until the first
+   response, which is what keeps this off the screen while the first page is
+   still in flight. */
+function renderGridEmptyState(g, grid) {
+  if (g.loaded || g.total == null) return;
+  grid.innerHTML = `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${
+    g.error ? esc(g.error) : "No media matches these filters."}</div>`;
+}
 function renderGridPages(g, anchor = null) {
   const grid = document.getElementById("grid"); if (!grid) return;
   grid.replaceChildren();
@@ -336,6 +349,7 @@ function renderGridPages(g, anchor = null) {
   }));
   S.gallery = g.pages.flatMap(page => page.items.map(item => item.id));
   g.loaded = S.gallery.length;
+  renderGridEmptyState(g, grid);
   if (anchor) restoreLibraryAnchor(anchor);
 }
 export async function loadGrid(direction = "append") {
@@ -379,6 +393,7 @@ export async function loadGrid(direction = "append") {
     if (S.grid !== g || g.gen !== gen) return;
     const items = (res && res.items) || [];
     const count = (res && res.count) || 0;
+    g.error = (res && res.error) || "";
     g.total = res && res.total != null ? res.total : (g.total == null ? count : g.total);
     const anchor = libraryVisibleAnchor();
     if (direction === "prepend") g.pages.unshift({ offset: requestedOffset, items });
@@ -391,11 +406,9 @@ export async function loadGrid(direction = "append") {
     const windowLast = g.pages[g.pages.length - 1];
     g.offset = windowLast ? windowLast.offset + windowLast.items.length : 0;
     g.doneUp = !g.pages.length || g.pages[0].offset === 0;
-    g.doneDown = !!(res && res.error) || !windowLast ||
+    g.doneDown = !!g.error || !windowLast ||
       windowLast.offset + windowLast.items.length >= g.total;
     renderGridPages(g, anchor);
-    if (!g.loaded)
-      grid.innerHTML = `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${res && res.error ? esc(res.error) : "No media matches these filters."}</div>`;
     const gc = document.getElementById("gridcount");
     if (gc) gc.textContent = gridCountLabel(g);
     const bottom = document.getElementById("grid-sentinel");
