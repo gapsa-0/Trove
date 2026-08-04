@@ -126,26 +126,36 @@ class Config(ArchiveRegistryMixin):
     semantic_embedding_model: str = "siglip2-base-patch16-256"
     semantic_embedding_dimensions: int = 768
     # Two cuts decide which semantic matches are shown, because one absolute
-    # number provably cannot. Measured on this archive: the local embedder's
-    # cosines are compressed (median 0.05, best-in-archive ~0.15 for a query it
-    # answers well) AND shift per query -- the best "fireworks" match scores
-    # 0.097 while the best "selfie" scores 0.150. Worse, a subject the archive
-    # does not contain at all ("an underwater submarine") still tops out around
-    # 0.10, inside the range of genuine queries. So no absolute value separates
-    # relevant from irrelevant.
+    # number provably cannot. The local embedder's cosines are compressed AND
+    # shift per query, so the two populations overlap: measured over 30 present
+    # and 11 absent subjects on a 497-file archive, "a dog" (present) tops out
+    # at 0.0916 while "the surface of mars" (absent) reaches 0.0948. Any single
+    # threshold between them hides the dogs and shows the Mars lookalikes.
     #
-    # min_similarity is therefore only a floor against noise. At the relative
-    # floor below it binds on nothing -- results are identical anywhere from
-    # 0.00 to 0.06 -- and exists purely to stop a query the archive cannot
-    # answer at all from promoting its own near-random best matches. Retune it
-    # with tools/dev/semantic_calibrate.py, not by intuition.
-    semantic_search_min_similarity: float = 0.05
-    # ... and this is the cut that actually decides relevance: keep results
-    # within this fraction of the *query's own* best score, so the bar travels
-    # with the query instead of assuming a fixed scale. 0.80 keeps roughly the
-    # top ~1% of an archive for a query it answers well, and collapses to a
-    # handful for one it does not.
-    semantic_search_relative_floor: float = 0.80
+    # The two cuts work because each binds on a different population. This one
+    # binds only when a query's *best* score is low -- i.e. when the archive
+    # holds nothing like it -- so it is what silences a query the archive
+    # cannot answer, rather than a general noise floor. 0.07 is the largest
+    # value that still binds on none of the 30 present subjects while
+    # constraining 7 of the 11 absent ones. It gets safer as an archive grows:
+    # the median best score rises with file count (0.090 at 50 files, 0.105 at
+    # 497), so a fixed floor binds less, not more. Retune with
+    # tools/dev/semantic_calibrate.py, not by intuition.
+    semantic_search_min_similarity: float = 0.07
+    # ... and this is the cut that shapes a query the archive *can* answer:
+    # keep results within this fraction of the query's own best score, so the
+    # bar travels with the query instead of assuming a fixed scale.
+    #
+    # 0.75 rather than a tighter 0.80 because precision does not fall off a
+    # cliff below it. On a hand-labelled subject every result stayed correct
+    # down to 0.68, so 0.80 was discarding true matches to buy a margin the
+    # scores did not need -- it returned 7 of that subject's 15 photos. Paired
+    # with the 0.07 floor above, the two together return a median of 10 results
+    # for a present subject against 2 for an absent one, where 0.05/0.80
+    # returned 6 and 4: more of what you want and less of what you don't, at
+    # the same time. The count scales sub-linearly with archive size (~n^0.6),
+    # so a large archive gets a fuller page rather than a flood.
+    semantic_search_relative_floor: float = 0.75
 
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter
