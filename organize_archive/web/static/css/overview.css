@@ -287,7 +287,12 @@ button.stat:hover {
   box-shadow: 0 0 0 2px var(--accent)
 }
 
+/* Pinned to the content column rather than left to flow into the next free
+   one. The "Checking for work…" placeholder is a row with no rail -- there is
+   no chain to draw until the first poll says what it is -- and without this it
+   landed in the 20px rail track and wrapped one letter per line. */
 .health-task-body {
+  grid-column: 2;
   position: relative;
   min-width: 0;
   margin-left: 9px;

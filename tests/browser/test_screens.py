@@ -64,6 +64,30 @@ def test_library_health_draws_the_pipeline_as_a_chain(open_app):
         assert app.errors() == []
 
 
+def test_a_health_row_without_a_rail_still_gets_the_full_width(open_app):
+    """The rail is two grid tracks, and a row that has no rail — the
+    "Checking for work…" placeholder, since there is no chain to draw until
+    the first poll says what it is — flowed into the 20px track and wrapped
+    one letter per line. Asserted on the layout rule rather than on the
+    placeholder's markup, because the rule is what has to hold for any row.
+    """
+    with open_app("overview") as app:
+        app.wait_for(".health-node")
+        width = app.tab.evaluate("""
+          (() => {
+            const grid = document.querySelector('.health-grid');
+            grid.insertAdjacentHTML('beforeend',
+              '<div class="health-task" id="railless">'
+              + '<div class="health-task-body">x</div></div>');
+            const w = document.querySelector('#railless .health-task-body').offsetWidth;
+            document.getElementById('railless').remove();
+            return w;
+          })()
+        """)
+        assert width > 200, f"a railless row collapsed to {width}px"
+        assert app.errors() == []
+
+
 def test_the_library_grid_fills_with_the_archives_media(open_app):
     with open_app("library") as app:
         app.wait_for("#main img")
