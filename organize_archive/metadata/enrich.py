@@ -12,9 +12,10 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from ..config import Config
+from ..progress import Progress
 from . import filename_dates, resolver
 from .takeout import SidecarData, SidecarMatcher, parse_sidecar
 
@@ -39,22 +40,6 @@ except Exception:  # pragma: no cover
     def exif_available() -> bool:
         """Always False: this stub only exists because the real exiftool binding failed to import."""
         return False
-
-
-class _Progress(Protocol):
-    """Structural type for the two concrete progress trackers passed in here
-    (cli.progress.ScanProgress, pipeline.job.JobProgress) -- both live in
-    lenient (unannotated) modules, so a Protocol is what pins their shape here
-    without importing either concrete class into a strict one."""
-
-    total: int
-
-    # done/bytes_hashed are positional-only on purpose: every call site passes
-    # them positionally, and the two implementations disagree on the second
-    # name (`bytes_hashed` vs `_bytes`), which a by-name protocol would reject
-    # the moment pipeline/ is checked. `current` stays named -- scan/walker.py
-    # passes it by keyword.
-    def update(self, done: int, bytes_hashed: int, /, current: str = "") -> None: ...
 
 
 @dataclass
@@ -314,7 +299,7 @@ def _enrich_one(
 def enrich(
     conn: sqlite3.Connection,
     cfg: Config,
-    progress: _Progress | None = None,
+    progress: Progress | None = None,
     batch_size: int = 80,
     root_ids: tuple[int, ...] | None = None,
 ) -> EnrichStats:

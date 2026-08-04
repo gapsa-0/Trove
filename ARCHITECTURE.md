@@ -77,7 +77,7 @@ grandfathered.
 
 | Layer | Packages | Role |
 | --- | --- | --- |
-| L0 foundation | `config`, `paths`, `runtime`, `logging_setup`, `errors`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, and the SQLite connection/schema layer. |
+| L0 foundation | `config`, `paths`, `runtime`, `model_manifest`, `logging_setup`, `errors`, `progress`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, the shape a long pass reports progress through, and the SQLite connection/schema layer. |
 | L1 domain | `scan`, `hashing`, `metadata`, `media`, `dedup`, `geo`, `detect`, `faces`, `pets`, `embeddings`, `thumbnails` | The archive's actual algorithms — one package per concern, each usable on its own against a connection it is handed. |
 | L2 application | `services`, `pipeline` | Orchestrates L1: `services/` holds the business rules a caller invokes (merges, renames, browse queries); `pipeline/` schedules and runs the stages above. |
 | L3 delivery | `web`, `cli`, `desktop`, `__main__` | Translates an external request (HTTP, command line, desktop shell) into one service call and serialises the result. Holds no business logic itself. |
