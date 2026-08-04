@@ -1,6 +1,7 @@
 // Library search: the contenteditable composer that turns typed names into
-// person chips, and the "reach" line that reports how much of the archive a
-// search could actually see.
+// person chips, the local English translation and query expansion that run
+// before a description search, and the "reach" line that reports how much of
+// the archive a search could actually see.
 
 import {
   checkedPeople, loadGrid, renderIndexedFilter, renderSortOptions, resetGridResults,
@@ -13,6 +14,65 @@ import {
   S, TYPE_COL,
 } from "./state.js";
 
+let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
+function clearlyEnglishSearch(text) {
+  // Short-query language detection is unreliable, but these structural words
+  // are strong English signals and prevent feeding an already-English phrase
+  // such as "besides a lake" through the Spanish translator. Ambiguous words
+  // shared with Spanish ("a", "no", "me") are deliberately excluded.
+  const signals = new Set(["the", "this", "that", "these", "those", "is", "are", "was", "were",
+    "with", "without", "beside", "besides", "near", "by", "at", "of", "and", "or", "from", "to",
+    "in", "on", "under", "over", "between", "inside", "outside", "during"]);
+  return normalizedWords(text).split(" ").some(word => signals.has(word));
+}
+// Translate a Spanish query to English before embedding it. SigLIP 2's text
+// tower is genuinely multilingual, so this looks redundant — it is not, and
+// measurably so. A Spanish query gets hijacked by Spanish text *rendered
+// inside* images, which this archive is full of (WhatsApp screenshots, memes,
+// posters), because the model reads them. Measured over 30 query pairs on
+// 2,000 real files: a Spanish query's top 10 is 57% screenshots against a
+// 34% baseline, the English translation's is 30%. "un perro" returns ten dog
+// memes; "a dog" returns ten photographs of dogs.
+//
+// And the wrong results score HIGHER (Spanish beats English on 22 of 30
+// queries), which is why the translation must *replace* the original rather
+// than be merged with it as an alternate vector — taking the best of both
+// would systematically pick the worse one.
+async function localEnglishTranslation(text) {
+  if (!text || !text.match(/\p{L}/u) || clearlyEnglishSearch(text)) return "";
+  try {
+    if (!LOCAL_TRANSLATOR_PROMISE) {
+      LOCAL_TRANSLATOR_PROMISE = import("/vendor/bergamot-translator.js").then(module =>
+        new module.LatencyOptimisedTranslator({
+          pivotLanguage: null,
+          registryUrl: "/vendor/translation-es-en.json",
+          cacheSize: 256,
+          downloadTimeout: 15000
+        })
+      );
+    }
+    const translator = await LOCAL_TRANSLATOR_PROMISE;
+    const response = await translator.translate({ from: "es", to: "en", text, html: false });
+    const translated = (response && response.target && response.target.text || "")
+      .replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    return normalizedWords(translated) === normalizedWords(text) ? "" : translated;
+  } catch (error) {
+    // Translation improves recall but is never required for search. Reset a
+    // failed loader so a transient worker/model error can recover next time.
+    console.warn("Local Spanish search expansion unavailable:", error);
+    LOCAL_TRANSLATOR_PROMISE = null;
+    return "";
+  }
+}
+function visualSearchExpansion(translation) {
+  if (!translation) return "";
+  const words = new Set(normalizedWords(translation).split(" "));
+  // The model is matching text to image vectors. A lightweight photographic
+  // cue helps terse translated locations ("in the lake") align with actual
+  // photos without changing the translation shown to the user.
+  return ["photo", "photos", "picture", "pictures", "image", "images"].some(word => words.has(word))
+    ? translation : `${translation} photo`;
+}
 // Natural singular/plural label for a media type, so the reach line reads
 // "1 video" / "12 videos" rather than a bare type slug.
 function reachTypeLabel(type, n) {
@@ -224,8 +284,10 @@ export function setPeopleChecks(prefix, ids) {
   document.querySelectorAll(`#${prefix}-people-filter input[type="checkbox"]`)
     .forEach(input => input.checked = chosen.has(input.value));
 }
-export function semanticSubmit(ev) {
+export async function semanticSubmit(ev) {
   ev.preventDefault();
+  const submission = ++SEARCH_SUBMISSION, form = ev.currentTarget;
+  const submit = form.querySelector('button[type="submit"]'), oldLabel = submit.textContent;
   const rawQuery = semanticComposerText().trim();
   const g = S.grid;
   const mentions = extractPeopleMentions(rawQuery, (S.filterOpts && S.filterOpts.people) || [], true);
@@ -243,13 +305,20 @@ export function semanticSubmit(ev) {
   g.rawQuery = rawQuery;
   g.searchedQuery = rawQuery;
   // Natural-language image retrieval should not depend on how Caps Lock was
-  // used. Keep rawQuery intact for the composer, but normalize the text that
-  // gets embedded.
+  // used. Keep rawQuery intact for the composer, but normalize the text sent
+  // through translation and semantic embedding.
   g.query = semanticTextWithoutPeople(rawQuery, mentions).toLocaleLowerCase();
   renderSemanticComposer(true);
   renderSortOptions(g);
   renderActiveQuery(g);
   renderIndexedFilter(g);
+  if (submit) { submit.disabled = true; submit.textContent = "Searching…"; }
+  const expandedQuery = await localEnglishTranslation(g.query);
+  if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;
+  g.expandedQuery = expandedQuery;
+  g.expandedEmbeddingQuery = visualSearchExpansion(expandedQuery);
+  renderActiveQuery(g);
+  if (submit) { submit.disabled = false; submit.textContent = oldLabel; }
   resetGridResults(g);
   updateClearBtn();
   loadGrid();
@@ -284,6 +353,10 @@ export function renderActiveQuery(g) {
     phrase.append(token); cursor = mention.end;
   });
   if (cursor < searched.length) phrase.append(document.createTextNode(searched.slice(cursor)));
+  // The vector search runs on an English rendering of the sentence. Say so
+  // on hover when it differs, so an unexpected match has an explanation.
+  if (g.expandedQuery && g.query && g.expandedQuery !== g.query)
+    phrase.title = `Searched in English as “${g.expandedQuery}”`;
   const clear = document.createElement("button");
   clear.type = "button"; clear.className = "linkbtn aq-clear";
   clear.textContent = "Clear search";

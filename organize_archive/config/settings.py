@@ -140,6 +140,18 @@ class Config(ArchiveRegistryMixin):
     # floor binds less, not more. Retune with tools/dev/semantic_calibrate.py,
     # not by intuition.
     #
+    # THIS FLOOR ASSUMES THE QUERY REACHES THE MODEL IN ENGLISH, which the GUI
+    # guarantees by translating first (localEnglishTranslation, search.js). It
+    # is a test on score *magnitude*, and magnitude is language-dependent:
+    # SigLIP 2 is multilingual but trained 90% on English, so bare Spanish
+    # nouns average 0.18 where English ones average 0.30 ("bosque" 0.130 vs
+    # "forest" 0.348), and an article recovers almost none of it. With the
+    # translator removed once, this value silenced "bosque", "montaña",
+    # "nieve" and "calle" outright -- they returned nothing at all. Worse, the
+    # Spanish populations overlap (present down to 0.119, absent up to 0.191),
+    # so no value works for untranslated Spanish: that is a second, independent
+    # reason the translator earns its 26 MB.
+    #
     # BOTH VALUES BELOW ASSUME semantic_search_center_embeddings IS ON, which
     # roughly triples the score range. Uncentered they must be 0.07 / 0.75.
     semantic_search_min_similarity: float = 0.18

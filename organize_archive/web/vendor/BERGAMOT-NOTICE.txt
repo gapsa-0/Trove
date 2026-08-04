@@ -1,0 +1,13 @@
+Bergamot Translator browser runtime
+https://github.com/browsermt/bergamot-translator
+npm package @browsermt/bergamot-translator, version 0.4.9
+License: Mozilla Public License 2.0
+
+Spanish-to-English Firefox Translations model
+https://github.com/mozilla/translations
+Model artifacts published by Mozilla for Firefox Translations.
+License: Mozilla Public License 2.0
+
+The unmodified runtime and model artifacts are kept in this directory so
+Library search can expand short Spanish descriptions locally. Search text and
+model inference remain on the user's machine.

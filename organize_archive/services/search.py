@@ -18,17 +18,12 @@ from ..errors import ModelUnavailableError
 from ._common import _HAS_LOCATION, _NOT_HIDDEN, _quality_ok, _root_clause, reading
 from .types import MediaItem, MediaPage
 
-# How much an alternate rewording of a search is discounted against the words
-# the user actually typed, so the two only swap places on a clear win. Sized
-# against the *embedder's* similarity scale: SigLIP's cosines are far more
+# How much a locally translated rewording of a search is discounted against the
+# words the user actually typed, so the two only swap places on a clear win.
+# Sized against the *embedder's* similarity scale: SigLIP's cosines are far more
 # compressed than a retrieval-tuned cloud model's, so the 0.01 that was a
 # rounding error before would now be a real handicap. Kept at roughly the same
 # fraction of semantic_search_min_similarity as it was then.
-#
-# No caller supplies an alternate today -- the GUI sends a single query since
-# the local Spanish->English translation was removed. The mechanism is kept
-# because it is phrasing-agnostic: it scores N wordings of one search and takes
-# the best, whatever produced them.
 ALTERNATE_VECTOR_PENALTY = 0.002
 
 

@@ -44,13 +44,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   returned 7 of its 15 lake photos; it now returns them all, while a search for
   something the archive does not contain returns nearly nothing instead of a
   confident-looking page. Nothing is re-indexed.
-- **Searches are no longer translated to English first.** Trove used to bundle a
-  Spanish-to-English translation model and search with its output, because the
-  search model was English-only when that was written. It is multilingual now, so
-  your words go to it directly and the installer loses 26 MB. One caveat, and it
-  is why the translation existed: the model reads text *inside* your pictures, so
-  searching in the language your screenshots and memes are written in surfaces
-  more of them than the English equivalent did.
 - **The installers are roughly half the size.** Three things were shipping weight
   nobody could use: the People and Pets model weights travelled inside the download
   (349 MB) even though the app already knows how to fetch weights on demand; FFmpeg

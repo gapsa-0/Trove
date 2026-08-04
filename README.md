@@ -116,10 +116,13 @@ app already displays, videos through a few sampled frames. Audio and documents
 are recorded as skipped — the model has no audio tower. Indexing is resumable,
 skips hidden duplicates, and runs alongside the rest of the pipeline.
 
-The model is multilingual, so a search is embedded in whatever language you
-type it in. Bear in mind that it also *reads* text inside your photos: a query
-in the language your screenshots and forwarded memes are written in will pull
-more of them into the results than the same query in another language.
+A Spanish search is translated to English on this machine before it is
+embedded, which is not the redundancy it looks like. The model reads text
+*inside* your pictures, so a Spanish query drifts toward Spanish-language
+screenshots and memes rather than photographs; and although it is multilingual,
+it was trained overwhelmingly on English, so a Spanish query scores low enough
+to be mistaken for having no match at all. The translation model runs locally
+too — nothing about a search leaves the machine.
 
 ## Install
 
@@ -273,5 +276,6 @@ no public roadmap; the changelog is the record of what has actually landed.
 MIT — see [LICENSE](LICENSE).
 
 Trove bundles or downloads third-party components (ffmpeg, ExifTool, Leaflet,
-and several machine-learning models) under their own licenses. These are listed
-in [packaging/THIRD_PARTY_NOTICES.md](packaging/THIRD_PARTY_NOTICES.md).
+Bergamot, and several machine-learning models) under their own licenses. These
+are listed in
+[packaging/THIRD_PARTY_NOTICES.md](packaging/THIRD_PARTY_NOTICES.md).

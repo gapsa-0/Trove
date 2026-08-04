@@ -42,10 +42,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from organize_archive.config import Config
 from organize_archive.db import database as db
 
-# English, but only by convention: SigLIP 2's text tower is multilingual, and
-# the GUI now embeds whatever the user typed (the local Spanish->English
-# translation it used to run was removed). Pass --queries to calibrate against
-# the language and phrasing you actually search in.
+# English, because the GUI translates a Spanish query to English before
+# embedding it (``localEnglishTranslation`` in web/static/js/search.js). Keep
+# them English: measuring in a language the search never actually receives
+# would tune the floors against the wrong distribution -- and the gap is not
+# small. SigLIP 2 is multilingual but trained 90% on English, so the same
+# subject scores far lower asked in Spanish ("forest" 0.348 vs "bosque" 0.130
+# on a real archive, an article recovering almost none of it). That magnitude
+# gap is the second reason the translator exists, alongside the screenshot
+# hijack documented at its definition.
 DEFAULT_QUERIES = [
     "birthday cake",
     "a wedding",

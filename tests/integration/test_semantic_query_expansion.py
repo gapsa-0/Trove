@@ -56,9 +56,9 @@ def test_semantic_search_merges_alternate_query_vector(tmp_path):
 def test_embed_queries_uses_one_forward_pass(monkeypatch):
     """Both formulations of a search go through the text tower together.
 
-    Alternate wordings of one search are embedded in a single call, not one
-    apiece: the tower is ~283 MB of int8 weights and the second row is nearly
-    free once it is loaded.
+    The original wording and its local translation are embedded in a single
+    call, not one apiece: the tower is ~283 MB of int8 weights and the second
+    row is nearly free once it is loaded.
     """
     calls = []
 
