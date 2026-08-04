@@ -22,9 +22,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import organize_archive
+import trove
 
-PACKAGE = Path(organize_archive.__file__).resolve().parent
+PACKAGE = Path(trove.__file__).resolve().parent
 
 # highgui entry points. Present as attributes under headless, but every one of
 # them throws cv2.error at runtime because the backend was never built.

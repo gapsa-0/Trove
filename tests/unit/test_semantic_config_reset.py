@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import json
 
-from organize_archive.config import Config, discard_superseded_secrets
-from organize_archive.paths import config_file, secrets_file
+from trove.config import Config, discard_superseded_secrets
+from trove.paths import config_file, secrets_file
 
 
 def _write_config(data):

@@ -1,6 +1,6 @@
 """The package's layering, as an executable rule rather than a convention.
 
-`organize_archive` started with the layout ARCHITECTURE.md describes and grew a
+`trove` started with the layout ARCHITECTURE.md describes and grew a
 second, undeclared structure inside the package now called `web/` — which is
 how a face-clustering algorithm ended up importing the web layer:
 
@@ -29,7 +29,7 @@ broken by a deferred import is still a cycle, so this walks the whole AST
 rather than reading only the top-level import block.
 
 Third property, and the reason this test cannot rot quietly: every top-level
-name under `organize_archive/` must appear in LAYERS. Without that, adding a
+name under `trove/` must appear in LAYERS. Without that, adding a
 new package would silently escape the rule instead of failing here.
 """
 
@@ -39,16 +39,17 @@ import ast
 from collections import defaultdict
 from pathlib import Path
 
-import organize_archive
+import trove
 
-PKG_ROOT = Path(organize_archive.__file__).parent
+PKG_ROOT = Path(trove.__file__).parent
 
 # The architecture, in one dict. Keyed by the top-level module or package name
-# directly under organize_archive/; the value is its layer.
+# directly under trove/; the value is its layer.
 LAYERS = {
     # L0 foundation -- knows nothing about the rest of the package.
     "config": 0,
     "paths": 0,
+    "app_data_migration": 0,
     "runtime": 0,
     "model_manifest": 0,
     "features": 0,
@@ -76,7 +77,7 @@ LAYERS = {
     "web": 3,
     "cli": 3,
     "desktop": 3,
-    "__main__": 3,  # `python -m organize_archive`, which is just cli.main
+    "__main__": 3,  # `python -m trove`, which is just cli.main
 }
 
 # Known-bad edges, each with a reason and a date. An entry here is debt, not
@@ -128,13 +129,13 @@ def _imports(path: Path, me: str) -> list[tuple[str, int]]:
                     # case would make the plainest cross-package import in the
                     # package invisible to this test.
                     found += [(".".join([*base, a.name]), node.lineno) for a in node.names]
-            elif node.module and node.module.startswith("organize_archive"):
-                found.append((node.module[len("organize_archive.") :], node.lineno))
+            elif node.module and node.module.startswith("trove"):
+                found.append((node.module[len("trove.") :], node.lineno))
         elif isinstance(node, ast.Import):
             found += [
-                (a.name[len("organize_archive.") :], node.lineno)
+                (a.name[len("trove.") :], node.lineno)
                 for a in node.names
-                if a.name.startswith("organize_archive.")
+                if a.name.startswith("trove.")
             ]
     return found
 
@@ -158,7 +159,7 @@ def test_every_top_level_name_has_a_declared_layer():
 
     undeclared = sorted(on_disk - set(LAYERS))
     assert not undeclared, (
-        f"these live under organize_archive/ but have no layer: {undeclared}. "
+        f"these live under trove/ but have no layer: {undeclared}. "
         "Add them to LAYERS in this file, in the layer they belong to."
     )
 

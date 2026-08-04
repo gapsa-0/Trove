@@ -5,25 +5,25 @@ from urllib.request import urlopen
 
 from helpers import serve_in_thread
 
-from organize_archive import paths
-from organize_archive.cli import main
-from organize_archive.config import Config
+from trove import paths
+from trove.cli import main
+from trove.config import Config
 
 
 def test_linux_app_data_path_uses_xdg_and_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(paths.sys, "platform", "linux")
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
-    assert paths.app_data_dir() == tmp_path / "xdg" / "organize_archive"
+    assert paths.app_data_dir() == tmp_path / "xdg" / "trove"
 
     monkeypatch.delenv("XDG_DATA_HOME")
     monkeypatch.setattr(paths.Path, "home", classmethod(lambda cls: tmp_path / "home"))
-    assert paths.app_data_dir() == tmp_path / "home" / ".local" / "share" / "organize_archive"
+    assert paths.app_data_dir() == tmp_path / "home" / ".local" / "share" / "trove"
 
 
 def test_windows_app_data_path_uses_localappdata(monkeypatch, tmp_path):
     monkeypatch.setattr(paths.sys, "platform", "win32")
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    assert paths.app_data_dir() == tmp_path / "local" / "organize_archive"
+    assert paths.app_data_dir() == tmp_path / "local" / "trove"
 
 
 def test_first_run_config_is_empty_and_load_does_not_create_files(monkeypatch, tmp_path):
@@ -31,8 +31,8 @@ def test_first_run_config_is_empty_and_load_does_not_create_files(monkeypatch, t
     cfg = Config.load()
 
     assert cfg.roots == []
-    assert cfg.db_path == str(tmp_path / "organize_archive" / "archive.db")
-    assert not (tmp_path / "organize_archive").exists()
+    assert cfg.db_path == str(tmp_path / "trove" / "archive.db")
+    assert not (tmp_path / "trove").exists()
 
 
 def test_ensure_dirs_creates_standard_layout(monkeypatch, tmp_path):
@@ -40,7 +40,7 @@ def test_ensure_dirs_creates_standard_layout(monkeypatch, tmp_path):
     cfg = Config.load()
     cfg.ensure_dirs()
 
-    base = tmp_path / "organize_archive"
+    base = tmp_path / "trove"
     # Only app-wide binaries (ML models, the app icon) live under the shared
     # cache dir now. Thumbnails are per-archive and created lazily under each
     # archive's own cache dir (see test_archive_removal.py).
@@ -81,7 +81,7 @@ def test_db_override_is_not_saved_as_the_default(monkeypatch, tmp_path):
 
     assert main(["--db", str(override), "init"]) == 0
     assert override.exists()
-    assert Config.load().db_path == str(tmp_path / "app-data" / "organize_archive" / "archive.db")
+    assert Config.load().db_path == str(tmp_path / "app-data" / "trove" / "archive.db")
 
 
 def test_migrate_data_copies_legacy_files_without_removing_source(monkeypatch, tmp_path, capsys):
@@ -94,7 +94,7 @@ def test_migrate_data_copies_legacy_files_without_removing_source(monkeypatch, t
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "new-data"))
 
     assert main(["migrate-data", "--from", str(source)]) == 0
-    target = tmp_path / "new-data" / "organize_archive"
+    target = tmp_path / "new-data" / "trove"
     assert (target / "config.json").read_text() == "{}"
     assert (target / "archive.db").read_bytes() == b"database"
     assert (target / "cache" / "thumbs" / "one.jpg").read_bytes() == b"thumbnail"
@@ -112,7 +112,7 @@ def test_migrate_data_rejects_occupied_target_and_unknown_source(monkeypatch, tm
     source = tmp_path / "legacy"
     source.mkdir()
     (source / "archive.db").write_bytes(b"database")
-    target = tmp_path / "new-data" / "organize_archive"
+    target = tmp_path / "new-data" / "trove"
     target.mkdir(parents=True)
     (target / "archive.db").write_bytes(b"existing")
     assert main(["migrate-data", "--from", str(source)]) == 1
@@ -123,7 +123,7 @@ def test_migrate_legacy_archive_preserves_a_pre_isolation_catalog(monkeypatch, t
     """An install from before per-archive isolation had one shared archive.db
     with a single root. It must keep showing up in the GUI, not vanish, once
     this version starts for the first time."""
-    from organize_archive.db import database as db
+    from trove.db import database as db
 
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     cfg = Config.load()
@@ -166,7 +166,7 @@ def test_migrate_legacy_archive_skips_multi_root_catalogs(monkeypatch, tmp_path,
     """A legacy catalog with several roots mixed their data (shared dedup
     groups, etc.) in ways that can't be split apart automatically — skip it
     rather than guess, and latch so it's not retried forever."""
-    from organize_archive.db import database as db
+    from trove.db import database as db
 
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     cfg = Config.load()

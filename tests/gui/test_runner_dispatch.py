@@ -21,9 +21,9 @@ import time
 import pytest
 from helpers import wait_until
 
-from organize_archive.config import Config
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline.job import JobContext, Runner
+from trove.config import Config
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline.job import JobContext, Runner
 
 # The archive these tests pretend to be working on.
 _ROOT = 1

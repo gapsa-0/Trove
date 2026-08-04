@@ -71,8 +71,8 @@ def serve_in_thread(cfg):
     """
     # Imported inside the function so the unit tier can use wait_until without
     # pulling in the HTTP server and its dependencies.
-    from organize_archive.services import semantic
-    from organize_archive.web.server import serve
+    from trove.services import semantic
+    from trove.web.server import serve
 
     cfg.pipeline_paused = True
     with mock.patch.object(semantic, "warm_text_model", lambda cfg: None):

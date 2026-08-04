@@ -26,8 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from organize_archive.config import Config
-from organize_archive.pets import backend as pb
+from trove.config import Config
+from trove.pets import backend as pb
 
 HF_REPO = "AvitoTech/DINO-v2-small-for-animal-identification"
 

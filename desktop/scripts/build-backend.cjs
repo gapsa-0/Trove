@@ -33,7 +33,7 @@ if (icons.status !== 0) {
   process.exit(icons.status ?? 1);
 }
 
-const result = spawnSync(python, ["-m", "PyInstaller", "--noconfirm", "--distpath", path.join(root, "desktop"), path.join(root, "packaging", "organize-archive.spec")], {
+const result = spawnSync(python, ["-m", "PyInstaller", "--noconfirm", "--distpath", path.join(root, "desktop"), path.join(root, "packaging", "trove.spec")], {
   cwd: root,
   stdio: "inherit",
   env: { ...process.env, ARCHIVE_TOOL_TARGET: target },

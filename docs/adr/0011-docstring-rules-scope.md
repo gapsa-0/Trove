@@ -12,8 +12,8 @@ is" — are satisfied everywhere already and carry no per-file exemption. The
 two expensive rules, `D101` (public class) and `D103` (public function), are
 different: they are turned off for a specific, named list of packages in
 `[tool.ruff.lint.per-file-ignores]`, and that list is not the same shape as
-mypy's strict-typing list from 0010. `organize_archive/config/*.py` and
-`organize_archive/pipeline/*.py` are both in mypy's strict block — fully
+mypy's strict-typing list from 0010. `trove/config/*.py` and
+`trove/pipeline/*.py` are both in mypy's strict block — fully
 typed, `disallow_untyped_defs` and all — and both still appear in the
 `D101`/`D103` exemption list, alongside `paths.py` and packages like `dedup/`,
 `faces/`, and `web/*.py` that are not mypy-strict at all.

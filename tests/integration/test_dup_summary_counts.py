@@ -7,8 +7,8 @@ exactly when the screen used to replace itself with an empty-state box and
 show no numbers at all.
 """
 
-from organize_archive.db import database as db
-from organize_archive.services import dups
+from trove.db import database as db
+from trove.services import dups
 
 
 def _catalog(tmp_path, files, covered=None):

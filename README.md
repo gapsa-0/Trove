@@ -173,7 +173,7 @@ Then run the installer and follow the prompts. It installs for your user only, s
 needs no administrator rights, and it creates a desktop and Start-menu shortcut.
 
 Uninstalling removes the application and its shortcuts. It never touches your media,
-and your catalogue is kept in `%LOCALAPPDATA%\organize_archive` in case you reinstall
+and your catalogue is kept in `%LOCALAPPDATA%\trove` in case you reinstall
 — delete that folder yourself if you want it gone.
 
 See [Windows installation notes](docs/install-windows.md) for signature verification
@@ -224,9 +224,9 @@ Trove keeps mutable data outside both the source archive and the installed app:
 
 | Platform | Default location |
 | --- | --- |
-| Linux | `$XDG_DATA_HOME/organize_archive`, normally `~/.local/share/organize_archive` |
-| Windows | `%LOCALAPPDATA%\organize_archive` |
-| macOS | `~/Library/Application Support/organize_archive` |
+| Linux | `$XDG_DATA_HOME/trove`, normally `~/.local/share/trove` |
+| Windows | `%LOCALAPPDATA%\trove` |
+| macOS | `~/Library/Application Support/trove` |
 
 Inside it, each archive you add is fully isolated in `archives/<id>/`, with its own
 `archive.db` and its own thumbnail and face-crop cache, so one archive can be removed
@@ -241,9 +241,12 @@ credential on disk for a feature that no longer exists.
 The whole directory is valuable derived data: back it up by copying it while Trove is
 closed. Restoring it does not change the original media — at worst you re-scan.
 
-The directory is still named `organize_archive` rather than `Trove`. That is
-deliberate: the product name changed, but the package, CLI, application id and data
-path did not, so catalogues built by earlier versions keep working.
+Before the rename this directory was called `organize_archive`. If you are upgrading
+from such a build, Trove moves it to the new name the first time it starts and
+repoints the paths recorded inside `config.json`, so your catalogue carries over
+without a re-scan. The move happens once; nothing is copied, so it is instant
+however large the catalogue is. If both directories somehow exist, Trove leaves
+both alone, starts from the new one, and says so in the log.
 
 ## Building from source
 
@@ -269,7 +272,7 @@ For anything beyond that:
   a new test belongs, and how to look at a GUI change.
 - [docs/adr/](docs/adr/) — why the larger decisions were made, one record each.
 - [CHANGELOG.md](CHANGELOG.md) — what changed between releases.
-- [command line and development](docs/command-line.md) — using `oa`, and building
+- [command line and development](docs/command-line.md) — using `trove`, and building
   the desktop packages yourself.
 - [dependencies](docs/dev/dependencies.md) — which optional extra enables what, and
   why each dependency was chosen.

@@ -3,11 +3,11 @@ import threading
 
 import factories
 
-from organize_archive.config import Config
-from organize_archive.dedup import exact
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline.job import JobContext
-from organize_archive.pipeline.runners import dedup as dedup_runner
+from trove.config import Config
+from trove.dedup import exact
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline.job import JobContext
+from trove.pipeline.runners import dedup as dedup_runner
 
 
 def _run_dedup(jm, conn, job):
@@ -124,7 +124,7 @@ def test_interrupted_regroup_leaves_previous_grouping_intact(monkeypatch):
 
 def _job_manager(tmp_path, monkeypatch):
     # Everything stays under tmp_path: archive_db_path/archive_cache_dir
-    # normally resolve under the user's real ~/.local/share/organize_archive,
+    # normally resolve under the user's real ~/.local/share/trove,
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))

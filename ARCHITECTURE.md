@@ -32,7 +32,7 @@ metadata for whatever `scan` has already committed. Once both have caught up,
 `dedup` rebuilds duplicate groups wholesale; three independent stages then
 fan out from it. `detect` finds faces and pets in a single decode pass per
 image/frame and immediately clusters them into people and pets. This is the
-real dependency graph, from `organize_archive/pipeline/stages.py`:
+real dependency graph, from `trove/pipeline/stages.py`:
 
 ```text
   scan ────┐                  ┌──▶ detect ──▶ cluster ──▶ persons / pets
@@ -79,7 +79,7 @@ grandfathered.
 
 | Layer | Packages | Role |
 | --- | --- | --- |
-| L0 foundation | `config`, `paths`, `runtime`, `model_manifest`, `features`, `logging_setup`, `errors`, `progress`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, the catalogue of what an archive can be asked to do, the shape a long pass reports progress through, and the SQLite connection/schema layer. |
+| L0 foundation | `config`, `paths`, `app_data_migration`, `runtime`, `model_manifest`, `features`, `logging_setup`, `errors`, `progress`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, the catalogue of what an archive can be asked to do, the shape a long pass reports progress through, and the SQLite connection/schema layer. |
 | L1 domain | `scan`, `hashing`, `metadata`, `media`, `dedup`, `geo`, `detect`, `faces`, `pets`, `embeddings`, `thumbnails` | The archive's actual algorithms — one package per concern, each usable on its own against a connection it is handed. |
 | L2 application | `services`, `pipeline` | Orchestrates L1: `services/` holds the business rules a caller invokes (merges, renames, browse queries); `pipeline/` schedules and runs the stages above. |
 | L3 delivery | `web`, `cli`, `desktop`, `__main__` | Translates an external request (HTTP, command line, desktop shell) into one service call and serialises the result. Holds no business logic itself. |
@@ -88,32 +88,33 @@ grandfathered.
 
 | I want to change… | Go to |
 | --- | --- |
-| how a date is chosen | `organize_archive/metadata/resolver.py` |
-| how Takeout sidecars are matched | `organize_archive/metadata/takeout.py` |
-| what the Library grid shows | `organize_archive/services/browse.py` + `organize_archive/web/static/js/library.js` |
-| when a pipeline stage runs | `organize_archive/pipeline/stages.py` |
-| what an archive can be asked to do, and the words describing it | `organize_archive/features.py` (see ADR 0015) |
-| which model weights a feature needs, and when they are downloaded | `organize_archive/services/models.py` + `organize_archive/pipeline/runners/models.py` |
-| how the archive setup screen looks and behaves | `organize_archive/web/static/js/setup.js` + `web/static/css/setup.css` |
-| what a status card *says* (its wording, its bar, the pause overlay) | `organize_archive/pipeline/status.py` |
-| how a job does its work | `organize_archive/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
-| a new API endpoint | `organize_archive/web/routes/<domain>.py`, then add it to the route tables in `organize_archive/web/routes/__init__.py` — see below |
-| what the detectors find in one frame (and the people-vs-pets cross-check) | `organize_archive/detect/frame.py` |
-| which way up a photo really is | `organize_archive/detect/orientation.py` |
-| how a video is sampled, and repeats across its frames collapsed | `organize_archive/detect/video.py` |
-| when the detect stage runs a file, and in what batches | `organize_archive/detect/extract.py` |
-| how detections are stored (and what survives a re-detect) | `organize_archive/detect/persist.py` |
-| face clustering behaviour (the two passes and their thresholds) | `organize_archive/faces/passes.py` |
-| what a face re-cluster destroys, and what survives it | `organize_archive/faces/cluster.py` |
-| pet clustering behaviour | `organize_archive/pets/cluster.py` |
-| which semantic matches are shown (the two cuts, and the modality-gap centering they are tuned for) | `organize_archive/services/search.py`, with the thresholds and their reasoning in `organize_archive/config/settings.py` |
-| how a screen looks | `organize_archive/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
-| the SQLite schema | `organize_archive/db/schema.sql`, plus the migration in `init_db` (`organize_archive/db/database.py`) |
-| settings and their defaults | `organize_archive/config/settings.py` |
-| where things live on disk | `organize_archive/paths.py` |
+| how a date is chosen | `trove/metadata/resolver.py` |
+| how Takeout sidecars are matched | `trove/metadata/takeout.py` |
+| what the Library grid shows | `trove/services/browse.py` + `trove/web/static/js/library.js` |
+| when a pipeline stage runs | `trove/pipeline/stages.py` |
+| what an archive can be asked to do, and the words describing it | `trove/features.py` (see ADR 0015) |
+| which model weights a feature needs, and when they are downloaded | `trove/services/models.py` + `trove/pipeline/runners/models.py` |
+| how the archive setup screen looks and behaves | `trove/web/static/js/setup.js` + `web/static/css/setup.css` |
+| what a status card *says* (its wording, its bar, the pause overlay) | `trove/pipeline/status.py` |
+| how a job does its work | `trove/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
+| a new API endpoint | `trove/web/routes/<domain>.py`, then add it to the route tables in `trove/web/routes/__init__.py` — see below |
+| what the detectors find in one frame (and the people-vs-pets cross-check) | `trove/detect/frame.py` |
+| which way up a photo really is | `trove/detect/orientation.py` |
+| how a video is sampled, and repeats across its frames collapsed | `trove/detect/video.py` |
+| when the detect stage runs a file, and in what batches | `trove/detect/extract.py` |
+| how detections are stored (and what survives a re-detect) | `trove/detect/persist.py` |
+| face clustering behaviour (the two passes and their thresholds) | `trove/faces/passes.py` |
+| what a face re-cluster destroys, and what survives it | `trove/faces/cluster.py` |
+| pet clustering behaviour | `trove/pets/cluster.py` |
+| which semantic matches are shown (the two cuts, and the modality-gap centering they are tuned for) | `trove/services/search.py`, with the thresholds and their reasoning in `trove/config/settings.py` |
+| how a screen looks | `trove/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
+| the SQLite schema | `trove/db/schema.sql`, plus the migration in `init_db` (`trove/db/database.py`) |
+| settings and their defaults | `trove/config/settings.py` |
+| where things live on disk | `trove/paths.py` |
+| how a pre-rename install's data folder is carried across | `trove/app_data_migration.py` (see ADR 0016) |
 
 For a new API endpoint: `GET_ROUTES` / `POST_ROUTES` in
-`organize_archive/web/routes/__init__.py` map an exact path to a handler, and
+`trove/web/routes/__init__.py` map an exact path to a handler, and
 `GET_PREFIX_ROUTES` holds the parameterised ones (`/thumb/<id>`,
 `/api/faces/person/<id>`, …), checked exact-before-prefix. Together these
 three tables are the single source of truth for what the server answers.
@@ -123,7 +124,7 @@ follow automatically.
 
 ## The schema, summarised
 
-`organize_archive/db/schema.sql` currently defines 31 tables, grouped by what
+`trove/db/schema.sql` currently defines 31 tables, grouped by what
 they describe:
 
 | Group | Tables |
@@ -147,7 +148,7 @@ suppressed by an overlapping animal/toy box goes for review — reachable from
 both People and Pets, filed here with pets because that is the detector that
 vetoed it.
 
-`SCHEMA_VERSION` (currently 13) lives in `organize_archive/db/database.py`.
+`SCHEMA_VERSION` (currently 13) lives in `trove/db/database.py`.
 `init_db` is close to additive-only: on every run it creates any missing
 table/index (`CREATE ... IF NOT EXISTS`) and adds any missing column
 (`_add_column_if_missing`), never drops or renames one. The one exception is
@@ -163,8 +164,8 @@ own previous `user_version` so it cannot fire twice.
   `pets` wholesale). Manual tags therefore anchor to a person/pet **name**,
   not an id, and a repair step re-points them onto whichever id currently
   carries that name after each rebuild
-  (`organize_archive/faces/manual_tags.py`,
-  `organize_archive/pets/manual_tags.py`).
+  (`trove/faces/manual_tags.py`,
+  `trove/pets/manual_tags.py`).
 - **Re-detecting a file rewrites all of its detections wholesale**, and one
   thing must survive that. `detect/persist.py` deletes the file's faces,
   animals, suppressed candidates and orientation before writing what the pass
@@ -176,10 +177,10 @@ own previous `user_version` so it cannot fire twice.
   re-created. A veto with no record is a veto nobody can appeal — which is
   exactly what shipped between `67a2c5c` and `e9a8391`, with the Pets review
   queue silently unfillable for nine days.
-- `config.json` persists most `Config` fields (`organize_archive/config/settings.py`),
+- `config.json` persists most `Config` fields (`trove/config/settings.py`),
   so changing a dataclass default does nothing on an existing install —
   retuning a threshold there means editing that install's `config.json`.
-- Pipeline status is in-memory by design (`organize_archive/pipeline/stages.py`
+- Pipeline status is in-memory by design (`trove/pipeline/stages.py`
   module docstring): it is derived fresh from the catalogue and the live job
   list each time, not persisted, because the pipeline runs once per session
   and then goes idle.
@@ -191,7 +192,7 @@ own previous `user_version` so it cannot fire twice.
   is stored as NULL, never as a real coordinate at the equator.
 - Each open archive has its own `archive.db` and thumbnail/face-crop cache
   under `archives/<id>/` in the app's data directory
-  (`organize_archive/paths.py`); only downloaded model weights and the app
+  (`trove/paths.py`); only downloaded model weights and the app
   icon are shared across archives.
 - **An archive runs only the features it was set up with, and the gate is one
   omission** (ADR 0015): `stage_states` leaves a disabled stage out of the list
@@ -236,7 +237,7 @@ own previous `user_version` so it cannot fire twice.
   Pets off would destroy every animal already found). See `detect/persist.py`.
 - A `services/` function takes a `db_path` and opens its own SQLite
   connection per call, rather than being handed a shared one — stated as a
-  contract in `organize_archive/services/__init__.py`'s module docstring.
+  contract in `trove/services/__init__.py`'s module docstring.
   This is deliberate, not wasteful: handlers run concurrently under
   `ThreadingHTTPServer`, and a `sqlite3` connection may not be shared between
   threads, so a fresh connection per call is what keeps the layer safe to

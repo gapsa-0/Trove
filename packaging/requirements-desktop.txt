@@ -14,7 +14,7 @@ numpy==2.5.1
 # symbol — cv2 appears only as cvtColor/resize/Laplacian/dnn, and video frames come
 # from the bundled ffmpeg, not VideoCapture — so the Qt5 Core/Gui/Widgets/Test/XcbQpa
 # and xcb/xkb stack the full wheel carries is 29 MB of bundle nobody can reach.
-# If a cv2.imshow/VideoCapture ever lands in organize_archive/, this pin has to go
+# If a cv2.imshow/VideoCapture ever lands in trove/, this pin has to go
 # back to opencv-python; tests/unit/test_opencv_headless.py fails the build if it does.
 opencv-python-headless==5.0.0.93
 onnxruntime==1.27.0

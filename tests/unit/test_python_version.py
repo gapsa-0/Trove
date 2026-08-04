@@ -26,9 +26,9 @@ import sys
 import tomllib
 from pathlib import Path
 
-import organize_archive
+import trove
 
-ROOT = Path(organize_archive.__file__).resolve().parent.parent
+ROOT = Path(trove.__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
 

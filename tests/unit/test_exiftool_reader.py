@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from organize_archive.metadata import exiftool_reader as ex
+from trove.metadata import exiftool_reader as ex
 
 
 @pytest.fixture

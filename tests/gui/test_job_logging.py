@@ -13,9 +13,9 @@ import logging
 import pytest
 from helpers import wait_until
 
-from organize_archive.config import Config
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline.job import Runner
+from trove.config import Config
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline.job import Runner
 
 # The archive these tests pretend to be working on.
 _ROOT = 1
@@ -76,7 +76,7 @@ def test_a_failing_job_logs_an_error_with_a_traceback(jm, monkeypatch, caplog):
 
     monkeypatch.setitem(jobs_mod.RUNNERS, "dedup", Runner(kind="dedup", run=boom))
 
-    with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
+    with caplog.at_level(logging.INFO, logger="trove.pipeline.manager"):
         job = _run_to_completion(jm)
 
     assert job.status == "error"
@@ -89,7 +89,7 @@ def test_a_failing_job_logs_an_error_with_a_traceback(jm, monkeypatch, caplog):
     failures = [
         r
         for r in caplog.records
-        if r.levelno == logging.ERROR and r.name == "organize_archive.pipeline.manager"
+        if r.levelno == logging.ERROR and r.name == "trove.pipeline.manager"
     ]
     assert len(failures) == 1
     assert "job failed kind=dedup" in failures[0].getMessage()
@@ -102,7 +102,7 @@ def test_a_failing_job_logs_an_error_with_a_traceback(jm, monkeypatch, caplog):
 def test_a_successful_job_logs_a_start_and_a_done(jm, monkeypatch, caplog):
     monkeypatch.setitem(jobs_mod.RUNNERS, "dedup", Runner(kind="dedup", run=lambda ctx: None))
 
-    with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
+    with caplog.at_level(logging.INFO, logger="trove.pipeline.manager"):
         job = _run_to_completion(jm)
 
     assert job.status == "done"
@@ -124,7 +124,7 @@ def test_a_cancelled_job_is_not_logged_as_a_failure(jm, monkeypatch, caplog):
 
     monkeypatch.setitem(jobs_mod.RUNNERS, "dedup", Runner(kind="dedup", run=cancelled))
 
-    with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
+    with caplog.at_level(logging.INFO, logger="trove.pipeline.manager"):
         job = _run_to_completion(jm)
 
     assert job.status == "cancelled"
@@ -135,7 +135,7 @@ def test_a_cancelled_job_is_not_logged_as_a_failure(jm, monkeypatch, caplog):
 
 
 def test_pause_and_resume_transitions_are_logged(jm, caplog):
-    with caplog.at_level(logging.INFO, logger="organize_archive.pipeline.manager"):
+    with caplog.at_level(logging.INFO, logger="trove.pipeline.manager"):
         jm.set_paused(True)
         jm.set_paused(False)
         jm.set_stage_paused("scan", True)
@@ -150,7 +150,7 @@ def test_pause_and_resume_transitions_are_logged(jm, caplog):
 
 def test_a_tick_that_starts_nothing_says_why(jm, caplog):
     """A tick that starts nothing used to look identical to no tick at all."""
-    with caplog.at_level(logging.DEBUG, logger="organize_archive.pipeline"):
+    with caplog.at_level(logging.DEBUG, logger="trove.pipeline"):
         assert jm.scheduler.tick() is False
 
     assert "no archive is open" in caplog.text

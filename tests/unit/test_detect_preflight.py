@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive import model_manifest as mm
-from organize_archive.config import Config
-from organize_archive.detect import extract as dx
-from organize_archive.errors import ModelUnavailableError
-from organize_archive.faces import backend as face_backend
-from organize_archive.pets import backend as pet_backend
+from trove import model_manifest as mm
+from trove.config import Config
+from trove.detect import extract as dx
+from trove.errors import ModelUnavailableError
+from trove.faces import backend as face_backend
+from trove.pets import backend as pet_backend
 
 
 @pytest.fixture

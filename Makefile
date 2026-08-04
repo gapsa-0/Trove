@@ -48,7 +48,7 @@ lint: lint-py lint-js  ## Static checks (fast — run this before every commit)
 lint-py:         ## Python static checks only (what CI's python job runs)
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
-	$(PY) -m mypy organize_archive
+	$(PY) -m mypy trove
 
 lint-js:         ## JavaScript static checks only (what CI's electron job runs)
 	cd desktop && npm run lint
@@ -96,7 +96,7 @@ test-fast:       ## Unit tier only, skipping the slow ones (the per-save loop)
 # semantic indexing over the whole catalogue. .devdata/ is gitignored and empty
 # until you register an archive in it.
 gui:             ## Run the GUI on a test port against a throwaway dev data dir
-	XDG_DATA_HOME=$(CURDIR)/.devdata $(PY) -m organize_archive gui --port $(GUI_PORT)
+	XDG_DATA_HOME=$(CURDIR)/.devdata $(PY) -m trove gui --port $(GUI_PORT)
 
 # Needs `make gui` running in another shell, plus a headless Chrome with a
 # debugging port open (tools/dev/shoot_all.py's docstring has the command).

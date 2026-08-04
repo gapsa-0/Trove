@@ -21,12 +21,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.detect import extract as dx
-from organize_archive.detect import video as dv
-from organize_archive.pets.backend import AnimalDetection
-from organize_archive.services import pending
+from trove.config import Config
+from trove.db import database as db
+from trove.detect import extract as dx
+from trove.detect import video as dv
+from trove.pets.backend import AnimalDetection
+from trove.services import pending
 
 np = pytest.importorskip("numpy")
 

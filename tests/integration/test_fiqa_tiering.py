@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.faces import fiqa
+from trove.config import Config
+from trove.db import database as db
+from trove.faces import fiqa
 
 
 def _conn(tmp_path):

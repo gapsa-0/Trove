@@ -7,7 +7,7 @@ import logging
 
 import pytest
 
-from organize_archive import logging_setup
+from trove import logging_setup
 
 
 @pytest.fixture(autouse=True)
@@ -32,14 +32,14 @@ def _restore_root_logger():
 
 
 def _ours(root: logging.Logger) -> list[logging.Handler]:
-    return [h for h in root.handlers if getattr(h, "_organize_archive_handler", False)]
+    return [h for h in root.handlers if getattr(h, "_trove_handler", False)]
 
 
 def test_configure_writes_under_the_isolated_data_dir(monkeypatch):
-    monkeypatch.delenv("OA_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("TROVE_LOG_LEVEL", raising=False)
     logging_setup.configure()
 
-    logging.getLogger("organize_archive.test").info("hello from the test")
+    logging.getLogger("trove.test").info("hello from the test")
     for handler in _ours(logging.getLogger()):
         handler.flush()
 
@@ -51,40 +51,40 @@ def test_configure_writes_under_the_isolated_data_dir(monkeypatch):
 
 
 def test_configure_twice_does_not_duplicate_handlers(monkeypatch):
-    monkeypatch.delenv("OA_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("TROVE_LOG_LEVEL", raising=False)
     logging_setup.configure()
     first = len(_ours(logging.getLogger()))
     logging_setup.configure()
 
     assert len(_ours(logging.getLogger())) == first
 
-    logging.getLogger("organize_archive.test").info("once only")
+    logging.getLogger("trove.test").info("once only")
     for handler in _ours(logging.getLogger()):
         handler.flush()
     assert logging_setup.log_file().read_text(encoding="utf-8").count("once only") == 1
 
 
 def test_env_var_sets_the_level(monkeypatch):
-    monkeypatch.setenv("OA_LOG_LEVEL", "debug")
+    monkeypatch.setenv("TROVE_LOG_LEVEL", "debug")
     logging_setup.configure()
     assert logging.getLogger().level == logging.DEBUG
 
 
 def test_argument_overrides_the_env_var(monkeypatch):
-    monkeypatch.setenv("OA_LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("TROVE_LOG_LEVEL", "DEBUG")
     logging_setup.configure(level="WARNING")
     assert logging.getLogger().level == logging.WARNING
 
 
 def test_unknown_level_falls_back_to_info(monkeypatch):
     # A typo in an env var must not stop the application starting.
-    monkeypatch.setenv("OA_LOG_LEVEL", "verbose-please")
+    monkeypatch.setenv("TROVE_LOG_LEVEL", "verbose-please")
     logging_setup.configure()
     assert logging.getLogger().level == logging.INFO
 
 
 def test_stderr_handler_is_optional(monkeypatch):
-    monkeypatch.delenv("OA_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("TROVE_LOG_LEVEL", raising=False)
     logging_setup.configure(stderr=False)
     assert not any(
         type(h) is logging.StreamHandler  # RotatingFileHandler subclasses it
@@ -97,8 +97,8 @@ def test_configure_creates_nothing_on_disk(monkeypatch, tmp_path):
 
     The data dir is created by Config.ensure_dirs(), deliberately only by
     operations that write -- a command that only reads, or that fails its
-    argument checks, leaves no trace. An eager mkdir here made every `oa`
-    invocation create it, which broke `oa migrate-data`'s ability to tell a
+    argument checks, leaves no trace. An eager mkdir here made every `trove`
+    invocation create it, which broke `trove migrate-data`'s ability to tell a
     fresh target from an occupied one (test_app_data.py catches that).
     """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "fresh"))
@@ -114,8 +114,8 @@ def test_unwritable_log_dir_degrades_to_stderr(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(logging_setup, "app_data_dir", lambda: blocker)
     logging_setup.configure()
 
-    logging.getLogger("organize_archive.test").warning("first")
-    logging.getLogger("organize_archive.test").warning("second")
+    logging.getLogger("trove.test").warning("first")
+    logging.getLogger("trove.test").warning("second")
 
     err = capsys.readouterr().err
     assert "could not write log file" in err

@@ -2,8 +2,8 @@ import struct
 
 import pytest
 
-from organize_archive.db import database as db
-from organize_archive.services import search, semantic
+from trove.db import database as db
+from trove.services import search, semantic
 
 np = pytest.importorskip("numpy")
 

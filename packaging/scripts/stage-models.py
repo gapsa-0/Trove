@@ -6,11 +6,11 @@ Releases used to bundle the two weights in ``packaging/models/manifest.json``,
 because unlike the OpenCV Zoo YOLOX detector and the InsightFace buffalo_l pack
 they have no upstream download URL. That cost 349 MB of installer. They are now
 re-published as release assets on this repository instead, so the app fetches them
-on first use like every other weight, and ``packaging/organize-archive.spec``
+on first use like every other weight, and ``packaging/trove.spec``
 bundles nothing.
 
 What remains useful here: staging into ``packaging/models/staged/`` populates the
-second tier of ``organize_archive.model_manifest``'s resolver, which lets a source
+second tier of ``trove.model_manifest``'s resolver, which lets a source
 checkout run the model-backed tests offline; and ``--validate`` is what CI runs to
 keep the manifest honest. Nothing in the desktop build calls this script.
 
@@ -26,7 +26,7 @@ Every source is SHA-256 verified against the manifest before it is staged, so al
 three produce byte-identical output.
 
 The manifest schema, the hashing and the URL download live in
-``organize_archive.model_manifest``, which the *application* uses to resolve these
+``trove.model_manifest``, which the *application* uses to resolve these
 same two files at runtime. They are imported rather than reimplemented here: two
 copies of "what a valid entry is" would eventually disagree, and the one that
 matters is whichever the app believes.
@@ -47,7 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from organize_archive import model_manifest  # noqa: E402  (needs ROOT on sys.path)
+from trove import model_manifest  # noqa: E402  (needs ROOT on sys.path)
 
 MANIFEST = model_manifest.MANIFEST_PATH
 STAGE = model_manifest.STAGED_DIR
@@ -71,7 +71,7 @@ def validate() -> int:
 def cache_models_dir() -> Path | None:
     """The app's own ``cache/models`` directory, if this checkout can tell us."""
     try:
-        from organize_archive.config import Config
+        from trove.config import Config
 
         return Path(Config().cache_dir) / "models"
     except Exception:

@@ -23,9 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from organize_archive import thumbnails
-from organize_archive.config import Config
-from organize_archive.db import database as db
+from trove import thumbnails
+from trove.config import Config
+from trove.db import database as db
 
 
 def _worker(args):

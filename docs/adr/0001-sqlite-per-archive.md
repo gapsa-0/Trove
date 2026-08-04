@@ -17,7 +17,7 @@ else's.
 
 Each archive the GUI knows about gets its own directory,
 `archives/<id>/`, under the application-data folder, holding its own
-`archive.db` and its own thumbnail and face-crop cache. `organize_archive/config/archives.py`'s
+`archive.db` and its own thumbnail and face-crop cache. `trove/config/archives.py`'s
 `ArchiveRegistryMixin` is what allocates and looks after these ids:
 `allocate_archive_id` claims the next free one and creates the directory
 before anything is registered, and `_next_archive_id` deliberately unions the
@@ -29,7 +29,7 @@ folder.
 The registry id is used directly as `roots.id` inside that archive's own
 database — the two numbering schemes are kept identical on purpose so there
 is never a mapping from "GUI archive id" to "row id inside the database" to
-get wrong or out of sync. `organize_archive/pipeline/archives.py` (which
+get wrong or out of sync. `trove/pipeline/archives.py` (which
 answers per-archive questions like disk-file counts and whether a dedup
 rebuild is owed) and the rest of the pipeline address an archive purely by
 this one id, via `cfg.archive_db_path(archive_id)` /
@@ -41,7 +41,7 @@ identical regardless of which archive is open, and both large enough that
 duplicating them per archive would be wasteful. `Config.db_path` and
 `Config.cache_dir` (the pre-existing fields) still point at these shared
 resources — see the comment on `Config` in
-`organize_archive/config/settings.py` for the split.
+`trove/config/settings.py` for the split.
 
 Legacy installs that predate per-archive isolation are handled by
 `migrate_legacy_archive`: it copies the old shared database into the new
@@ -54,7 +54,7 @@ represent (cross-root duplicate groups, for instance) — so migration is
 skipped for that case and the folders have to be re-added as separate
 archives by hand.
 
-**The CLI is deliberately not per-archive.** `oa scan`, `oa dedup`, and the
+**The CLI is deliberately not per-archive.** `trove scan`, `trove dedup`, and the
 rest of the command-line tool still use one shared catalogue at `cfg.db_path`
 — it is a separate, unchanged tool from the GUI's notion of an archive, and
 nothing about this decision touches it.

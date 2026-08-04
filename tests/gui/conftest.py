@@ -3,7 +3,7 @@
 import pytest
 from live_archive import live_server  # noqa: F401  (re-exported as a fixture)
 
-from organize_archive.config import Config
+from trove.config import Config
 
 
 @pytest.fixture
@@ -11,7 +11,7 @@ def contained_config(tmp_path, monkeypatch):
     """A Config whose per-archive database and cache resolve under tmp_path.
 
     This is not a convenience. `archive_db_path`/`archive_cache_dir` normally
-    resolve under the user's real ~/.local/share/organize_archive, and a
+    resolve under the user's real ~/.local/share/trove, and a
     JobManager built on an unredirected Config can start real work against the
     real 500 GB archive -- the autouse XDG_DATA_HOME fixture in the parent
     conftest is the other half of the same guard. Four gui tests hand-rolled

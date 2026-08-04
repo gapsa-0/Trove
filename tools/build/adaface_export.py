@@ -26,8 +26,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from organize_archive.config import Config
-from organize_archive.faces import backend as fb
+from trove.config import Config
+from trove.faces import backend as fb
 
 HF_REPO = "marcelo-victor/adaface_ir101_webface12m"
 HF_FILE = "adaface_weights.ckpt"

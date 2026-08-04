@@ -44,7 +44,7 @@ when `tests/factories.py` would have done.
 ## 3. Did coverage drop where it matters?
 
 ```
-.venv/bin/python -m pytest -q --cov=organize_archive --cov-report=term-missing
+.venv/bin/python -m pytest -q --cov=trove --cov-report=term-missing
 ```
 
 Not a number to defend — coverage is mapped here, not gated. The question is

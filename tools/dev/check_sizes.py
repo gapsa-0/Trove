@@ -65,12 +65,12 @@ def py_modules(paths: list[str]) -> list[str]:
 
 
 def assets(paths: list[str]) -> list[str]:
-    """Tracked css/js/html under organize_archive/web/, excluding vendor/
+    """Tracked css/js/html under trove/web/, excluding vendor/
     (minified third-party libraries -- also deliberately out of scope)."""
     return [
         p
         for p in paths
-        if p.startswith("organize_archive/web/")
+        if p.startswith("trove/web/")
         and p.endswith((".css", ".js", ".html"))
         and "/vendor/" not in p
     ]

@@ -2,8 +2,8 @@ import struct
 
 from helpers import needs_scoring
 
-from organize_archive.db import database as db
-from organize_archive.services import browse, search
+from trove.db import database as db
+from trove.services import browse, search
 
 
 def _dated_catalogue(tmp_path):

@@ -31,22 +31,22 @@ import factories
 import pytest
 from helpers import needs_scoring
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.pipeline.job import Job, JobContext
-from organize_archive.pipeline.runners import (
+from trove.config import Config
+from trove.db import database as db
+from trove.pipeline.job import Job, JobContext
+from trove.pipeline.runners import (
     enrich as enrich_runner,
 )
-from organize_archive.pipeline.runners import (
+from trove.pipeline.runners import (
     face_cluster as face_cluster_runner,
 )
-from organize_archive.pipeline.runners import (
+from trove.pipeline.runners import (
     pet_cluster as pet_cluster_runner,
 )
-from organize_archive.pipeline.runners import (
+from trove.pipeline.runners import (
     scan as scan_runner,
 )
-from organize_archive.scan import walker
+from trove.scan import walker
 
 _ROOT = 1
 

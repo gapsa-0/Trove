@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive import errors
+from trove import errors
 
 
 @pytest.mark.parametrize(

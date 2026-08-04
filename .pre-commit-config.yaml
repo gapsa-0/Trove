@@ -10,7 +10,7 @@
 # .js here is minified library output that nothing should be rewriting at all.
 exclude: |
   (?x)^(
-    organize_archive/web/vendor/.*|
+    trove/web/vendor/.*|
     tools/build/adaface_net\.py
   )$
 

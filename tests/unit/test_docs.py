@@ -15,10 +15,10 @@ import re
 
 import pytest
 
-from organize_archive import features
-from organize_archive.config import Config
-from organize_archive.web import docs
-from organize_archive.web.markdown import render
+from trove import features
+from trove.config import Config
+from trove.web import docs
+from trove.web.markdown import render
 
 # A settings-table row: `| `name` | value | what it does |`.
 _SETTING_ROW = re.compile(r"\A\|\s*`([a-z0-9_]+)`\s*\|\s*(.+?)\s*\|")

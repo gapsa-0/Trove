@@ -14,11 +14,11 @@ from __future__ import annotations
 import logging
 import threading
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.pipeline.job import Job, JobContext
-from organize_archive.pipeline.runners import places as places_runner
-from organize_archive.services import places
+from trove.config import Config
+from trove.db import database as db
+from trove.pipeline.job import Job, JobContext
+from trove.pipeline.runners import places as places_runner
+from trove.services import places
 
 
 def _geotagged_catalog(tmp_path):

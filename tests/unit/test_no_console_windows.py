@@ -1,7 +1,7 @@
 """Every child process must be spawned without a console window.
 
 The Windows desktop build is a GUI-subsystem exe (``console=`` in
-packaging/organize-archive.spec), so it owns no console. Windows then allocates
+packaging/trove.spec), so it owns no console. Windows then allocates
 a *fresh* console window for each console-subsystem child -- exiftool, ffmpeg --
 which flashes up and vanishes. A pipeline run does that tens of thousands of
 times and the app reads as malware.
@@ -20,13 +20,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-import organize_archive
-from organize_archive.runtime import no_window
+import trove
+from trove.runtime import no_window
 
 # Ask the package where it lives rather than counting directories up from this
 # file: the test then survives being moved between test tiers, and it scans the
 # package that is actually importable rather than one inferred from a path.
-PACKAGE = Path(organize_archive.__file__).resolve().parent
+PACKAGE = Path(trove.__file__).resolve().parent
 
 # Everything in subprocess that starts a process.
 _SPAWNERS = {"run", "Popen", "call", "check_call", "check_output"}
@@ -74,7 +74,7 @@ def test_every_subprocess_spawn_suppresses_its_console():
 
     assert not offenders, (
         "These spawns would flash a console window on the Windows build.\n"
-        "Add **no_window() (organize_archive.runtime) to each:\n" + "\n".join(offenders)
+        "Add **no_window() (trove.runtime) to each:\n" + "\n".join(offenders)
     )
 
 

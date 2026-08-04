@@ -1,6 +1,6 @@
 """The typing settings are the package's floor, not a list of opted-in packages.
 
-`organize_archive` spent a while with two mypy override blocks moving in
+`trove` spent a while with two mypy override blocks moving in
 opposite directions -- a "not reviewed yet" list under `ignore_errors` that
 only shrank, and a strict list that only grew (ADR 0010). Both are gone: the
 strict settings are `[tool.mypy]` globals now, so a package is checked because
@@ -23,9 +23,9 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-import organize_archive
+import trove
 
-REPO_ROOT = Path(organize_archive.__file__).parent.parent
+REPO_ROOT = Path(trove.__file__).parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 # The settings that were the strict block's, now the package floor. Losing any
@@ -86,7 +86,7 @@ def test_every_type_ignore_names_its_error_code():
     ones are a claim the checker keeps honest.
     """
     bare = []
-    for path in sorted((REPO_ROOT / "organize_archive").rglob("*.py")):
+    for path in sorted((REPO_ROOT / "trove").rglob("*.py")):
         if "__pycache__" in path.parts or "vendor" in path.parts:
             continue
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):

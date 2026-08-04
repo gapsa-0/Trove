@@ -13,9 +13,9 @@ import json
 
 import pytest
 
-from organize_archive.db import database as db
-from organize_archive.pets import cluster as pets_cluster
-from organize_archive.services import people_edit, pets_edit
+from trove.db import database as db
+from trove.pets import cluster as pets_cluster
+from trove.services import people_edit, pets_edit
 
 np = pytest.importorskip("numpy")
 
@@ -188,7 +188,7 @@ def test_recluster_after_undo_does_not_remerge(tmp_path):
     running the full clusterer): once unmerge_persons has replaced the 'same'
     link with 'different', a must-link chain elsewhere must not be able to
     override that cannot-link and reunite the two clusters."""
-    from organize_archive.faces.cluster import _apply_links
+    from trove.faces.cluster import _apply_links
 
     db_path = _catalog_with_named_persons(tmp_path)
     people_edit.merge_persons(str(db_path), 1, 2, name="Ana")

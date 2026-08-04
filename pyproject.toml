@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "organize-archive"
+name = "trove"
 version = "0.1.2"
 description = "Local, read-only cataloging tool for a large family multimedia archive"
 readme = "README.md"
@@ -24,7 +24,7 @@ media = ["pyexiftool>=0.5", "Pillow>=10", "pillow-heif>=0.16", "ImageHash>=4.3"]
 # self-exported AdaFace ir101 embedder, both on onnxruntime, and scikit-learn's
 # agglomerative merge stages. The k-NN searches that build and expand cluster
 # cores are blocked GEMM over NumPy; faiss-cpu accelerates them if it happens to
-# be installed, but it is not a dependency — see organize_archive/faces/knn.py.
+# be installed, but it is not a dependency — see trove/faces/knn.py.
 # insightface itself is a pure-Python wheel — it supplies the model-zoo loader
 # and the face alignment helpers, not the inference engine.
 # No model server, no cloud.
@@ -39,7 +39,7 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # is a Rust extension but publishes cp310-abi3 wheels for manylinux x86_64 and
 # win_amd64, so it needs no compiler on the release runners. Deliberately NOT
 # transformers or torch — a 64-token tokenizer does not justify reversing the
-# torch exclusion in packaging/organize-archive.spec.
+# torch exclusion in packaging/trove.spec.
 semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
 # faiss-cpu is a dev dependency and not a runtime one: the desktop build excludes
 # it, but tests/integration/test_core_expansion.py asserts the FAISS and NumPy
@@ -50,15 +50,15 @@ semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10"
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pre-commit>=3", "mypy>=1.11", "faiss-cpu>=1.13"]
 
 [project.scripts]
-oa = "organize_archive.cli:main"
-organize-archive-backend = "organize_archive.desktop:main"
+trove = "trove.cli:main"
+trove-backend = "trove.desktop:main"
 
 [tool.setuptools.packages.find]
-include = ["organize_archive*"]
+include = ["trove*"]
 
 [tool.setuptools.package-data]
-"organize_archive.db" = ["*.sql"]
-"organize_archive.web" = ["*.html", "vendor/*", "static/css/*", "static/js/*", "docs/*.md", "*.png"]
+"trove.db" = ["*.sql"]
+"trove.web" = ["*.html", "vendor/*", "static/css/*", "static/js/*", "docs/*.md", "*.png"]
 
 # Without this, a bare `pytest` from the repo root walks build output too: a
 # packaged desktop build under desktop/ vendors whole third-party test suites,
@@ -93,7 +93,7 @@ markers = [
 # deliberately no --cov-fail-under: a percentage gate rewards testing trivial
 # getters and punishes deleting dead code, both of which stages 06-11 do a lot of.
 [tool.coverage.run]
-source = ["organize_archive"]
+source = ["trove"]
 omit = ["*/web/vendor/*", "*/__main__.py"]
 
 [tool.coverage.report]
@@ -108,7 +108,7 @@ show_missing = true
 # made its errors go away. ADR 0010 records how that ran and what it cost.
 #
 # Both lists are gone because both reached their end state: every module in
-# `organize_archive` is now checked at the settings that used to be the strict
+# `trove` is now checked at the settings that used to be the strict
 # block's, so they are declared here as globals rather than named per package.
 # That is the point of finishing -- a package added tomorrow is strict because
 # it exists, not because someone remembered to add a line. There is no list to
@@ -212,26 +212,26 @@ allowed-confusables = ["×"]
 "tests/*"  = ["B011", "D100", "D101", "D103", "D104"]   # a test's name is its documentation
 "tools/*"  = ["T201", "D100", "D101", "D103", "D104"]   # dev scripts may print
 "packaging/scripts/*" = ["T201", "D100", "D101", "D103", "D104"]  # build-time scripts
-"organize_archive/config/*.py" = ["D101", "D103"]
-"organize_archive/dedup/*.py" = ["D101", "D103"]
-"organize_archive/desktop.py" = ["D101", "D103"]
-"organize_archive/detect/*.py" = ["D101", "D103"]
-"organize_archive/embeddings/*.py" = ["D101", "D103"]
-"organize_archive/faces/*.py" = ["D101", "D103"]
-"organize_archive/geo/*.py" = ["D101", "D103"]
-"organize_archive/hashing/*.py" = ["D101", "D103"]
-"organize_archive/media/*.py" = ["D101", "D103"]
-"organize_archive/paths.py" = ["D101", "D103"]
-"organize_archive/pets/*.py" = ["D101", "D103"]
-"organize_archive/pipeline/*.py" = ["D101", "D103"]
-"organize_archive/scan/*.py" = ["D101", "D103"]
-"organize_archive/thumbnails/*.py" = ["D101", "D103"]
-"organize_archive/web/*.py" = ["D101", "D103"]
+"trove/config/*.py" = ["D101", "D103"]
+"trove/dedup/*.py" = ["D101", "D103"]
+"trove/desktop.py" = ["D101", "D103"]
+"trove/detect/*.py" = ["D101", "D103"]
+"trove/embeddings/*.py" = ["D101", "D103"]
+"trove/faces/*.py" = ["D101", "D103"]
+"trove/geo/*.py" = ["D101", "D103"]
+"trove/hashing/*.py" = ["D101", "D103"]
+"trove/media/*.py" = ["D101", "D103"]
+"trove/paths.py" = ["D101", "D103"]
+"trove/pets/*.py" = ["D101", "D103"]
+"trove/pipeline/*.py" = ["D101", "D103"]
+"trove/scan/*.py" = ["D101", "D103"]
+"trove/thumbnails/*.py" = ["D101", "D103"]
+"trove/web/*.py" = ["D101", "D103"]
 # cli/ *is* the user interface: printing is its job, and routing its output
 # through logging would timestamp and re-order the tables it prints. Every other
 # module in the library logs instead -- a library that prints cannot be silenced,
 # redirected, or given a severity, and writes nowhere inside the desktop app.
-"organize_archive/cli/*.py" = ["T201", "D101", "D103"]
+"trove/cli/*.py" = ["T201", "D101", "D103"]
 
 [tool.ruff.format]
 quote-style = "double"          # matches the existing code

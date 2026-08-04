@@ -2,8 +2,8 @@
 one: place_clusters rows are never deleted for falling short, they just stop
 being *reported*, except when named or pinned (see places._PLACE_EXEMPT)."""
 
-from organize_archive.db import database as db
-from organize_archive.services import browse, places
+from trove.db import database as db
+from trove.services import browse, places
 
 
 def _catalog_with_places(tmp_path):

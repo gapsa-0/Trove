@@ -20,7 +20,7 @@ import sqlite3
 import struct
 from pathlib import Path
 
-from organize_archive.db import database as db
+from trove.db import database as db
 
 # One fixed timestamp for every row, so an assertion on ordering is about the
 # ordering the test set up rather than about how fast the machine ran.

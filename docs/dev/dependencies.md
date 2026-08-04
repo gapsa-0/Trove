@@ -12,7 +12,7 @@ question:
 `pyproject.toml`'s six optional extras (below) declare the lower bound each
 feature needs to function at all — `numpy>=1.24`, not `numpy==2.5.1` — because
 that file is also the package's public metadata, read by anyone who installs
-`organize-archive` as a library. `constraints.txt` narrows that down to the
+`trove` as a library. `constraints.txt` narrows that down to the
 exact versions this checkout is developed and tested against, and CI installs
 with the same `-c constraints.txt` flag a developer does, so a green run here
 and a green run in CI mean the same thing.
@@ -26,9 +26,9 @@ decides which version of it.
 
 ## The core needs nothing
 
-Scanning, indexing and status (`oa scan`, `oa init`, `oa status`) run on the
+Scanning, indexing and status (`trove scan`, `trove init`, `trove status`) run on the
 Python standard library alone, plus two system binaries: `exiftool` and
-`ffprobe`. `organize_archive/cli/__init__.py`'s `_preflight()` checks for both on PATH
+`ffprobe`. `trove/cli/__init__.py`'s `_preflight()` checks for both on PATH
 and, in `cmd_init`, prints a note (not an error) if either is missing —
 metadata resolution still works, falling back to Takeout sidecars, filename
 parsing and mtime. Nothing in `dependencies = []` at the top of
@@ -38,23 +38,23 @@ empty on purpose.
 ## The six extras
 
 Every optional dependency is *probed*, not assumed. The pattern recurs across
-`organize_archive/embeddings/backend.py`, `organize_archive/faces/backend.py`,
-`organize_archive/pets/backend.py` and `organize_archive/dedup/exact.py`: an
+`trove/embeddings/backend.py`, `trove/faces/backend.py`,
+`trove/pets/backend.py` and `trove/dedup/exact.py`: an
 `available()` function imports the packages inside a `try`, catches broadly
 (a half-installed native extension fails in more ways than `ImportError` —
 a missing `.so` is `OSError`, a mismatched onnxruntime build is
 `RuntimeError`), logs at DEBUG because running without the extra is a
 supported configuration, and returns `False`. The feature that depends on it
-then reports itself unavailable instead of crashing. `oa faces`, `oa pets` and
+then reports itself unavailable instead of crashing. `trove faces`, `trove pets` and
 semantic indexing all check this before starting a job; the GUI surfaces it as
 "unavailable" rather than an error (see `docs/troubleshooting.md`).
 
 | Extra | Packages | Enables | Without it |
 | --- | --- | --- | --- |
-| `cli` | `rich>=13` | Coloured tables and progress bars | `oa` still runs; output is plain text |
+| `cli` | `rich>=13` | Coloured tables and progress bars | `trove` still runs; output is plain text |
 | `media` | `pyexiftool>=0.5`, `Pillow>=10`, `pillow-heif>=0.16`, `ImageHash>=4.3` | Perceptual dedup and HEIC/image decoding | Exact (SHA-256) dedup still works — `hashing/hasher.py` is stdlib `hashlib` only — but `dedup/exact.py`'s `perceptual_available()` returns `False` and cross-format near-duplicates (the same photo re-compressed by a different takeout) go undetected |
-| `faces` | `insightface>=1.0`, `onnxruntime>=1.20`, `opencv-python>=4.8`, `scikit-learn>=1.3`, `numpy>=1.24`, `faiss-cpu>=1.13` | Face detection (SCRFD), embedding (AdaFace ir101) and clustering into People | `oa faces` reports the stage unavailable; nothing crashes |
-| `pets` | `onnxruntime>=1.20`, `opencv-python>=4.8`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | YOLOX animal detection plus DINOv2 pet re-identification | `oa pets` reports the stage unavailable |
+| `faces` | `insightface>=1.0`, `onnxruntime>=1.20`, `opencv-python>=4.8`, `scikit-learn>=1.3`, `numpy>=1.24`, `faiss-cpu>=1.13` | Face detection (SCRFD), embedding (AdaFace ir101) and clustering into People | `trove faces` reports the stage unavailable; nothing crashes |
+| `pets` | `onnxruntime>=1.20`, `opencv-python>=4.8`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | YOLOX animal detection plus DINOv2 pet re-identification | `trove pets` reports the stage unavailable |
 | `semantic` | `onnxruntime>=1.20`, `tokenizers>=0.20`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | Local SigLIP 2 search-by-description | Indexing and search both report unavailable — search says so by raising, for the reason given below |
 | `dev` | `pytest>=8`, `ruff>=0.6`, `pre-commit>=3` | Running the test suite and linting | You can't develop the project, but a packaged build needs none of it |
 
@@ -67,7 +67,7 @@ wheel supplying only the model-zoo loader and alignment helpers — the
 inference runs on onnxruntime, not inside insightface.
 
 `faiss` gets special treatment because it has a real fallback rather than an
-on/off switch. `organize_archive/faces/cluster.py`'s `_faiss()` helper tries
+on/off switch. `trove/faces/cluster.py`'s `_faiss()` helper tries
 to import it and returns `None` on any failure; `_knn_search` then picks
 between two implementations: FAISS's `IndexFlatIP` (exact inner product,
 tuned BLAS/SIMD) or a blocked-GEMM path over plain NumPy. Both are exact — the
@@ -119,7 +119,7 @@ or constraint to make that friction go away.
 
 ## The one path that degrades by raising
 
-`semantic_search` in `organize_archive/services/search.py` used to be a genuine
+`semantic_search` in `trove/services/search.py` used to be a genuine
 hole: it did `import numpy as np` partway through the function body, from two
 places, with no probe. An install that had indexed an archive and then lost its
 extras answered a search with `ModuleNotFoundError` — a 500 and a traceback.

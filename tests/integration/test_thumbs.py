@@ -6,7 +6,7 @@ Image = pytest.importorskip("PIL.Image")
 
 # Must stay below the importorskip above: this module must not be imported
 # when Pillow is absent.
-from organize_archive.thumbnails import face_thumb_for, thumb_for, upright_for  # noqa: E402
+from trove.thumbnails import face_thumb_for, thumb_for, upright_for  # noqa: E402
 
 
 def test_face_thumbnail_stays_square_at_image_edge(tmp_path: Path):
@@ -88,8 +88,8 @@ def test_detection_and_display_turn_a_photo_the_same_way(deg):
     the two ever disagree, every stored box lands on the wrong part of the
     photo — so pin them against each other."""
     np = pytest.importorskip("numpy")
-    from organize_archive.detect.geometry import rotate_image
-    from organize_archive.thumbnails import _apply_rotation
+    from trove.detect.geometry import rotate_image
+    from trove.thumbnails import _apply_rotation
 
     im = Image.new("RGB", (40, 24))
     im.paste(Image.new("RGB", (20, 12), "red"), (0, 0))

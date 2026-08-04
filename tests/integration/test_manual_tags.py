@@ -1,7 +1,7 @@
-from organize_archive.db import database as db
-from organize_archive.faces.manual_tags import repair_manual_person_files
-from organize_archive.pets.manual_tags import repair_manual_pet_files
-from organize_archive.services import browse, people, people_edit, pets_edit
+from trove.db import database as db
+from trove.faces.manual_tags import repair_manual_person_files
+from trove.pets.manual_tags import repair_manual_pet_files
+from trove.services import browse, people, people_edit, pets_edit
 
 
 def _base_catalog(tmp_path):

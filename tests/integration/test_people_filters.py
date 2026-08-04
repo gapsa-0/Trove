@@ -1,5 +1,5 @@
-from organize_archive.db import database as db
-from organize_archive.services import browse, overview
+from trove.db import database as db
+from trove.services import browse, overview
 
 
 def _catalogue_with_people(tmp_path):

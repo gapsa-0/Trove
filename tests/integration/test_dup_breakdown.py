@@ -11,8 +11,8 @@ tiles label themselves with (dups.dup_groups' match_type), so the panel can
 never contradict the tiles below it.
 """
 
-from organize_archive.db import database as db
-from organize_archive.services import dups
+from trove.db import database as db
+from trove.services import dups
 
 
 def _catalog_with_duplicates(tmp_path):

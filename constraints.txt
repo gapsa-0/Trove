@@ -39,7 +39,7 @@ onnxruntime==1.27.0
 # not by number: requirements-desktop.txt ships opencv-python-headless at this
 # same 5.0.0.93. Same OpenCV sources, built without highgui, which keeps 29 MB of
 # Qt out of the installer. A developer keeps the full wheel so ad-hoc debugging in
-# tools/ can still open a window; nothing in organize_archive/ may, and
+# tools/ can still open a window; nothing in trove/ may, and
 # tests/unit/test_opencv_headless.py enforces that.
 opencv-python==5.0.0.93
 scikit-learn==1.9.0
@@ -57,7 +57,7 @@ numpy==2.5.1
 tokenizers==0.23.1
 
 # --- dev extra ---
-# Dev-only: the desktop build excludes faiss (organize-archive.spec), but the
+# Dev-only: the desktop build excludes faiss (trove.spec), but the
 # tests that assert its search path matches the NumPy one need it installed.
 faiss-cpu==1.14.3
 pytest==9.1.1
@@ -70,7 +70,7 @@ mypy==2.3.0
 # Not imported directly by this project; pinned because they decide numerical
 # results or carry native code. scipy backs scikit-learn's clustering and
 # ImageHash's DCT. onnx and scikit-image are insightface's model-zoo and image
-# pipeline -- packaging/organize-archive.spec has a comment on why they look
+# pipeline -- packaging/trove.spec has a comment on why they look
 # dev-only and are not.
 scipy==1.18.0
 scikit-image==0.26.0

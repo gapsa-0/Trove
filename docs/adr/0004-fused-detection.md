@@ -21,7 +21,7 @@ lost cross-check.
 
 ## Decision
 
-`organize_archive/detect/extract.py` is the single fused-detection stage. Its
+`trove/detect/extract.py` is the single fused-detection stage. Its
 module docstring states the shape of the decision directly: "The old pipeline
 detected pets and faces in two separate stages, each decoding every photo
 independently... Here each image is decoded a single time (at

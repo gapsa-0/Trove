@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from organize_archive.db import database as db
+from trove.db import database as db
 
 
 def test_returns_the_writes_result():

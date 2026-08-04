@@ -10,10 +10,10 @@ from zero over and over.
 
 from __future__ import annotations
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline import stages as stages_mod
+from trove.config import Config
+from trove.db import database as db
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline import stages as stages_mod
 
 
 class _Stats:
@@ -103,7 +103,7 @@ def test_status_polling_never_waits_for_a_disk_walk(tmp_path, monkeypatch):
         walks.append(path)
         return 5
 
-    monkeypatch.setattr("organize_archive.scan.walker.count_files", count_files)
+    monkeypatch.setattr("trove.scan.walker.count_files", count_files)
     monkeypatch.setattr("pathlib.Path.is_dir", lambda self: True)
 
     # Nothing cached yet: the first call has nothing to serve and must walk.

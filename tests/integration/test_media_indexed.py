@@ -14,8 +14,8 @@ import struct
 
 from helpers import needs_scoring
 
-from organize_archive.db import database as db
-from organize_archive.services import browse, search, semantic
+from trove.db import database as db
+from trove.services import browse, search, semantic
 
 CURRENT = semantic.INDEXER_VERSION
 

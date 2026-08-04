@@ -1,6 +1,6 @@
-"""`oa <command>` starts with argparse: if the parser is wrong nothing downstream runs.
+"""`trove <command>` starts with argparse: if the parser is wrong nothing downstream runs.
 
-Nothing tested this before. That gap is not hypothetical: `oa scan` was dead on
+Nothing tested this before. That gap is not hypothetical: `trove scan` was dead on
 every invocation (an `UnboundLocalError` on its very first line, from a redundant
 `from pathlib import Path` inside `cmd_scan` shadowing the module-level import) and
 the whole suite stayed green, because no test drove any CLI entry point -- not even
@@ -20,7 +20,7 @@ import argparse
 
 import pytest
 
-from organize_archive.cli import build_parser, main
+from trove.cli import build_parser, main
 
 # The full subcommand list, asserted explicitly so a silently removed subcommand
 # fails a test even though a reflective loop over "whatever the parser has" would
@@ -106,7 +106,7 @@ def test_version_flag_exits_zero_and_prints_version(capsys):
         parser.parse_args(["--version"])
 
     assert excinfo.value.code == 0
-    assert "organize_archive" in capsys.readouterr().out
+    assert "trove" in capsys.readouterr().out
 
 
 def test_db_override_defaults_to_none():
@@ -126,7 +126,7 @@ def test_db_override_captures_the_given_path():
 
 
 def test_bare_invocation_prints_help_and_exits_zero(capsys):
-    """`oa` with no arguments is a question, not a mistake.
+    """`trove` with no arguments is a question, not a mistake.
 
     It used to be a usage error on stderr with exit 2, because
     `add_subparsers(required=True)` made the subcommand a required positional.
@@ -138,7 +138,7 @@ def test_bare_invocation_prints_help_and_exits_zero(capsys):
     assert main([]) == 0
 
     out = capsys.readouterr().out
-    assert out.startswith("usage: oa")
+    assert out.startswith("usage: trove")
     assert "scan" in out and "gui" in out
 
 

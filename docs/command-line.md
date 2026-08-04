@@ -32,38 +32,38 @@ without them, with reduced embedded-metadata and video support.
 The CLI exposes the same durable catalogue operations:
 
 ```bash
-oa config --add-root /path/to/archive
-oa config --set-timezone America/Argentina/Buenos_Aires
-oa init
-oa scan
-oa enrich
-oa dedup
-oa pets
-oa faces
-oa gui
+trove config --add-root /path/to/archive
+trove config --set-timezone America/Argentina/Buenos_Aires
+trove init
+trove scan
+trove enrich
+trove dedup
+trove pets
+trove faces
+trove gui
 ```
 
-Useful companion commands are `oa status`, `oa dates`, `oa config --show`,
-`oa logs` (the last 200 log lines; `--path` prints just the file's location), and
-`oa migrate-data` for copying an older project-local `data/` directory into the
+Useful companion commands are `trove status`, `trove dates`, `trove config --show`,
+`trove logs` (the last 200 log lines; `--path` prints just the file's location), and
+`trove migrate-data` for copying an older project-local `data/` directory into the
 per-user data location. All long commands are designed to be re-run.
 
 Face extraction rejects low-confidence, tiny, blurry, severely over/underexposed,
 and substantially clipped candidates before they enter People. Inspect persisted
 decision counts and post-clustering unassigned noise with
-`oa faces --quality-report`, or test the configured thresholds against up to 100
+`trove faces --quality-report`, or test the configured thresholds against up to 100
 pending images without changing the catalog:
 
 ```bash
-oa faces --calibrate 100
+trove faces --calibrate 100
 ```
 
-`oa gui` starts the local interface at `http://127.0.0.1:8756/`; it opens a standalone
+`trove gui` starts the local interface at `http://127.0.0.1:8756/`; it opens a standalone
 browser window when a supported Chromium-family browser is available. Use `--tab` to
 open a normal tab or `--no-open` when launching it remotely.
 
 The native "choose folder" dialog is provided by the desktop app; in a plain browser
-(`oa gui`) there is no OS picker, so **type the absolute folder path** into the box on
+(`trove gui`) there is no OS picker, so **type the absolute folder path** into the box on
 the welcome screen (e.g. `/mnt/photos/Multimedia` or `D:\Photos`) and press *Add
 folder*. Use the desktop app if you want to click through a folder dialog.
 

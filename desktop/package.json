@@ -20,7 +20,7 @@
     "package:win": "npm run build:backend && electron-builder --win nsis",
     "package:linux": "npm run build:backend && electron-builder --linux AppImage deb",
     "smoke:package": "node scripts/smoke-test.cjs",
-    "lint": "cd .. && eslint --config eslint.config.js desktop/src desktop/scripts organize_archive/web/static/js"
+    "lint": "cd .. && eslint --config eslint.config.js desktop/src desktop/scripts trove/web/static/js"
   },
   "devDependencies": {
     "@eslint/js": "^9",

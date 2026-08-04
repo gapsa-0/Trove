@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.faces import cluster as fc
-from organize_archive.faces import knn, passes
+from trove.config import Config
+from trove.db import database as db
+from trove.faces import cluster as fc
+from trove.faces import knn, passes
 
 np = pytest.importorskip("numpy")
 # The agglomerative merge stages inside passes.py import scikit-learn at call

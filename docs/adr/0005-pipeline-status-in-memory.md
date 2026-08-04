@@ -14,11 +14,11 @@ of "what is scan doing right now" that can disagree is worse than one.
 ## Decision
 
 There is exactly one in-memory source of truth for pipeline status —
-`organize_archive.pipeline.manager.JobManager`'s job registry (`_jobs`) — and
-one event-driven scheduler thread, `organize_archive.pipeline.scheduler.Scheduler`,
+`trove.pipeline.manager.JobManager`'s job registry (`_jobs`) — and
+one event-driven scheduler thread, `trove.pipeline.scheduler.Scheduler`,
 that decides what to start next and never performs work itself. Status is
 deliberately **not** written to the database. The route that serves it,
-`snapshot` in `organize_archive/web/routes/pipeline.py`, says so directly in
+`snapshot` in `trove/web/routes/pipeline.py`, says so directly in
 its own comment: "Single source of truth for pipeline status: the same
 resolved stage list the scheduler acts on, so cards never disagree with
 what's actually running." It calls `stages.snapshot(...)`, which builds the

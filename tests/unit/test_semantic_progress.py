@@ -24,9 +24,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from organize_archive.embeddings import backend as eb
-from organize_archive.pipeline.runners import semantic as semantic_runner
-from organize_archive.services import semantic
+from trove.embeddings import backend as eb
+from trove.pipeline.runners import semantic as semantic_runner
+from trove.services import semantic
 
 
 class FakeBackend:

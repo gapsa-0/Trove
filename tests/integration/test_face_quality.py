@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import factories
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.faces import backend, extract
+from trove.config import Config
+from trove.faces import backend, extract
 
 np = pytest.importorskip("numpy")
 pytestmark = pytest.mark.skipif(backend.cv2 is None, reason="OpenCV is an optional face dependency")

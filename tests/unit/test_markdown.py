@@ -10,7 +10,7 @@ than exploitable.
 
 from __future__ import annotations
 
-from organize_archive.web.markdown import render, slug
+from trove.web.markdown import render, slug
 
 
 def test_front_matter_is_read_and_kept_out_of_the_body():

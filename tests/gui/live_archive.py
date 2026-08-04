@@ -25,9 +25,9 @@ import factories
 import pytest
 from helpers import serve_in_thread
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.services import archives, semantic
+from trove.config import Config
+from trove.db import database as db
+from trove.services import archives, semantic
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
@@ -219,8 +219,8 @@ def _mark_current_embedder(conn) -> None:
     archive already has after its first real detect run, and is the only thing
     that makes open_archive() a no-op migration-wise.
     """
-    from organize_archive.faces import backend as face_backend
-    from organize_archive.faces import migrate_adaface
+    from trove.faces import backend as face_backend
+    from trove.faces import migrate_adaface
 
     migrate_adaface.mark_embedder(conn, face_backend.EMBEDDER_VERSION)
 
@@ -299,7 +299,7 @@ def live_server(tmp_path, monkeypatch):
 
     # The real /api/browse/semantic/search path calls this to turn the typed
     # query into a vector. Unstubbed, it loads the actual SigLIP text tower
-    # (organize_archive/embeddings/backend.py:load_text), which downloads
+    # (trove/embeddings/backend.py:load_text), which downloads
     # ~372 MB the first time -- and this test's XDG-isolated cache dir never
     # has it cached, so that would be a real network fetch. CONTRIBUTING's
     # no-network rule (and this sandboxed test run) both forbid that, so only

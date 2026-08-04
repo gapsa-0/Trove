@@ -19,7 +19,7 @@ reference an id that the rebuild is free to discard.
 Manual tags reference people and pets by **name**, not by id, and a repair
 step re-points them after every clustering run.
 
-`organize_archive/faces/manual_tags.py`'s module docstring states the
+`trove/faces/manual_tags.py`'s module docstring states the
 reasoning directly: "These tags are anchored by person NAME rather than id,
 because clustering rebuilds `persons` wholesale on every pass — so they need
 re-pointing after each pass." Its one function, `repair_manual_person_files`,
@@ -34,22 +34,22 @@ statement just because a clustering pass momentarily lost the name would be
 data loss.
 
 This repair is wired into the clustering transaction itself, not run as a
-separate step someone could forget: `organize_archive/faces/cluster.py`
+separate step someone could forget: `trove/faces/cluster.py`
 calls `repair_manual_person_files(conn)` inside its finalize step, on the
 same open connection and before the caller commits. The pet side is the
-identical shape: `organize_archive/pets/manual_tags.py`'s
-`repair_manual_pet_files`, called from `organize_archive/pets/cluster.py` at
+identical shape: `trove/pets/manual_tags.py`'s
+`repair_manual_pet_files`, called from `trove/pets/cluster.py` at
 every return path that commits a re-cluster (the module comment there notes
 "every return path below must repair before it commits").
 
 **Consequence, stated explicitly by the code that enforces it: only named
 people and pets can carry manual tags.**
-`organize_archive/services/people_edit.py`'s
+`trove/services/people_edit.py`'s
 `add_person_to_file` — "Tag a file with a named person by hand, for media
 where no face was detected at all" — checks `if not p or not p["name"]:
 return {"error": "target must be a named person"}`, and its docstring gives
 the reason: "an unnamed auto-cluster id is ephemeral and wouldn't survive the
-next re-cluster anyway." `organize_archive/services/pets_edit.py`'s
+next re-cluster anyway." `trove/services/pets_edit.py`'s
 `add_pet_to_file` is, per its own docstring, "Same shape as
 add_person_to_file" and enforces the identical rule ("target must be a named
 pet").
@@ -60,7 +60,7 @@ record durable "same person?"/"different person?" answers from review — a
 merge or a "this is not this person" correction. These, too, have to survive
 a rebuild that discards and reassigns ids: `face_links` is anchored to *face*
 ids, which are stable across a re-cluster (only the `persons` grouping above
-them is rebuilt), and `organize_archive/faces/migrate_adaface.py` — which
+them is rebuilt), and `trove/faces/migrate_adaface.py` — which
 handles the harder case of a full re-extract that also changes face ids —
 explicitly snapshots and remaps `face_links` and `pet_links` through that
 migration rather than letting them dangle.

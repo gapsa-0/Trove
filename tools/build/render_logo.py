@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from PIL import Image, ImageDraw
 
-from organize_archive.web import icons
+from trove.web import icons
 
 BUILD = Path(__file__).resolve().parents[2] / "desktop" / "build"
 # The sizes Windows actually picks between; electron-builder wants them all in

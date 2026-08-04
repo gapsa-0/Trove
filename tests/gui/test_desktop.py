@@ -8,7 +8,7 @@ from urllib.request import urlopen
 
 import pytest
 
-import organize_archive
+import trove
 
 # The only tests that start a real interpreter. Both spawn the backend as a
 # subprocess, so they pay a full process start plus its imports, and they are
@@ -28,7 +28,7 @@ def _read_ready(process: subprocess.Popen) -> dict:
 def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
     env = os.environ | {"XDG_DATA_HOME": str(tmp_path / "data")}
     process = subprocess.Popen(
-        [sys.executable, "-m", "organize_archive.desktop", "--host", "127.0.0.1", "--port", "0"],
+        [sys.executable, "-m", "trove.desktop", "--host", "127.0.0.1", "--port", "0"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -42,7 +42,7 @@ def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
             # it in several files at once, and a copy here just breaks on release.
             assert json.load(response) == {
                 "ok": True,
-                "version": organize_archive.__version__,
+                "version": trove.__version__,
                 "commit": "dev",
             }
         process.send_signal(signal.SIGTERM)
@@ -54,7 +54,7 @@ def test_desktop_backend_readiness_health_and_shutdown(tmp_path):
 
 def test_desktop_backend_rejects_non_loopback_host():
     process = subprocess.run(
-        [sys.executable, "-m", "organize_archive.desktop", "--host", "0.0.0.0"],
+        [sys.executable, "-m", "trove.desktop", "--host", "0.0.0.0"],
         capture_output=True,
         text=True,
     )

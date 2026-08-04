@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from organize_archive.web import server
+from trove.web import server
 
 # ---------------------------------------------------------------------------
 # Drift guard: the routes server.py actually serves must match this file's

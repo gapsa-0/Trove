@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from organize_archive.metadata import filename_dates as fd
+from trove.metadata import filename_dates as fd
 
 
 def test_android_camera():

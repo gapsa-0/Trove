@@ -1,6 +1,6 @@
 import json
 
-from organize_archive.metadata.takeout import SidecarMatcher, parse_sidecar
+from trove.metadata.takeout import SidecarMatcher, parse_sidecar
 
 
 def _write(d, name, taken=1652519397, lat=0.0, lon=0.0, title=None):

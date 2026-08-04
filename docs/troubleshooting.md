@@ -3,24 +3,24 @@
 ## Where are the logs?
 
 ```
-oa logs              # the last 200 lines
-oa logs --tail 50    # the last 50
-oa logs --path       # just the path, e.g. to attach the file to a bug report
+trove logs              # the last 200 lines
+trove logs --tail 50    # the last 50
+trove logs --path       # just the path, e.g. to attach the file to a bug report
 ```
 
 The file itself:
 
 | OS | Path |
 |---|---|
-| Linux | `~/.local/share/organize_archive/logs/trove.log` |
-| Windows | `%LOCALAPPDATA%\organize_archive\logs\trove.log` |
-| macOS | `~/Library/Application Support/organize_archive/logs/trove.log` |
+| Linux | `~/.local/share/trove/logs/trove.log` |
+| Windows | `%LOCALAPPDATA%\trove\logs\trove.log` |
+| macOS | `~/Library/Application Support/trove/logs/trove.log` |
 
 It rotates at 5 MB and keeps three older files (`trove.log.1` … `.3`), so it is
-capped at about 20 MB and never needs clearing by hand. `oa logs` reads the
+capped at about 20 MB and never needs clearing by hand. `trove logs` reads the
 current file only.
 
-For more detail, set `OA_LOG_LEVEL=DEBUG` before starting the app. That adds the
+For more detail, set `TROVE_LOG_LEVEL=DEBUG` before starting the app. That adds the
 scheduler's reasoning — one line per tick saying which stages it saw, what state
 each was in, and what it decided to start — which is what answers "why has the
 next stage not begun?".

@@ -15,17 +15,17 @@ from __future__ import annotations
 
 import threading
 
-from organize_archive.config import Config
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline import stages as stages_mod
-from organize_archive.pipeline import status as status_mod
-from organize_archive.services import archives as archives_mod
-from organize_archive.services import models as models_mod
+from trove.config import Config
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline import stages as stages_mod
+from trove.pipeline import status as status_mod
+from trove.services import archives as archives_mod
+from trove.services import models as models_mod
 
 
 def _job_manager(tmp_path, monkeypatch, cfg=None):
     # Everything stays under tmp_path: archive_db_path/archive_cache_dir
-    # normally resolve under the user's real ~/.local/share/organize_archive,
+    # normally resolve under the user's real ~/.local/share/trove,
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))
@@ -293,7 +293,7 @@ class _FakeJobs:
 
 def test_snapshot_reports_unpaused_by_default(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
-    from organize_archive.db import database as db
+    from trove.db import database as db
 
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)
@@ -330,7 +330,7 @@ def test_snapshot_defensive_when_jobs_has_no_paused_method(tmp_path, monkeypatch
     """Other tests construct JobManager-shaped fakes that predate this
     feature; snapshot() must not blow up against one missing .paused()."""
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
-    from organize_archive.db import database as db
+    from trove.db import database as db
 
     conn = db.connect(tmp_path / "archive.db")
     db.init_db(conn)

@@ -25,8 +25,8 @@ import json
 
 import pytest
 
-from organize_archive import model_manifest as mm
-from organize_archive.errors import ModelUnavailableError
+from trove import model_manifest as mm
+from trove.errors import ModelUnavailableError
 
 CONTENT = b"not really an onnx file, but it hashes like one"
 DIGEST = hashlib.sha256(CONTENT).hexdigest()

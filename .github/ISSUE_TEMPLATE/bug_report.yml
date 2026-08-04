@@ -63,8 +63,8 @@ body:
     attributes:
       label: Log excerpt
       description: >
-        This is the single most useful thing you can attach. Run `oa logs` for the
-        last 200 lines, or `oa logs --path` to find the log file and attach it
+        This is the single most useful thing you can attach. Run `trove logs` for the
+        last 200 lines, or `trove logs --path` to find the log file and attach it
         directly. See docs/troubleshooting.md ("Where are the logs?") for the file
         location on each OS. Please trim to the relevant portion if it's long.
       render: text

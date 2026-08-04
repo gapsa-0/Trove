@@ -1,4 +1,4 @@
-"""`oa logs` turns "navigate to your application data folder" into one command.
+"""`trove logs` turns "navigate to your application data folder" into one command.
 
 The path differs on every OS, so the command existing at all is the point; these
 tests pin that it reports the right file, survives the file not existing yet, and
@@ -7,8 +7,8 @@ does not create anything just by being asked where the log is.
 
 from __future__ import annotations
 
-from organize_archive.cli import main
-from organize_archive.logging_setup import log_file
+from trove.cli import main
+from trove.logging_setup import log_file
 
 
 def test_path_reports_the_log_file(capsys):

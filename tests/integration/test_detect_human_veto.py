@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.detect import extract as dx
-from organize_archive.detect import geometry
-from organize_archive.faces import backend as face_backend
-from organize_archive.pets import backend as pet_backend
+from trove.config import Config
+from trove.db import database as db
+from trove.detect import extract as dx
+from trove.detect import geometry
+from trove.faces import backend as face_backend
+from trove.pets import backend as pet_backend
 
 np = pytest.importorskip("numpy")
 

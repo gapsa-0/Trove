@@ -18,10 +18,10 @@ import time as time_mod
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.detect import extract as dx
-from organize_archive.faces import backend as face_backend
+from trove.config import Config
+from trove.db import database as db
+from trove.detect import extract as dx
+from trove.faces import backend as face_backend
 
 np = pytest.importorskip("numpy")
 

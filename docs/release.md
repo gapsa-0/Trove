@@ -4,7 +4,7 @@ Versions use SemVer and are declared once in `release-version.json`; public tags
 are `v<version>`. The CI version gate requires Python, Electron, and the canonical
 value to agree. After intentionally changing the canonical value, run
 `npm run sync:version` from `desktop/`, review its four generated updates
-(`organize_archive/__init__.py`, `pyproject.toml`, `desktop/package.json` and
+(`trove/__init__.py`, `pyproject.toml`, `desktop/package.json` and
 `desktop/package-lock.json`), and commit them together. The lockfile is included
 because `npm ci` does not verify its version field, so a stale value passes CI and
 is then silently rewritten by whoever next runs `npm install`. Candidate builds are native CI artifacts, never developer uploads.
@@ -26,7 +26,7 @@ a release that is wrong in a way nobody notices until it is published.
    promised? An allowlist that only ever grows is a ratchet running backwards.
 5. **Build and launch the packaged app on both Linux and Windows.** A green suite
    says nothing about package data — a missing directory under
-   `organize_archive/web/` produces a build that imports fine and serves a blank
+   `trove/web/` produces a build that imports fine and serves a blank
    page. Launch it and open a screen.
 6. **Build from a clean tree, not the working copy.** `build/lib/` is a stale
    setuptools staging directory that is never cleaned between builds, so
@@ -65,7 +65,7 @@ beside the executables (the `runtime_libs` manifest field), preserving the sonam
 symlinks — dereferencing them would stage `libavcodec` twice and give the saving
 straight back. Windows needs nothing more, since the loader searches the `.exe`'s
 own directory; Linux needs `LD_LIBRARY_PATH`, which
-`organize_archive.runtime.tool_env` supplies at every spawn. Upstream's RPATH is
+`trove.runtime.tool_env` supplies at every spawn. Upstream's RPATH is
 `-Wl:../lib`, a quoting bug in their link flags rather than `$ORIGIN/../lib`, so
 it cannot be relied on.
 
@@ -95,7 +95,7 @@ the InsightFace `buffalo_l` pack (~184 MB). Two do not exist upstream in ONNX fo
 at all — the AdaFace embedder (~249 MB) and the DINOv2 pet re-identification model
 (~84 MB), both exported from Hugging Face checkpoints by dev-only tools that need
 torch + transformers. Those two are re-published as release assets on this
-repository (the `models-v1` tag), and `organize_archive/model_manifest.py`
+repository (the `models-v1` tag), and `trove/model_manifest.py`
 resolves them the same way as the rest.
 
 They used to travel inside the installer, which cost 349 MB of every download —

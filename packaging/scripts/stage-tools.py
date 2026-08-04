@@ -10,7 +10,7 @@ the ``libav*`` libraries they both link against.  The static build put the whole
 codec set inside each of the two binaries -- 266 MB to ship one copy of FFmpeg
 twice.  Everything a tool needs is staged flat in one directory, which is the
 layout both platforms load from; see ``runtime_libs`` below and
-``organize_archive.runtime.tool_env``.
+``trove.runtime.tool_env``.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from organize_archive import runtime  # noqa: E402  (needs ROOT on sys.path)
+from trove import runtime  # noqa: E402  (needs ROOT on sys.path)
 
 MANIFEST = ROOT / "packaging" / "tools" / "manifest.json"
 REQUIRED_TOOL_NAMES = {"ffmpeg", "ffprobe"}
@@ -179,7 +179,7 @@ def executable_for(item: dict, target: str) -> str:
 def staged_name_for(item: dict, target: str) -> str:
     """The file name the tool is staged (and looked up at runtime) under.
 
-    ``organize_archive.runtime.tool`` looks for a bare ``<name>``/``<name>.exe``,
+    ``trove.runtime.tool`` looks for a bare ``<name>``/``<name>.exe``,
     so an archive member with a decorated name must be renamed on the way in.
     """
     name = item.get("install_as") or executable_for(item, target)
@@ -211,7 +211,7 @@ def stage_runtime_libs(item: dict, extracted: Path, stage_tmp: Path) -> list[str
     that is the layout both platforms can actually load from: on Windows the
     loader searches the directory the .exe lives in, so the DLLs beside it are
     found with no help at all, and on Linux one ``LD_LIBRARY_PATH`` pointing at
-    the staged directory covers everything (see ``organize_archive.runtime.tool_env``).
+    the staged directory covers everything (see ``trove.runtime.tool_env``).
     It also keeps ``runtime.tool``'s flat lookup unchanged.
 
     Symlinks are recreated as symlinks, never followed. ``lib/`` ships both

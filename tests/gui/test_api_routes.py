@@ -4,7 +4,7 @@ This file was written to protect a rewrite: ``do_GET``/``do_POST`` were two
 long if-elif chains covering 66 routes (39 GET, 27 POST), almost none of whose
 branches the suite ever executed, and a route silently dropped or mistyped
 while they became route tables would have failed nothing. That rewrite has
-landed -- the routes now live in ``organize_archive/web/routes/`` and the
+landed -- the routes now live in ``trove/web/routes/`` and the
 chains are gone -- and these tests are what says it changed no behaviour.
 
 The trap this file is built around: an unknown path and a legitimate

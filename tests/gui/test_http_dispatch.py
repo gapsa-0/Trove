@@ -22,8 +22,8 @@ from urllib.request import Request, urlopen
 import pytest
 from live_archive import _get, _get_ranged, _post
 
-from organize_archive.errors import ModelUnavailableError
-from organize_archive.web import server
+from trove.errors import ModelUnavailableError
+from trove.web import server
 
 # ---------------------------------------------------------------------------
 # GET -- static assets (7 of the 12 non-/api routes)
@@ -221,7 +221,7 @@ def test_an_unexpected_error_answers_500_and_logs_a_traceback(live_server, monke
         raise KeyError("cover_face_id")
 
     monkeypatch.setitem(server.routes.GET_ROUTES, "/api/health", raiser)
-    with caplog.at_level(logging.ERROR, logger="organize_archive.web.server"):
+    with caplog.at_level(logging.ERROR, logger="trove.web.server"):
         status, _content_type, body = _get(live_server.base_url, "/api/health")
 
     assert status == 500, body

@@ -18,13 +18,13 @@ import threading
 
 import pytest
 
-from organize_archive import thumbnails
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.embeddings import backend as eb
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline.runners import semantic as semantic_runner
-from organize_archive.services import semantic
+from trove import thumbnails
+from trove.config import Config
+from trove.db import database as db
+from trove.embeddings import backend as eb
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline.runners import semantic as semantic_runner
+from trove.services import semantic
 
 np = pytest.importorskip("numpy")
 
@@ -227,7 +227,7 @@ def test_an_ordinary_failure_still_records_as_error(tmp_path):
 
 def _job_manager(tmp_path, monkeypatch):
     # Everything stays under tmp_path: archive_db_path/archive_cache_dir
-    # normally resolve under the user's real ~/.local/share/organize_archive,
+    # normally resolve under the user's real ~/.local/share/trove,
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))

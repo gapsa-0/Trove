@@ -1,4 +1,4 @@
-appId: io.capsa.organize-archive
+appId: io.capsa.trove
 productName: Trove
 directories:
   output: release

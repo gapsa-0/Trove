@@ -10,7 +10,7 @@ build, so the two platforms decode identically.
 ExifTool differs by platform. The Windows payload is upstream's self-contained
 build: the archive member `exiftool(-k).exe` is staged as `exiftool.exe`
 (`install_as`) together with its required `exiftool_files/` Perl runtime
-(`support_dir`), because `organize_archive.runtime.tool` looks up a bare
+(`support_dir`), because `trove.runtime.tool` looks up a bare
 `exiftool.exe` and the executable will not start without that directory beside
 it. It is pinned from SourceForge rather than exiftool.org, which serves only the
 current version and would break the pin at the next upstream release.

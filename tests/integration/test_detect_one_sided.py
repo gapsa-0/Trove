@@ -20,11 +20,11 @@ import numpy as np
 import pytest
 from factories import add_file, make_db
 
-from organize_archive.config import Config
-from organize_archive.detect import persist
-from organize_archive.detect.extract import pending_count
-from organize_archive.detect.results import BOTH_DETECTORS, FACE, PET, FileResult
-from organize_archive.services.pending import detect_pending
+from trove.config import Config
+from trove.detect import persist
+from trove.detect.extract import pending_count
+from trove.detect.results import BOTH_DETECTORS, FACE, PET, FileResult
+from trove.services.pending import detect_pending
 
 
 @pytest.fixture

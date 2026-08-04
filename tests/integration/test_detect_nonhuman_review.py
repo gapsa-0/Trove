@@ -29,12 +29,12 @@ from types import SimpleNamespace
 import factories
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.detect import extract as detect_extract
-from organize_archive.faces import backend as face_backend
-from organize_archive.pets import backend as pet_backend
-from organize_archive.services import pets_edit
+from trove.config import Config
+from trove.db import database as db
+from trove.detect import extract as detect_extract
+from trove.faces import backend as face_backend
+from trove.pets import backend as pet_backend
+from trove.services import pets_edit
 
 np = pytest.importorskip("numpy")
 Image = pytest.importorskip("PIL.Image")

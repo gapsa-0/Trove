@@ -27,8 +27,8 @@ Shoot requires a headless Chrome ALREADY RUNNING with a debugging port, e.g.:
     chromium-browser --headless=new --disable-gpu --no-sandbox \\
       --remote-debugging-port=9333 --remote-debugging-address=127.0.0.1 about:blank
 
-and a GUI server already serving `base_url` (`oa gui --port <port>`, or
-`python3 -m organize_archive.cli gui --port <port> --no-open`). This tool
+and a GUI server already serving `base_url` (`trove gui --port <port>`, or
+`python3 -m trove.cli gui --port <port> --no-open`). This tool
 does not start either one -- it only drives the DevTools Protocol, reusing
 the stdlib-only WS client in `cdp_shot.py` (imported by path; see
 `_load_cdp_shot` below) rather than reimplementing it.

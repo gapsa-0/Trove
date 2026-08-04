@@ -15,7 +15,7 @@ def isolate_app_data(monkeypatch, tmp_path_factory):
 
 
 # The obvious name for the next fixture is `db`, and it must not be: 28 test
-# modules do `from organize_archive.db import database as db`, so a fixture
+# modules do `from trove.db import database as db`, so a fixture
 # argument called `db` would shadow that import inside exactly the tests that
 # request it. `conn` is out for the same reason -- it is the local name for a
 # connection almost everywhere.

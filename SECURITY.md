@@ -1,7 +1,7 @@
 # Security
 
 Trove is a local-first desktop app: a Python backend serving a browser-based UI
-over `http://127.0.0.1:8756` by default (`organize_archive/web/server.py`), driven
+over `http://127.0.0.1:8756` by default (`trove/web/server.py`), driven
 by a desktop shell in normal use. There is no cloud account and no server-side
 component.
 
@@ -26,7 +26,7 @@ server.
 ## Native tools and models
 
 The app runs bundled `exiftool`, `ffmpeg` and `ffprobe`, and loads ONNX model
-weights from the cache directory (`organize_archive/runtime.py`). Where each of
+weights from the cache directory (`trove/runtime.py`). Where each of
 those comes from, and its exact byte content, is recorded in
 `packaging/tools/manifest.json` and `packaging/models/manifest.json`: every
 entry pins a SHA-256 digest, and `packaging/scripts/stage-tools.py` and
@@ -34,7 +34,7 @@ entry pins a SHA-256 digest, and `packaging/scripts/stage-tools.py` and
 before a release build is staged.
 
 The model manifest is enforced at runtime as well, not only at build time:
-`organize_archive/model_manifest.py` is what the app itself uses to resolve those
+`trove/model_manifest.py` is what the app itself uses to resolve those
 weights, and a file it downloads is accepted only if its size and SHA-256 match
 the manifest — otherwise it is discarded rather than written into the cache. The
 packaging script imports that module, so there is one implementation of the

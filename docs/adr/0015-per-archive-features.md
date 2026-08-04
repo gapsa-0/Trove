@@ -35,7 +35,7 @@ An archive's feature set is part of the archive, stored on its registry entry in
 `config.json` beside `paused` / `paused_stages`, chosen when the archive is
 created and changeable afterwards through the same screen.
 
-`organize_archive/features.py` is the catalogue: one table of id, label, the
+`trove/features.py` is the catalogue: one table of id, label, the
 prose the setup panel shows, which stage kinds the feature owns, which nav
 sections it unlocks, and what its weights cost. It is L0 and names stage kinds
 and detector names as plain strings; `tests/unit/test_features.py` checks those

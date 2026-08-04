@@ -31,14 +31,14 @@ import threading
 import pytest
 from helpers import wait_until
 
-from organize_archive.config import Config
-from organize_archive.errors import ModelUnavailableError
-from organize_archive.pipeline import manager as jobs_mod
-from organize_archive.pipeline import status as status_mod
-from organize_archive.pipeline.job import Job, JobContext
-from organize_archive.pipeline.runners import models as models_runner
-from organize_archive.services import archives as archives_mod
-from organize_archive.services import models as models_mod
+from trove.config import Config
+from trove.errors import ModelUnavailableError
+from trove.pipeline import manager as jobs_mod
+from trove.pipeline import status as status_mod
+from trove.pipeline.job import Job, JobContext
+from trove.pipeline.runners import models as models_runner
+from trove.services import archives as archives_mod
+from trove.services import models as models_mod
 
 _ROOT = 1
 
@@ -59,7 +59,7 @@ def jobs(tmp_path, monkeypatch):
 
 def _rig(jm, monkeypatch, started, missing=("semantic",), states=()):
     """Wire tick() to see ``missing`` weights and ``states``, capturing starts."""
-    from organize_archive.pipeline import stages as stages_mod
+    from trove.pipeline import stages as stages_mod
 
     monkeypatch.setattr(models_mod, "missing", lambda cfg, enabled: tuple(missing))
     monkeypatch.setattr(

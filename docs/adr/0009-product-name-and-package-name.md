@@ -1,7 +1,14 @@
 # 0009. The product is called Trove; the package, CLI, and data directory are not
 
-- **Status:** Accepted
+- **Status:** Superseded by [0016](0016-rename-everything-to-trove.md) (2026-08-04)
 - **Date:** 2026-08-01
+
+> Everything below describes the decision as it stood on 2026-08-01 and is kept
+> for the history of it. It is no longer true of the code: the package, the
+> distribution, the CLI entry point, the desktop application id and the
+> application-data directory are now all `trove`, and an install predating that
+> change is migrated on startup. See ADR 0016 for what replaced this and why the
+> compatibility argument here stopped applying.
 
 ## Context
 

@@ -26,8 +26,8 @@ import json
 
 import pytest
 
-from organize_archive.embeddings import backend as eb
-from organize_archive.paths import default_cache_dir
+from trove.embeddings import backend as eb
+from trove.paths import default_cache_dir
 
 # Resolved at import, deliberately: conftest's isolate_app_data fixture points
 # XDG_DATA_HOME at a throwaway directory for every test, so asking for the cache

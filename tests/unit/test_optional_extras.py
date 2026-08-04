@@ -25,7 +25,7 @@ import sys
 
 import pytest
 
-from organize_archive.config import Config
+from trove.config import Config
 
 
 def hide(monkeypatch, *names: str) -> None:
@@ -80,7 +80,7 @@ def test_hiding_a_module_really_does_break_importing_it():
 
 
 def test_the_faces_backend_reports_unavailable_instead_of_raising(monkeypatch):
-    from organize_archive.faces import backend
+    from trove.faces import backend
 
     # Both halves of the probe: the module-level cv2/numpy pair that failed at
     # import time on a machine without them, and the in-function import.
@@ -91,7 +91,7 @@ def test_the_faces_backend_reports_unavailable_instead_of_raising(monkeypatch):
 
 
 def test_the_pets_backend_reports_unavailable_instead_of_raising(monkeypatch):
-    from organize_archive.pets import backend
+    from trove.pets import backend
 
     monkeypatch.setattr(backend, "cv2", None)
     monkeypatch.setattr(backend, "np", None)
@@ -99,7 +99,7 @@ def test_the_pets_backend_reports_unavailable_instead_of_raising(monkeypatch):
 
 
 def test_the_semantic_backend_reports_unavailable_instead_of_raising(monkeypatch):
-    from organize_archive.embeddings import backend
+    from trove.embeddings import backend
 
     monkeypatch.setattr(backend, "np", None)
     hide(monkeypatch, "onnxruntime", "tokenizers", "PIL")
@@ -114,7 +114,7 @@ def test_a_half_installed_native_package_degrades_rather_than_crashing(monkeypat
     handlers would turn a degraded feature into a crash on a real machine, so
     that is what this asserts -- an exception that is *not* ImportError.
     """
-    from organize_archive.faces import backend
+    from trove.faces import backend
 
     if backend.cv2 is None or backend.np is None:
         pytest.skip("needs OpenCV and numpy present, so the probe reaches its import")
@@ -129,8 +129,8 @@ def test_a_half_installed_native_package_degrades_rather_than_crashing(monkeypat
 
 def test_perceptual_dedup_switches_off_but_exact_dedup_is_untouched(monkeypatch, tmp_path):
     """Losing the media extra costs near-duplicate detection, not deduplication."""
-    from organize_archive.dedup import exact
-    from organize_archive.hashing import hasher
+    from trove.dedup import exact
+    from trove.hashing import hasher
 
     hide(monkeypatch, "imagehash", "PIL")
     assert exact.perceptual_available() is False
@@ -148,11 +148,11 @@ def test_the_pipeline_still_offers_every_stage_that_needs_no_extras(monkeypatch,
     deduplicating and placing an archive are the product's spine, and they run
     on the standard library. Only the two model-backed stages drop out.
     """
-    from organize_archive import features
-    from organize_archive.pipeline import stages
+    from trove import features
+    from trove.pipeline import stages
 
-    monkeypatch.setattr("organize_archive.detect.extract.available", lambda want: False)
-    monkeypatch.setattr("organize_archive.services.semantic.available", lambda: False)
+    monkeypatch.setattr("trove.detect.extract.available", lambda want: False)
+    monkeypatch.setattr("trove.services.semantic.available", lambda: False)
 
     avail = stages._availability(Config(db_path=str(tmp_path / "archive.db")), features.ids())
 
@@ -165,7 +165,7 @@ def test_availability_is_decided_without_touching_the_disk(tmp_path):
     """An unavailable stage is never queued, and the stage is what downloads its
     own weights -- so gating availability on the weights being present would be
     a deadlock. The probes must therefore ask only "is it importable"."""
-    from organize_archive.embeddings import backend
+    from trove.embeddings import backend
 
     if not backend.available():
         pytest.skip("the semantic extra is not installed here")
@@ -178,7 +178,7 @@ def test_availability_is_decided_without_touching_the_disk(tmp_path):
 def test_preflight_names_the_system_tools_that_are_missing(monkeypatch):
     """The oldest degradation path in the app, and the model for the rest:
     exiftool and ffprobe are reported by name, not assumed and not fatal."""
-    from organize_archive import cli
+    from trove import cli
 
     monkeypatch.setattr(cli, "runtime_tool", lambda name: None)
     assert cli._preflight() == ["exiftool", "ffprobe"]
@@ -200,8 +200,8 @@ def test_semantic_search_reports_the_missing_extra_instead_of_ModuleNotFoundErro
     tell the user their archive contains nothing like that, which is a
     different -- and wrong -- answer.
     """
-    from organize_archive.errors import ModelUnavailableError
-    from organize_archive.services import search
+    from trove.errors import ModelUnavailableError
+    from trove.services import search
 
     monkeypatch.setattr(search, "scoring_available", lambda: False)
 
@@ -222,7 +222,7 @@ def test_the_scoring_probe_asks_without_importing(monkeypatch):
     does the probe follow ``find_spec``, or does it import? -- and gets the
     same answer whatever is installed.
     """
-    from organize_archive.services import search
+    from trove.services import search
 
     monkeypatch.setattr(search.importlib.util, "find_spec", lambda name: object())
     assert search.scoring_available() is True

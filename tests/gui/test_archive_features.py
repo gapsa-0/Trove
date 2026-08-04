@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive import features
-from organize_archive.config import Config
-from organize_archive.pipeline import stages, status
-from organize_archive.services import archives as archive_service
+from trove import features
+from trove.config import Config
+from trove.pipeline import stages, status
+from trove.services import archives as archive_service
 
 
 class _Jobs:
@@ -142,8 +142,8 @@ def test_detection_reports_unavailable_only_for_the_detectors_asked_for(archive,
     """An importable face backend does not make the stage available to an
     archive that only asked for Pets -- it would report itself ready and then
     fail on its first run."""
-    monkeypatch.setattr("organize_archive.faces.backend.available", lambda: True)
-    monkeypatch.setattr("organize_archive.pets.backend.available", lambda: False)
+    monkeypatch.setattr("trove.faces.backend.available", lambda: True)
+    monkeypatch.setattr("trove.pets.backend.available", lambda: False)
     cfg, aid = archive
     cfg.set_archive_features(aid, ["pets"])
     avail = stages._availability(cfg, cfg.archive_features(aid))

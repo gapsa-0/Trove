@@ -17,9 +17,9 @@ states, which is the same input the scheduler and the GUI both resolve through.
 
 from __future__ import annotations
 
-from organize_archive.config import Config
-from organize_archive.pipeline import stages as stages_mod
-from organize_archive.pipeline import status as status_mod
+from trove.config import Config
+from trove.pipeline import stages as stages_mod
+from trove.pipeline import status as status_mod
 
 
 def _progress(**over):
@@ -114,14 +114,35 @@ def test_the_bar_and_the_running_text_come_back_once_the_loop_starts():
 
 def test_a_preparing_dedup_does_not_claim_to_be_fingerprinting():
     """dedup's card infers its phase from the progress shape, which reads a
-    setup total as "Fingerprinting 0 of 40,000 photos…" -- a loop claim made
-    before the loop exists."""
+    setup total as "Fingerprinting photos…" -- a loop claim made before the
+    loop exists."""
     prep = _progress(phase="preparing", done=0, total=40000, current="")
 
     card = _card(_stage(kind="dedup", card="dedup", counted=False, progress=prep))
 
     assert card["progress"] is None
     assert card["message"] == "Preparing…"
+
+
+def test_the_fingerprinting_line_leaves_the_counts_to_the_detail_line():
+    """It used to read "Fingerprinting 22,900 of 88,274 photos…" directly above
+    a detail line reading "22,900/88,274", printing the same pair twice. Every
+    other card's running text is a verb and a noun; this one now matches."""
+    running = _progress(done=22_900, total=88_274, current="2019/IMG_1.jpg")
+
+    card = _card(_stage(kind="dedup", card="dedup", counted=False, progress=running))
+
+    assert card["message"] == "Fingerprinting photos…"
+    # The numbers are still on their way to the client, once.
+    assert (card["progress"]["done"], card["progress"]["total"]) == (22_900, 88_274)
+
+
+def test_the_grouping_phase_still_names_itself():
+    grouping = _progress(done=40, total=900, current="12× exact")
+
+    card = _card(_stage(kind="dedup", card="dedup", counted=False, progress=grouping))
+
+    assert card["message"] == "Grouping duplicates…"
 
 
 def test_a_preparing_scan_is_not_reported_as_finalizing_metadata():

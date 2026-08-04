@@ -4,7 +4,7 @@ This exists because of a real bug: `cmd_scan` opened with
 `if not Path(cfg.db_path).exists()` while also carrying a redundant
 `from pathlib import Path` further down its own body. That local import makes
 `Path` a function-local name for the *whole* function, so the guard on the first
-line raised `UnboundLocalError` instead of printing the hint -- `oa scan` was
+line raised `UnboundLocalError` instead of printing the hint -- `trove scan` was
 dead on every invocation and no test noticed.
 
 The check is therefore deliberately shallow and broad: dispatch each guarded
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive import cli
-from organize_archive.config import Config
+from trove import cli
+from trove.config import Config
 
 GUARDED = ["scan", "enrich", "dedup", "faces", "pets", "dates", "status"]
 

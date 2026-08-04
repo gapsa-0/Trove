@@ -133,7 +133,7 @@ repeats the list so it gets checked rather than remembered.
   Privacy section). Local models' weights download once, on first use, and
   nothing after that — including the two self-exported ONNX files (AdaFace, the
   DINOv2 pet model), which resolve through `packaging/models/manifest.json` via
-  `organize_archive/model_manifest.py` and are SHA-256 verified before they are
+  `trove/model_manifest.py` and are SHA-256 verified before they are
   used. A fresh clone needs no model setup step: run the app and they arrive.
 - **Long operations must be resumable and idempotent.** Scanning, hashing,
   detection, and embedding all need to be safe to interrupt and re-run,
@@ -153,7 +153,7 @@ repeats the list so it gets checked rather than remembered.
   | L2 | application | `services`, `pipeline` |
   | L3 | delivery | `web`, `cli`, `desktop` |
 
-  Adding a new top-level package under `organize_archive/` and forgetting to
+  Adding a new top-level package under `trove/` and forgetting to
   place it in `LAYERS` fails the test outright rather than silently exempting
   the package from the rule.
 

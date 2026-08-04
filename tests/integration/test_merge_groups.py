@@ -8,10 +8,10 @@ from __future__ import annotations
 import factories
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.pets import cluster
-from organize_archive.services import people_edit, pets_edit
+from trove.config import Config
+from trove.db import database as db
+from trove.pets import cluster
+from trove.services import people_edit, pets_edit
 
 np = pytest.importorskip("numpy")
 

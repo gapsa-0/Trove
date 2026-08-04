@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive.db import database as db
-from organize_archive.services import people_edit, pets_edit, places_edit
+from trove.db import database as db
+from trove.services import people_edit, pets_edit, places_edit
 
 np = pytest.importorskip("numpy")
 

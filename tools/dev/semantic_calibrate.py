@@ -39,8 +39,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
+from trove.config import Config
+from trove.db import database as db
 
 # English, because the GUI translates a Spanish query to English before
 # embedding it (``localEnglishTranslation`` in web/static/js/search.js). Keep
@@ -140,7 +140,7 @@ def load_vectors(db_path, root_id, sample, seed=20260729):
 
 
 def _indexer_version():
-    from organize_archive.services import semantic
+    from trove.services import semantic
 
     return semantic.INDEXER_VERSION
 
@@ -165,7 +165,7 @@ def main():
 
     import numpy as np
 
-    from organize_archive.services import semantic
+    from trove.services import semantic
 
     cfg = Config.load()
     db_path = cfg.archive_db_path(args.archive)

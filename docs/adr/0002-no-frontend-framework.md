@@ -15,9 +15,9 @@ Electron).
 
 ## Decision
 
-The web UI is vanilla ES modules served as static files. `organize_archive/web/static/js/`
-holds about twenty modules and `organize_archive/web/static/css/` about
-nineteen stylesheets; `organize_archive/web/index.html` is a thin shell that
+The web UI is vanilla ES modules served as static files. `trove/web/static/js/`
+holds about twenty modules and `trove/web/static/css/` about
+nineteen stylesheets; `trove/web/index.html` is a thin shell that
 loads `main.js` with `<script type="module">`. There is no React, Vue, or
 Svelte, and no bundler (no webpack, Vite, or Rollup) or build step for the
 frontend at all — `find . -name package.json` outside `node_modules` turns up
@@ -26,12 +26,12 @@ there is no separate frontend build tooling anywhere in the repository.
 
 Because nothing bundles the JavaScript, deployment of the frontend is a plain
 file copy: `pyproject.toml`'s `[tool.setuptools.package-data]` lists
-`"organize_archive.web" = ["*.html", "vendor/*", "static/css/*", "static/js/*", "*.png"]`,
+`"trove.web" = ["*.html", "vendor/*", "static/css/*", "static/js/*", "*.png"]`,
 so the packaged desktop build ships the directory exactly as it sits in the
 repository, and the browser loads `import` paths as real URLs against that
 same directory rather than against a generated bundle.
 
-`eslint.config.js` lints `organize_archive/web/static/js/**/*.js` as native
+`eslint.config.js` lints `trove/web/static/js/**/*.js` as native
 ES modules (`sourceType: "module"`) with an explicit browser-globals block
 (`window`, `document`, `fetch`, `Image`, `IntersectionObserver`, Leaflet's
 `L` global loaded as a classic script ahead of the module, and so on) and
@@ -60,7 +60,7 @@ nothing, with no error until someone clicks it."
 
 - No `npm install`, `npm run build`, or Node toolchain sits in the Python
   build or release path; the frontend is exactly the files under
-  `organize_archive/web/`.
+  `trove/web/`.
 - The browser's own module resolution is the only "bundler" in play, so an
   `import` path bug is a load-time 404 in the browser console, not a build
   failure — `no-undef` and `check_handlers.py` exist specifically to catch

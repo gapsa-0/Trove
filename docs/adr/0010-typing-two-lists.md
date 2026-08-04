@@ -7,7 +7,7 @@
 
 ## Context
 
-`mypy organize_archive` runs as a CI gate, and a gate that is sometimes red
+`mypy trove` runs as a CI gate, and a gate that is sometimes red
 is worse than no gate: it trains everyone to ignore its output. Turning
 strict checking (`disallow_untyped_defs` and friends) on for the whole
 package at once was tried as a measurement, not a plan — at commit
@@ -41,13 +41,13 @@ one and say `ignore_errors = false` explicitly, which is what lets
 list.
 
 Counting at the time of writing: 56 of the package's 108 modules are in the
-strict list, and `grep -rn "type: ignore" organize_archive/` returns nothing —
+strict list, and `grep -rn "type: ignore" trove/` returns nothing —
 the strict packages are strict with no local escape hatch, not
 strict-with-exceptions.
 
 ## Consequences
 
-- `mypy organize_archive` is green at every commit, which is what makes it
+- `mypy trove` is green at every commit, which is what makes it
   usable as a CI gate instead of a report someone has to remember to read.
 - Adding a package to the strict list is a one-way door in practice: nothing
   stops errors from creeping back in later, but nothing routine drags the
@@ -101,7 +101,7 @@ not coverage.
 
 ### The resting state
 
-Every module in `organize_archive` is checked at what used to be the strict
+Every module in `trove` is checked at what used to be the strict
 block's settings, so they are declared as `[tool.mypy]` globals and there is no
 override block at all. That is deliberately stronger than "the strict list
 names every package": a list has to be *extended* for a new package, and one
@@ -116,7 +116,7 @@ shape: a rule a new file can escape by simply not being mentioned.
 
 ### The escape hatches, and why there are exactly six
 
-`grep -rn "type: ignore" organize_archive/` used to return nothing, and that
+`grep -rn "type: ignore" trove/` used to return nothing, and that
 was worth saying while only half the package was checked. It returns six now,
 five of which are one pattern: an optional native dependency rebound to `None`
 when absent (`cv2 = None`, `np = None` in the three model backends). The
@@ -140,7 +140,7 @@ build rather than accumulating.
   and the alias idea moved to the boundary that actually is `Any` — `Session =
   Any`, defined in each backend that holds an ONNX session, as documentation
   rather than enforcement.
-- **`organize_archive/progress.py` exists because typing needed it.** Five
+- **`trove/progress.py` exists because typing needed it.** Five
   packages report progress to one of two concrete trackers, both of which live
   above them in the layering. The `Protocol` that pins their shape had already
   been written once, privately, inside `metadata/enrich.py`; four more copies

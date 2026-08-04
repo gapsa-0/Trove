@@ -5,7 +5,7 @@
 
 ## Context
 
-`organize_archive/services/types.py` defines two `TypedDict`s —
+`trove/services/types.py` defines two `TypedDict`s —
 `MediaItem` and `MediaPage` — for the media-grid payload that five
 different service modules (`browse`, `people`, `places`, `pets`, `search`)
 build and that crosses the HTTP boundary as-is. Naming that shape turns a
@@ -18,7 +18,7 @@ extra payload keys differing per call site — `{"ok": True, "name": ...}`
 from a rename, `{"ok": True, "detached_faces": len(face_ids)}` from
 detaching a face, `{"error": "unknown pet"}` from a lookup miss, and so on.
 Counting the literal `{"ok": True ...}` / `{"error": ...}` dict constructions
-inside `organize_archive/services/*.py` today (`grep` for both patterns,
+inside `trove/services/*.py` today (`grep` for both patterns,
 excluding `services/types.py`'s own docstring, which quotes the pattern as
 prose rather than building one) finds 21 `"ok"` returns and 51 `"error"`
 returns — 72 in total, spread across `archives.py`, `browse.py`,

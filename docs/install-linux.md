@@ -16,4 +16,4 @@ file timestamps, but camera make/model, orientation and embedded GPS are skipped
 
 Some distributions require FUSE for AppImage. If mounting fails, install the
 distribution's FUSE compatibility package or use the `.deb`. Data lives under
-`$XDG_DATA_HOME/organize_archive` (normally `~/.local/share/organize_archive`).
+`$XDG_DATA_HOME/trove` (normally `~/.local/share/trove`).

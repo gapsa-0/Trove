@@ -49,7 +49,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   waiting to be compared, the same way People and Pets report their own progress.
   An archive with nothing grouped yet keeps those numbers on screen instead of
   replacing the page with an empty-state box.
-- `oa logs` prints the application log, or `oa logs --path` its location, so a
+- `trove logs` prints the application log, or `trove logs --path` its location, so a
   bug report can carry the evidence needed to act on it.
 
 ### Fixed
@@ -92,6 +92,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The command is now `trove`, not `oa`.** The rename to Trove previously
+  stopped at what you could see; the package, the command and the data folder
+  were all still called `organize_archive` underneath. They are not any more —
+  there is one name for all of it. Your catalogue moves with it: the first time
+  this version starts it relocates the old data folder and repoints what is
+  recorded inside it, so nothing is re-scanned and nothing is lost. If you have
+  scripts, aliases or shell shortcuts that call `oa`, they need updating to
+  `trove` — the old command is gone rather than kept as an alias, so they will
+  fail loudly rather than quietly doing something else. `OA_LOG_LEVEL` is now
+  `TROVE_LOG_LEVEL` for the same reason. On Windows, because the application's
+  installer identity changed too, an install of an older version is not
+  recognised as the same application and is not replaced by the upgrade; it can
+  be uninstalled from Add/Remove Programs once the new one is running. Your
+  catalogue is untouched by that — it lives in the data folder, which is
+  migrated.
 - **Library health now draws the pipeline as the chain it is.** The five status
   cards were a grid of equal tiles, which said the archive does five unrelated
   things at once; the one real relation between them — Indexing and Duplicates
@@ -223,7 +238,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   while a scan was running, because the first view clustered the places itself.
   Clustering now belongs solely to the pipeline stage; until it runs, the map
   shows the photos as ungrouped dots.
-- `oa scan` crashed immediately with `UnboundLocalError` before doing any work,
+- `trove scan` crashed immediately with `UnboundLocalError` before doing any work,
   on every invocation. Five other commands carried the same redundant import but
   happened to survive it; all six are cleaned up.
 

@@ -24,7 +24,7 @@ import re
 import sys
 from pathlib import Path
 
-WEB = Path(__file__).resolve().parent.parent.parent / "organize_archive" / "web"
+WEB = Path(__file__).resolve().parent.parent.parent / "trove" / "web"
 INDEX = WEB / "index.html"
 JS_DIR = WEB / "static" / "js"
 MAIN = JS_DIR / "main.js"

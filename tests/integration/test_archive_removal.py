@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from organize_archive import paths
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.services.archives import add_archive, remove_archive
+from trove import paths
+from trove.config import Config
+from trove.db import database as db
+from trove.services.archives import add_archive, remove_archive
 
 
 def _seed_file(cfg, archive_id, rel_path, digest):

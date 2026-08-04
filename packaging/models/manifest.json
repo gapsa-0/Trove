@@ -19,7 +19,7 @@
       "source": "tools/build/adaface_export.py — fp32 ONNX export of marcelo-victor/adaface_ir101_webface12m (Hugging Face), AdaFace IR-101 trained on WebFace12M; exports both the 512-d L2-normalized embedding and the feature norm",
       "license": "AdaFace code is MIT — (c) 2022 Minchul Kim et al., https://github.com/mk-minchul/AdaFace — but these weights are trained on WebFace12M (a WebFace260M subset) and carry its non-commercial academic research terms. See packaging/THIRD_PARTY_NOTICES.md.",
       "url": "https://github.com/gapsa-0/Trove/releases/download/models-v1/adaface_ir101_w12m.onnx",
-      "reason": "Same situation as dinov2_pet: no upstream ONNX exists, only a torch checkpoint, so this repository re-publishes the export as a release asset and the app fetches it once on first use. It is doubly load-bearing here because its second output — the feature norm — is the quality signal the FIQA gate (organize_archive/faces/fiqa.py) tiers every face with; without it faces are all BORDERLINE and nothing can seed a cluster core."
+      "reason": "Same situation as dinov2_pet: no upstream ONNX exists, only a torch checkpoint, so this repository re-publishes the export as a release asset and the app fetches it once on first use. It is doubly load-bearing here because its second output — the feature norm — is the quality signal the FIQA gate (trove/faces/fiqa.py) tiers every face with; without it faces are all BORDERLINE and nothing can seed a cluster core."
     }
   ]
 }

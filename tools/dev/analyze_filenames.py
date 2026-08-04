@@ -21,8 +21,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from organize_archive.metadata import filename_dates as fd
-from organize_archive.scan.walker import is_ignored
+from trove.metadata import filename_dates as fd
+from trove.scan.walker import is_ignored
 
 
 def skeleton(s: str) -> str:

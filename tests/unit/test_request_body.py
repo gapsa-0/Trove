@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive.web.routes._request import Request
+from trove.web.routes._request import Request
 
 
 def _req(body: dict) -> Request:

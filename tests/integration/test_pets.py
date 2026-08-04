@@ -3,8 +3,8 @@ from __future__ import annotations
 import factories
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.pets import backend, cluster, extract
+from trove.config import Config
+from trove.pets import backend, cluster, extract
 
 np = pytest.importorskip("numpy")
 

@@ -15,7 +15,7 @@ file.
 
 ## Decision
 
-`organize_archive/dedup/exact.py` groups duplicates in two layers and never
+`trove/dedup/exact.py` groups duplicates in two layers and never
 deletes anything. Its module docstring states the invariant directly: "Each
 group keeps one **canonical** copy visible; the rest are marked hidden
 (never deleted, always reviewable)."
@@ -62,7 +62,7 @@ adding the file id as a final tiebreaker after path — read the actual `key=`
 tuple in `_pick_canonical` for the authoritative order if this ever needs
 retuning.
 
-**Analytics vs. Browse.** `organize_archive/services/_common.py` defines the
+**Analytics vs. Browse.** `trove/services/_common.py` defines the
 distinction the rest of the services layer builds on: `_VISIBLE = "f.present
 = 1"` counts every present file, while `_NOT_HIDDEN = "f.present = 1 AND
 f.hidden = 0"` additionally excludes non-canonical duplicates. The comment

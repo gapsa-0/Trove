@@ -50,7 +50,7 @@ processing — is local from the start.
 Uninstall from *Settings → Apps* or the Start-menu entry. It removes the application
 and its shortcuts, and never changes your media.
 
-Your catalogue is deliberately left behind in `%LOCALAPPDATA%\organize_archive`, so a
+Your catalogue is deliberately left behind in `%LOCALAPPDATA%\trove`, so a
 reinstall resumes where you left off. Delete that folder yourself if you want the
 catalogue gone — after taking any backup you want, since it holds all the naming and
 review work you have done.

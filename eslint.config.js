@@ -31,11 +31,11 @@ module.exports = [
     // "desktop/src/**/*.cjs" when run from the repo root -- silently matching
     // zero files in one of the two cases. `basePath` removes that ambiguity.
     // The `lint` script now cd's to the repo root for a second reason: a path
-    // argument outside the cwd (`../organize_archive/...`) is rejected outright,
+    // argument outside the cwd (`../trove/...`) is rejected outright,
     // so the browser modules cannot be linted from inside `desktop/` at all.
     basePath: __dirname,
     ignores: [
-      "organize_archive/web/vendor/**",
+      "trove/web/vendor/**",
       "desktop/node_modules/**",
       "desktop/release/**",
       "desktop/dist/**",
@@ -73,14 +73,14 @@ module.exports = [
     rules: sharedRules,
   },
   {
-    // The browser-side app: native ES modules under organize_archive/web/static/js,
+    // The browser-side app: native ES modules under trove/web/static/js,
     // loaded by index.html with `<script type="module">`. There is no bundler and
     // no build step, so what eslint reads here is exactly what the browser runs.
     // `no-undef` is the rule that earns its keep: it is what catches a function
     // that moved to another module and is still called without an import, which
     // would otherwise surface only as a console error at click time.
     basePath: __dirname,
-    files: ["organize_archive/web/static/js/**/*.js"],
+    files: ["trove/web/static/js/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",

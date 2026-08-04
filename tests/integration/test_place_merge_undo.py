@@ -17,9 +17,9 @@ import json
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.services import places_edit
+from trove.config import Config
+from trove.db import database as db
+from trove.services import places_edit
 
 np = pytest.importorskip("numpy")
 
@@ -350,7 +350,7 @@ def test_place_merge_survives_assign_unplaced(tmp_path):
     assign_unplaced run (the pipeline's normal incremental pass) must not
     disturb an already-merged place -- it only ever adds new unplaced
     points, never touches existing members."""
-    from organize_archive.geo.clusters import assign_unplaced
+    from trove.geo.clusters import assign_unplaced
 
     conn = _place_catalog(tmp_path)
     _insert_place(conn, 1, 1, "Home", 0.0, 0.0, 2)

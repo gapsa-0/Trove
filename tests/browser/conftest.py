@@ -35,9 +35,9 @@ import factories
 import pytest
 from helpers import serve_in_thread
 
-from organize_archive.config import Config
-from organize_archive.db import database as db
-from organize_archive.services import archives
+from trove.config import Config
+from trove.db import database as db
+from trove.services import archives
 
 TOOLS_DEV = Path(__file__).resolve().parents[2] / "tools" / "dev"
 
@@ -232,8 +232,8 @@ def _seed(conn, root_id: int, source_dir: Path) -> dict:
     # Without this, opening the archive treats every person seeded above as
     # stale identity data from a retired embedder and wipes them -- see the
     # same call in tests/gui/live_archive.py, where it cost a debugging session.
-    from organize_archive.faces import backend as face_backend
-    from organize_archive.faces import migrate_adaface
+    from trove.faces import backend as face_backend
+    from trove.faces import migrate_adaface
 
     migrate_adaface.mark_embedder(conn, face_backend.EMBEDDER_VERSION)
     return ids

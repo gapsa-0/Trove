@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from organize_archive import runtime
+from trove import runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "packaging" / "scripts" / "stage-tools.py"

@@ -1,6 +1,6 @@
 """The feature catalogue, and the four agreements it has to keep.
 
-``organize_archive/features.py`` is a table that three other modules read, and
+``trove/features.py`` is a table that three other modules read, and
 it names things that live above it as plain strings -- stage kinds, detector
 names, section ids -- because importing them would invert the layering. Each of
 those spellings is checked here instead, so a rename in the pipeline that leaves
@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive import features
-from organize_archive.detect import results as detect_results
-from organize_archive.pipeline import stages
+from trove import features
+from trove.detect import results as detect_results
+from trove.pipeline import stages
 
 
 def test_every_stage_belongs_to_exactly_one_card_and_some_feature():

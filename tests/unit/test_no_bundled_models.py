@@ -3,7 +3,7 @@
 Bundling the two weights in packaging/models/manifest.json (AdaFace 249 MB,
 DINOv2-pet 84 MB) was 349 MB of a 744 MB installer -- for files the app already
 knows how to fetch, hash-verified, on first use. They are re-published as release
-assets on this repository, so ``organize_archive.model_manifest`` resolves them
+assets on this repository, so ``trove.model_manifest`` resolves them
 through its download tier and the spec bundles nothing.
 
 That is easy to undo by accident: re-adding a ``datas`` entry is one line, the
@@ -20,7 +20,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-SPEC = Path(__file__).resolve().parents[2] / "packaging" / "organize-archive.spec"
+SPEC = Path(__file__).resolve().parents[2] / "packaging" / "trove.spec"
 
 
 def _spec_source() -> str:
@@ -43,7 +43,7 @@ def test_the_spec_stages_no_model_weights():
     ]
     assert not offenders, (
         "The spec looks like it bundles staged model weights again. That is 349 MB "
-        "of installer for files organize_archive.model_manifest downloads on first "
+        "of installer for files trove.model_manifest downloads on first "
         "use; see docs/release.md.\n" + "\n".join(offenders)
     )
 
@@ -71,7 +71,7 @@ def test_the_spec_appends_only_the_tools_datas_entry():
             destinations.append(node.args[0].elts[1].value)
 
     assert destinations == ["tools"], (
-        "packaging/organize-archive.spec should append exactly one datas entry, the "
+        "packaging/trove.spec should append exactly one datas entry, the "
         f"native tools tree. It appends: {destinations}. Anything else is new payload "
         "in every installer -- confirm that is intended before changing this test."
     )

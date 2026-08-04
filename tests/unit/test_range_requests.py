@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive.web.server import _parse_range
+from trove.web.server import _parse_range
 
 _SIZE = 100
 

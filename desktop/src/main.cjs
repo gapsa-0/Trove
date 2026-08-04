@@ -42,11 +42,11 @@ function writeRotatingLog(name, lines) {
 
 function backendCommand() {
   if (app.isPackaged) {
-    const name = process.platform === "win32" ? "organize-archive-backend.exe" : "organize-archive-backend";
+    const name = process.platform === "win32" ? "trove-backend.exe" : "trove-backend";
     return { command: path.join(process.resourcesPath, "backend", name), args: [] };
   }
   if (process.env.ARCHIVE_BACKEND) return { command: process.env.ARCHIVE_BACKEND, args: [] };
-  // Running the source checkout is intentionally explicit and does not use oa gui,
+  // Running the source checkout is intentionally explicit and does not use trove gui,
   // because that command opens a browser itself.
   // Resolve explicit relative paths from the terminal's working directory. The
   // backend itself starts from the checkout root, so passing one unchanged would
@@ -55,7 +55,7 @@ function backendCommand() {
   const python = configuredPython && (configuredPython.startsWith(".") || path.isAbsolute(configuredPython))
     ? path.resolve(process.cwd(), configuredPython)
     : configuredPython || (process.platform === "win32" ? "python" : "python3");
-  return { command: python, args: ["-m", "organize_archive.desktop"] };
+  return { command: python, args: ["-m", "trove.desktop"] };
 }
 
 async function verifyHealth(port) {
@@ -69,7 +69,7 @@ async function verifyHealth(port) {
 // is what this used to point at. Nothing failed visibly, because the backend also
 // finds them through sys._MEIPASS; the cost was a diagnostics panel that reported
 // every bundled tool as "missing". It matters more now that the tools directory is
-// also where ffmpeg's shared libraries live (organize_archive.runtime.tool_env).
+// also where ffmpeg's shared libraries live (trove.runtime.tool_env).
 function bundledToolRoot() {
   if (!app.isPackaged) return process.env.ARCHIVE_TOOLS_DIR || null;
   return path.join(process.resourcesPath, "backend", "_internal", "tools");
@@ -171,7 +171,7 @@ function toolStatus(name, toolRoot) {
   const probe = spawnSync(exe, [name === "exiftool" ? "-ver" : "-version"], {
     encoding: "utf8",
     timeout: 10000,
-    // Mirrors organize_archive.runtime.tool_env: the loader needs the staged
+    // Mirrors trove.runtime.tool_env: the loader needs the staged
     // directory, and upstream's RPATH is broken so nothing else supplies it.
     env: process.platform === "win32" ? process.env
       : { ...process.env, LD_LIBRARY_PATH: [toolRoot, process.env.LD_LIBRARY_PATH].filter(Boolean).join(path.delimiter) },

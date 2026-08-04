@@ -16,8 +16,8 @@ import struct
 
 from helpers import needs_scoring
 
-from organize_archive.db import database as db
-from organize_archive.services import search
+from trove.db import database as db
+from trove.services import search
 
 # Every test here scores a query, so the guard is module-wide rather than per
 # test -- unlike the mixed modules that use the same mark on a single case.

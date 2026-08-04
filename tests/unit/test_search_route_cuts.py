@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from organize_archive.config import Config
-from organize_archive.web.routes import search as search_route
-from organize_archive.web.routes._request import Request
+from trove.config import Config
+from trove.web.routes import search as search_route
+from trove.web.routes._request import Request
 
 
 @pytest.fixture
@@ -45,9 +45,7 @@ def captured(monkeypatch):
         calls.update(kwargs)
         return {"items": [], "offset": 0, "limit": 0, "count": 0, "total": 0}
 
-    monkeypatch.setitem(
-        __import__("sys").modules, "organize_archive.services.semantic", FakeSemantic
-    )
+    monkeypatch.setitem(__import__("sys").modules, "trove.services.semantic", FakeSemantic)
     monkeypatch.setattr(search_route.search, "semantic_search", fake_search)
     monkeypatch.setattr(search_route.search, "archive_center", lambda *a, **k: None)
     return calls

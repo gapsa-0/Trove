@@ -30,9 +30,9 @@ import json
 import re
 from pathlib import Path
 
-import organize_archive
+import trove
 
-ROOT = Path(organize_archive.__file__).resolve().parent.parent
+ROOT = Path(trove.__file__).resolve().parent.parent
 DESKTOP = ROOT / "desktop"
 
 

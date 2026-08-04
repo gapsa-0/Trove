@@ -10,7 +10,7 @@ not there was ever a row to clean up. Gating it on `PRAGMA user_version` makes
 it run exactly once per database, same as any other migration here.
 """
 
-from organize_archive.db import database as db
+from trove.db import database as db
 
 
 def _insert_video_row(conn, file_id=1):
