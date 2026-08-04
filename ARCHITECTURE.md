@@ -103,6 +103,7 @@ grandfathered.
 | face clustering behaviour (the two passes and their thresholds) | `organize_archive/faces/passes.py` |
 | what a face re-cluster destroys, and what survives it | `organize_archive/faces/cluster.py` |
 | pet clustering behaviour | `organize_archive/pets/cluster.py` |
+| which semantic matches are shown (the two cuts, and the modality-gap centering they are tuned for) | `organize_archive/services/search.py`, with the thresholds and their reasoning in `organize_archive/config/settings.py` |
 | how a screen looks | `organize_archive/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
 | the SQLite schema | `organize_archive/db/schema.sql`, plus the migration in `init_db` (`organize_archive/db/database.py`) |
 | settings and their defaults | `organize_archive/config/settings.py` |

@@ -33,6 +33,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Search by description returns more of what you asked for, and less of what you
+  didn't.** Two things were wrong with how weak matches were hidden. The scores
+  themselves were squeezed into a narrow band, because the model places pictures
+  and sentences in two separate regions of its vector space; measuring each from
+  its own centre spreads them out roughly threefold. And of the two thresholds
+  that decide what to show, one sat below every score it could ever see, leaving
+  the other to do both jobs — the only way it could suppress a bad result was to
+  tighten until good ones fell out too. On a test archive a search for "a lake"
+  returned 7 of its 15 lake photos; it now returns them all, while a search for
+  something the archive does not contain returns nearly nothing instead of a
+  confident-looking page. Nothing is re-indexed.
+- **Searches are no longer translated to English first.** Trove used to bundle a
+  Spanish-to-English translation model and search with its output, because the
+  search model was English-only when that was written. It is multilingual now, so
+  your words go to it directly and the installer loses 26 MB. One caveat, and it
+  is why the translation existed: the model reads text *inside* your pictures, so
+  searching in the language your screenshots and memes are written in surfaces
+  more of them than the English equivalent did.
 - **The installers are roughly half the size.** Three things were shipping weight
   nobody could use: the People and Pets model weights travelled inside the download
   (349 MB) even though the app already knows how to fetch weights on demand; FFmpeg
