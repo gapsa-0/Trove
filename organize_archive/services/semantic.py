@@ -93,6 +93,11 @@ def warm_text_model(cfg: Config) -> None:
     show a 317 MB download and nowhere to report its failure, and silently using
     someone's connection for it is not the startup behaviour to ship.
 
+    Warms ``text_center`` as well, which is the larger half: loading the tower
+    is ~3 s but embedding the caption bank is another ~2.7 s, because it is 30
+    strings through a forward pass that costs ~85 ms each. Left out, the tower
+    would be ready and the first search would still stall for the bank.
+
     Best-effort otherwise: any failure here must stay invisible, because the next
     search simply loads the tower again, or reports the real error.
     """
@@ -100,6 +105,7 @@ def warm_text_model(cfg: Config) -> None:
         return
     try:
         backend(cfg).load_text()
+        text_center(cfg)
     except Exception:
         # Invisible to the caller by design (see docstring); recorded here so
         # the failure isn't lost outright if warmup is what actually broke.

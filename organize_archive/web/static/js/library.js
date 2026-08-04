@@ -17,7 +17,7 @@ import {
 } from "./item.js";
 import {
   onSemanticComposerInput, renderActiveQuery, renderSearchReach, renderSemanticComposer,
-  setPeopleChecks,
+  setPeopleChecks, warmLocalTranslator,
 } from "./search.js";
 import {
   S, TYPE_ICON, typeLabel,
@@ -71,6 +71,11 @@ export async function renderPhotos(m) {
   composer.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
   await buildFilterBar();
   if (gen !== S.nav) return;
+  // Opening Library is the earliest moment we know a search is plausible, and
+  // both halves of the first-search cost can be started now rather than while
+  // someone waits: the translation model here, and this archive's embedding
+  // centre on the server, which renderSearchReach's status call kicks off.
+  warmLocalTranslator();
   renderSearchReach();
   renderSortOptions(g);
   renderActiveQuery(g);

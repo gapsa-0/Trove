@@ -38,20 +38,42 @@ function clearlyEnglishSearch(text) {
 // queries), which is why the translation must *replace* the original rather
 // than be merged with it as an alternate vector — taking the best of both
 // would systematically pick the worse one.
+function localTranslator() {
+  // The WASM runtime and the es-en model are ~23 MB between them, so whoever
+  // asks first waits for the download and the worker spin-up. Building the
+  // promise is separated from using it precisely so that cost can be paid
+  // ahead of time -- see warmLocalTranslator.
+  if (!LOCAL_TRANSLATOR_PROMISE) {
+    LOCAL_TRANSLATOR_PROMISE = import("/vendor/bergamot-translator.js").then(module =>
+      new module.LatencyOptimisedTranslator({
+        pivotLanguage: null,
+        registryUrl: "/vendor/translation-es-en.json",
+        cacheSize: 256,
+        downloadTimeout: 15000
+      })
+    );
+  }
+  return LOCAL_TRANSLATOR_PROMISE;
+}
+// Start that load when Library opens, so the first search is not the thing
+// that waits for it. Deferred to idle rather than started inline: the grid is
+// fetching its first page at the same moment, and 23 MB of WASM competing with
+// that trades a slower screen for a faster search nobody has asked for yet.
+// Fire-and-forget — a failure is swallowed and reset, leaving the first real
+// translation to hit the same path and report properly.
+export function warmLocalTranslator() {
+  const start = () => {
+    try {
+      localTranslator().catch(() => { LOCAL_TRANSLATOR_PROMISE = null; });
+    } catch { LOCAL_TRANSLATOR_PROMISE = null; }
+  };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(start, { timeout: 3000 });
+  else setTimeout(start, 1000);
+}
 async function localEnglishTranslation(text) {
   if (!text || !text.match(/\p{L}/u) || clearlyEnglishSearch(text)) return "";
   try {
-    if (!LOCAL_TRANSLATOR_PROMISE) {
-      LOCAL_TRANSLATOR_PROMISE = import("/vendor/bergamot-translator.js").then(module =>
-        new module.LatencyOptimisedTranslator({
-          pivotLanguage: null,
-          registryUrl: "/vendor/translation-es-en.json",
-          cacheSize: 256,
-          downloadTimeout: 15000
-        })
-      );
-    }
-    const translator = await LOCAL_TRANSLATOR_PROMISE;
+    const translator = await localTranslator();
     const response = await translator.translate({ from: "es", to: "en", text, html: false });
     const translated = (response && response.target && response.target.text || "")
       .replace(/\s+/g, " ").trim().toLocaleLowerCase();

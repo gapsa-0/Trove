@@ -2,10 +2,38 @@
 
 from __future__ import annotations
 
+import logging
+import threading
+
 from ...errors import ModelUnavailableError
 from ...services import search
 from ...services.types import MediaPage
 from ._request import Json, Request
+
+logger = logging.getLogger(__name__)
+
+
+def _warm_archive_center(db_path: str, rid: int | None) -> None:
+    """Compute this archive's centre off the request thread, best-effort.
+
+    The model-side warm-up happens once at server start, but the centre is a
+    property of *an archive*, and which one is open is not known until someone
+    opens it. Library asks for the status above the moment it renders, so that
+    is where the archive first becomes knowable — and it is a poll, so this
+    lands well before anyone finishes typing a query.
+
+    Silent on failure and never awaited: search recomputes the centre itself if
+    this did not happen, so the only thing a failure here costs is the head
+    start.
+    """
+
+    def run() -> None:
+        try:
+            search.archive_center(db_path, rid)
+        except Exception:
+            logger.debug("archive centre warmup failed", exc_info=True)
+
+    threading.Thread(target=run, name="semantic-center-warm", daemon=True).start()
 
 
 def semantic_status(req: Request) -> dict:
@@ -13,10 +41,13 @@ def semantic_status(req: Request) -> dict:
     from ...services import semantic
 
     rid = req.root_id
-    status = search.semantic_summary(req.db(rid), rid)
+    db_path = req.db(rid)
+    status = search.semantic_summary(db_path, rid)
     # Nothing left to configure — the stage runs as soon as the
     # dependencies are importable, and downloads its own weights.
     status["configured"] = semantic.available()
+    if status["configured"] and status.get("indexed") and req.cfg.semantic_search_center_embeddings:
+        _warm_archive_center(db_path, rid)
     return status
 
 
