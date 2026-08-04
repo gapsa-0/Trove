@@ -53,6 +53,70 @@ def scoring_available() -> bool:
 # the one part of search that would actually strain a small machine.
 _SCORE_CHUNK = 4096
 
+# How many stored vectors the archive centre is estimated from. The mean
+# converges far faster than the archive grows: measured against a full 497-file
+# mean, a 50-vector sample already agrees to cosine 0.993 and reproduces 98% of
+# the top-20 ranking, and 300 reaches 0.9995. Sampling is what keeps centering
+# from costing a full-column read on every process, so this is deliberately a
+# few thousand rather than "all of them".
+_CENTER_SAMPLE = 4096
+
+# Archive centres, keyed by (db path, root, indexer version) -- the last so a
+# re-index into a new vector space cannot be scored against the old space's
+# mean. Process-local and never invalidated within a run: the mean of a photo
+# archive moves far too slowly for a single session to notice, and the cost of
+# being slightly stale is a fractionally different score, not a wrong result.
+_CENTER_CACHE: dict[tuple[str, int | None, str], list[float] | None] = {}
+
+
+@reading
+def archive_center(conn: sqlite3.Connection, root_id: int | None = None) -> list[float] | None:
+    """The mean of this archive's stored image vectors, or None if it has none.
+
+    One half of the modality-gap correction (see ``semantic_search``'s
+    ``center``). Estimated from a bounded sample rather than the whole column;
+    ``_CENTER_SAMPLE`` explains why that is not an approximation worth worrying
+    about. Cached per process.
+    """
+    from . import semantic
+
+    # The archive's own file path, asked of the connection rather than passed
+    # in: @reading hands this function a connection, not the db_path its caller
+    # used, and two archives must never share a cache entry.
+    main_db = ""
+    for _seq, name, file in conn.execute("PRAGMA database_list").fetchall():
+        if name == "main":
+            main_db = file or ""
+            break
+    key = (main_db, root_id, semantic.INDEXER_VERSION)
+    if key in _CENTER_CACHE:
+        return _CENTER_CACHE[key]
+    import numpy as np
+
+    rc, rp = _root_clause(root_id)
+    rows = conn.execute(
+        f"""SELECT e.embedding, e.dimensions FROM semantic_embeddings e
+            JOIN files f ON f.id=e.file_id
+            WHERE {_NOT_HIDDEN}{rc} AND e.status='indexed' AND e.embedding IS NOT NULL
+              AND COALESCE(e.indexer_version, '')=?
+            LIMIT ?""",
+        (*rp, semantic.INDEXER_VERSION, _CENTER_SAMPLE),
+    ).fetchall()
+    vectors = [
+        np.frombuffer(row["embedding"], dtype="<f4")
+        for row in rows
+        if row["embedding"] is not None and len(row["embedding"]) == (row["dimensions"] or 0) * 4
+    ]
+    if not vectors:
+        _CENTER_CACHE[key] = None
+        return None
+    block = np.asarray(vectors, dtype=np.float32)
+    norms = np.sqrt(np.einsum("ij,ij->i", block, block))
+    block = block[norms > 0.0] / norms[norms > 0.0][:, None]
+    center = [float(v) for v in block.mean(axis=0)] if len(block) else None
+    _CENTER_CACHE[key] = center
+    return center
+
 
 @reading
 def semantic_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
@@ -174,12 +238,25 @@ def _search_where_clause(
 
 
 def _prepare_query_vectors(
-    query_vector: list[float], alternate_vectors: list[tuple[list[float], float]] | None
+    query_vector: list[float],
+    alternate_vectors: list[tuple[list[float], float]] | None,
+    text_center: list[float] | None = None,
 ) -> list[tuple[tuple[float, ...], float, float]]:
     """Turn the query vector(s) into ``(vector, norm, penalty)`` triples, dropping
-    any that come out zero-norm."""
+    any that come out zero-norm.
+
+    ``text_center`` is the text modality's mean, subtracted here when centering
+    is on. Renormalising is left to the caller's existing division by ``norm``,
+    which is computed after the shift.
+    """
     vectors = [(tuple(query_vector), 0.0)]
     vectors.extend((tuple(vector), float(penalty)) for vector, penalty in (alternate_vectors or []))
+    if text_center is not None and len(text_center) == len(query_vector):
+        centered = [
+            (tuple(value - mean for value, mean in zip(vector, text_center, strict=True)), penalty)
+            for vector, penalty in vectors
+        ]
+        vectors = centered
     prepared = [
         (vector, math.sqrt(math.sumprod(vector, vector)), penalty) for vector, penalty in vectors
     ]
@@ -192,11 +269,16 @@ def _score_candidates(
     sql: str,
     params: list[Any],
     prepared: list[tuple[tuple[float, ...], float, float]],
+    image_center: Any = None,
 ) -> tuple[Any, list[MediaItem]]:
     """Run the candidate query and score every row against ``prepared``.
 
     Returns ``(scores, meta)``: a float32 array of best-of-``prepared`` scores
     and the parallel per-row metadata dicts, both in the query's row order.
+
+    ``image_center`` is the image modality's mean (a float32 array or None),
+    subtracted from every candidate before scoring. Renormalising is free: the
+    per-row division by ``norms`` below already happens after the shift.
     """
     # numpy stays a function-local import on purpose: hoisting it would make
     # importing this module require numpy even for callers that never touch a
@@ -246,6 +328,8 @@ def _score_candidates(
         if not kept:
             continue
         block = block[:kept]
+        if image_center is not None:
+            block = block - image_center
         norms = np.sqrt(np.einsum("ij,ij->i", block, block))
         # A zero vector points nowhere, so there is no angle to measure.
         # Dividing by 1 keeps the arithmetic finite and -inf then puts it
@@ -343,6 +427,7 @@ def semantic_search(
     offset: int = 0,
     alternate_vectors: list[tuple[list[float], float]] | None = None,
     located: bool | None = None,
+    center: tuple[list[float], list[float]] | None = None,
 ) -> MediaPage:
     """Rank locally stored vectors against the original and optional expansions.
 
@@ -354,13 +439,21 @@ def semantic_search(
     (see ``ALTERNATE_VECTOR_PENALTY``).
 
     **Two cuts, because one absolute number cannot do this job.** The local
-    embedder's similarities are compressed *and* shift per query: measured on
-    this archive, the best match for "fireworks" scores 0.097 while the best for
-    "a selfie" scores 0.150 — and a subject the archive does not contain at all
-    still reaches ~0.10. So ``min_similarity`` is only a floor against noise,
-    and the cut that actually decides relevance is ``relative_floor``: a
-    fraction of *this query's own* best score, which travels with the query
-    instead of assuming every query lives on the same scale.
+    embedder's similarities are compressed *and* shift per query, so the two
+    populations overlap: "a dog" tops out at 0.0916 on an archive full of dogs
+    while "the surface of mars", which it holds none of, reaches 0.0948. The
+    cuts survive that by binding on different populations -- ``min_similarity``
+    where a query's best score is low (the archive holds nothing like it), and
+    ``relative_floor`` as a fraction of *this query's own* best, which travels
+    with the query instead of assuming a fixed scale. See ``config.py``.
+
+    ``center`` is ``(image_mean, text_mean)``, enabling modality-gap correction:
+    each side is shifted by its own modality's mean before the cosine, which
+    collapses the constant offset between the image and text clusters. Passing
+    ``None`` leaves the arithmetic exactly as it was. The effect is a wider,
+    better-behaved score range rather than a reordering of obvious matches --
+    but it does reorder, so the cuts above are tuned per mode (see
+    ``Config.semantic_search_center_embeddings``).
 
     Raises ``ModelUnavailableError`` when numpy is not installed. That is the
     one place this module cannot degrade: ranking *is* the operation, so there
@@ -374,12 +467,26 @@ def semantic_search(
             "semantic search needs numpy, which is not installed. "
             "Install the 'semantic' extra to use description search."
         )
+    import numpy as np
+
     sql, params = _search_where_clause(
         root_id, year, month, mtype, person_id, person_ids, cluster_id, located
     )
-    prepared = _prepare_query_vectors(query_vector, alternate_vectors)
+    image_center, text_center = center if center else (None, None)
+    # A centre of the wrong width came from a different vector space; ignoring
+    # it degrades to uncentered scoring rather than raising, matching how a
+    # stale-width embedding blob is skipped below.
+    if image_center is not None and len(image_center) != len(query_vector):
+        image_center = text_center = None
+    prepared = _prepare_query_vectors(query_vector, alternate_vectors, text_center)
     if not prepared:
         return {"items": [], "offset": offset, "limit": limit, "count": 0, "total": 0}
-    scores, meta = _score_candidates(conn, sql, params, prepared)
+    scores, meta = _score_candidates(
+        conn,
+        sql,
+        params,
+        prepared,
+        None if image_center is None else np.asarray(image_center, dtype=np.float32),
+    )
     keep = _apply_similarity_cuts(scores, min_similarity, relative_floor)
     return _rank_and_paginate(scores, meta, keep, sort, offset, limit)

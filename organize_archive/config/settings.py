@@ -135,27 +135,41 @@ class Config(ArchiveRegistryMixin):
     # The two cuts work because each binds on a different population. This one
     # binds only when a query's *best* score is low -- i.e. when the archive
     # holds nothing like it -- so it is what silences a query the archive
-    # cannot answer, rather than a general noise floor. 0.07 is the largest
-    # value that still binds on none of the 30 present subjects while
-    # constraining 7 of the 11 absent ones. It gets safer as an archive grows:
-    # the median best score rises with file count (0.090 at 50 files, 0.105 at
-    # 497), so a fixed floor binds less, not more. Retune with
-    # tools/dev/semantic_calibrate.py, not by intuition.
-    semantic_search_min_similarity: float = 0.07
+    # cannot answer, rather than a general noise floor. It gets safer as an
+    # archive grows: the median best score rises with file count, so a fixed
+    # floor binds less, not more. Retune with tools/dev/semantic_calibrate.py,
+    # not by intuition.
+    #
+    # BOTH VALUES BELOW ASSUME semantic_search_center_embeddings IS ON, which
+    # roughly triples the score range. Uncentered they must be 0.07 / 0.75.
+    semantic_search_min_similarity: float = 0.18
     # ... and this is the cut that shapes a query the archive *can* answer:
     # keep results within this fraction of the query's own best score, so the
     # bar travels with the query instead of assuming a fixed scale.
     #
-    # 0.75 rather than a tighter 0.80 because precision does not fall off a
-    # cliff below it. On a hand-labelled subject every result stayed correct
-    # down to 0.68, so 0.80 was discarding true matches to buy a margin the
-    # scores did not need -- it returned 7 of that subject's 15 photos. Paired
-    # with the 0.07 floor above, the two together return a median of 10 results
-    # for a present subject against 2 for an absent one, where 0.05/0.80
-    # returned 6 and 4: more of what you want and less of what you don't, at
-    # the same time. The count scales sub-linearly with archive size (~n^0.6),
-    # so a large archive gets a fuller page rather than a flood.
-    semantic_search_relative_floor: float = 0.75
+    # Loose rather than tight because precision does not fall off a cliff: on a
+    # hand-labelled subject every result stayed correct well past the cut, so a
+    # tighter floor only discards true matches to buy a margin the scores never
+    # needed. Measured over 30 present and 11 absent subjects, this pair returns
+    # a median of 10 results for a present subject against 1 for an absent one,
+    # where the old uncentered 0.05/0.80 returned 6 and 4 -- more of what you
+    # want and less of what you don't, at the same time. The count scales
+    # sub-linearly with archive size, so a large archive gets a fuller page
+    # rather than a flood.
+    semantic_search_relative_floor: float = 0.65
+    # Modality-gap correction. Image and text embeddings occupy two clusters
+    # separated by a near-constant offset, so raw cosines are squeezed into a
+    # narrow band (0.046-0.146 across 41 measured subjects) and sit closer to
+    # each other than to what they describe. Subtracting each modality's own
+    # mean before the cosine collapses that offset: the same 41 subjects then
+    # span 0.14-0.42, and "a dog" (0.0916 raw, below the absent subject "the
+    # surface of mars" at 0.0948) moves to 0.3047 against 0.2216 -- the
+    # inversion an uncentered score cannot express at any threshold.
+    #
+    # A wider scale needs a differently placed cut, so the two floors above are
+    # tuned FOR this being on. Turning it off without restoring 0.07/0.75
+    # leaves a bar far too high, and search will look broken.
+    semantic_search_center_embeddings: bool = True
 
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter

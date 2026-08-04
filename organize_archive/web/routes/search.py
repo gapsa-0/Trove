@@ -49,6 +49,16 @@ def semantic_search(req: Request) -> MediaPage | Json:
     db_path = req.db(rid)
     vectors = semantic.embed_queries(req.cfg, search_queries)
     sort_q, located_q = req.one("sort"), req.one("located")
+    # Modality-gap correction, assembled here because its two halves come from
+    # different places: the image mean from this archive's stored vectors, the
+    # text mean from the model. Both are plain floats by the time they reach
+    # the scorer, which keeps services/search.py needing only numpy. An archive
+    # with nothing indexed has no centre, and scoring falls back to uncentered.
+    center = None
+    if req.cfg.semantic_search_center_embeddings:
+        image_center = search.archive_center(db_path, rid)
+        if image_center is not None:
+            center = (image_center, semantic.text_center(req.cfg))
     return search.semantic_search(
         db_path,
         vectors[0],
@@ -65,4 +75,5 @@ def semantic_search(req: Request) -> MediaPage | Json:
         offset=req.offset(),
         located={"yes": True, "no": False}.get(located_q) if located_q is not None else None,
         alternate_vectors=[(vector, search.ALTERNATE_VECTOR_PENALTY) for vector in vectors[1:]],
+        center=center,
     )

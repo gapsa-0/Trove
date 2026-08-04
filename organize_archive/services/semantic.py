@@ -112,6 +112,66 @@ def embed_queries(cfg: Config, queries: list[str]) -> list[list[float]]:
     return [[float(v) for v in vector] for vector in vectors]
 
 
+# Ordinary things a personal archive is made of, used only to locate where the
+# *text* modality sits in the vector space. Nothing here is searched for: the
+# mean of these is subtracted from a real query so the query is measured from
+# the middle of text-space rather than from the origin, which is the half of
+# the modality-gap correction that images cannot supply (see
+# ``search.archive_center`` for the other half). Deliberately generic and
+# subject-neutral -- a bank skewed towards, say, landscapes would drag every
+# query away from landscapes.
+_TEXT_CENTER_BANK = (
+    "a photo",
+    "a person",
+    "people together",
+    "an outdoor scene",
+    "an indoor room",
+    "a landscape",
+    "a close-up",
+    "a celebration",
+    "a meal",
+    "an animal",
+    "a vehicle",
+    "a document",
+    "a screen",
+    "a building",
+    "water",
+    "the sky",
+    "plants",
+    "a child",
+    "a group of friends",
+    "a night scene",
+    "a street",
+    "a mountain",
+    "furniture",
+    "clothing",
+    "a hand",
+    "a face",
+    "a party",
+    "a beach",
+    "a garden",
+    "a road",
+)
+_text_center: list[float] | None = None
+_text_center_lock = threading.Lock()
+
+
+def text_center(cfg: Config) -> list[float]:
+    """The text modality's mean, over a fixed generic caption bank.
+
+    A property of the model rather than of any archive, so it is computed once
+    per process and never stored in a catalogue. One forward pass over ~30
+    short strings, paid on the first search only.
+    """
+    global _text_center
+    if _text_center is None:
+        with _text_center_lock:
+            if _text_center is None:
+                vectors = backend(cfg).embed_texts(list(_TEXT_CENTER_BANK))
+                _text_center = [float(v) for v in vectors.mean(axis=0)]
+    return _text_center
+
+
 def _cache_id(path: Path) -> int:
     return int.from_bytes(hashlib.sha256(str(path).encode()).digest()[:8], "big")
 
