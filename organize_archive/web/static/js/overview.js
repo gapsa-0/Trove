@@ -34,7 +34,7 @@ export async function renderOverview(m) {
       <p>Everything important about this archive, at a glance.</p></div>
     </div>
     <div class="statrow">
-      <button class="stat" onclick="showSection('library')"><span class="metric-icon blue">${ICONS.library}</span><div><div class="k">All media</div><div class="v" id="ov-total">${s.total.toLocaleString()}</div></div></button>
+      <button class="stat" onclick="showSection('library')"><span class="metric-icon blue">${ICONS.library}</span><div><div class="k">All files</div><div class="v" id="ov-total">${s.total.toLocaleString()}</div></div></button>
       <button class="stat" onclick="showSection('timeline')"><span class="metric-icon violet">${ICONS.timeline}</span><div><div class="k">With a date</div><div class="v" id="ov-enriched">${s.enriched.toLocaleString()}</div></div></button>
       <button class="stat" onclick="showSection('places')"><span class="metric-icon green">${ICONS.places}</span><div><div class="k">With a location</div><div class="v" id="ov-gps">${s.with_gps.toLocaleString()}</div></div></button>
       <button class="stat" onclick="showSection('dups')"><span class="metric-icon orange">${ICONS.dups}</span><div><div class="k">Duplicate copies</div><div class="v" id="ov-dups">${ds.duplicates.toLocaleString()}</div></div></button>

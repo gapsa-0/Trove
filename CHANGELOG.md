@@ -55,6 +55,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a single file is processed, and a bar sitting at 0% across it read as a run that
   had hung; the card now says what it is preparing, and a model download's own
   percentage is the headline rather than a footnote beside the bar.
+- The Overview's "All media" tile is called **All files**: it counts everything
+  catalogued, documents and archives included, not just photos and video.
 - Merging two people of the same size, neither of them named, now keeps the older
   of the two rather than depending on which card you dragged onto which — the rule
   pets and places already followed.
