@@ -316,11 +316,22 @@ def _scan_card_progress(
     shoot past 100% and then rewind when the source flips. So the bar shows
     *only while scanning*; once the on-disk walk is done but metadata extraction
     is still catching up, drop the bar and say so plainly.
+
+    A scan re-crossing ground it already covered is a third case, and the one
+    that made this the right home for the decision rather than the tail of
+    ``_card``: it has no bar worth drawing, but the stage beside it usually
+    does have work in flight, and only here are both members in view to say so.
+    Handing the bar to enrich instead is the one thing not on offer -- their
+    totals are unrelated, which is the whole reason this function exists.
     """
     by_kind = {m["kind"]: m for m in members}
+    enriching = by_kind.get(ENRICH, {}).get("state") == "running"
     if by_kind.get(SCAN, {}).get("state") == "running":
-        return by_kind[SCAN]["progress"], message
-    if by_kind.get(ENRICH, {}).get("state") == "running":
+        scan_progress = by_kind[SCAN]["progress"]
+        if scan_progress and _rechecking(scan_progress):
+            return None, _recheck_message(scan_progress, enriching)
+        return scan_progress, message
+    if enriching:
         return None, "Finalizing metadata extraction…"
     return progress, message
 
@@ -363,19 +374,33 @@ def _rechecking(progress: dict) -> bool:
     ``preparing`` describes -- the stage is busy, and a bar over it would be
     counting something other than the work -- so the card treats it the same
     way, with its own sentence.
+
+    A stage still preparing is *not* re-checking, whatever mark it has already
+    recorded: the mark is set while the disk is being counted, and a scan that
+    has not opened a file yet cannot be re-reading one. Both phases hide the
+    bar, so this only decides which sentence is true.
     """
+    if progress.get("phase") == "preparing":
+        return False
     return (
         bool(progress.get("recheck_below"))
         and (progress.get("done") or 0) < progress["recheck_below"]
     )
 
 
-def _recheck_message(progress: dict) -> str:
+def _recheck_message(progress: dict, enriching: bool) -> str:
     """No denominator on purpose. How many files are being re-checked is
     knowable, but saying "12,400 of 30,772" reads as a bar written out in
-    words, and it is the number this phase exists to stop drawing."""
+    words, and it is the number this phase exists to stop drawing.
+
+    ``enriching`` is the other half of this card. Dating files runs parallel to
+    the walk, so a re-checking scan is very often sharing the card with a stage
+    doing real work -- and saying only "Re-checking…" left the Overview
+    claiming nothing was happening while its own "With a date" tile climbed.
+    """
     done = progress.get("done") or 0
-    return f"Re-checking {done:,} files already scanned…"
+    crossing = f"Re-checking {done:,} files already scanned"
+    return f"{crossing} · reading metadata" if enriching else f"{crossing}…"
 
 
 def _preparing_message(progress: dict) -> str:
@@ -410,15 +435,12 @@ def _card(
         progress, message = _scan_card_progress(members, progress, message)
     elif card_id == "dedup" and state == "running" and progress:
         message = _dedup_card_message(progress, message)
-    # Last, so these outrank the wording above: "Finding duplicates…" and
+    # Last, so it outranks the wording above: "Finding duplicates…" and
     # "Fingerprinting 0 of 40,000 photos…" are both claims about a loop that
-    # has not started yet, and "Scanning files…" over a bar sweeping through
-    # files this run is only re-reading is the same kind of claim.
+    # has not started yet. (Re-checking is the same kind of claim, but it is
+    # decided in _scan_card_progress, where the card's other stage is visible.)
     if progress and progress.get("phase") == "preparing":
         message = _preparing_message(progress)
-        progress = None
-    elif progress and _rechecking(progress):
-        message = _recheck_message(progress)
         progress = None
 
     bc_id = blocker_card[card_id]

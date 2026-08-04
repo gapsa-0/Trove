@@ -179,14 +179,42 @@ def test_a_first_scan_has_nothing_to_re_check():
 
 
 def test_preparing_outranks_re_checking():
-    """A scan still counting the disk has not read a file yet, so it says the
-    thing that is actually true of it."""
+    """The mark is recorded while the disk is being counted, so it is already
+    set before the walk starts -- and a scan that has not opened a file yet is
+    not re-reading one."""
     counting = _progress(phase="preparing", done=0, recheck_below=12400, current="counting files")
 
     card = _card(_stage(kind="scan", card="scan", progress=counting))
 
     assert card["progress"] is None
     assert card["message"] == "Preparing… · counting files"
+
+
+def test_a_re_checking_scan_says_that_dating_files_is_still_running():
+    """Dating files runs parallel to the walk, so a re-checking scan usually
+    shares its card with a stage doing real work. Saying only "Re-checking…"
+    had the Overview claiming nothing was happening while its own "With a date"
+    tile climbed on the same poll."""
+    crossing = _progress(done=4000, total=30772, recheck_below=12400)
+
+    card = _card(
+        _stage(kind="scan", card="scan", progress=crossing),
+        _stage(kind="enrich", card="scan", state="running"),
+    )
+
+    assert card["progress"] is None, "the two count different things; neither bar fits here"
+    assert card["message"] == "Re-checking 4,000 files already scanned · reading metadata"
+
+
+def test_a_re_checking_scan_alone_claims_nothing_about_metadata():
+    crossing = _progress(done=4000, total=30772, recheck_below=12400)
+
+    card = _card(
+        _stage(kind="scan", card="scan", progress=crossing),
+        _stage(kind="enrich", card="scan", state="up_to_date"),
+    )
+
+    assert card["message"] == "Re-checking 4,000 files already scanned…"
 
 
 # ---------------------------------------------------------------------------
