@@ -402,6 +402,10 @@ def _card(
         # section, so the card watching the work is recognisably the card that
         # asked for it.
         "icon": features.card_icon(card_id, enabled),
+        # Where this card sits in the chain: part of the trunk every archive
+        # runs, or something clipped onto it. The Overview's rail draws the
+        # two differently -- see features.card_always_runs.
+        "always_runs": features.card_always_runs(card_id),
         "state": state,
         "pending": pending,
         "counted": counted,

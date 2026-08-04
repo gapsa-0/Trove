@@ -64,6 +64,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Library health now draws the pipeline as the chain it is.** The five status
+  cards were a grid of equal tiles, which said the archive does five unrelated
+  things at once; the one real relation between them — Indexing and Duplicates
+  run first and everything else reads what they produce — was left to the words
+  "Waiting for Duplicates…" inside a tile. They are now rows on a rail, with the
+  two that always run marked as such and the rest hanging off them: the same
+  chain the setup screen draws before any of it starts. Each row is full width,
+  so it says more in less height than the tile it replaces.
+
 - **The Library section is now called Browse.** Every other section is named
   for what it holds — People, Places, Duplicates — and this one is named for
   what you do there: look through the whole archive, by filter or by

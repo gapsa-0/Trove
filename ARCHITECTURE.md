@@ -212,6 +212,13 @@ own previous `user_version` so it cannot fire twice.
   pets…" — see `tests/unit/test_features.py`, which also pins the invariants
   the composition rests on (features sharing a card share a verb; the panel's
   chain order is the Overview's card order).
+- **The Overview's rail and the setup panel's chain draw one graph.** The card
+  payload carries `always_runs` (`features.card_always_runs`) so the rail can
+  mark the trunk without the frontend knowing which features are required. Two
+  invariants in `tests/unit/test_features.py` keep the drawing honest: the
+  trunk is exactly the cards a minimum archive still runs, and no optional
+  stage depends on another optional stage — otherwise a branch would need to
+  fork off a branch, which neither screen draws.
 - **A feature that unlocks no section is gated where it lives.** Hiding a nav
   section is how most features disappear, and Search by description has none —
   it is the composer at the top of Browse. So `library.js` gates that composer

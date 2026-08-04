@@ -39,6 +39,31 @@ def test_every_screen_renders_content_without_throwing(open_app, section):
         assert app.errors() == [], f"{section} raised: {app.errors()}"
 
 
+def test_library_health_draws_the_pipeline_as_a_chain(open_app):
+    """The Overview's rail. It is DOM and CSS with no other coverage, and the
+    thing it says — Indexing and Duplicates first, everything else hanging off
+    them — is the same thing the setup screen says before any of it runs.
+
+    Asserted through the trunk marking rather than by counting rows, because
+    which optional stages an archive runs is its own business; that the first
+    two are the ones nobody can decline is not.
+    """
+    with open_app("overview") as app:
+        # A node, not a row: the "Checking for work…" placeholder is a row too,
+        # and has no rail, no head and no label to read.
+        app.wait_for(".health-node")
+        labels = app.tab.evaluate(
+            "[...document.querySelectorAll('.health-task')]"
+            ".map(e => [e.classList.contains('trunk'),"
+            " e.querySelector('.health-task-head').textContent.trim()])"
+        )
+        assert [label for trunk, label in labels if trunk] == ["Indexing", "Duplicates"]
+        assert labels[0][1] == "Indexing" and labels[1][1] == "Duplicates"
+        # One node per row, and a rail to hang them on.
+        assert app.count(".health-task .health-node") == len(labels)
+        assert app.errors() == []
+
+
 def test_the_library_grid_fills_with_the_archives_media(open_app):
     with open_app("library") as app:
         app.wait_for("#main img")

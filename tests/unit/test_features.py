@@ -129,6 +129,26 @@ def test_features_sharing_a_card_share_a_verb():
         assert len(verbs) == 1, card
 
 
+def test_the_trunk_is_exactly_the_cards_every_archive_runs():
+    """What the Overview's rail draws as filled nodes, and the setup panel as
+    fixed chips. It has to agree with the gate: a card marked as always running
+    on an archive that can switch it off would draw a chain link that is not
+    there."""
+    trunk = {c for c in stages.CARD_ORDER if features.card_always_runs(c)}
+    minimal = features.stage_kinds(features.resolve([]))
+    assert trunk == {stages.card_of(k) for k in minimal}
+    assert trunk == {"scan", "dedup"}
+
+
+def test_every_branch_card_reads_from_the_trunk():
+    """The rail forks off the trunk rather than continuing through it, which is
+    only honest while no optional stage depends on another optional stage."""
+    for sd in stages.STAGES:
+        if features.card_always_runs(sd.card):
+            continue
+        assert all(features.card_always_runs(stages.card_of(d)) for d in sd.deps), sd.kind
+
+
 def test_the_naming_helpers_answer_for_a_card_with_nothing_enabled():
     """They are called while a card is being built, and nothing there is
     obliged to prove the card has a live owner first."""

@@ -203,19 +203,97 @@ button.stat:hover {
   color: var(--accent)
 }
 
+/* The pipeline drawn as what it is. These five were a 2x3 grid of equal tiles,
+   which said the archive does five unrelated things at once and left the one
+   real relation between them -- Indexing and Duplicates first, everything else
+   reading what they produce -- to the words "Waiting for Duplicates…" inside a
+   tile. It is the same chain the setup screen draws before any of this runs;
+   this is that chain running.
+   Rows rather than tiles because the fork only reads down one axis, and a full
+   width row turns out to be *shorter* than the tile it replaces: the head and
+   the state line stop wrapping, so the panel is about the height it was. */
 .health-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px
+  display: flex;
+  flex-direction: column
 }
 
+/* No gap: the rail has to be continuous, so the rows touch and their own
+   padding does the spacing. */
 .health-task {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: stretch;
   min-width: 0;
-  padding: 13px;
-  height: 110px;
-  box-sizing: border-box;
+  padding: 3px 0
+}
+
+/* The rail. One line down the whole column, stopped at the first and last
+   nodes so it begins and ends *on* the chain rather than running off it. */
+.health-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center
+}
+
+.health-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line-strong)
+}
+
+/* The stub from each node to its row. Without it the rail reads as a column
+   standing next to five cards; with it, the cards hang off the chain. */
+.health-rail::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 1px);
+  left: calc(50% + 6px);
+  width: 13px;
+  height: 2px;
+  background: var(--line-strong)
+}
+
+.health-task:first-child .health-rail::before {
+  top: 50%
+}
+
+.health-task:last-child .health-rail::before {
+  bottom: 50%
+}
+
+/* Hollow by default, filled on the trunk: the difference between a stage this
+   archive chose and one every archive runs, which is exactly the distinction
+   the setup screen's fixed chips make. */
+.health-node {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 0 0 2px var(--line-strong)
+}
+
+.health-task.trunk .health-node {
+  background: var(--line-strong)
+}
+
+.health-task.running .health-node {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent)
+}
+
+.health-task-body {
+  position: relative;
+  min-width: 0;
+  margin-left: 9px;
+  padding: 9px 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--panel2)
 }
 
@@ -285,9 +363,8 @@ button.stat:hover {
 
 /* Stopped by a pause (this stage's own, or one it waits on): no accent, no
    amber "about to run" cue -- it reads as deliberately parked. */
-.health-task.paused {
-  border-style: dashed;
-  background: var(--panel2)
+.health-task.paused .health-task-body {
+  border-style: dashed
 }
 
 .health-task.paused .health-task-head {
@@ -298,7 +375,7 @@ button.stat:hover {
    starts where the head does rather than hanging under a marker that has
    moved. */
 .health-task-state {
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
@@ -306,24 +383,64 @@ button.stat:hover {
   overflow-wrap: break-word;
 }
 
-.health-task.running {
+/* The counts trail the message on the same line, dimmer than it: what the
+   stage is doing is the sentence, and how far along is a footnote to it. */
+.health-task-count {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums
+}
+
+.health-task-count::before {
+  content: " · "
+}
+
+/* The one thing in the row that moves, so it sits along the bottom edge of
+   the body rather than taking a line of its own. */
+.health-task-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden
+}
+
+.health-task-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width .3s ease
+}
+
+.health-task-body:has(.health-task-bar) {
+  padding-bottom: 14px
+}
+
+.health-task.running .health-task-body {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
   background: var(--accent-soft)
 }
 
-.health-task.pending {
+.health-task.pending .health-task-body {
   border-color: color-mix(in srgb, var(--warning) 28%, var(--line))
 }
 
-.health-task.error {
+.health-task.error .health-task-body {
   border-color: color-mix(in srgb, var(--bad) 28%, var(--line))
 }
 
 /* Up next: on deck behind the running stage. Dashed accent border (related to
    the running card's accent, but clearly not-yet-active) + a tinted message. */
-.health-task.next {
+.health-task.next .health-task-body {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   border-style: dashed
+}
+
+.health-task.next .health-node {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, var(--line-strong))
 }
 
 .health-task.next .health-task-state {

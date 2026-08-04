@@ -338,10 +338,6 @@
     width: auto
   }
 
-  .health-grid {
-    grid-template-columns: 1fr
-  }
-
   .map-stats {
     grid-template-columns: 1fr
   }

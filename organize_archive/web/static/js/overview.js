@@ -215,25 +215,35 @@ function healthCard(stage) {
   const mark = st === "running" ? `<span class="spin"></span>` : `<span class="dot ${dot}"></span>`;
   const message = pausing ? "Pausing…"
     : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
-  let prog = "";
+  let detail = "", bar = "";
   // Not gated on "running": a stage stopped mid-run keeps the bar it reached
   // (the server hands it back for a paused card -- see stages._stopped_progress),
   // because the run is suspended rather than discarded. A stage that is still
   // preparing has no bar to show, and the server sends none.
+  //
+  // The counts follow the message on its own line rather than sitting under a
+  // bar of their own: a full-width row has the room, and it leaves the bar as
+  // the one thing in the row that moves.
   const p = stage.progress;
   if (p && (p.total || p.done)) {
     const pct = Math.max(0, Math.min(100, p.percent != null ? p.percent : 0));
-    prog = `<div class="job" style="margin-top:8px; border:none; padding:0; background:transparent"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
-        <div class="cur" style="margin-top:4px">${pct}% · ${(p.done || 0).toLocaleString()}${p.total ? "/" + p.total.toLocaleString() : ""} · ${p.elapsed || 0}s${p.current ? " · " + p.current : ""}</div></div>`;
+    detail = `<span class="health-task-count">${pct}% · ${(p.done || 0).toLocaleString()}${p.total ? "/" + p.total.toLocaleString() : ""} · ${p.elapsed || 0}s${p.current ? " · " + p.current : ""}</span>`;
+    bar = `<div class="health-task-bar"><i style="width:${pct}%"></i></div>`;
   }
   // Beyond pause/resume no card offers a call to action. Semantic indexing
   // was the only one that did ("Add API key"), and it has nothing left to
   // configure: it is unavailable only when the app was installed without its
   // optional dependencies, which no button here could fix.
   const cls = stopped ? "paused" : (stage.next ? "next" : (HEALTH_CARDCLASS[st] || ""));
-  return `<div class="health-task ${cls}">
-      <div class="health-task-head">${head}</div>
-      <div class="health-task-state">${mark}${message}${prog}</div></div>`;
+  // The rail node says where this row sits in the chain: filled for the trunk
+  // every archive runs, hollow for what clips onto it. The line itself is
+  // drawn by CSS across the whole column, so the fork reads as one shape
+  // rather than five decorated rows.
+  return `<div class="health-task ${cls}${stage.always_runs ? " trunk" : ""}">
+      <span class="health-rail" aria-hidden="true"><i class="health-node"></i></span>
+      <div class="health-task-body">
+        <div class="health-task-head">${head}</div>
+        <div class="health-task-state">${mark}${message}${detail}</div>${bar}</div></div>`;
 }
 // Per-stage pause/resume. One button per card, on top of
 // the whole-pipeline switch in the panel heading: it stops just this stage
@@ -281,7 +291,7 @@ function renderHealthCards() {
   const snap = S.pipeline;
   renderPauseControl();
   if (!snap || !snap.stages) {
-    el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-state"><span class="spin"></span>Checking for work…</div></div></div>`;
+    el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-body"><div class="health-task-state"><span class="spin"></span>Checking for work…</div></div></div></div>`;
     return;
   }
   el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;

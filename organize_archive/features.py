@@ -331,6 +331,19 @@ def card_running(card: str, enabled: Iterable[str]) -> str:
     return f"{live[0].verb} {_joined(f.noun for f in live)}…"
 
 
+def card_always_runs(card: str) -> bool:
+    """Whether every feature feeding this card is one an archive cannot decline.
+
+    Independent of what any archive enabled, which is the point: it is the
+    difference between the trunk of the pipeline and what clips onto it. The
+    setup panel states it in words ("Indexing and Duplicates always run. Every
+    other stage reads what they produce") and the Overview draws it on its
+    rail, so where a card sits in the chain is visible where the work is and
+    not only where it was chosen.
+    """
+    return all(f.required for f in owners(card))
+
+
 def card_icon(card: str, enabled: Iterable[str]) -> str:
     """The mark one Overview card carries, keyed into the frontend's ICONS.
 
