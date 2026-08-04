@@ -80,9 +80,13 @@ def download_progress(log, label: str, total: int, *, interval: float = 1.0):
     if log is None:
         return None
     megabytes = total / 1024 / 1024 if total > 0 else 0.0
-    state = {"at": 0.0, "said": ""}
+    # `nonlocal` rather than the usual dict-as-mutable-cell: a dict holding a
+    # float and a str infers as dict[str, object], which makes the subtraction
+    # below a type error the moment anything checks this function's body.
+    said_at, said = 0.0, ""
 
     def hook(blocks: int, block_size: int, size: int) -> None:
+        nonlocal said_at, said
         # `size` is the server's Content-Length, or -1 when it declines to say.
         # The manifest knows the answer either way, so prefer whichever is real.
         expected = size if size > 0 else total
@@ -94,10 +98,9 @@ def download_progress(log, label: str, total: int, *, interval: float = 1.0):
         else:
             message = f"downloading {label} — {done / 1024 / 1024:.0f} MB"
         now = time.monotonic()
-        if now - state["at"] < interval or message == state["said"]:
+        if now - said_at < interval or message == said:
             return
-        state["at"] = now
-        state["said"] = message
+        said_at, said = now, message
         log(message)
 
     return hook
