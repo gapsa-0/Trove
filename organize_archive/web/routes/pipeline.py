@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...pipeline import stages
+from ...pipeline import stages, status
 from ...services import archives
 from ._request import Json, Request
 
@@ -22,7 +22,7 @@ def snapshot(req: Request) -> dict | Json:
     arch = next((a for a in archives.archives(req.cfg) if a["id"] == rid), None)
     if arch is None:
         return Json({"error": "unknown archive"}, 404)
-    return stages.snapshot(req.cfg, req.jobs, rid, arch["path"])
+    return status.snapshot(req.cfg, req.jobs, rid, arch["path"])
 
 
 def pause(req: Request) -> dict | Json:

@@ -64,7 +64,9 @@ or a detect run loses at most the current batch, and a re-run picks up from
 the catalogue rather than starting over. The scheduler and the GUI both read
 stage status from the *same* resolved function (`stage_states` in
 `pipeline/stages.py`), so a status card can never disagree with what the
-pipeline is actually doing.
+pipeline is actually doing. `pipeline/status.py` sits on top of that with the
+part only the GUI needs — the words, the pause overlay, one overall verdict —
+and decides nothing the scheduler could disagree with.
 
 ## The layer map
 
@@ -90,6 +92,7 @@ grandfathered.
 | how Takeout sidecars are matched | `organize_archive/metadata/takeout.py` |
 | what the Library grid shows | `organize_archive/services/browse.py` + `organize_archive/web/static/js/library.js` |
 | when a pipeline stage runs | `organize_archive/pipeline/stages.py` |
+| what a status card *says* (its wording, its bar, the pause overlay) | `organize_archive/pipeline/status.py` |
 | how a job does its work | `organize_archive/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
 | a new API endpoint | `organize_archive/web/routes/<domain>.py`, then add it to the route tables in `organize_archive/web/routes/__init__.py` — see below |
 | what the detectors find in one frame (and the people-vs-pets cross-check) | `organize_archive/detect/frame.py` |

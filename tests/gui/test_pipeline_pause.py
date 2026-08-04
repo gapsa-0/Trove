@@ -18,6 +18,7 @@ import threading
 from organize_archive.config import Config
 from organize_archive.pipeline import manager as jobs_mod
 from organize_archive.pipeline import stages as stages_mod
+from organize_archive.pipeline import status as status_mod
 from organize_archive.services import archives as archives_mod
 
 
@@ -181,13 +182,13 @@ def test_set_paused_persists_and_seeds_a_fresh_job_manager(monkeypatch, tmp_path
 
 
 # ---------------------------------------------------------------------------
-# stages.snapshot() surfaces the flag and adjusts cards/overall
+# status.snapshot() surfaces the flag and adjusts cards/overall
 # ---------------------------------------------------------------------------
 
 
 class _FakeJobs:
     """Minimal stand-in for JobManager, matching the constraint that
-    stages.snapshot() must be defensive when `paused` is absent (older
+    status.snapshot() must be defensive when `paused` is absent (older
     fakes in other tests construct JobManager-shaped objects without it)."""
 
     def __init__(self, paused=False, stages=()):
@@ -224,7 +225,7 @@ def test_snapshot_reports_unpaused_by_default(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    snap = stages_mod.snapshot(Config(), _FakeJobs(paused=False), 1, str(tmp_path))
+    snap = status_mod.snapshot(Config(), _FakeJobs(paused=False), 1, str(tmp_path))
     assert snap["paused"] is False
     assert snap["overall"] == "idle"
 
@@ -236,7 +237,7 @@ def test_snapshot_marks_queued_cards_paused_without_changing_state(tmp_path, mon
         lambda cfg, jobs, root_id, root_path, allow_walk=False: [dict(_QUEUED_SCAN_STAGE)],
     )
 
-    snap = stages_mod.snapshot(Config(), _FakeJobs(paused=True), 1, str(tmp_path))
+    snap = status_mod.snapshot(Config(), _FakeJobs(paused=True), 1, str(tmp_path))
 
     assert snap["paused"] is True
     assert snap["overall"] == "paused"
@@ -271,7 +272,7 @@ def test_snapshot_defensive_when_jobs_has_no_paused_method(tmp_path, monkeypatch
         def dedup_needed(self, root_id):
             return False
 
-    snap = stages_mod.snapshot(Config(), NoPausedAttr(), 1, str(tmp_path))
+    snap = status_mod.snapshot(Config(), NoPausedAttr(), 1, str(tmp_path))
     assert snap["paused"] is False
     assert snap["paused_stages"] == []
 
@@ -471,7 +472,7 @@ def test_snapshot_marks_the_paused_card_and_what_waits_behind_it(tmp_path, monke
         lambda cfg, jobs, root_id, root_path, allow_walk=False: [dedup, places],
     )
 
-    snap = stages_mod.snapshot(
+    snap = status_mod.snapshot(
         Config(), _FakeJobs(paused=False, stages={"dedup"}), 1, str(tmp_path)
     )
 
@@ -497,7 +498,7 @@ def test_snapshot_still_reports_working_when_another_stage_can_run(tmp_path, mon
         ],
     )
 
-    snap = stages_mod.snapshot(Config(), _FakeJobs(paused=False, stages={"scan"}), 1, str(tmp_path))
+    snap = status_mod.snapshot(Config(), _FakeJobs(paused=False, stages={"scan"}), 1, str(tmp_path))
 
     assert snap["overall"] == "working"
     cards = {c["id"]: c for c in snap["stages"]}
