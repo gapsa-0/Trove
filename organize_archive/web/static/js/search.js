@@ -4,8 +4,8 @@
 // the archive a search could actually see.
 
 import {
-  checkedPeople, loadGrid, renderIndexedFilter, renderSortOptions, resetGridResults,
-  updateClearBtn, updatePeopleFilterLabel,
+  checkedPeople, loadGrid, renderIndexedFilter, renderSortOptions, renderTopMatchesFilter,
+  resetGridResults, updateClearBtn, updatePeopleFilterLabel,
 } from "./library.js";
 import {
   jget,
@@ -334,6 +334,7 @@ export async function semanticSubmit(ev) {
   renderSortOptions(g);
   renderActiveQuery(g);
   renderIndexedFilter(g);
+  renderTopMatchesFilter(g);
   if (submit) { submit.disabled = true; submit.textContent = "Searching…"; }
   const expandedQuery = await localEnglishTranslation(g.query);
   if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;

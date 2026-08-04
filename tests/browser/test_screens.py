@@ -79,3 +79,31 @@ def test_the_places_screen_draws_a_map_without_reaching_a_tile_server(open_app):
     with open_app("places") as app:
         app.wait_for(".leaflet-container")
         assert app.errors() == []
+
+
+def test_the_top_matches_box_appears_only_once_a_search_has_run(open_app):
+    """It is hidden, not disabled, until there is a ranking for it to widen.
+
+    The other two filter checkboxes stay visible and grey out when they cannot
+    apply, because "show only indexed files" still means something while you
+    browse. This one does not: with nothing searched there is no relevance cut
+    in play, so a permanently visible control would be explaining a state the
+    screen is not in. Driven through the form's own submit handler rather than
+    by calling the renderer, so what is checked is the path a user takes.
+
+    The search itself needs the embedding model and will fail in this tier --
+    which is fine and is the point: the box is part of the search *controls*,
+    so it has to appear when the query is submitted rather than when results
+    come back, or it would never show up on the searches that returned nothing.
+    """
+    with open_app("library") as app:
+        app.wait_for("#f-top-box")
+        assert app.count("#f-top-box[hidden]") == 1
+
+        app.tab.evaluate(
+            "document.querySelector('#semantic-q').textContent = 'beach';"
+            "document.querySelector('.library-search').requestSubmit()"
+        )
+
+        app.wait_for("#f-top-box:not([hidden])")
+        assert app.tab.evaluate("document.querySelector('#f-top').checked") is True

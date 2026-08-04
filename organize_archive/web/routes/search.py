@@ -79,6 +79,13 @@ def semantic_search(req: Request) -> MediaPage | Json:
     db_path = req.db(rid)
     vectors = semantic.embed_queries(req.cfg, search_queries)
     sort_q, located_q = req.one("sort"), req.one("located")
+    # "top=no" turns both relevance cuts off, ranking the whole archive instead
+    # of trimming it. Absence means the cuts apply, so an unchanged URL keeps
+    # the tuned behaviour; only a user who deliberately widened the search says
+    # so. The cuts exist because a query the archive cannot answer otherwise
+    # returns its best near-random matches looking confident, so this is a
+    # per-search escape hatch, not a setting worth defaulting to.
+    unfiltered = req.one("top") == "no"
     # Modality-gap correction, assembled here because its two halves come from
     # different places: the image mean from this archive's stored vectors, the
     # text mean from the model. Both are plain floats by the time they reach
@@ -98,8 +105,14 @@ def semantic_search(req: Request) -> MediaPage | Json:
         mtype=req.one("type"),
         person_ids=req.many("person"),
         cluster_id=req.one("place", int),
-        min_similarity=max(-1.0, min(1.0, float(req.cfg.semantic_search_min_similarity))),
-        relative_floor=max(0.0, min(1.0, float(req.cfg.semantic_search_relative_floor))),
+        min_similarity=(
+            -1.0
+            if unfiltered
+            else max(-1.0, min(1.0, float(req.cfg.semantic_search_min_similarity)))
+        ),
+        relative_floor=(
+            0.0 if unfiltered else max(0.0, min(1.0, float(req.cfg.semantic_search_relative_floor)))
+        ),
         sort=(sort_q if sort_q in ("newest", "oldest") else "relevance"),
         limit=req.limit(120, 500),
         offset=req.offset(),
