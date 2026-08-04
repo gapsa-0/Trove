@@ -108,6 +108,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The archive setup screen no longer carries a name between folders. Naming one
+  archive and then adding a second offered the first one's name in the field,
+  because the panel is hidden rather than rebuilt when it closes and the name was
+  read back off it. A name typed while adding a feature is no longer lost either,
+  in either direction: half-typed names now survive the panel re-rendering, and
+  renaming an existing archive survives it too instead of reverting.
+
 - Pausing responds immediately. A pause asks the running job to stop at its next
   batch checkpoint, which takes seconds, and the card went on reporting the work
   as if nothing had happened before stopping abruptly; it now says "Pausing…" the

@@ -1,6 +1,6 @@
 """The archive setup screen, driven in a real browser.
 
-Four things here have no other coverage and each fails silently:
+Five things here have no other coverage and each fails silently:
 
 * the screen renders at all -- it is built from a template literal, so a typo
   produces an empty panel rather than an error;
@@ -9,6 +9,9 @@ Four things here have no other coverage and each fails silently:
   which is the accessibility promise the screen is built on;
 * turning a card over to read what a feature does leaves the grid where it was,
   which is the whole reason the two faces live in one fixed-height card;
+* the name field belongs to this visit: what was typed survives the re-render
+  adding a feature performs, and does not survive the panel being reopened for
+  a different folder;
 * the nav really loses the sections an archive's features do not unlock, rather
   than offering a screen whose data will never arrive.
 """
@@ -31,10 +34,33 @@ def _configure(archive, **body):
         return json.loads(response.read())
 
 
-def _open_setup(app, path="/tmp/example-folder"):
-    """Open setup for a not-yet-created archive, the way the picker does."""
-    app.tab.evaluate(f"import('/static/js/setup.js').then(m => m.openArchiveSetup(null, {path!r}))")
-    app.wait_for("#set-flow .set-chip")
+def _open_setup(app, path="/tmp/example-folder", archive="null"):
+    """Open setup the way the picker does: for a not-yet-created archive, or
+    (with ``archive`` as a registry entry) for one being reconfigured.
+
+    Waits on the path the panel was opened *for*, not on the panel: closing
+    setup only hides it, so its last visit's markup is still in the DOM and
+    anything that merely waits for a chip sails straight through the render.
+    """
+    app.tab.evaluate(
+        f"import('/static/js/setup.js').then(m => m.openArchiveSetup({archive}, {path!r}))"
+    )
+    app.tab.wait_for(
+        f"(document.querySelector('#setup .set-path') || {{}}).textContent === {path!r}",
+        what=f"the setup panel to open on {path!r}",
+    )
+
+
+def _type_name(app, text):
+    """Type into the name field, event and all -- that event is the mechanism."""
+    app.tab.evaluate(
+        "(t => { const f = document.getElementById('setup-name'); f.value = t;"
+        f" f.dispatchEvent(new Event('input', {{ bubbles: true }})); }})({text!r})"
+    )
+
+
+def _name(app):
+    return app.tab.evaluate("document.getElementById('setup-name').value")
 
 
 # Placeholders rather than an f-string: the body is JavaScript, and every brace
@@ -174,6 +200,60 @@ def test_choosing_one_of_a_pair_says_what_it_costs(open_app):
         assert "Pets" in app.text(".set-pair")
         app.click('.set-card[data-feature="pets"] .set-add')
         assert app.count(".set-pair") == 0, "with both on there is nothing to warn about"
+
+
+_EXISTING = (
+    "{id: 1, path: '/tmp/example-folder', name: 'Old name', features: ['index', 'duplicates']}"
+)
+
+
+def test_a_name_typed_for_one_folder_does_not_follow_the_next_one(open_app):
+    """The panel is hidden on close, not destroyed, so its markup outlives the
+    visit that built it. Reading the name back off that field is how the second
+    archive someone added arrived pre-named after the first."""
+    with open_app() as app:
+        _open_setup(app, "/tmp/first-folder")
+        _type_name(app, "Holidays")
+        app.tab.evaluate("closeArchiveSetup()")
+
+        _open_setup(app, "/tmp/second-folder")
+
+        assert _name(app) == ""
+        # Empty means "follow the folder", which is what the placeholder says.
+        assert (
+            app.tab.evaluate("document.getElementById('setup-name').placeholder") == "second-folder"
+        )
+        assert app.errors() == []
+
+
+def test_a_half_typed_name_survives_adding_a_feature(open_app):
+    """Adding one rebuilds the whole panel. Losing what someone had typed
+    because they then chose Places is the same small betrayal as a card turning
+    itself back over."""
+    with open_app() as app:
+        _open_setup(app)
+        _type_name(app, "Holidays")
+
+        app.click('.set-card[data-feature="places"] .set-add')
+        app.wait_for('#set-flow .set-chip[data-feature="places"]')
+
+        assert _name(app) == "Holidays"
+        assert app.errors() == []
+
+
+def test_renaming_an_archive_survives_adding_a_feature_too(open_app):
+    """The same field on the same screen: a rename that reverted to the stored
+    name the moment a feature was added is the same bug, from the other end."""
+    with open_app() as app:
+        _open_setup(app, "/tmp/example-folder", archive=_EXISTING)
+        assert _name(app) == "Old name"
+
+        _type_name(app, "New name")
+        app.click('.set-card[data-feature="places"] .set-add')
+        app.wait_for('#set-flow .set-chip[data-feature="places"]')
+
+        assert _name(app) == "New name"
+        assert app.errors() == []
 
 
 def test_the_nav_only_offers_what_the_archive_runs(open_app, archive):

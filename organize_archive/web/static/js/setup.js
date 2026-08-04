@@ -31,11 +31,14 @@ import {
 // The catalogue is app-wide and immutable within a session; the rest is this
 // visit's work in progress. `archive` is null while adding a folder that has
 // no id yet, which is also what tells Save whether to create or reconfigure.
-// `flipped` lives here rather than in the DOM so that adding a feature, which
-// rebuilds the whole shelf, does not turn back a card that was turned over.
+// `flipped` and `name` live here rather than in the DOM so that adding a
+// feature, which rebuilds the whole shelf, does not turn back a card that was
+// turned over or discard a name that was half typed. Reading them back off the
+// DOM instead is what used to carry the last archive's name into the next one:
+// the panel's markup outlives the visit that built it.
 const SETUP = {
   catalogue: [], chosen: new Set(), flipped: new Set(),
-  archive: null, path: "", busy: false, done: null,
+  archive: null, path: "", name: "", busy: false, done: null,
 };
 
 export function isSetupOpen() { return SETUP.path !== "" || SETUP.archive !== null; }
@@ -64,6 +67,9 @@ export async function openArchiveSetup(archive, path, done) {
   SETUP.done = done || null;
   SETUP.path = archive ? archive.path : path;
   SETUP.flipped = new Set();
+  // An archive being reconfigured opens on the name it already has; a new one
+  // opens empty, with its folder's name as the placeholder it will fall back to.
+  SETUP.name = archive ? archive.name : "";
   // A new archive starts with only the two features it cannot do without, and
   // everything else waiting on the shelf. Starting with all of them ticked
   // would pre-select ~1 GB of model downloads on a screen whose entire purpose
@@ -82,7 +88,7 @@ export async function openArchiveSetup(archive, path, done) {
 }
 
 export function closeArchiveSetup() {
-  SETUP.archive = null; SETUP.path = ""; SETUP.busy = false; SETUP.done = null;
+  SETUP.archive = null; SETUP.path = ""; SETUP.name = ""; SETUP.busy = false; SETUP.done = null;
   SETUP.flipped = new Set();
   document.getElementById("setup").style.display = "none";
   document.getElementById("picker").style.display = "";
@@ -101,6 +107,10 @@ export function removeFeature(id) {
   SETUP.chosen.delete(id);
   renderSetup();
 }
+
+// Every keystroke in the name field, so that what has been typed survives the
+// re-render adding a feature performs. Nothing else is re-rendered for it.
+export function setArchiveName(value) { SETUP.name = value; }
 
 // Clicking a card's front is the same as pressing its pill.
 export function toggleFeature(id) {
@@ -252,8 +262,6 @@ function renderSetup(landed) {
   const live = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id));
   const optional = SETUP.catalogue.filter(f => !f.required);
   const waiting = optional.filter(f => !SETUP.chosen.has(f.id) && f.available);
-  const name = document.getElementById("setup-name");
-  const typed = name && editing === false && name.value ? name.value : null;
   document.getElementById("setup-body").innerHTML = `
     <div class="set-head">
       <div>
@@ -267,7 +275,7 @@ function renderSetup(landed) {
       </div>
       <label class="set-name">
         <span>Name this archive</span>
-        <input id="setup-name" value="${esc(typed ?? (editing ? SETUP.archive.name : ""))}"
+        <input id="setup-name" value="${esc(SETUP.name)}" oninput="setArchiveName(this.value)"
                placeholder="${esc(folderName(SETUP.path))}" maxlength="80">
       </label>
     </div>
@@ -309,7 +317,6 @@ function renderSetup(landed) {
           ${editing ? "Save changes" : "Create archive"}</button>
       </div>
     </div>`;
-  if (typed !== null) document.getElementById("setup-name").value = typed;
   wireDragAndDrop();
   if (landed) flashLanded(landed);
 }
@@ -372,7 +379,7 @@ function wireDragAndDrop() {
 export async function submitArchiveSetup() {
   if (SETUP.busy) return;
   SETUP.busy = true;
-  const name = document.getElementById("setup-name").value.trim();
+  const name = SETUP.name.trim();
   const features = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id)).map(f => f.id);
   const editing = SETUP.archive !== null;
   const body = editing

@@ -46,7 +46,7 @@ import {
   setStorageMetric, togglePipelinePause, toggleStagePause,
 } from "./overview.js";
 import {
-  closeArchiveSetup, flipFeature, removeFeature, submitArchiveSetup, toggleFeature,
+  closeArchiveSetup, flipFeature, removeFeature, setArchiveName, submitArchiveSetup, toggleFeature,
 } from "./setup.js";
 
 import {
@@ -115,7 +115,7 @@ Object.assign(window, {
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
   openItem, openSettings, reassignFace, removeFeature, removeManualPerson, removeManualPet,
-  renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setMapView, setStorageMetric,
-  showSection, submitArchiveSetup, toPicker, toggleFeature, toggleNav, togglePipelinePause,
+  renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setArchiveName, setMapView,
+  setStorageMetric, showSection, submitArchiveSetup, toPicker, toggleFeature, toggleNav, togglePipelinePause,
   toggleStagePause, toggleTheme, undoMerge,
 });
