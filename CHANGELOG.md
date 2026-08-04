@@ -54,6 +54,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A paused scan no longer looks like it threw away its progress.** Resuming
+  sent the bar back to 0 and raced it up to where it stopped, which read as the
+  whole scan being redone. Nothing was: scanning restarts at the top of the
+  folder rather than at its own backlog, and a file it already has costs a
+  quick check and no re-reading, so it crosses that ground very fast. It now
+  says what it is doing — "Re-checking 12,400 files already scanned…" — and the
+  bar reappears at the point the interrupted run reached. Dating files had the
+  same problem from the other end: its bar measured the work that was *left*,
+  so each run restarted at 0% of a total that had shrunk to match. Both now
+  measure against the whole archive, the way finding people and indexing for
+  search already did.
+
 - An archive set up **without** Search by description was still shown the
   description-search box at the top of its browse screen, above a line
   promising files "queued for indexing". Nothing was queued and nothing ever

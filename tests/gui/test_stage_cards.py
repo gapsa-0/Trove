@@ -139,6 +139,57 @@ def test_a_preparing_scan_is_not_reported_as_finalizing_metadata():
 
 
 # ---------------------------------------------------------------------------
+# Re-checking: the ground a restarted scan has to cross again
+# ---------------------------------------------------------------------------
+
+
+def test_a_scan_crossing_files_it_already_has_draws_no_bar():
+    """Scan is the only stage that restarts at the top of the tree rather than
+    at its own backlog, and re-reaching what it holds costs a stat() per file.
+    Counted as progress, that made the bar rewind to 0 and race back to where
+    it stopped -- work being redone, apparently, when none is."""
+    crossing = _progress(done=4000, total=30772, recheck_below=12400, current="2019/a.jpg")
+
+    card = _card(_stage(kind="scan", card="scan", progress=crossing))
+
+    assert card["progress"] is None
+    assert card["message"] == "Re-checking 4,000 files already scanned…"
+
+
+def test_the_bar_comes_back_where_the_scan_left_off():
+    """The point of the phase: the bar's first appearance is at the mark, not
+    at 0, so it starts from where the interrupted run stopped."""
+    arrived = _progress(done=12400, total=30772, recheck_below=12400)
+
+    card = _card(_stage(kind="scan", card="scan", progress=arrived))
+
+    assert card["progress"]["done"] == 12400
+    assert card["message"] == "Scanning files…"
+
+
+def test_a_first_scan_has_nothing_to_re_check():
+    """`recheck_below` is 0 on an empty catalogue, and on every stage that
+    resumes at its own backlog -- so this costs them nothing."""
+    fresh = _progress(done=0, total=30772, recheck_below=0)
+
+    card = _card(_stage(kind="scan", card="scan", progress=fresh))
+
+    assert card["progress"] is not None
+    assert card["message"] == "Scanning files…"
+
+
+def test_preparing_outranks_re_checking():
+    """A scan still counting the disk has not read a file yet, so it says the
+    thing that is actually true of it."""
+    counting = _progress(phase="preparing", done=0, recheck_below=12400, current="counting files")
+
+    card = _card(_stage(kind="scan", card="scan", progress=counting))
+
+    assert card["progress"] is None
+    assert card["message"] == "Preparing… · counting files"
+
+
+# ---------------------------------------------------------------------------
 # Pausing: the wind-down, and the bar a stopped run leaves behind
 # ---------------------------------------------------------------------------
 

@@ -276,6 +276,7 @@ def job_progress(job: dict | None) -> dict | None:
         "current": job.get("current", ""),
         "elapsed": job.get("elapsed", 0),
         "phase": job.get("phase", "working"),
+        "recheck_below": job.get("recheck_below", 0),
     }
 
 
@@ -354,6 +355,29 @@ def _dedup_card_message(progress: dict, message: str | None) -> str | None:
     return message
 
 
+def _rechecking(progress: dict) -> bool:
+    """Whether this run is still crossing ground it has already covered.
+
+    True only for a scan that stopped part-way and started again from the top
+    of the tree (see ``Job.recheck_below``). It is the same situation
+    ``preparing`` describes -- the stage is busy, and a bar over it would be
+    counting something other than the work -- so the card treats it the same
+    way, with its own sentence.
+    """
+    return (
+        bool(progress.get("recheck_below"))
+        and (progress.get("done") or 0) < progress["recheck_below"]
+    )
+
+
+def _recheck_message(progress: dict) -> str:
+    """No denominator on purpose. How many files are being re-checked is
+    knowable, but saying "12,400 of 30,772" reads as a bar written out in
+    words, and it is the number this phase exists to stop drawing."""
+    done = progress.get("done") or 0
+    return f"Re-checking {done:,} files already scanned…"
+
+
 def _preparing_message(progress: dict) -> str:
     """What a stage says between starting and reaching its first file: whatever
     its setup last reported (see ``JobContext.preparing``), or nothing.
@@ -386,11 +410,15 @@ def _card(
         progress, message = _scan_card_progress(members, progress, message)
     elif card_id == "dedup" and state == "running" and progress:
         message = _dedup_card_message(progress, message)
-    # Last, so it outranks the wording above: "Finding duplicates…" and
+    # Last, so these outrank the wording above: "Finding duplicates…" and
     # "Fingerprinting 0 of 40,000 photos…" are both claims about a loop that
-    # has not started yet.
+    # has not started yet, and "Scanning files…" over a bar sweeping through
+    # files this run is only re-reading is the same kind of claim.
     if progress and progress.get("phase") == "preparing":
         message = _preparing_message(progress)
+        progress = None
+    elif progress and _rechecking(progress):
+        message = _recheck_message(progress)
         progress = None
 
     bc_id = blocker_card[card_id]

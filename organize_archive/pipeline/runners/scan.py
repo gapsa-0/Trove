@@ -29,6 +29,17 @@ def run(ctx: JobContext) -> None:
     with ctx.preparing("counting files on disk"):
         on_disk = sum(walker.count_files(Path(r)) for r in roots if Path(r).is_dir())
         prog.total = on_disk
+        # How much of this walk is ground already covered. Unlike every other
+        # stage, scan restarts at the top of the tree rather than at its own
+        # backlog, and re-reaching what it already holds costs a stat() and one
+        # UPDATE per file -- fast enough that counting it as progress made the
+        # bar rewind and race back to where it stopped. Below this the card
+        # says what is happening instead of drawing a bar (Job.recheck_below).
+        #
+        # Clamped to the disk count: files deleted since the last run are in
+        # the catalogue and not in this walk, and a mark past the end of the
+        # bar would leave it hidden for the whole run.
+        job.recheck_below = min(db.present_file_count(conn, root_id), on_disk)
     run_id = db.scan_run_start(conn, root_id, roots)
     totals = walker.ScanStats()
     for r in roots:

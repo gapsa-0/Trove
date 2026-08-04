@@ -112,8 +112,26 @@ def _pending(
     ).fetchall()
 
 
-def _count_pending(conn: sqlite3.Connection, root_ids: tuple[int, ...] | None) -> int:
-    """How many files still lack a ``dates`` row, for the progress total."""
+def count_dateable(conn: sqlite3.Connection, root_ids: tuple[int, ...] | None) -> int:
+    """Every present file under these roots, dated or not.
+
+    The population the progress bar measures against. Its *pending* half is
+    ``pending_count`` below, and the difference between them is what a run
+    inherits from the runs before it -- see the runner, which seeds the bar
+    with it so a resumed enrich picks up where the last one stopped instead of
+    restarting at 0% of a total that has quietly shrunk to match.
+    """
+    where = "f.present=1"
+    params: list[int] = []
+    if root_ids:
+        where += " AND f.root_id IN (" + ",".join("?" for _ in root_ids) + ")"
+        params.extend(root_ids)
+    n: int = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {where}", params).fetchone()[0]
+    return n
+
+
+def pending_count(conn: sqlite3.Connection, root_ids: tuple[int, ...] | None) -> int:
+    """How many files still lack a ``dates`` row: this stage's backlog."""
     where = "d.file_id IS NULL AND f.present=1"
     params: list[int] = []
     if root_ids:
@@ -317,9 +335,12 @@ def enrich(
 
     _last_commit = _time.monotonic()
 
-    total = _count_pending(conn, root_ids)
+    # The backlog, which is the right total for a caller that owns nothing
+    # wider -- the CLI. The pipeline runner hands in a progress object with a
+    # fixed total (the whole dateable population) and this is ignored, so its
+    # bar can span the runs rather than restarting each time.
     if progress is not None:
-        progress.total = total
+        progress.total = pending_count(conn, root_ids)
 
     while True:
         rows = _pending(conn, batch_size, root_ids)

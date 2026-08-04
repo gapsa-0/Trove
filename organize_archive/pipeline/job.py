@@ -43,6 +43,17 @@ class Job:
     # "working" (see JobContext.preparing). Default "working" so a runner that
     # never says otherwise behaves exactly as it always did.
     phase: str = "working"
+    # How far this run has to walk before it reaches work it has not already
+    # done. Scan is the only stage that starts each run at the beginning of the
+    # tree rather than at its own backlog: a file it catalogued before costs a
+    # stat() and one UPDATE, no hashing, so a resumed scan crosses everything
+    # it already has at thousands of files a second before slowing to real
+    # speed. Counting that as progress made the bar rewind to 0 and race back
+    # -- work being redone, apparently, when nothing is. Below this mark the
+    # card drops the bar the way it does while a stage is preparing, and says
+    # what the run is actually doing (see stages._card). 0 means "nothing to
+    # re-check", which is every other stage and a first scan.
+    recheck_below: int = 0
     # True while the runner is inside a call that cancellation cannot reach --
     # in practice, building an ONNX session. Nothing can interrupt native code,
     # so ``shutdown`` stops *waiting* on such a job instead of spending its

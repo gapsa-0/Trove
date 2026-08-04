@@ -414,6 +414,20 @@ def scan_settled(conn: sqlite3.Connection, root_id: int, files_on_disk: int | No
 # the process restarts.
 
 
+def present_file_count(conn: sqlite3.Connection, root_id: int) -> int:
+    """How many files under this root the catalogue already holds.
+
+    Read by the scan runner as the length of the ground a restarted walk has
+    to re-cross before it reaches anything new -- see ``Job.recheck_below``.
+    Counts what is *present*, since a file marked missing is not going to turn
+    up in the walk and would push the mark past where the walk can reach.
+    """
+    row = conn.execute(
+        "SELECT COUNT(*) FROM files WHERE root_id=? AND present=1", (root_id,)
+    ).fetchone()
+    return int(row[0])
+
+
 def dedup_coverage(conn: sqlite3.Connection, root_id: int) -> tuple[int, int | None]:
     """(count, max id) of files eligible for dedup grouping under this root:
     present, content-hashed files -- the same population dedup/exact.py's

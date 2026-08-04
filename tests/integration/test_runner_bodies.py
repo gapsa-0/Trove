@@ -23,6 +23,7 @@ them is the ten-line wrapper.
 from __future__ import annotations
 
 import logging
+import pathlib
 import sqlite3
 import threading
 
@@ -126,6 +127,42 @@ def test_the_scan_runner_counts_the_disk_before_it_claims_any_progress(archive, 
     assert job.total > 0
 
 
+def test_a_first_scan_has_no_ground_to_re_cross(archive):
+    cfg, conn, source = archive
+    ctx, job = _context(cfg, conn, "scan", root_path=source)
+
+    scan_runner.run(ctx)
+
+    assert job.recheck_below == 0, "an empty catalogue has nothing to re-check"
+
+
+def test_a_second_scan_knows_how_much_of_the_walk_it_has_already_done(archive):
+    """Scan restarts at the top of the tree rather than at its own backlog, and
+    a file it already holds costs a stat() and one UPDATE. Counted as progress
+    that made the bar rewind to 0 and race back to where the last run stopped;
+    the mark is how the card knows to say what is happening instead."""
+    cfg, conn, source = archive
+    scan_runner.run(_context(cfg, conn, "scan", root_path=source)[0])
+    ctx, job = _context(cfg, conn, "scan", root_path=source)
+
+    scan_runner.run(ctx)
+
+    assert job.recheck_below == job.total > 0, "every file walked was one it already had"
+
+
+def test_the_re_check_mark_cannot_outrun_the_walk(archive):
+    """Files deleted since the last run are in the catalogue and not in the
+    walk. A mark past the end of the bar would hide it for the whole run."""
+    cfg, conn, source = archive
+    scan_runner.run(_context(cfg, conn, "scan", root_path=source)[0])
+    (pathlib.Path(source) / "2022/IMG_20220514_090957.jpg").unlink()
+    ctx, job = _context(cfg, conn, "scan", root_path=source)
+
+    scan_runner.run(ctx)
+
+    assert job.recheck_below == job.total
+
+
 def test_the_enrich_runner_processes_the_scanned_files(archive):
     cfg, conn, source = archive
     scan_ctx, _ = _context(cfg, conn, "scan", root_path=source)
@@ -136,6 +173,27 @@ def test_the_enrich_runner_processes_the_scanned_files(archive):
 
     assert "processed" in job.message
     assert "Takeout-matched" in job.message
+
+
+def test_the_enrich_bar_spans_the_archive_and_not_the_run(archive):
+    """Its total used to be the *backlog*, so a second run measured against
+    what was left: the bar restarted at 0% of a total that had quietly shrunk
+    to match, and a run resumed after a pause looked like it had discarded
+    everything it did. Cumulative, the way detect and semantic already are."""
+    cfg, conn, source = archive
+    scan_runner.run(_context(cfg, conn, "scan", root_path=source)[0])
+    files = conn.execute("SELECT COUNT(*) FROM files WHERE present=1").fetchone()[0]
+
+    first, first_job = _context(cfg, conn, "enrich")
+    enrich_runner.run(first)
+    assert first_job.total == files
+    assert first_job.done == files, "a drained backlog leaves the bar full, not empty"
+
+    second, second_job = _context(cfg, conn, "enrich")
+    enrich_runner.run(second)
+
+    assert second_job.total == files
+    assert second_job.done == files, "the second run inherits what the first resolved"
 
 
 def test_the_face_cluster_runner_reclusters_and_reports(archive):
