@@ -34,8 +34,8 @@ export async function renderPhotos(m) {
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
   const g = restored ? S.grid : {
     offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
-    place: "", onlyIndexed: false, onlyLocated: false, rawQuery: "", searchedQuery: "", query: "", expandedQuery: "",
-    expandedEmbeddingQuery: "", sort: "", error: "",
+    place: "", onlyIndexed: false, onlyLocated: false, rawQuery: "", searchedQuery: "", query: "",
+    sort: "", error: "",
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
     anchor: null, savedScrollTop: 0,
   };
@@ -380,12 +380,7 @@ export async function loadGrid(direction = "append") {
     // location just as the plain grid can.
     if (g.onlyLocated) p.set("located", "yes");
     if (g.sort) p.set("sort", g.sort);
-    if (g.query) {
-      // When local translation succeeds it replaces, rather than supplements,
-      // the Spanish semantic query. This avoids admitting weak matches unique to
-      // the original-language vector. English and fallback searches use g.query.
-      p.append("q", g.expandedEmbeddingQuery || g.query);
-    }
+    if (g.query) p.append("q", g.query);
     const endpoint = g.query ? "/api/browse/semantic/search?" : "/api/media?";
     const res = await jget(endpoint + p);
     // Bail if a newer filter change (or a section switch) superseded this fetch

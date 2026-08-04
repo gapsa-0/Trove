@@ -39,9 +39,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from organize_archive.config import Config
 from organize_archive.db import database as db
 
-# English, because the GUI translates a Spanish query to English before
-# embedding (see web/index.html localEnglishTranslation, and §0 for why that
-# survived the move to a multilingual model).
+# English, but only by convention: SigLIP 2's text tower is multilingual, and
+# the GUI now embeds whatever the user typed (the local Spanish->English
+# translation it used to run was removed). Pass --queries to calibrate against
+# the language and phrasing you actually search in.
 DEFAULT_QUERIES = [
     "birthday cake",
     "a wedding",
@@ -162,7 +163,8 @@ def main():
         if args.queries
         else DEFAULT_QUERIES
     )
-    backend = eb.SiglipBackend(cfg.cache_dir, log=print)
+    backend = eb.SiglipBackend(cfg.cache_dir)
+    backend.load_text(log=print)
     real = vectors @ backend.embed_texts(queries).T
     absent = vectors @ backend.embed_texts(ABSENT_QUERIES).T
 

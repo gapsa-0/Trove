@@ -27,8 +27,9 @@ def semantic_search(req: Request) -> MediaPage | Json:
         value = value.strip()
         if value and value not in search_queries:
             search_queries.append(value)
-    # The first query is the user's wording.  At most one locally
-    # translated expansion is accepted to keep ranking predictable.
+    # The first query is the user's wording. A second is accepted as an
+    # alternate phrasing of the same search (scored via alternate_vectors) and
+    # the rest are dropped, so ranking stays predictable. The GUI sends one.
     search_queries = search_queries[:2]
     if not search_queries:
         return Json({"error": "A search query is required"}, 400)
