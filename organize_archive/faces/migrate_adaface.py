@@ -43,9 +43,14 @@ import shutil
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..config import Config
 from ..db import database as db
+from .backend import Log
+
+# (x, y, w, h) as read out of a carry or detection row.
+Box = tuple[int, int, int, int]
 
 # Box overlap required to call a new detection "the same face" as an old one.
 # Generous on purpose: identical detector + identical input means boxes normally
@@ -78,7 +83,7 @@ class MigrationStats:
     notes: list = field(default_factory=list)
 
 
-def _ensure_carry_tables(conn) -> None:
+def _ensure_carry_tables(conn: sqlite3.Connection) -> None:
     conn.executescript(f"""
         CREATE TABLE IF NOT EXISTS {_CARRY_FACES} (
             old_face_id  INTEGER PRIMARY KEY,
@@ -128,7 +133,7 @@ def _ensure_carry_tables(conn) -> None:
     """)
 
 
-def _backup(db_path: str, log=None) -> str:
+def _backup(db_path: str, log: Log | None = None) -> str:
     """Copy the database next to itself before anything destructive happens.
 
     Not a nicety: the wipe below is irreversible, and the whole point of the
@@ -146,7 +151,7 @@ def _backup(db_path: str, log=None) -> str:
     return str(dst)
 
 
-def _snapshot_faces(conn, stats: MigrationStats) -> None:
+def _snapshot_faces(conn: sqlite3.Connection, stats: MigrationStats) -> None:
     """Copy every identity-bearing face into the carry table."""
     conn.execute(f"""
         INSERT INTO {_CARRY_FACES}
@@ -174,7 +179,7 @@ def _snapshot_faces(conn, stats: MigrationStats) -> None:
     stats.links_snapshotted = conn.execute(f"SELECT COUNT(*) FROM {_CARRY_LINKS}").fetchone()[0]
 
 
-def _snapshot_pets(conn, stats: MigrationStats) -> None:
+def _snapshot_pets(conn: sqlite3.Connection, stats: MigrationStats) -> None:
     """Pets ride along with a faces-only migration.
 
     The fused detect pass deletes and rewrites animal_detections for every file
@@ -199,7 +204,7 @@ def _snapshot_pets(conn, stats: MigrationStats) -> None:
     ).fetchone()[0]
 
 
-def _wipe_invalidated(conn) -> None:
+def _wipe_invalidated(conn: sqlite3.Connection) -> None:
     """Destroy exactly what the embedder change invalidated, and no more.
 
     The face vectors and the clusters built out of them. Animal detections, pets
@@ -229,7 +234,9 @@ def _wipe_invalidated(conn) -> None:
     conn.execute("DELETE FROM fiqa_calibration")
 
 
-def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -> MigrationStats:
+def snapshot_and_wipe(
+    conn: sqlite3.Connection, cfg: Config, db_path: str | None = None, log: Log | None = None
+) -> MigrationStats:
     """Preserve identity, clear the invalid embeddings, re-arm the scanners."""
     db.init_db(conn)
     stats = MigrationStats()
@@ -254,7 +261,7 @@ def snapshot_and_wipe(conn, cfg: Config, db_path: str | None = None, log=None) -
     return stats
 
 
-def _iou(a, b) -> float:
+def _iou(a: Box, b: Box) -> float:
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
     if aw <= 0 or ah <= 0 or bw <= 0 or bh <= 0:
@@ -267,7 +274,9 @@ def _iou(a, b) -> float:
     return inter / float(aw * ah + bw * bh - inter)
 
 
-def _match_by_box(carry_rows, new_rows) -> dict[int, int]:
+def _match_by_box(
+    carry_rows: list[dict[str, Any]], new_rows: list[dict[str, Any]]
+) -> dict[int, int]:
     """Greedy best-overlap matching of old rows to new rows within one file.
 
     Greedy is right here rather than optimal assignment: re-detection reproduces
@@ -275,7 +284,7 @@ def _match_by_box(carry_rows, new_rows) -> dict[int, int]:
     matcher would buy nothing. Frame offset must agree, so a video's faces can
     never migrate between sampled frames.
     """
-    pairs = []
+    pairs: list[tuple[float, int, int]] = []
     for old in carry_rows:
         for new in new_rows:
             if (old["frame_offset"] or None) != (new["frame_offset"] or None):
@@ -287,7 +296,9 @@ def _match_by_box(carry_rows, new_rows) -> dict[int, int]:
             if score >= MIN_IOU:
                 pairs.append((score, old["old_id"], new["id"]))
     pairs.sort(reverse=True)
-    used_old, used_new, out = set(), set(), {}
+    used_old: set[int] = set()
+    used_new: set[int] = set()
+    out: dict[int, int] = {}
     for _score, old_id, new_id in pairs:
         if old_id in used_old or new_id in used_new:
             continue
@@ -298,7 +309,11 @@ def _match_by_box(carry_rows, new_rows) -> dict[int, int]:
 
 
 def _remap(
-    conn, carry_table: str, id_col: str, new_table: str, new_id_col: str = "id"
+    conn: sqlite3.Connection,
+    carry_table: str,
+    id_col: str,
+    new_table: str,
+    new_id_col: str = "id",
 ) -> dict[int, int]:
     """Fill carry.new_* by matching boxes file by file. Returns old→new."""
     mapping: dict[int, int] = {}
@@ -336,7 +351,7 @@ def _remap(
     return mapping
 
 
-def _restore_face_pins(conn, stats: MigrationStats) -> None:
+def _restore_face_pins(conn: sqlite3.Connection, stats: MigrationStats) -> None:
     """Re-apply names and verdicts to the newly extracted faces.
 
     A person's name comes back as a manual_person PIN rather than by recreating
@@ -365,7 +380,9 @@ def _restore_face_pins(conn, stats: MigrationStats) -> None:
             stats.not_person_restored += 1
 
 
-def _restore_face_links(conn, face_map: dict, stats: MigrationStats) -> None:
+def _restore_face_links(
+    conn: sqlite3.Connection, face_map: dict[int, int], stats: MigrationStats
+) -> None:
     """Remap face_links through the old->new id map, dropping half-matched ones."""
     for link in conn.execute(f"SELECT * FROM {_CARRY_LINKS}"):
         a = face_map.get(link["old_face_a"])
@@ -385,7 +402,7 @@ def _restore_face_links(conn, face_map: dict, stats: MigrationStats) -> None:
         stats.links_restored += 1
 
 
-def _restore_pets(conn, stats: MigrationStats) -> None:
+def _restore_pets(conn: sqlite3.Connection, stats: MigrationStats) -> None:
     """The pet half: re-pin names onto rewritten detections, remap pet_links."""
     pet_map = _remap(conn, _CARRY_PETS, "old_det_id", "animal_detections")
     stats.pets_reattached = len(pet_map)
@@ -412,7 +429,7 @@ def _restore_pets(conn, stats: MigrationStats) -> None:
         stats.pet_links_restored += 1
 
 
-def reattach(conn, cfg: Config, log=None) -> MigrationStats:
+def reattach(conn: sqlite3.Connection, cfg: Config, log: Log | None = None) -> MigrationStats:
     """Restore names, pins and links onto the freshly extracted faces."""
     db.init_db(conn)
     stats = MigrationStats()
@@ -442,12 +459,13 @@ def reattach(conn, cfg: Config, log=None) -> MigrationStats:
 _EMBEDDER_KEY = "faces_embedder"
 
 
-def stored_embedder(conn) -> str | None:
+def stored_embedder(conn: sqlite3.Connection) -> str | None:
     row = conn.execute("SELECT value FROM app_state WHERE key=?", (_EMBEDDER_KEY,)).fetchone()
-    return row["value"] if row else None
+    version: str | None = row["value"] if row else None
+    return version
 
 
-def mark_embedder(conn, version: str) -> None:
+def mark_embedder(conn: sqlite3.Connection, version: str) -> None:
     conn.execute(
         """INSERT INTO app_state(key, value, updated_at) VALUES(?,?,?)
            ON CONFLICT(key) DO UPDATE SET
@@ -456,7 +474,9 @@ def mark_embedder(conn, version: str) -> None:
     )
 
 
-def run_if_needed(conn, cfg: Config, db_path: str | None = None, log=None) -> MigrationStats | None:
+def run_if_needed(
+    conn: sqlite3.Connection, cfg: Config, db_path: str | None = None, log: Log | None = None
+) -> MigrationStats | None:
     """Re-arm the archive for re-extraction when the embedder has changed.
 
     This is what makes the switch automatic: the app calls it when it opens an
@@ -492,7 +512,7 @@ def run_if_needed(conn, cfg: Config, db_path: str | None = None, log=None) -> Mi
     return stats
 
 
-def pending(conn) -> bool:
+def pending(conn: sqlite3.Connection) -> bool:
     """True when a snapshot exists whose faces have not been reattached yet."""
     try:
         row = conn.execute(

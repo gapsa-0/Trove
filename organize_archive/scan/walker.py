@@ -9,6 +9,7 @@ and re-run — upserts are idempotent and commits happen in batches.
 from __future__ import annotations
 
 import os
+import sqlite3
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ from ..config import (
 from ..db import database as db
 from ..hashing import hasher
 from ..media.types import media_type
+from ..progress import Progress
 
 
 @dataclass
@@ -94,13 +96,13 @@ _CONTENT_DERIVED = (
 )
 
 
-def _clear_derived_rows(conn, fid: int) -> None:
+def _clear_derived_rows(conn: sqlite3.Connection, fid: int) -> None:
     """Make every content-derived fact about this file pending again."""
     for table in _CONTENT_DERIVED:
         conn.execute(f"DELETE FROM {table} WHERE file_id=?", (fid,))
 
 
-def _unchanged(existing, size: int, mtime: float) -> bool:
+def _unchanged(existing: sqlite3.Row | None, size: int, mtime: float) -> bool:
     """True when path, size and mtime all match and a hash is already stored.
 
     This is the whole incremental story: a re-scan of ~150k files is cheap
@@ -115,7 +117,17 @@ def _unchanged(existing, size: int, mtime: float) -> bool:
     )
 
 
-def _write_file_row(conn, root_id, rel, name, st, hashes, now, existing, stats) -> None:
+def _write_file_row(
+    conn: sqlite3.Connection,
+    root_id: int,
+    rel: str,
+    name: str,
+    st: os.stat_result,
+    hashes: tuple[str, str],
+    now: str,
+    existing: sqlite3.Row | None,
+    stats: ScanStats,
+) -> None:
     """Insert or update one file's row, clearing derived rows if content moved on."""
     fh, sh = hashes
     ext = _ext_of(name)
@@ -142,7 +154,15 @@ def _write_file_row(conn, root_id, rel, name, st, hashes, now, existing, stats) 
         stats.new += 1
 
 
-def _scan_one(conn, cfg: Config, root_id: int, root: Path, path: Path, now: str, stats) -> None:
+def _scan_one(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    root_id: int,
+    root: Path,
+    path: Path,
+    now: str,
+    stats: ScanStats,
+) -> None:
     """Catalogue one file. Raises OSError if it cannot be read; the caller counts
     that as an error and moves on rather than failing the whole scan."""
     st = path.stat()
@@ -163,11 +183,11 @@ def _scan_one(conn, cfg: Config, root_id: int, root: Path, path: Path, now: str,
 
 
 def scan_root(
-    conn,
+    conn: sqlite3.Connection,
     cfg: Config,
     root_path: str,
     run_started: str,
-    progress=None,
+    progress: Progress | None = None,
     commit_every: int = 500,
     base_done: int = 0,
     base_bytes: int = 0,

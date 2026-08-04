@@ -11,12 +11,23 @@ the ``faces`` / ``face_scan`` tables.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import sqlite3
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ..config import Config
 from ..db import database as db
+from ..progress import Progress
 from . import backend, fiqa
+from .backend import DetectionReport, Face, Log
+
+# The extractor deliberately accepts a stand-in backend, not just FaceBackend:
+# `_detect_faces` and `_insert_face` probe with hasattr/getattr so a lightweight
+# third-party or test backend supplying only a box, a score and an embedding
+# still works. There is no shared supertype to name, so this says Any and means
+# it -- narrowing it would be a claim the module goes out of its way not to make.
+AnyBackend = Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +38,10 @@ class ExtractStats:
     faces_found: int = 0
     images_with_faces: int = 0
     errors: int = 0
-    error_samples: list = None
+    # default_factory rather than the None-plus-__post_init__ this used to
+    # carry, matching detect/results.py, pets/extract.py and scan/walker.py.
+    # The old form typed the field as None and made every append below unsound.
+    error_samples: list[str] = field(default_factory=list)
     candidates: int = 0
     rejected_score: int = 0
     rejected_size: int = 0
@@ -36,39 +50,37 @@ class ExtractStats:
     rejected_clipped: int = 0
     rejected_nonhuman: int = 0
 
-    def __post_init__(self):
-        if self.error_samples is None:
-            self.error_samples = []
-
 
 # hidden=0 skips non-canonical duplicate copies: dedup (which runs before the
 # face pass) flags them, and re-detecting faces in a duplicate photo is pure
 # waste — the canonical copy is scanned instead.
-def image_count(conn, root_id: int | None = None) -> int:
+def image_count(conn: sqlite3.Connection, root_id: int | None = None) -> int:
     """Total present, canonical (non-duplicate) images."""
     rc = " AND f.root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
-    return conn.execute(
+    n: int = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             WHERE f.present=1 AND f.media_type='image' AND f.hidden=0{rc}""",
         params,
     ).fetchone()[0]
+    return n
 
 
-def pending_count(conn, root_id: int | None = None) -> int:
+def pending_count(conn: sqlite3.Connection, root_id: int | None = None) -> int:
     """Present canonical images not yet face-scanned (optionally within a root)."""
     rc = " AND f.root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
-    return conn.execute(
+    n: int = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan s ON s.file_id=f.id
             WHERE s.file_id IS NULL AND f.present=1 AND f.media_type='image'
                   AND f.hidden=0{rc}""",
         params,
     ).fetchone()[0]
+    return n
 
 
-def _pending(conn, batch_size: int):
+def _pending(conn: sqlite3.Connection, batch_size: int) -> list[sqlite3.Row]:
     return conn.execute(
         """SELECT f.id, f.rel_path, f.sha256, r.path AS root_path
            FROM files f JOIN roots r ON r.id=f.root_id
@@ -81,7 +93,7 @@ def _pending(conn, batch_size: int):
     ).fetchall()
 
 
-def make_backend(cfg: Config, log=None) -> backend.FaceBackend:
+def make_backend(cfg: Config, log: Log | None = None) -> backend.FaceBackend:
     """Build the detector+embedder from config (loads the ONNX models once).
     Callers that extract in chunks pass the result back in to avoid reloading
     the models every chunk."""
@@ -101,7 +113,7 @@ def make_backend(cfg: Config, log=None) -> backend.FaceBackend:
     # does, the backend tiers every face BORDERLINE, which is the safe default.
 
 
-def _add_rejections(stats: ExtractStats, report) -> None:
+def _add_rejections(stats: ExtractStats, report: DetectionReport) -> None:
     stats.candidates += report.candidates
     for reason in ("score", "size", "focus", "exposure", "clipped", "nonhuman"):
         setattr(
@@ -111,7 +123,7 @@ def _add_rejections(stats: ExtractStats, report) -> None:
         )
 
 
-def quality_summary(conn, root_id: int | None = None) -> dict:
+def quality_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict:
     """Aggregate extraction quality diagnostics for CLI/GUI reporting."""
     rc = " AND f.root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
@@ -155,7 +167,13 @@ def quality_summary(conn, root_id: int | None = None) -> dict:
     return out
 
 
-def calibrate_quality(conn, cfg: Config, limit: int = 100, be=None, progress=None) -> ExtractStats:
+def calibrate_quality(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    limit: int = 100,
+    be: AnyBackend | None = None,
+    progress: Progress | None = None,
+) -> ExtractStats:
     """Dry-run quality gates over pending images; never writes scan markers.
 
     Score and minimum-size filtering still apply. Focus/exposure/clipping gates
@@ -198,7 +216,7 @@ def calibrate_quality(conn, cfg: Config, limit: int = 100, be=None, progress=Non
     return stats
 
 
-def _insert_face(conn, fid: int, fc, be, now: str) -> None:
+def _insert_face(conn: sqlite3.Connection, fid: int, fc: Face, be: AnyBackend, now: str) -> None:
     """One detected face's row. Every quality column is read with getattr so a
     lightweight third-party or test backend that supplies only a box, a score
     and an embedding still works."""
@@ -233,7 +251,9 @@ def _insert_face(conn, fid: int, fc, be, now: str) -> None:
     )
 
 
-def _write_face_scan(conn, fid: int, n_faces: int, report, now: str) -> None:
+def _write_face_scan(
+    conn: sqlite3.Connection, fid: int, n_faces: int, report: DetectionReport, now: str
+) -> None:
     """Mark this image scanned, with what was found and what was rejected.
 
     Written whether or not detection succeeded, so an unreadable file is not
@@ -260,7 +280,7 @@ def _write_face_scan(conn, fid: int, n_faces: int, report, now: str) -> None:
     )
 
 
-def _detect_faces(be, path: Path):
+def _detect_faces(be: AnyBackend, path: Path) -> tuple[list[Face], DetectionReport]:
     """``(faces, report)`` for one image, via whichever API this backend offers."""
     report = backend.DetectionReport()
     if hasattr(be, "process_path_report"):
@@ -273,7 +293,9 @@ def _detect_faces(be, path: Path):
     return faces, report
 
 
-def _extract_one(conn, be, row, now: str, stats: ExtractStats) -> None:
+def _extract_one(
+    conn: sqlite3.Connection, be: AnyBackend, row: sqlite3.Row, now: str, stats: ExtractStats
+) -> None:
     """Detect and store one image's faces, then mark it scanned either way."""
     fid = row["id"]
     path = Path(row["root_path"]) / row["rel_path"]
@@ -304,7 +326,7 @@ def _extract_one(conn, be, row, now: str, stats: ExtractStats) -> None:
         stats.images_with_faces += 1
 
 
-def _maybe_bootstrap_fiqa(conn, cfg: Config, be) -> None:
+def _maybe_bootstrap_fiqa(conn: sqlite3.Connection, cfg: Config, be: AnyBackend) -> None:
     """Fix the FIQA calibration once enough norms exist, then tier the backlog
     extracted before it (see faces/fiqa.py). A no-op thereafter."""
     # Left nested on purpose: the outer test asks whether this backend does
@@ -320,7 +342,12 @@ def _maybe_bootstrap_fiqa(conn, cfg: Config, be) -> None:
 
 
 def extract(
-    conn, cfg: Config, progress=None, batch_size: int = 64, limit: int | None = None, be=None
+    conn: sqlite3.Connection,
+    cfg: Config,
+    progress: Progress | None = None,
+    batch_size: int = 64,
+    limit: int | None = None,
+    be: AnyBackend | None = None,
 ) -> ExtractStats:
     """Detect faces for pending images. ``limit`` caps images this run (useful
     for chunked runs / testing); None means "until none are left". Pass ``be``

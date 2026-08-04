@@ -8,10 +8,25 @@ stable. Fully idempotent: a run rebuilds every duplicate group from scratch.
 from __future__ import annotations
 
 import logging
+import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
+from ..config import Config
 from ..db import database as db
+from ..progress import Progress
+
+# One candidate row packed for _pick_canonical: (id, width, height, size,
+# has_side, has_date, best_datetime, rel_path).
+Packed = tuple[int, int | None, int | None, int | None, int, int, str | None, str]
+
+# One _BKTree node: ``[hash, file_id, {edge distance: child node}]``. A list
+# rather than a dataclass because this is the hot loop of a 150k-file pass,
+# and list[Any] rather than a precise recursive type because the three slots
+# hold three unrelated things.
+_Node = list[Any]
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +51,7 @@ def perceptual_available() -> bool:
     return True
 
 
-def _pick_canonical(members):
+def _pick_canonical(members: list[Packed]) -> int:
     """Return the best representative, using a stable, documented ordering."""
     return min(
         members,
@@ -54,16 +69,16 @@ def _pick_canonical(members):
 
 
 class _UnionFind:
-    def __init__(self, values):
+    def __init__(self, values: Iterable[int]) -> None:
         self.parent = {v: v for v in values}
 
-    def find(self, value):
+    def find(self, value: int) -> int:
         while self.parent[value] != value:
             self.parent[value] = self.parent[self.parent[value]]
             value = self.parent[value]
         return value
 
-    def union(self, a, b):
+    def union(self, a: int, b: int) -> None:
         a, b = self.find(a), self.find(b)
         if a != b:
             self.parent[b] = a
@@ -76,14 +91,14 @@ class _BKTree:
     The tree narrows each lookup using Hamming distance's triangle inequality.
     """
 
-    def __init__(self):
-        self.root = None
+    def __init__(self) -> None:
+        self.root: _Node | None = None
 
     @staticmethod
-    def _distance(a, b):
+    def _distance(a: int, b: int) -> int:
         return (a ^ b).bit_count()
 
-    def add(self, value, file_id):
+    def add(self, value: int, file_id: int) -> None:
         node = self.root
         if node is None:
             self.root = [value, file_id, {}]
@@ -96,7 +111,7 @@ class _BKTree:
                 return
             node = child
 
-    def within(self, value, radius):
+    def within(self, value: int, radius: int) -> list[int]:
         found, pending = [], [self.root] if self.root else []
         while pending:
             node = pending.pop()
@@ -112,7 +127,10 @@ class _BKTree:
 
 
 def _perceptual_hashes(
-    conn, cfg, progress=None, root_id: int | None = None
+    conn: sqlite3.Connection,
+    cfg: Config,
+    progress: Progress | None = None,
+    root_id: int | None = None,
 ) -> tuple[dict[int, int], int, int]:
     """Compute missing/stale pHashes and return ``file_id -> hash``.
 
@@ -146,7 +164,8 @@ def _perceptual_hashes(
     ).fetchall()
     if progress is not None:
         progress.total = len(rows)
-    hashes, computed, errors = {}, 0, 0
+    hashes: dict[int, int] = {}
+    computed, errors = 0, 0
     for i, row in enumerate(rows, 1):
         raw = row["hash"]
         if row["source_sha256"] == row["sha256"] and raw:
@@ -189,7 +208,7 @@ def _perceptual_hashes(
     return hashes, computed, errors
 
 
-def _load_candidates(conn, root_id: int | None):
+def _load_candidates(conn: sqlite3.Connection, root_id: int | None) -> list[sqlite3.Row]:
     """Every present, hashed file in scope, with the fields canonical-picking needs."""
     root_clause = "" if root_id is None else " AND f.root_id=?"
     root_params = () if root_id is None else (root_id,)
@@ -208,7 +227,14 @@ def _load_candidates(conn, root_id: int | None):
     ).fetchall()
 
 
-def _group_candidates(conn, cfg, rows, by_id, progress, root_id: int | None) -> _UnionFind:
+def _group_candidates(
+    conn: sqlite3.Connection,
+    cfg: Config | None,
+    rows: list[sqlite3.Row],
+    by_id: dict[int, sqlite3.Row],
+    progress: Progress | None,
+    root_id: int | None,
+) -> _UnionFind:
     """Union files that are the same content: identical sha256, then look-alikes.
 
     Exact and visual matches go into one union-find, so each file ends up in at
@@ -237,7 +263,7 @@ def _group_candidates(conn, cfg, rows, by_id, progress, root_id: int | None) -> 
     return uf
 
 
-def _clear_old_groups(conn, root_id: int | None) -> None:
+def _clear_old_groups(conn: sqlite3.Connection, root_id: int | None) -> None:
     """Drop the previous grouping for this archive, un-hiding its members.
 
     Older versions grouped the whole catalog. If such a group touches this
@@ -265,7 +291,13 @@ def _clear_old_groups(conn, root_id: int | None) -> None:
     conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", ids)
 
 
-def _write_group(conn, members, by_id, now, stats):
+def _write_group(
+    conn: sqlite3.Connection,
+    members: list[sqlite3.Row],
+    by_id: dict[int, sqlite3.Row],
+    now: str,
+    stats: DedupStats,
+) -> tuple[list[tuple[int, int, str]], list[tuple[int, int]], list[tuple[int, int]], str]:
     """Insert one dup_groups row, and return its member/canonical/duplicate rows."""
     count = len(members)
     packed = [
@@ -290,7 +322,9 @@ def _write_group(conn, members, by_id, now, stats):
            VALUES(?,?,?,?,?,?)""",
         (method, canon, count, by_id[canon]["size"], redundant, now),
     )
-    gid = cur.lastrowid
+    # An INSERT that didn't raise always sets lastrowid; see
+    # db.database.get_or_create_root for why typeshed still widens it.
+    gid = cast(int, cur.lastrowid)
     member_rows = [
         (gid, m["id"], "canonical" if m["id"] == canon else "duplicate") for m in members
     ]
@@ -303,7 +337,12 @@ def _write_group(conn, members, by_id, now, stats):
     return member_rows, canon_updates, dup_updates, method
 
 
-def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats:
+def run(
+    conn: sqlite3.Connection,
+    cfg: Config | None = None,
+    progress: Progress | None = None,
+    root_id: int | None = None,
+) -> DedupStats:
     """Rebuild duplicate groups for one archive.
 
     ``root_id=None`` remains available for callers that explicitly want a
@@ -338,7 +377,9 @@ def run(conn, cfg=None, progress=None, root_id: int | None = None) -> DedupStats
     if progress is not None:
         progress.total = len(buckets)
 
-    member_rows, canon_updates, dup_updates = [], [], []
+    member_rows: list[tuple[int, int, str]] = []
+    canon_updates: list[tuple[int, int]] = []
+    dup_updates: list[tuple[int, int]] = []
     done = 0
     for members in buckets.values():
         mrows, cups, dups, method = _write_group(conn, members, by_id, now, stats)

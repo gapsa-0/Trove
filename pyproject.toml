@@ -100,61 +100,38 @@ omit = ["*/web/vendor/*", "*/__main__.py"]
 skip_covered = false
 show_missing = true
 
-# Type checking is gradual on purpose. A whole-package strict switch produces
-# hundreds of errors nobody reads, and the tool becomes noise. So there are two
-# lists here and they move in opposite directions:
+# Type checking is not gradual any more. It was, for a while, and the shape of
+# that is worth knowing because it is the shape the next migration should take:
+# two `[[tool.mypy.overrides]]` blocks moving in opposite directions -- a "not
+# reviewed yet" list under `ignore_errors` that only shrank, and a strict list
+# that only grew, with a package moving between them in the single commit that
+# made its errors go away. ADR 0010 records how that ran and what it cost.
 #
-#   "not reviewed yet"  -- ignore_errors, and only ever SHRINKS
-#   "strict"            -- the real checks, and only ever GROWS
+# Both lists are gone because both reached their end state: every module in
+# `organize_archive` is now checked at the settings that used to be the strict
+# block's, so they are declared here as globals rather than named per package.
+# That is the point of finishing -- a package added tomorrow is strict because
+# it exists, not because someone remembered to add a line. There is no list to
+# forget, and tests/unit/test_typing_is_global.py fails if one comes back.
 #
-# A package leaves the first list and joins the second in one commit, once its
-# errors are actually gone. `mypy organize_archive` is therefore green at every
-# commit, which is what makes it usable as a gate instead of a report.
-#
-# Section order is load-bearing: mypy applies every matching override in file
-# order, so the strict block must come after the ignored one and say
-# ignore_errors = false explicitly to win for a sub-package (web.routes vs web).
+# The escape hatch is `# type: ignore[...]`, always with a code and always with
+# a comment saying why. There are six: five where an optional native dependency
+# (cv2, numpy) is rebound to None when absent, and one where a nullable DB
+# column is coerced inside the try that exists to catch it. Adding one is a
+# normal thing to do; adding one without the code or the reason is not, and
+# test_typing_is_global.py fails a bare one.
 [tool.mypy]
 python_version = "3.13"
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-# Lenient global default: an unannotated function is not an error, and its body
-# is not checked. Annotated code still is -- that is the free half of the deal.
-check_untyped_defs = false
-# onnxruntime, insightface, cv2 and PIL ship no stubs worth the install.
+# onnxruntime, insightface and scikit-learn ship no type information. numpy,
+# cv2, PIL, tokenizers and faiss all do, and are checked for real -- which is
+# why an array-shaped signature says `np.ndarray` and only an ONNX session
+# hides behind an alias (`Session = Any`, defined in each backend that holds one).
 ignore_missing_imports = true
-
-# ---- not reviewed yet: errors suppressed so the gate is usable today ----
-# Measured at 48f949a, not guessed: these are exactly the packages that had
-# errors under the lenient default above (102 of them). Delete a line from this
-# list only when that package is clean, in the same commit that makes it strict.
-[[tool.mypy.overrides]]
-module = [
-  "organize_archive.dedup.*",
-  "organize_archive.detect.*",
-  "organize_archive.embeddings.*",
-  "organize_archive.faces.*",
-  "organize_archive.geo.*",
-  "organize_archive.pets.*",
-  "organize_archive.thumbnails.*",
-  "organize_archive.web.*",
-]
-ignore_errors = true
-
-# ---- strict: the work is done here ----
-[[tool.mypy.overrides]]
-module = [
-  "organize_archive.paths",
-  "organize_archive.errors",
-  "organize_archive.metadata.*",
-  "organize_archive.config.*",
-  "organize_archive.db.*",
-  "organize_archive.services.*",
-  "organize_archive.web.routes.*",
-  "organize_archive.pipeline.*",
-]
-ignore_errors = false
+# What used to be the strict override block, now the floor for the package.
+check_untyped_defs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 strict_optional = true
@@ -226,11 +203,12 @@ allowed-confusables = ["×"]
 # documented -- services/, db/, metadata/, and (as it turns out) web/routes/,
 # which was already complete from stage 08. Everything else is listed below.
 #
-# This is the same only-ever-shrinks list as mypy's "not reviewed yet" block,
-# and it moves the same way: delete a line only in the commit that documents
-# that package. It is NOT the same membership -- config/ and pipeline/ are
-# mypy-strict but still exempt here, because typing a package and documenting
-# its public surface are separate pieces of work.
+# This is now the only only-ever-shrinks list in the file: mypy's two ran the
+# same way and both reached empty (ADR 0010). Delete a line here only in the
+# commit that documents that package. Every package is mypy-strict today and
+# most are still exempt below, which is the point rather than an oversight --
+# typing a package and documenting its public surface are separate pieces of
+# work, and ADR 0011 is about keeping them separate.
 "tests/*"  = ["B011", "D100", "D101", "D103", "D104"]   # a test's name is its documentation
 "tools/*"  = ["T201", "D100", "D101", "D103", "D104"]   # dev scripts may print
 "packaging/scripts/*" = ["T201", "D100", "D101", "D103", "D104"]  # build-time scripts

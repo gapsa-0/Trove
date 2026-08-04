@@ -11,7 +11,9 @@ attachments untouched. (``pipeline/runners/places.py`` picks between the two.)
 from __future__ import annotations
 
 import math
+import sqlite3
 from dataclasses import dataclass
+from typing import cast
 
 from ..db import database as db
 
@@ -25,7 +27,7 @@ class ClusterStats:
     named: int = 0
 
 
-def _haversine_m(lat1, lon1, lat2, lon2) -> float:
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlmb = math.radians(lon2 - lon1)
@@ -34,16 +36,16 @@ def _haversine_m(lat1, lon1, lat2, lon2) -> float:
 
 
 class _DSU:
-    def __init__(self, n):
+    def __init__(self, n: int) -> None:
         self.parent = list(range(n))
 
-    def find(self, x):
+    def find(self, x: int) -> int:
         while self.parent[x] != x:
             self.parent[x] = self.parent[self.parent[x]]
             x = self.parent[x]
         return x
 
-    def union(self, a, b):
+    def union(self, a: int, b: int) -> None:
         ra, rb = self.find(a), self.find(b)
         if ra != rb:
             self.parent[ra] = rb
@@ -85,7 +87,7 @@ def _bucket_and_union(points: list[tuple[float, float]], radius_m: float) -> _DS
     return dsu
 
 
-def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
+def cluster_places(conn: sqlite3.Connection, root_id: int, radius_m: float = 300.0) -> ClusterStats:
     """One-time BOOTSTRAP of place clusters for a root (batch grid-union over all
     GPS points). Deletes and recomputes, so it must only run when the root has no
     places yet — the pipeline calls it just for bootstrap and uses ``assign_unplaced``
@@ -128,7 +130,7 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
     for i in range(len(points)):
         groups.setdefault(dsu.find(i), []).append(i)
 
-    member_rows = []
+    member_rows: list[tuple[int, int]] = []
     for idxs in groups.values():
         members = [file_ids[i] for i in idxs]
         lat = sum(points[i][0] for i in idxs) / len(idxs)
@@ -144,7 +146,9 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
                VALUES(?,?,?,?,?,?)""",
             (root_id, name, lat, lon, len(members), now),
         )
-        cid = cur.lastrowid
+        # An INSERT that didn't raise always sets lastrowid; see
+        # db.database.get_or_create_root for why typeshed still widens it.
+        cid = cast(int, cur.lastrowid)
         member_rows.extend((cid, fid) for fid in members)
         stats.clusters += 1
         if name:
@@ -158,7 +162,7 @@ def cluster_places(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
     return stats
 
 
-def _unplaced_points(conn, root_id: int):
+def _unplaced_points(conn: sqlite3.Connection, root_id: int) -> list[sqlite3.Row]:
     """Geotagged files in this root that belong to no place yet."""
     return conn.execute(
         """SELECT f.id, g.lat, g.lon
@@ -169,7 +173,7 @@ def _unplaced_points(conn, root_id: int):
     ).fetchall()
 
 
-def _working_places(conn, root_id: int) -> list[dict]:
+def _working_places(conn: sqlite3.Connection, root_id: int) -> list[dict]:
     """Mutable working copies of this root's places.
 
     A plain list is fine because the unplaced backlog is small (this runs every
@@ -190,7 +194,7 @@ def _working_places(conn, root_id: int) -> list[dict]:
     ]
 
 
-def _attach(conn, cid: int, fid: int) -> None:
+def _attach(conn: sqlite3.Connection, cid: int, fid: int) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
         "VALUES(?,?, 'auto')",
@@ -198,7 +202,7 @@ def _attach(conn, cid: int, fid: int) -> None:
     )
 
 
-def _nearest_place(places: list[dict], lat: float, lon: float, radius_m: float):
+def _nearest_place(places: list[dict], lat: float, lon: float, radius_m: float) -> dict | None:
     """The closest place within ``radius_m``, or None."""
     best, best_d = None, radius_m
     for p in places:
@@ -208,7 +212,7 @@ def _nearest_place(places: list[dict], lat: float, lon: float, radius_m: float):
     return best
 
 
-def _absorb(conn, place: dict, fid: int, lat: float, lon: float) -> None:
+def _absorb(conn: sqlite3.Connection, place: dict, fid: int, lat: float, lon: float) -> None:
     """Add one point to an existing place, drifting its centroid to match.
 
     A pinned place's coordinate is a deliberate user pin and never moves; every
@@ -222,7 +226,9 @@ def _absorb(conn, place: dict, fid: int, lat: float, lon: float) -> None:
     place["count"] = n
 
 
-def _new_place(conn, root_id: int, fid: int, lat: float, lon: float, now: str) -> dict:
+def _new_place(
+    conn: sqlite3.Connection, root_id: int, fid: int, lat: float, lon: float, now: str
+) -> dict:
     """Create an unnamed place at this point, and put the point in it."""
     cur = conn.execute(
         """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
@@ -230,12 +236,14 @@ def _new_place(conn, root_id: int, fid: int, lat: float, lon: float, now: str) -
            VALUES(?, NULL, ?, ?, 1, 0, ?)""",
         (root_id, lat, lon, now),
     )
-    cid = cur.lastrowid
+    cid = cast(int, cur.lastrowid)  # see cluster_places
     _attach(conn, cid, fid)
     return {"lat": lat, "lon": lon, "count": 1, "pinned": 0, "id": cid}
 
 
-def assign_unplaced(conn, root_id: int, radius_m: float = 300.0) -> ClusterStats:
+def assign_unplaced(
+    conn: sqlite3.Connection, root_id: int, radius_m: float = 300.0
+) -> ClusterStats:
     """Incrementally attach geotagged files that aren't in any place yet, without
     ever deleting a place or an existing member.
 

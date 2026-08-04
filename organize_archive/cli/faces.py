@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import argparse
+import sqlite3
 from pathlib import Path
+from types import ModuleType
 
 from ..config import Config
 from ..db import database as db
 from .progress import ScanProgress
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("faces", help="Detect faces (local) and cluster them into people")
     sp.add_argument(
         "--limit",
@@ -53,14 +56,14 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def _progress(args, label: str):
+def _progress(args: argparse.Namespace, label: str) -> ScanProgress | None:
     """A progress bar for one phase, or None when --no-progress is given."""
     if args.no_progress:
         return None
     return ScanProgress(None, show_bytes=False, label=label)
 
 
-def _stage_adaface_migration(conn, cfg: Config) -> int:
+def _stage_adaface_migration(conn: sqlite3.Connection, cfg: Config) -> int:
     """--migrate-adaface: back up, preserve identities, clear the embeddings."""
     from ..faces import migrate_adaface
 
@@ -79,7 +82,7 @@ def _stage_adaface_migration(conn, cfg: Config) -> int:
     return 0
 
 
-def _recalibrate_fiqa(conn, cfg: Config) -> int:
+def _recalibrate_fiqa(conn: sqlite3.Connection, cfg: Config) -> int:
     """--recalibrate-fiqa: re-tier every face from its stored feature norm."""
     from ..faces import fiqa
 
@@ -92,7 +95,7 @@ def _recalibrate_fiqa(conn, cfg: Config) -> int:
     return 0
 
 
-def _quality_report(conn, fx) -> int:
+def _quality_report(conn: sqlite3.Connection, fx: ModuleType) -> int:
     """--quality-report: the persisted detection/rejection diagnostics."""
     report = fx.quality_summary(conn)
     conn.close()
@@ -118,7 +121,9 @@ def _quality_report(conn, fx) -> int:
     return 0
 
 
-def _calibrate(conn, cfg: Config, args, fx) -> int:
+def _calibrate(
+    conn: sqlite3.Connection, cfg: Config, args: argparse.Namespace, fx: ModuleType
+) -> int:
     """--calibrate N: dry-run the quality gates, leaving the database alone."""
     limit = max(1, args.calibrate)
     print(f"Dry-running face quality gates on up to {limit} pending image(s) …")
@@ -138,7 +143,9 @@ def _calibrate(conn, cfg: Config, args, fx) -> int:
     return 0
 
 
-def _detect(conn, cfg: Config, args, fx) -> None:
+def _detect(
+    conn: sqlite3.Connection, cfg: Config, args: argparse.Namespace, fx: ModuleType
+) -> None:
     """The detection half of a normal run: re-extract whatever is pending."""
     from ..faces import backend, migrate_adaface
 
@@ -174,7 +181,9 @@ def _detect(conn, cfg: Config, args, fx) -> None:
             print(f"      - {s}")
 
 
-def _cluster(conn, cfg: Config, args, fc) -> int:
+def _cluster(
+    conn: sqlite3.Connection, cfg: Config, args: argparse.Namespace, fc: ModuleType
+) -> int:
     """The clustering half of a normal run, plus the migration it completes."""
     # A staged AdaFace migration is completed here, once the re-extract that
     # precedes it has produced the new faces to reattach the old identities to.
@@ -202,7 +211,7 @@ def _cluster(conn, cfg: Config, args, fc) -> int:
     return 0
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     from ..faces import backend
     from ..faces import cluster as fc
     from ..faces import extract as fx

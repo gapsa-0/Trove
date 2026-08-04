@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from ..config import Config
@@ -9,7 +10,7 @@ from ..db import database as db
 from .progress import ScanProgress
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("pets", help="Detect animals locally and group likely pet identities")
     sp.add_argument(
         "--limit", type=int, default=None, help="Only scan this many pending images this run"
@@ -21,7 +22,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     from ..pets import backend
     from ..pets import cluster as pc
     from ..pets import extract as px

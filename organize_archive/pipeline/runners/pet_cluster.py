@@ -11,7 +11,7 @@ def run(ctx: JobContext) -> None:
     # rather than waiting for the next full detect chunk.
     from ...pets.cluster import cluster_pets
 
-    conn, job = ctx.conn, ctx.job
+    conn, job = ctx.require_conn(), ctx.job
     job.current = "reclustering pets after review…"
     stats = cluster_pets(conn, ctx.cfg, root_id=job.root_id)
     job.done = job.total = 1

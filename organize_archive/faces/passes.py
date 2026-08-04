@@ -50,11 +50,19 @@ put each person's fragments back together.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
 from ..config import Config
+from ..progress import Progress
 from .knn import mutual_knn, topk_search
 
+if TYPE_CHECKING:
+    # numpy is optional; every function here imports it where it runs.
+    import numpy as np
 
-def _centroids(X, groups: list[list[int]]):
+
+def _centroids(X: np.ndarray, groups: list[list[int]]) -> np.ndarray:
     """Unit-length mean vector of each group of row indices."""
     import numpy as np
 
@@ -63,7 +71,7 @@ def _centroids(X, groups: list[list[int]]):
     return cent
 
 
-def _average_link(cent, min_sim: float):
+def _average_link(cent: np.ndarray, min_sim: float) -> np.ndarray:
     """Average-linkage agglomerative labels over cosine distance between rows.
 
     A precomputed float32 cosine-distance matrix (rather than metric="cosine")
@@ -76,15 +84,18 @@ def _average_link(cent, min_sim: float):
 
     dist = (1.0 - cent @ cent.T).astype("float32")
     np.clip(dist, 0.0, 2.0, out=dist)
-    return AgglomerativeClustering(
+    # Annotated rather than returned directly: scikit-learn ships no type
+    # information, so fit_predict is Any to the checker.
+    labels: np.ndarray = AgglomerativeClustering(
         n_clusters=None,
         distance_threshold=1.0 - min_sim,
         metric="precomputed",
         linkage="average",
     ).fit_predict(dist)
+    return labels
 
 
-def _regroup(groups: list[list[int]], labels) -> list[list[int]]:
+def _regroup(groups: list[list[int]], labels: np.ndarray) -> list[list[int]]:
     """Fold ``groups`` together according to a label per group."""
     merged: dict[int, list[int]] = {}
     for gi, lab in enumerate(labels):
@@ -102,11 +113,11 @@ class CoreBuilder:
     reviewable decision rather than a rule smeared across the algorithm.
     """
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.fragments = 0
 
-    def _fragments(self, X, progress) -> list[list[int]]:
+    def _fragments(self, X: np.ndarray, progress: Progress | None) -> list[list[int]]:
         """Stage 1: tight, pure fragments from the mutual k-NN graph.
 
         ``faces_core_link_sim``, not ``faces_link_sim``: cores are meant to be
@@ -120,7 +131,7 @@ class CoreBuilder:
             frag.setdefault(dsu.find(i), []).append(i)
         return [idxs for idxs in frag.values() if len(idxs) >= 2]
 
-    def _merge_fragments(self, X, frags: list[list[int]]) -> list[list[int]]:
+    def _merge_fragments(self, X: np.ndarray, frags: list[list[int]]) -> list[list[int]]:
         """Stage 2: average-linkage merge of fragment centroids.
 
         AVERAGE linkage, not complete. Complete linkage merges two groups only
@@ -139,7 +150,7 @@ class CoreBuilder:
         labels = _average_link(_centroids(X, frags), self.cfg.faces_merge_sim)
         return _regroup(frags, labels)
 
-    def _merge_centroids(self, X, cluster_list: list[list[int]]) -> list[list[int]]:
+    def _merge_centroids(self, X: np.ndarray, cluster_list: list[list[int]]) -> list[list[int]]:
         """Stage 3: re-merge whole clusters that point the same direction.
 
         Stage 2's average linkage keys on the MEAN cross-pair similarity, which a
@@ -160,7 +171,7 @@ class CoreBuilder:
         labels = _average_link(_centroids(X, cluster_list), self.cfg.faces_centroid_merge_sim)
         return _regroup(cluster_list, labels)
 
-    def build(self, X, progress=None) -> list[list[int]]:
+    def build(self, X: np.ndarray, progress: Progress | None = None) -> list[list[int]]:
         if len(X) < 2:
             return []
         frags = self._fragments(X, progress)
@@ -187,14 +198,16 @@ class BorderAssigner:
     photographed most.
     """
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
 
-    def _search(self, M, Q, want: int):
+    def _search(self, M: np.ndarray, Q: np.ndarray, want: int) -> tuple[np.ndarray, np.ndarray]:
         """Top-``want`` core members for each query face, with similarities."""
         return topk_search(M, Q, want)
 
-    def _rank_cores(self, hits, sims, owner, votes: int) -> list[tuple[float, int]]:
+    def _rank_cores(
+        self, hits: np.ndarray, sims: np.ndarray, owner: np.ndarray, votes: int
+    ) -> list[tuple[float, int]]:
         """Score each core this face hit by the mean of its best ``votes`` hits."""
         per_core: dict[int, list[float]] = {}
         # strict: both come from the same search, so the row of hits and the row
@@ -212,7 +225,12 @@ class BorderAssigner:
         )
 
     def assign(
-        self, X, cores: list[list[int]], border_idx, cannot: set | None = None, face_ids=None
+        self,
+        X: np.ndarray,
+        cores: list[list[int]],
+        border_idx: Sequence[int],
+        cannot: set[frozenset[int]] | None = None,
+        face_ids: Sequence[int] | None = None,
     ) -> dict[int, int]:
         """Map ``{row index of X -> core position}`` for those that attach."""
         import numpy as np
@@ -251,7 +269,9 @@ class BorderAssigner:
         return out
 
     @staticmethod
-    def _blocked(fid, core, face_ids, cannot) -> bool:
+    def _blocked(
+        fid: int, core: list[int], face_ids: Sequence[int], cannot: set[frozenset[int]]
+    ) -> bool:
         """True if the user said this face is NOT the same person as a core member.
 
         A "different" answer is a hard constraint: it must survive a rebuild, and

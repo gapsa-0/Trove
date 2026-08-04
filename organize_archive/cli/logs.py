@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
+
 from .. import logging_setup
 from ..config import Config
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("logs", help="Print the last lines of the log, or where it lives")
     sp.add_argument("--path", action="store_true", help="Print the log file's path and exit")
     sp.add_argument(
@@ -19,7 +21,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     """Where the log is, or what it last said.
 
     Exists to turn a support exchange from "navigate to your application data

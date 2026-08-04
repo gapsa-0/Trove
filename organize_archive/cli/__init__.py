@@ -47,7 +47,7 @@ def _preflight() -> list[str]:
     return missing
 
 
-def cmd_init(args, cfg: Config) -> int:
+def cmd_init(args: argparse.Namespace, cfg: Config) -> int:
     cfg.ensure_dirs()
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
@@ -133,7 +133,10 @@ def main(argv: list[str] | None = None) -> int:
     cfg = Config.load()
     if args.db:
         cfg.db_path = args.db
-    return args.func(args, cfg)
+    # Annotated rather than returned directly: `func` is set by each
+    # subcommand's set_defaults, so argparse hands it back as Any.
+    status: int = args.func(args, cfg)
+    return status
 
 
 if __name__ == "__main__":

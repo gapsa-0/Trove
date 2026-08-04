@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from .. import __version__
@@ -10,12 +11,12 @@ from ..db import database as db
 from ._common import _fmt_bytes
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("status", help="Show catalog summary")
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init")
         return 1

@@ -11,10 +11,20 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING
 
 from ..runtime import no_window, tool, tool_env
 
+if TYPE_CHECKING:
+    # Pillow is optional and imported inside the functions that need it; this is
+    # the name the annotations use, and costs nothing at runtime.
+    from PIL.Image import Image as PILImage
+
 logger = logging.getLogger(__name__)
+
+# (x, y, w, h) in the pixels of the frame the detector looked at.
+Box = tuple[int, int, int, int]
 
 _HEIF_REGISTERED = False
 
@@ -36,7 +46,7 @@ def _cache_key(fid: int, sha256: str | None, rotate: int = 0) -> str:
     return f"{base}_v{THUMB_VER}" + (f"_r{rotate}" if rotate else "")
 
 
-def _apply_rotation(im, rotate: int):
+def _apply_rotation(im: PILImage, rotate: int) -> PILImage:
     """Turn a decoded image clockwise by 0/90/180/270 degrees.
 
     Uses the lossless transposes rather than ``rotate()`` so no resampling or
@@ -52,7 +62,14 @@ def _apply_rotation(im, rotate: int):
     return im.transpose(transpose) if transpose else im
 
 
-def _try_pillow():
+def _try_pillow() -> tuple[ModuleType, ModuleType] | None:
+    """``(PIL.Image, PIL.ImageOps)``, or None when Pillow is not installed.
+
+    Modules rather than the classes themselves, because callers need
+    ``Image.open`` and ``ImageOps.exif_transpose``. The checker sees no further
+    than ``ModuleType`` past this point -- the trade for keeping Pillow optional
+    and imported lazily.
+    """
     global _HEIF_REGISTERED
     try:
         from PIL import Image, ImageOps
@@ -75,10 +92,17 @@ def _try_pillow():
 
 
 def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
+    ffmpeg = tool("ffmpeg")
+    if ffmpeg is None:
+        # Previously this fell through to subprocess.run(None, ...) and was
+        # caught below as a TypeError. Same outcome, but named: a machine with
+        # no ffmpeg is a supported configuration, not an extraction failure.
+        logger.warning("ffmpeg not found; no video thumbnail for %s", src)
+        return False
     try:
         subprocess.run(
             [
-                tool("ffmpeg"),
+                ffmpeg,
                 "-y",
                 "-ss",
                 offset,
@@ -102,12 +126,11 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
             **no_window(),
         )
     except Exception as exc:
-        # Includes subprocess.TimeoutExpired (the 20s timeout above) as well as
-        # ffmpeg being missing outright -- tool() returns None then, which makes
-        # subprocess.run raise TypeError. Either way there is no frame.
-        # One line, no exc_info: frames_for() calls this once per offset per
-        # video, so a machine without ffmpeg would otherwise write a traceback
-        # for every offset of every one of ~6k videos.
+        # Mostly subprocess.TimeoutExpired (the 20s timeout above), plus
+        # whatever a codec ffmpeg cannot read raises. Either way there is no
+        # frame. One line, no exc_info: frames_for() calls this once per offset
+        # per video, so a bad codec would otherwise write a traceback for every
+        # offset of every affected video.
         logger.warning("ffmpeg frame extraction failed for %s at %s: %s", src, offset, exc)
         return False
     return tp.exists() and tp.stat().st_size > 0
@@ -208,7 +231,7 @@ def detect_frame_for(
 FACE_THUMB_VER = 2
 
 
-def _face_key(fid: int, sha256: str | None, box, rotate: int = 0, variant: str = "") -> str:
+def _face_key(fid: int, sha256: str | None, box: Box, rotate: int = 0, variant: str = "") -> str:
     x, y, w, h = box
     base = sha256 if sha256 else f"fid{fid}"
     return (
@@ -222,7 +245,7 @@ def face_thumb_for(
     cache_dir: str,
     face_id: int,
     src: Path,
-    box,
+    box: Box,
     sha256: str | None = None,
     size: int = 200,
     rotate: int = 0,

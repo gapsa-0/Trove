@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
+
 from ..config import Config
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("gui", help="Launch the local web UI (standalone window)")
     sp.add_argument("--port", type=int, default=8756, help="Port (default 8756)")
     sp.add_argument(
@@ -15,7 +17,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     from ..web import launcher
     from ..web.server import serve
 

@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("dates", help="Show files-per-year and date-source summary")
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init  then  oa scan")
         return 1

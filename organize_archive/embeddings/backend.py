@@ -30,10 +30,33 @@ import os
 import tempfile
 import threading
 import urllib.request
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .. import model_manifest
 from ..errors import ModelUnavailableError
+
+if TYPE_CHECKING:
+    # Both are imported lazily inside the functions that need them, so a
+    # catalogue that never searches pays nothing; the checker still wants the
+    # real names.
+    from PIL.Image import Image as PILImage
+    from tokenizers import Tokenizer
+
+# onnxruntime ships no type information, so a session is `Any` to the checker
+# whatever we call it. Naming it keeps the signatures below saying what they
+# hold instead of shrugging -- the alias is documentation, not enforcement.
+Session = Any
+
+# What a caller passes to watch a one-time model download: `load_vision(log=...)`
+# is how the GUI puts "downloading …" on the semantic card.
+Log = Callable[[str], None]
+
+# Anything _open() can turn into pixels: a path, a decoded PIL image, or an HWC
+# uint8 array. Deliberately not narrowed -- the three arrive from three
+# different callers and _open dispatches on the type it actually got.
+ImageInput = Any
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +67,11 @@ except Exception:  # pragma: no cover - optional dep
     # ImportError (e.g. a missing shared library surfaces as OSError).
     # Running without this optional dependency is supported, so DEBUG only.
     logger.debug("numpy import failed; embeddings backend will report unavailable", exc_info=True)
-    np = None
+    # A runtime sentinel, not a second type for `np`: every use below is reached
+    # only after available() has confirmed the import succeeded, so the module
+    # type is the true one everywhere it matters. Silencing this keeps the
+    # `np.ndarray` annotations throughout the file checked against real numpy.
+    np = None  # type: ignore[assignment]
 
 # Identity of the vector space `semantic_embeddings` holds. Recorded per row via
 # services/semantic.py's INDEXER_VERSION; when it stops matching, every stored vector
@@ -133,7 +160,7 @@ def models_dir(cache_dir: str) -> Path:
     return Path(cache_dir) / "models" / MODELS_SUBDIR
 
 
-def _present(cache_dir: str, names) -> bool:
+def _present(cache_dir: str, names: Iterable[str]) -> bool:
     d = models_dir(cache_dir)
     return all((d / n).is_file() and (d / n).stat().st_size == _FILES[n][1] for n in names)
 
@@ -166,7 +193,7 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _fetch(name: str, dest: Path, log=None) -> None:
+def _fetch(name: str, dest: Path, log: Log | None = None) -> None:
     """Download one file, verify size + SHA-256, then rename into place.
 
     Atomic (temp + rename) so an interrupted download never leaves a truncated
@@ -202,7 +229,9 @@ def _fetch(name: str, dest: Path, log=None) -> None:
             os.remove(tmp)
 
 
-def ensure_models(cache_dir: str, names=None, log=None) -> Path:
+def ensure_models(
+    cache_dir: str, names: Iterable[str] | None = None, log: Log | None = None
+) -> Path:
     """Download the requested weights once. Returns the models directory.
 
     ``names`` defaults to everything; pass ``_VISION_FILES`` or ``_TEXT_FILES``
@@ -218,7 +247,7 @@ def ensure_models(cache_dir: str, names=None, log=None) -> Path:
     return d
 
 
-def _session(path: Path, threads: int):
+def _session(path: Path, threads: int) -> Session:
     """One onnxruntime CPU session, with the thread cap the caller asked for."""
     import onnxruntime as ort
 
@@ -292,13 +321,13 @@ class SiglipBackend:
         # semantic card blank through a 372 MB download. It is a per-call
         # argument of load_vision/load_text instead, like every other backend
         # here passes `log` into its own ensure_models.
-        self._vision = None
-        self._vision_in = None
-        self._vision_out = None
-        self._text = None
-        self._text_in = None
-        self._text_out = None
-        self._tokenizer = None
+        self._vision: Session | None = None
+        self._vision_in: str | None = None
+        self._vision_out: int | None = None
+        self._text: Session | None = None
+        self._text_in: str | None = None
+        self._text_out: int | None = None
+        self._tokenizer: Tokenizer | None = None
         # Loading is the only part that races. The GUI serves searches from a
         # ThreadingHTTPServer and warms the text tower on a background thread at
         # startup, so two threads really can reach load_text() at once; without
@@ -309,7 +338,7 @@ class SiglipBackend:
 
     # -- lazy session loading ---------------------------------------------
     @staticmethod
-    def _pooler_index(session) -> int:
+    def _pooler_index(session: Session) -> int:
         """Where the embedding is among the session's outputs.
 
         Read from the graph rather than hardcoded: these exports call it
@@ -320,7 +349,7 @@ class SiglipBackend:
         names = [o.name for o in session.get_outputs()]
         return names.index("pooler_output") if "pooler_output" in names else 0
 
-    def load_vision(self, log=None):
+    def load_vision(self, log: Log | None = None) -> Session:
         if self._vision is None:
             with self._lock:
                 if self._vision is None:
@@ -331,7 +360,7 @@ class SiglipBackend:
                     self._vision = session
         return self._vision
 
-    def load_text(self, log=None):
+    def load_text(self, log: Log | None = None) -> Session:
         if self._text is None:
             with self._lock:
                 if self._text is None:
@@ -351,19 +380,19 @@ class SiglipBackend:
 
     # -- preprocessing -----------------------------------------------------
     @staticmethod
-    def _pixels(image) -> np.ndarray:
+    def _pixels(image: PILImage) -> np.ndarray:
         """One PIL image -> ``(3, 256, 256)`` float32 in ``[-1, 1]``."""
         from PIL import Image
 
         if image.mode != "RGB":
             image = image.convert("RGB")
         if image.size != (IMAGE_SIZE, IMAGE_SIZE):
-            image = image.resize((IMAGE_SIZE, IMAGE_SIZE), Image.BILINEAR)
+            image = image.resize((IMAGE_SIZE, IMAGE_SIZE), Image.Resampling.BILINEAR)
         x = np.asarray(image, dtype=np.float32) / 255.0
         x = (x - 0.5) / 0.5
         return np.ascontiguousarray(x.transpose(2, 0, 1))
 
-    def _open(self, item) -> np.ndarray:
+    def _open(self, item: ImageInput) -> np.ndarray:
         from PIL import Image
 
         if isinstance(item, (str, Path)):
@@ -379,16 +408,23 @@ class SiglipBackend:
 
     def _tokenize(self, texts: list[str]) -> np.ndarray:
         self.load_text()
-        encoded = self._tokenizer.encode_batch([t.lower() for t in texts])
+        tokenizer = self._tokenizer
+        if tokenizer is None:  # pragma: no cover - load_text() sets it or raises
+            raise ModelUnavailableError("the text tower loaded without its tokenizer")
+        encoded = tokenizer.encode_batch([t.lower() for t in texts])
         return np.asarray([e.ids for e in encoded], dtype=np.int64)
 
     # -- embedding ---------------------------------------------------------
     @staticmethod
     def _normalize(vectors: np.ndarray) -> np.ndarray:
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        return np.divide(vectors, norms, out=np.zeros_like(vectors), where=norms > 0)
+        # Annotated rather than returned directly: numpy types the out=/where=
+        # overload of divide as Any, and warn_return_any would let that Any
+        # straight back out through a signature that promises an ndarray.
+        unit: np.ndarray = np.divide(vectors, norms, out=np.zeros_like(vectors), where=norms > 0)
+        return unit
 
-    def embed_images(self, items) -> np.ndarray:
+    def embed_images(self, items: Iterable[ImageInput]) -> np.ndarray:
         """Paths / PIL images / HWC uint8 arrays -> ``(N, 768)`` unit vectors.
 
         Batching buys nothing measurable on this CPU (a batch of 4 costs 4x a
@@ -403,7 +439,7 @@ class SiglipBackend:
         out = session.run(None, {self._vision_in: batch})[self._vision_out]
         return self._normalize(np.asarray(out, dtype=np.float32))
 
-    def embed_texts(self, texts) -> np.ndarray:
+    def embed_texts(self, texts: Iterable[str]) -> np.ndarray:
         """Query strings -> ``(N, 768)`` unit vectors in the image space."""
         texts = list(texts)
         if not texts:
@@ -413,7 +449,7 @@ class SiglipBackend:
         out = session.run(None, {self._text_in: ids})[self._text_out]
         return self._normalize(np.asarray(out, dtype=np.float32))
 
-    def embed_frames_mean(self, items) -> np.ndarray | None:
+    def embed_frames_mean(self, items: Iterable[ImageInput]) -> np.ndarray | None:
         """One vector for a video: the mean of its sampled frames, renormalised.
 
         Averaging unit vectors and normalising again is the standard way to pool

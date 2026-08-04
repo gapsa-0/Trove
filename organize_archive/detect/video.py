@@ -13,10 +13,16 @@ sampled frame arrives upright by construction and a video never gets an
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Callable
+from pathlib import Path
+
 from .. import thumbnails
 from ..config import Config
+from ..faces.backend import Face, FaceBackend
+from ..pets.backend import PetBackend
 from .frame import detect_on, load_bgr
-from .results import FileResult
+from .results import DetectStats, FileResult, Found
 
 # -- video sampling ----------------------------------------------------------
 # Frames sampled per video and where in the clip: evenly spread but pulled in
@@ -43,7 +49,7 @@ def _format_offset(secs: float) -> str:
     return f"{int(h):02d}:{int(m):02d}:{s:06.3f}"
 
 
-def video_offsets(duration_s, n: int) -> list[str]:
+def video_offsets(duration_s: float | None, n: int) -> list[str]:
     """ffmpeg ``-ss`` offsets for up to ``n`` frames spread across a video.
 
     Mirrors ``services.semantic._video_frame_offsets``: falls back to one fixed
@@ -54,15 +60,19 @@ def video_offsets(duration_s, n: int) -> list[str]:
     """
     if n <= 0:
         return []
+    # duration_s comes straight from a media_meta column: None when enrich has
+    # not run yet, and not guaranteed numeric even when it has. Coercing inside
+    # the try IS the check -- the ignore is for the None the except catches.
     try:
-        duration_s = float(duration_s)
+        duration = float(duration_s)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        duration_s = 0.0
-    if duration_s <= 0:
+        duration = 0.0
+    if duration <= 0:
         return ["00:00:01"]
-    offsets, seen = [], set()
+    offsets: list[str] = []
+    seen: set[str] = set()
     for frac in _video_frame_fractions(n):
-        text = _format_offset(min(duration_s * frac, max(0.0, duration_s - 0.05)))
+        text = _format_offset(min(duration * frac, max(0.0, duration - 0.05)))
         if text not in seen:
             seen.add(text)
             offsets.append(text)
@@ -77,12 +87,15 @@ def video_offsets(duration_s, n: int) -> list[str]:
 # from whichever frame gave the best-quality read of them.
 
 
-def _best_face_quality(face) -> float:
+def _best_face_quality(face: Face) -> float:
     # quality_score is the aligned-crop focus/exposure measure (0-1); det_score
     # (`.score`) is the fallback when it isn't populated (defensive -- the real
     # Face dataclass always sets it, but keeps this helper usable on stand-ins).
     q = getattr(face, "quality_score", None)
-    return q if q else face.score
+    # Annotated rather than returned directly: getattr is Any, and
+    # warn_return_any would let that out through a signature promising a float.
+    best: float = q if q else face.score
+    return best
 
 
 def collapse_video_faces(entries: list[tuple], threshold: float) -> list[tuple]:
@@ -145,7 +158,14 @@ def collapse_video_animals(entries: list[tuple], threshold: float) -> list[tuple
     return [(a, o) for a, o in kept]
 
 
-def _accumulate_frame(found, result: FileResult, stats, offset, raw_faces, raw_animals) -> None:
+def _accumulate_frame(
+    found: Found,
+    result: FileResult,
+    stats: DetectStats,
+    offset: str,
+    raw_faces: list[tuple],
+    raw_animals: list[tuple],
+) -> None:
     """Fold one sampled frame's findings into the running per-file totals."""
     result.report.candidates += found.report.candidates
     for reason, n in found.report.rejected.items():
@@ -156,7 +176,16 @@ def _accumulate_frame(found, result: FileResult, stats, offset, raw_faces, raw_a
     raw_animals.extend((a, offset) for a in found.animals)
 
 
-def detect_video(path, cfg: Config, cache_dir, row, face_be, pet_be, stats, commit_if_due):
+def detect_video(
+    path: Path,
+    cfg: Config,
+    cache_dir: str,
+    row: sqlite3.Row,
+    face_be: FaceBackend | None,
+    pet_be: PetBackend | None,
+    stats: DetectStats,
+    commit_if_due: Callable[..., None],
+) -> FileResult:
     """Sample a video's frames, detect on each, and collapse repeats across them.
 
     ``stats`` is updated per frame directly (not returned and added by the
@@ -165,7 +194,9 @@ def detect_video(path, cfg: Config, cache_dir, row, face_be, pet_be, stats, comm
     """
     fid = row["id"]
     result = FileResult()
-    raw_faces, raw_animals = [], []
+    # (detection, offset) pairs, the shape collapse_video_* takes.
+    raw_faces: list[tuple] = []
+    raw_animals: list[tuple] = []
     for offset in video_offsets(row["duration_s"], cfg.detect_video_frames):
         frame_path = thumbnails.detect_frame_for(
             cache_dir, fid, path, offset, cfg.detect_video_frame_px, sha256=row["sha256"]

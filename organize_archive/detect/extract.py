@@ -51,23 +51,33 @@ and ``persist.py`` (writing a file's rows).
 from __future__ import annotations
 
 import logging
+import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..config import Config
 from ..db import database as db
 from ..errors import ModelUnavailableError
 from ..faces import backend as face_backend
 from ..faces import fiqa
+from ..faces.backend import FaceBackend
 from ..pets import backend as pet_backend
+from ..pets.backend import Log, PetBackend
 from ..pets.extract import scan_source as pet_scan_source
+from ..progress import Progress
 from .frame import detect_on, load_bgr
 from .geometry import rotate_image
 from .orientation import resolve_rotation
 from .persist import rewrite_file_detections, write_scan_markers
-from .results import DetectStats, FileResult
+from .results import DetectStats, FileResult, Found
 from .video import detect_video
+
+if TYPE_CHECKING:
+    # numpy is optional and only reached through the backends; this is the name
+    # the decoded-frame annotations use.
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +102,9 @@ def _pending_where(cfg: Config) -> str:
     """
 
 
-def image_count(conn, cfg: Config | None = None, root_id: int | None = None) -> int:
+def image_count(
+    conn: sqlite3.Connection, cfg: Config | None = None, root_id: int | None = None
+) -> int:
     """Total present, canonical (non-duplicate) media the stage counts.
 
     ``cfg`` is optional so old call sites keep working, but pass it: without
@@ -103,29 +115,31 @@ def image_count(conn, cfg: Config | None = None, root_id: int | None = None) -> 
     media_types = _media_types(cfg) if cfg is not None else "('image')"
     rc = " AND f.root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
-    return conn.execute(
+    n: int = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             WHERE f.present=1 AND f.media_type IN {media_types} AND f.hidden=0{rc}""",
         params,
     ).fetchone()[0]
+    return n
 
 
-def pending_count(conn, cfg: Config, root_id: int | None = None) -> int:
+def pending_count(conn: sqlite3.Connection, cfg: Config, root_id: int | None = None) -> int:
     """Present canonical media missing a current face OR pet scan."""
     rc = " AND f.root_id=:root" if root_id is not None else ""
     p: dict[str, Any] = {"pet_src": pet_scan_source(cfg)}
     if root_id is not None:
         p["root"] = root_id
-    return conn.execute(
+    n: int = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
             WHERE {_pending_where(cfg)}{rc}""",
         p,
     ).fetchone()[0]
+    return n
 
 
-def _pending(conn, cfg: Config, batch_size: int):
+def _pending(conn: sqlite3.Connection, cfg: Config, batch_size: int) -> list[sqlite3.Row]:
     return conn.execute(
         f"""SELECT f.id, f.rel_path, f.sha256, f.media_type, r.path AS root_path,
                    mm.duration_s, (fs.file_id IS NULL) AS need_face
@@ -155,8 +169,8 @@ class Backends:
     the error that stops the stage can quote them (see ``_prepare_backends``).
     """
 
-    face: Any = None
-    pet: Any = None
+    face: FaceBackend | None = None
+    pet: PetBackend | None = None
     problems: tuple[str, ...] = ()
 
     def require(self) -> None:
@@ -170,7 +184,7 @@ class Backends:
             raise ModelUnavailableError(f"detect backend unavailable — {detail}")
 
 
-def _unavailable(kind: str, exc: Exception, log, problems: list[str]) -> None:
+def _unavailable(kind: str, exc: Exception, log: Log | None, problems: list[str]) -> None:
     """Record one detector's failure without taking the other one down."""
     message = f"{kind} detection unavailable: {exc}"
     problems.append(message)
@@ -179,7 +193,7 @@ def _unavailable(kind: str, exc: Exception, log, problems: list[str]) -> None:
     logger.warning("%s detection unavailable", kind, exc_info=True)
 
 
-def make_backends(cfg: Config, log=None) -> Backends:
+def make_backends(cfg: Config, log: Log | None = None) -> Backends:
     """Build whichever detectors are available (loads the ONNX models once).
 
     Either backend may be None when its optional deps or models are missing, so
@@ -187,7 +201,8 @@ def make_backends(cfg: Config, log=None) -> Backends:
     the whole pass.
     """
     problems: list[str] = []
-    face_be = pet_be = None
+    face_be: FaceBackend | None = None
+    pet_be: PetBackend | None = None
     want_face = face_backend.available()
     want_pet = pet_backend.available()
     # Both preflights run BEFORE either constructor, and neither touches the
@@ -241,7 +256,14 @@ def make_backends(cfg: Config, log=None) -> Backends:
     return Backends(face_be, pet_be, tuple(problems))
 
 
-def _fix_sideways_photo(img, scale, found, cfg, face_be, pet_be):
+def _fix_sideways_photo(
+    img: np.ndarray,
+    scale: float,
+    found: Found,
+    cfg: Config,
+    face_be: FaceBackend | None,
+    pet_be: PetBackend | None,
+) -> tuple[Found, int, float, str]:
     """Is this photo stored sideways?
 
     Someone/something is here but no face resolved: that is the signature of
@@ -262,7 +284,9 @@ def _fix_sideways_photo(img, scale, found, cfg, face_be, pet_be):
     return found, rotate, conf, orient_src
 
 
-def _detect_photo(path, cfg, face_be, pet_be) -> FileResult:
+def _detect_photo(
+    path: Path, cfg: Config, face_be: FaceBackend | None, pet_be: PetBackend | None
+) -> FileResult:
     """Decode one image and detect on it, self-correcting orientation if needed."""
     img, scale = load_bgr(str(path), cfg.detect_max_side)
     found = detect_on(img, scale, cfg, face_be, pet_be)
@@ -279,7 +303,14 @@ def _detect_photo(path, cfg, face_be, pet_be) -> FileResult:
     )
 
 
-def _prepare_backends(conn, cfg: Config, progress, limit, face_be, pet_be):
+def _prepare_backends(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    progress: Progress | None,
+    limit: int | None,
+    face_be: FaceBackend | None,
+    pet_be: PetBackend | None,
+) -> tuple[FaceBackend | None, PetBackend | None]:
     """Load whichever detectors weren't already provided, and size the run."""
     if not available():
         raise ModelUnavailableError("detect backend unavailable (needs faces and/or pets)")
@@ -303,7 +334,7 @@ def _prepare_backends(conn, cfg: Config, progress, limit, face_be, pet_be):
     return face_be, pet_be
 
 
-def _make_committer(conn):
+def _make_committer(conn: sqlite3.Connection) -> Callable[..., None]:
     """Build a callable that commits ``conn`` at most once every 2 seconds.
 
     ``force=True`` commits unconditionally and resets the clock either way --
@@ -313,7 +344,7 @@ def _make_committer(conn):
 
     last = _time.monotonic()
 
-    def commit_if_due(force: bool = False):
+    def commit_if_due(force: bool = False) -> None:
         nonlocal last
         if force or (_time.monotonic() - last) >= 2:
             conn.commit()
@@ -322,7 +353,9 @@ def _make_committer(conn):
     return commit_if_due
 
 
-def _finish_row(stats: DetectStats, progress, result: FileResult, path):
+def _finish_row(
+    stats: DetectStats, progress: Progress | None, result: FileResult, path: Path
+) -> None:
     """Roll one file's outcome into the run's stats and progress reporting."""
     n_faces = len(result.face_hits)
     n_animals = len(result.animal_hits)
@@ -342,7 +375,13 @@ def _finish_row(stats: DetectStats, progress, result: FileResult, path):
         progress.update(stats.processed, 0, path.name)
 
 
-def _maybe_bootstrap_fiqa(conn, cfg: Config, face_be, stats, progress):
+def _maybe_bootstrap_fiqa(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    face_be: FaceBackend | None,
+    stats: DetectStats,
+    progress: Progress | None,
+) -> None:
     # Once enough feature norms exist, fix the FIQA calibration and tier the
     # backlog that was extracted before it. A no-op on every later batch
     # (one indexed lookup), so the archive is calibrated exactly once and a
@@ -368,15 +407,15 @@ class _Run:
 
     cfg: Config
     cache_dir: str
-    face_be: object
-    pet_be: object
+    face_be: FaceBackend | None
+    pet_be: PetBackend | None
     stats: DetectStats
-    commit_if_due: object
+    commit_if_due: Callable[..., None]
     now: str
     pet_src: str
 
 
-def _detect_one(run: _Run, row, path) -> FileResult:
+def _detect_one(run: _Run, row: sqlite3.Row, path: Path) -> FileResult:
     """Detect one pending file, photo or video, folding in its per-file stats."""
     if row["media_type"] == "video":
         run.stats.videos += 1
@@ -391,7 +430,9 @@ def _detect_one(run: _Run, row, path) -> FileResult:
     return result
 
 
-def _process_file(conn, run: _Run, row, progress) -> None:
+def _process_file(
+    conn: sqlite3.Connection, run: _Run, row: sqlite3.Row, progress: Progress | None
+) -> None:
     """Detect one file, write its rows, and mark it scanned either way."""
     fid = row["id"]
     path = Path(row["root_path"]) / row["rel_path"]
@@ -416,14 +457,14 @@ def _process_file(conn, run: _Run, row, progress) -> None:
 
 
 def extract(
-    conn,
+    conn: sqlite3.Connection,
     cfg: Config,
     *,
-    progress=None,
+    progress: Progress | None = None,
     batch_size: int = 32,
     limit: int | None = None,
-    face_be=None,
-    pet_be=None,
+    face_be: FaceBackend | None = None,
+    pet_be: PetBackend | None = None,
     cache_dir: str | None = None,
 ) -> DetectStats:
     """Detect people + animals for pending images/videos in one decode each.

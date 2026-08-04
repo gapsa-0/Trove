@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from ..config import Config
@@ -10,7 +11,7 @@ from ._common import _fmt_bytes
 from .progress import ScanProgress
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser(
         "dedup", help="Group exact duplicates and visually identical image variants"
     )
@@ -18,7 +19,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     from ..dedup import exact
 
     if not Path(cfg.db_path).exists():

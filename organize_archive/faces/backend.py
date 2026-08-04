@@ -35,11 +35,18 @@ import shutil
 import tempfile
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .. import model_manifest
 from ..errors import ModelUnavailableError
+
+if TYPE_CHECKING:
+    # fiqa imports Log from here, so the dependency can only go one way at
+    # runtime; the assessor type is needed for the constructor's signature.
+    from .fiqa import QualityAssessor
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +59,21 @@ except Exception:  # pragma: no cover - optional dep
     # below is the single source of truth for "faces works here"; log at DEBUG
     # only, since running without this optional dependency is supported.
     logger.debug("cv2/numpy import failed; face backend will report unavailable", exc_info=True)
-    cv2 = None
-    np = None
+    # Runtime sentinels, not a second type for either name: every use below is
+    # reached only past `available()`, so the checker keeps grading this file
+    # against the real cv2 and numpy rather than against `Any`.
+    cv2 = None  # type: ignore[assignment]
+    np = None  # type: ignore[assignment]
+
+# onnxruntime and insightface ship no type information, so a session or a
+# detector is `Any` to the checker whatever we call it. Naming them keeps the
+# signatures below saying what they hold instead of shrugging -- the aliases
+# are documentation, not enforcement.
+Session = Any
+Detector = Any
+
+# What a caller passes to watch a one-time model download.
+Log = Callable[[str], None]
 
 # buffalo_l bundles five ONNX models in one zip; we only need the DETECTOR now
 # (embedding is AdaFace, below). Fetched once from the insightface release,
@@ -156,7 +176,7 @@ def _detector_ready(cache_dir: str) -> bool:
     )
 
 
-def ensure_models(cache_dir: str, log=None) -> Path:
+def ensure_models(cache_dir: str, log: Log | None = None) -> Path:
     """Download the buffalo_l pack once and extract the detector ONNX we use.
 
     Atomic per file (temp + rename) so an interrupted extract never leaves a
@@ -258,7 +278,7 @@ class FaceQuality:
     quality_score: float
 
 
-def measure_face_quality(aligned_bgr, min_focus: float) -> FaceQuality:
+def measure_face_quality(aligned_bgr: np.ndarray, min_focus: float) -> FaceQuality:
     """Measure an aligned 112px crop using deterministic local image metrics.
 
     Advisory only now (SCRFD confidence is the primary filter): these values are
@@ -311,10 +331,10 @@ class FaceBackend:
         min_focus: float = 35.0,
         max_extreme_fraction: float = 0.80,
         quality_version: str = "opencv-laplacian-v1",
-        assessor=None,
-        log=None,
-        **_ignored,
-    ):
+        assessor: QualityAssessor | None = None,
+        log: Log | None = None,
+        **_ignored: Any,
+    ) -> None:
         if not available():
             raise ModelUnavailableError(
                 "face backend unavailable; install the 'faces' extra "
@@ -343,7 +363,7 @@ class FaceBackend:
         )
         self._ada = self._load_adaface(ada_path)
 
-    def _load_adaface(self, model_path: Path):
+    def _load_adaface(self, model_path: Path) -> Session:
         """Open the self-exported AdaFace ONNX session.
 
         Deliberately fails loudly rather than falling back to another embedder:
@@ -359,7 +379,7 @@ class FaceBackend:
         so.intra_op_num_threads = os.cpu_count() or 4
         return ort.InferenceSession(str(model_path), so, providers=["CPUExecutionProvider"])
 
-    def _embed(self, aligned_bgr):
+    def _embed(self, aligned_bgr: np.ndarray) -> tuple[np.ndarray, float] | None:
         """112x112 aligned BGR crop -> (unit vector, raw norm), or None.
 
         The raw pre-normalization norm is returned alongside the unit vector
@@ -383,7 +403,7 @@ class FaceBackend:
         return None if n == 0.0 else (feat / n, norm)
 
     # -- image loading ----------------------------------------------------
-    def load_bgr(self, path: str):
+    def load_bgr(self, path: str) -> tuple[np.ndarray, float]:
         """(bgr_array, scale) where scale = detected_size / original_size ≤ 1.
 
         Loads via Pillow (so HEIC and EXIF orientation are handled, matching the
@@ -404,8 +424,11 @@ class FaceBackend:
             # than ImportError. Silent on purpose: this runs on every image load,
             # and "HEIC unsupported" is not worth flagging per file.
             pass
-        with Image.open(path) as im:
-            orig_side = max(im.size)  # true on-disk size, before draft() shrinks it
+        # Two names, because they are two types: `opened` is the ImageFile the
+        # decoder hands back (only it has draft()), `im` the plain Image every
+        # later step works on.
+        with Image.open(path) as opened:
+            orig_side = max(opened.size)  # true on-disk size, before draft() shrinks it
             # draft() lets libjpeg downscale in the DCT domain while decoding a
             # JPEG (by 1/2, 1/4, 1/8) — a ~3-4x speedup on load. Must run before
             # any pixel access (i.e. before exif_transpose). No-op for non-JPEG.
@@ -413,12 +436,12 @@ class FaceBackend:
             # based on `orig_side` captured above to keep boxes mapping back to
             # true original pixels regardless of what draft() did.
             try:
-                im.draft("RGB", (self.max_side, self.max_side))
+                opened.draft("RGB", (self.max_side, self.max_side))
             except Exception:
                 # Best-effort speedup only; fall back to a full decode below
                 # rather than aborting the whole file over a draft-only failure.
                 pass
-            im = ImageOps.exif_transpose(im).convert("RGB")
+            im = ImageOps.exif_transpose(opened).convert("RGB")
             w, h = im.size
             resize_scale = min(1.0, self.max_side / max(w, h)) if max(w, h) else 1.0
             if resize_scale < 1.0:
@@ -439,7 +462,7 @@ class FaceBackend:
         inside_h = max(0.0, min(y + h, image_h) - max(y, 0.0))
         return max(0.0, min(1.0, 1.0 - (inside_w * inside_h / area)))
 
-    def probe_faces(self, img_bgr) -> list[float]:
+    def probe_faces(self, img_bgr: np.ndarray) -> list[float]:
         """Face confidences only — no alignment, no embedding.
 
         For comparing the same photo at several rotations, where only "which way
@@ -452,7 +475,7 @@ class FaceBackend:
         return [float(b[4]) for b in bboxes]
 
     def detect_report(
-        self, img_bgr, scale: float = 1.0, *, apply_quality_gate: bool = True
+        self, img_bgr: np.ndarray, scale: float = 1.0, *, apply_quality_gate: bool = True
     ) -> DetectionReport:
         """Detect + embed faces in a preloaded BGR image.
 
@@ -520,7 +543,7 @@ class FaceBackend:
             report.faces.append(face)
         return report
 
-    def detect(self, img_bgr, scale: float = 1.0) -> list[Face]:
+    def detect(self, img_bgr: np.ndarray, scale: float = 1.0) -> list[Face]:
         """Compatibility wrapper returning only accepted faces."""
         return self.detect_report(img_bgr, scale).faces
 

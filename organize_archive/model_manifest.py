@@ -41,10 +41,14 @@ import os
 import tempfile
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 from . import runtime
 from .errors import ModelUnavailableError
+
+# What a caller passes to watch a one-time model download.
+Log = Callable[[str], None]
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +64,9 @@ SCHEMA_VERSION = 1
 _REQUIRED_TEXT_KEYS = ("name", "file", "sha256", "source", "license")
 
 
-def download_progress(log, label: str, total: int, *, interval: float = 1.0):
+def download_progress(
+    log: Log | None, label: str, total: int, *, interval: float = 1.0
+) -> Callable[[int, int, int], None] | None:
     """A ``urlretrieve`` reporthook that reports percent complete through ``log``.
 
     Since the weights stopped travelling inside the installer, first run fetches
@@ -178,7 +184,10 @@ def entry(name: str) -> dict:
 
 def cache_path(name: str, cache_dir: str) -> Path:
     """Where a downloaded copy lives: ``<cache_dir>/models/<file>``."""
-    return Path(cache_dir) / "models" / entry(name)["file"]
+    # Annotated rather than returned directly: a manifest entry is parsed JSON,
+    # so its values are Any and warn_return_any would let one out as a Path.
+    path: Path = Path(cache_dir) / "models" / entry(name)["file"]
+    return path
 
 
 def present(name: str, cache_dir: str) -> Path | None:
@@ -248,7 +257,7 @@ def missing_reason(name: str, cache_dir: str, *, feature: str) -> str | None:
     )
 
 
-def ensure(name: str, cache_dir: str, log=None) -> Path:
+def ensure(name: str, cache_dir: str, log: Log | None = None) -> Path:
     """Resolve ``name``, downloading it once if that is the only source left.
 
     Atomic (temp + rename) so an interrupted download never leaves a truncated

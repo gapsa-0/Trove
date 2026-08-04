@@ -41,11 +41,13 @@ never needs re-embedding, because `faces.fiqa_norm` keeps the raw value.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
 from ..config import Config
 from ..db import database as db
+from .backend import Log
 
 HIGH = "HIGH"
 BORDERLINE = "BORDERLINE"
@@ -53,7 +55,13 @@ LOW_QUALITY = "LOW_QUALITY"
 TIERS = (HIGH, BORDERLINE, LOW_QUALITY)
 
 
-def _field(face: Any, name: str) -> float:
+# What a scorer accepts: a live ``backend.Face`` or a stored ``faces`` row.
+# The two have no common supertype -- one exposes attributes, the other only
+# subscripts -- so ``_field`` below is what actually reconciles them.
+FaceLike = Any
+
+
+def _field(face: FaceLike, name: str) -> float:
     """One quality field, from either a live Face or a stored ``faces`` row.
 
     Both shapes reach the scorers: ``backend.Face`` (attributes) when a face is
@@ -83,11 +91,11 @@ class QualityAssessor:
 
     model = "base"
 
-    def __init__(self, *, high: float, low: float):
+    def __init__(self, *, high: float, low: float) -> None:
         self.high = high
         self.low = low
 
-    def score(self, face) -> float:  # pragma: no cover - interface
+    def score(self, face: FaceLike) -> float:  # pragma: no cover - interface
         raise NotImplementedError
 
     def tier(self, score: float) -> str:
@@ -118,13 +126,13 @@ class AdaFaceNormFIQA(QualityAssessor):
     harshly, larger h makes the score gentler.
     """
 
-    def __init__(self, calibration: Calibration, *, h: float, high: float, low: float):
+    def __init__(self, calibration: Calibration, *, h: float, high: float, low: float) -> None:
         super().__init__(high=high, low=low)
         self.calibration = calibration
         self.model = calibration.model
         self.h = h if h > 0 else 0.33
 
-    def score(self, face) -> float:
+    def score(self, face: FaceLike) -> float:
         return self.score_norm(_field(face, "fiqa_norm"))
 
     def score_norm(self, norm: float) -> float:
@@ -149,7 +157,7 @@ class CompositeFIQA(QualityAssessor):
 
     model = "composite-v1"
 
-    def score(self, face) -> float:
+    def score(self, face: FaceLike) -> float:
         det = _field(face, "score")
         # quality_score is already focus x exposure, normalized 0..1.
         local = _field(face, "quality_score")
@@ -174,17 +182,17 @@ class UncalibratedFIQA(QualityAssessor):
 
     model = "uncalibrated"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(high=1.1, low=-0.1)  # nothing reaches either bound
 
-    def score(self, face) -> float:
+    def score(self, face: FaceLike) -> float:
         return 0.5
 
 
 # -- calibration storage --------------------------------------------------
 
 
-def load_calibration(conn, model: str) -> Calibration | None:
+def load_calibration(conn: sqlite3.Connection, model: str) -> Calibration | None:
     row = conn.execute(
         "SELECT model, mean, std, n_faces FROM fiqa_calibration WHERE model=?", (model,)
     ).fetchone()
@@ -193,7 +201,7 @@ def load_calibration(conn, model: str) -> Calibration | None:
     return Calibration(model=row["model"], mean=row["mean"], std=row["std"], n_faces=row["n_faces"])
 
 
-def save_calibration(conn, calibration: Calibration) -> None:
+def save_calibration(conn: sqlite3.Connection, calibration: Calibration) -> None:
     conn.execute(
         """INSERT INTO fiqa_calibration(model, mean, std, n_faces, updated_at)
            VALUES(?,?,?,?,?)
@@ -204,7 +212,7 @@ def save_calibration(conn, calibration: Calibration) -> None:
     )
 
 
-def make_assessor(conn, cfg: Config) -> QualityAssessor:
+def make_assessor(conn: sqlite3.Connection, cfg: Config) -> QualityAssessor:
     """The assessor to score new faces with, given what the DB already knows."""
     calibration = load_calibration(conn, cfg.faces_fiqa_model)
     if calibration is None:
@@ -214,7 +222,9 @@ def make_assessor(conn, cfg: Config) -> QualityAssessor:
     )
 
 
-def compute_calibration(conn, cfg: Config, limit: int | None = None) -> Calibration | None:
+def compute_calibration(
+    conn: sqlite3.Connection, cfg: Config, limit: int | None = None
+) -> Calibration | None:
     """Mean/std of the stored raw norms, over at most ``limit`` faces.
 
     Hidden and user-rejected faces are excluded so the statistics describe the
@@ -242,7 +252,7 @@ def compute_calibration(conn, cfg: Config, limit: int | None = None) -> Calibrat
     )
 
 
-def retier_all(conn, cfg: Config) -> dict[str, int]:
+def retier_all(conn: sqlite3.Connection, cfg: Config) -> dict[str, int]:
     """Re-score and re-tier every face from its STORED raw norm.
 
     No re-embedding: that is the whole reason `faces.fiqa_norm` is a column. Used
@@ -257,7 +267,7 @@ def retier_all(conn, cfg: Config) -> dict[str, int]:
     )
     fallback = CompositeFIQA(high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low)
     counts = dict.fromkeys(TIERS, 0)
-    updates = []
+    updates: list[tuple[float, str, str, int]] = []
     for row in conn.execute(
         """SELECT id, fiqa_norm, det_score AS score, quality_score,
                       clipped_fraction, box_w AS w, box_h AS h FROM faces"""
@@ -276,7 +286,9 @@ def retier_all(conn, cfg: Config) -> dict[str, int]:
     return counts
 
 
-def bootstrap_calibration(conn, cfg: Config, log=None) -> Calibration | None:
+def bootstrap_calibration(
+    conn: sqlite3.Connection, cfg: Config, log: Log | None = None
+) -> Calibration | None:
     """Fix the calibration once enough norms exist, then tier the backlog.
 
     Called after each extraction batch. A no-op once `fiqa_calibration` holds a
@@ -304,7 +316,7 @@ def bootstrap_calibration(conn, cfg: Config, log=None) -> Calibration | None:
     return calibration
 
 
-def recalibrate(conn, cfg: Config, log=None) -> dict[str, int]:
+def recalibrate(conn: sqlite3.Connection, cfg: Config, log: Log | None = None) -> dict[str, int]:
     """Recompute the calibration from ALL stored norms and re-tier.
 
     The knob to reach for after changing `faces_fiqa_high` / `faces_fiqa_low` /

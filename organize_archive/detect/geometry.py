@@ -13,8 +13,34 @@ only place the two meet, and ``_rotate_boxes_back`` is its inverse for boxes.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Protocol
 
-def overlap_fraction(fx, fy, fw, fh, ax, ay, aw, ah) -> float:
+if TYPE_CHECKING:
+    import numpy as np
+
+    from ..pets.backend import HumanDetection
+
+
+class ScoredBox(Protocol):
+    """A detection with a box and a confidence.
+
+    Structural on purpose: faces.backend.Face, pets.backend.AnimalDetection and
+    pets.backend.HumanDetection all satisfy it and none of them know about each
+    other. Naming any one of them here would drag a detector import into a
+    module whose whole point is not needing one.
+    """
+
+    x: int
+    y: int
+    w: int
+    h: int
+    score: float
+
+
+def overlap_fraction(
+    fx: int, fy: int, fw: int, fh: int, ax: int, ay: int, aw: int, ah: int
+) -> float:
     """Fraction of the FIRST box that lies inside the second."""
     left = max(fx, ax)
     top = max(fy, ay)
@@ -24,7 +50,7 @@ def overlap_fraction(fx, fy, fw, fh, ax, ay, aw, ah) -> float:
     return inter / max(1, fw * fh)
 
 
-def iou(a, b) -> float:
+def iou(a: ScoredBox, b: ScoredBox) -> float:
     """Intersection over union of two boxes that expose .x/.y/.w/.h.
 
     IoU, not containment: two boxes only score high here when they describe the
@@ -38,7 +64,7 @@ def iou(a, b) -> float:
     return inter / max(1, union)
 
 
-def rotate_boxes_back(humans, k: int, w: int, h: int):
+def rotate_boxes_back(humans: Sequence[ScoredBox], k: int, w: int, h: int) -> list[HumanDetection]:
     """Map boxes found in a ``np.rot90(img, k)`` frame back to the upright one.
 
     ``k`` counts counter-clockwise quarter turns; ``w``/``h`` are the *upright*
@@ -48,7 +74,7 @@ def rotate_boxes_back(humans, k: int, w: int, h: int):
     """
     from ..pets.backend import HumanDetection
 
-    out = []
+    out: list[HumanDetection] = []
     for d in humans:
         if k == 1:
             x, y, bw, bh = w - (d.y + d.h), d.x, d.h, d.w
@@ -58,7 +84,7 @@ def rotate_boxes_back(humans, k: int, w: int, h: int):
     return out
 
 
-def human_boxes_on_turns(img, pet_be):
+def human_boxes_on_turns(img: np.ndarray, pet_be: Any) -> list[HumanDetection]:
     """Person boxes from both quarter-turns, mapped back to the upright frame.
 
     Only called for images that still hold an unvetoed animal box — a few
@@ -68,14 +94,23 @@ def human_boxes_on_turns(img, pet_be):
     import numpy as np
 
     h, w = img.shape[:2]
-    found = []
+    found: list[HumanDetection] = []
     for k in (1, 3):
         humans = pet_be.detect_humans(np.ascontiguousarray(np.rot90(img, k)))
         found.extend(rotate_boxes_back(humans, k, w, h))
     return found
 
 
-def drop_human_animals(animals, humans, min_iou: float, *, outscore=False):
+# Generic over the detection type, not over ScoredBox: the split gives back
+# exactly what it was handed, so a caller passing AnimalDetections gets
+# AnimalDetections back rather than the protocol.
+def drop_human_animals[Boxes: ScoredBox](
+    animals: Sequence[Boxes],
+    humans: Sequence[ScoredBox],
+    min_iou: float,
+    *,
+    outscore: bool = False,
+) -> tuple[list[Boxes], list[Boxes]]:
     """Split animal boxes into (real animals, boxes that are really people).
 
     ``outscore`` additionally requires the person box to read at least as
@@ -84,7 +119,8 @@ def drop_human_animals(animals, humans, min_iou: float, *, outscore=False):
     person from some angle — so a confident animal is left alone unless the
     person reading matches it.
     """
-    kept, human_like = [], []
+    kept: list[Boxes] = []
+    human_like: list[Boxes] = []
     for a in animals:
         if any(iou(a, p) >= min_iou and (not outscore or p.score >= a.score) for p in humans):
             human_like.append(a)
@@ -97,10 +133,11 @@ def drop_human_animals(animals, humans, min_iou: float, *, outscore=False):
 _TURNS = {90: 3, 180: 2, 270: 1}
 
 
-def rotate_image(img, deg: int):
+def rotate_image(img: np.ndarray, deg: int) -> np.ndarray:
     """Rotate a decoded array clockwise by 0/90/180/270 degrees."""
     if not deg:
         return img
     import numpy as np
 
-    return np.ascontiguousarray(np.rot90(img, _TURNS[deg]))
+    turned: np.ndarray = np.ascontiguousarray(np.rot90(img, _TURNS[deg]))
+    return turned

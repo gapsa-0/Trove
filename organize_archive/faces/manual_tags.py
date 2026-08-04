@@ -7,8 +7,10 @@ each pass.
 
 from __future__ import annotations
 
+import sqlite3
 
-def repair_manual_person_files(conn) -> None:
+
+def repair_manual_person_files(conn: sqlite3.Connection) -> None:
     """Re-point manual person_files rows onto whatever person id currently
     carries the stored name, after a re-cluster has rebuilt `persons`.
 

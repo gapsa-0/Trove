@@ -8,10 +8,12 @@ import logging
 import os
 import signal
 import threading
+from types import FrameType
+from typing import cast
 
 from . import __version__, logging_setup
 from .config import Config
-from .web.server import serve
+from .web.server import Handler, serve
 
 # Named explicitly, not __name__: this module is the console-script entry point
 # (organize-archive-backend) in a packaged build but `python -m
@@ -45,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     httpd = serve(Config.load(), host=args.host, port=args.port)
     stopping = threading.Event()
 
-    def stop(_signum, _frame):
+    def stop(_signum: int, _frame: FrameType | None) -> None:
         if stopping.is_set():
             return
         stopping.set()
@@ -73,7 +75,10 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        httpd.RequestHandlerClass.jobs.shutdown()
+        # serve() binds the JobManager onto the handler subclass it builds, and
+        # this is the only handle on it out here. RequestHandlerClass is typed
+        # as a plain callable, so the cast is what names what it really is.
+        cast(type[Handler], httpd.RequestHandlerClass).jobs.shutdown()
         httpd.server_close()
     return 0
 

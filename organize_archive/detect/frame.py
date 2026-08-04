@@ -13,13 +13,19 @@ to do with the answer.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..config import Config
-from ..faces import backend as face_backend
-from .geometry import drop_human_animals, human_boxes_on_turns, overlap_fraction
+from ..faces.backend import FaceBackend
+from ..pets.backend import PetBackend
+from .geometry import ScoredBox, drop_human_animals, human_boxes_on_turns, overlap_fraction
 from .results import Found
 
+if TYPE_CHECKING:
+    import numpy as np
 
-def load_bgr(path: str, max_side: int):
+
+def load_bgr(path: str, max_side: int) -> tuple[np.ndarray, float]:
     """Decode ONCE to a BGR array + uniform scale (detected/original ≤ 1).
 
     Mirrors faces.backend.load_bgr: Pillow so HEIC + EXIF orientation are handled,
@@ -44,10 +50,13 @@ def load_bgr(path: str, max_side: int):
         # design too: this runs per image decoded, so a log line here would be
         # one per file, ~150k of them.
         pass
-    with Image.open(path) as im:
-        orig_side = max(im.size)
+    # Two names, because they are two types: `opened` is the ImageFile the
+    # decoder hands back (only it has draft()), `im` the plain Image every later
+    # step works on.
+    with Image.open(path) as opened:
+        orig_side = max(opened.size)
         try:
-            im.draft("RGB", (max_side, max_side))
+            opened.draft("RGB", (max_side, max_side))
         except Exception:
             # draft() is a decode-speed optimisation implemented only for a
             # few formats; failing (or being a no-op) for the rest is normal,
@@ -55,7 +64,7 @@ def load_bgr(path: str, max_side: int):
             # design: this runs per image decoded, so logging here would be a
             # line per file, ~150k of them, for a non-event.
             pass
-        im = ImageOps.exif_transpose(im).convert("RGB")
+        im = ImageOps.exif_transpose(opened).convert("RGB")
         w, h = im.size
         rs = min(1.0, max_side / max(w, h)) if max(w, h) else 1.0
         if rs < 1.0:
@@ -65,7 +74,9 @@ def load_bgr(path: str, max_side: int):
     return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR), scale
 
 
-def _detect_animals(img, inv: float, cfg: Config, pet_be, found: Found) -> None:
+def _detect_animals(
+    img: np.ndarray, inv: float, cfg: Config, pet_be: PetBackend, found: Found
+) -> None:
     """Fill in ``found``'s animal/person boxes, with the human veto applied."""
     animals, humans = pet_be.detect_with_humans(img)
     # Kept from before the veto: how confidently the photo reads as an
@@ -73,9 +84,10 @@ def _detect_animals(img, inv: float, cfg: Config, pet_be, found: Found) -> None:
     # against a person reading from some other angle.
     found.animal_score = max((a.score for a in animals), default=0.0)
     h, w = img.shape[:2]
-    found.max_subject_share = max((b.w * b.h for b in (*animals, *humans)), default=0) / max(
-        1, w * h
-    )
+    # Animals and people are separate types with the same box; ScoredBox is the
+    # shape both satisfy, and without it the mixed tuple flattens to `object`.
+    subjects: tuple[ScoredBox, ...] = (*animals, *humans)
+    found.max_subject_share = max((b.w * b.h for b in subjects), default=0) / max(1, w * h)
     animals, human_like = drop_human_animals(animals, humans, cfg.pets_human_iou)
     if animals:
         # Survivors may still be people who are simply not vertical here —
@@ -87,7 +99,8 @@ def _detect_animals(img, inv: float, cfg: Config, pet_be, found: Found) -> None:
         )
         human_like += turned
     found.human_animals = len(human_like)
-    for box in (*animals, *humans):  # -> this frame's full-res pixels
+    detected: tuple[ScoredBox, ...] = (*animals, *humans)
+    for box in detected:  # -> this frame's full-res pixels
         box.x = max(0, round(box.x * inv))
         box.y = max(0, round(box.y * inv))
         box.w = round(box.w * inv)
@@ -123,7 +136,13 @@ def _apply_animal_veto(cfg: Config, found: Found) -> None:
         found.faces.append(fc)
 
 
-def detect_on(img, scale, cfg: Config, face_be, pet_be) -> Found:
+def detect_on(
+    img: np.ndarray,
+    scale: float,
+    cfg: Config,
+    face_be: FaceBackend | None,
+    pet_be: PetBackend | None,
+) -> Found:
     """Run both detectors over one frame and cross-check them.
 
     Boxes come out in the frame's own full-resolution pixels (``1/scale``), so
@@ -131,7 +150,7 @@ def detect_on(img, scale, cfg: Config, face_be, pet_be) -> Found:
     is exactly where the app draws them.
     """
     inv = 1.0 / scale if scale else 1.0
-    found = Found(report=face_backend.DetectionReport())
+    found = Found()  # its own default is an empty DetectionReport
 
     if pet_be is not None:
         _detect_animals(img, inv, cfg, pet_be, found)

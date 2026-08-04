@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from ..config import Config
@@ -9,13 +10,13 @@ from ..db import database as db
 from .progress import ScanProgress
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("enrich", help="Resolve dates, GPS and metadata (resumable)")
     sp.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     from ..metadata import enrich as enrich_mod
     from ..metadata.exiftool_reader import available as exif_available
 

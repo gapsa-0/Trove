@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from io import TextIOWrapper
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -72,7 +73,9 @@ class _LazyRotatingFileHandler(RotatingFileHandler):
 
     _broken = False
 
-    def _open(self):
+    # TextIOWrapper, not TextIO: logging.FileHandler declares the concrete
+    # type and an override may not widen it.
+    def _open(self) -> TextIOWrapper:
         Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
         return super()._open()
 

@@ -5,6 +5,11 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
 
 # 1x1 dark PNG, used only if Pillow is unavailable.
 _FALLBACK = base64.b64decode(
@@ -35,22 +40,24 @@ _TILE = 28.0
 _TOP = (74, 163, 255)  # gradient stops, matching #4aa3ff -> #0062e0
 _BOTTOM = (0, 98, 224)
 _FACET = (10, 111, 224, 255)  # #0a6fe0, the facet lines drawn over the gem
-_GEM = [(10.5, 8), (17.5, 8), (22, 13.5), (14, 22), (6, 13.5)]
-_FACET_LINES = [
+_GEM: list[tuple[float, float]] = [(10.5, 8), (17.5, 8), (22, 13.5), (14, 22), (6, 13.5)]
+# Annotated because the literals mix ints and floats per coordinate: left to
+# infer, the two shapes join to `list[object]` and the points stop being points.
+_FACET_LINES: list[list[tuple[float, float]]] = [
     [(6, 13.5), (22, 13.5)],
     [(10.5, 8), (12, 13.5), (14, 22)],
     [(17.5, 8), (16, 13.5), (14, 22)],
 ]
 
 
-def _render(Image, ImageDraw, size: int):
+def _render(Image: ModuleType, ImageDraw: ModuleType, size: int) -> PILImage:
     """Draw the mark at ``size`` px, supersampled 4x so the gem's diagonals and
     the tile's corner radius stay clean at the 32px favicon end of the range."""
     ss = 4
     px = size * ss
     scale = px / _TILE
 
-    def pt(p):
+    def pt(p: tuple[float, float]) -> tuple[float, float]:
         return (p[0] * scale, p[1] * scale)
 
     # Vertical gradient, then clipped to the rounded tile by using that shape as
@@ -71,4 +78,8 @@ def _render(Image, ImageDraw, size: int):
     d.polygon([pt(p) for p in _GEM], fill=(255, 255, 255, 255))
     for line in _FACET_LINES:
         d.line([pt(p) for p in line], fill=_FACET, width=max(1, round(1.1 * scale)), joint="curve")
-    return im.resize((size, size), Image.LANCZOS)
+    # Annotated rather than returned directly: Image is a ModuleType here, so
+    # everything drawn above is Any to the checker and warn_return_any would
+    # otherwise let that straight back out through this signature.
+    icon: PILImage = im.resize((size, size), Image.LANCZOS)
+    return icon

@@ -27,27 +27,35 @@ blocking that would have traded a slower archive for one that cannot finish.
 from __future__ import annotations
 
 import logging
+from types import ModuleType
+from typing import TYPE_CHECKING
+
+from ..progress import Progress
+
+if TYPE_CHECKING:
+    # numpy is optional; every function here imports it where it runs.
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
 class DSU:
-    def __init__(self, n):
+    def __init__(self, n: int) -> None:
         self.parent = list(range(n))
 
-    def find(self, x):
+    def find(self, x: int) -> int:
         while self.parent[x] != x:
             self.parent[x] = self.parent[self.parent[x]]
             x = self.parent[x]
         return x
 
-    def union(self, a, b):
+    def union(self, a: int, b: int) -> None:
         ra, rb = self.find(a), self.find(b)
         if ra != rb:
             self.parent[ra] = rb
 
 
-def faiss_module():
+def faiss_module() -> ModuleType | None:
     """The faiss module, or None if it isn't installed.
 
     Optional exactly like every other heavy dependency here: without it the
@@ -66,7 +74,9 @@ def faiss_module():
         return None
 
 
-def _knn_faiss(faiss, X, k: int, n: int, progress):
+def _knn_faiss(
+    faiss: ModuleType, X: np.ndarray, k: int, n: int, progress: Progress | None
+) -> tuple[np.ndarray, np.ndarray]:
     """Exact top-k via a flat inner-product index."""
     import numpy as np
 
@@ -88,7 +98,9 @@ def _knn_faiss(faiss, X, k: int, n: int, progress):
     return nbr, nbs
 
 
-def _knn_gemm(X, k: int, n: int, block: int, progress):
+def _knn_gemm(
+    X: np.ndarray, k: int, n: int, block: int, progress: Progress | None
+) -> tuple[np.ndarray, np.ndarray]:
     """The reference implementation: blocked GEMM, argpartition per row."""
     import numpy as np
 
@@ -111,14 +123,21 @@ def _knn_gemm(X, k: int, n: int, block: int, progress):
     return nbr, nbs
 
 
-def _topk_faiss(faiss, M, Q, want: int):
+def _topk_faiss(
+    faiss: ModuleType, M: np.ndarray, Q: np.ndarray, want: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Exact top-``want`` rows of ``M`` for each row of ``Q``, via a flat index."""
     index = faiss.IndexFlatIP(M.shape[1])
     index.add(M)
-    return index.search(Q, want)
+    # Annotated rather than returned directly: faiss reaches us through
+    # ModuleType, so its search result is Any to the checker.
+    found: tuple[np.ndarray, np.ndarray] = index.search(Q, want)
+    return found
 
 
-def _topk_gemm(M, Q, want: int, block: int):
+def _topk_gemm(
+    M: np.ndarray, Q: np.ndarray, want: int, block: int
+) -> tuple[np.ndarray, np.ndarray]:
     """The reference implementation: blocked GEMM, argpartition per row.
 
     Blocked for the same reason ``_knn_gemm`` is. The unblocked form -- one
@@ -147,7 +166,9 @@ def _topk_gemm(M, Q, want: int, block: int):
     return sims, idx
 
 
-def topk_search(M, Q, want: int, block: int = 1024, use_faiss: bool = True):
+def topk_search(
+    M: np.ndarray, Q: np.ndarray, want: int, block: int = 1024, use_faiss: bool = True
+) -> tuple[np.ndarray, np.ndarray]:
     """Top-``want`` rows of ``M`` for each row of ``Q``, most-similar-first.
 
     Returns ``(sims, idx)`` in that order, matching ``faiss.Index.search``. Both
@@ -165,7 +186,13 @@ def topk_search(M, Q, want: int, block: int = 1024, use_faiss: bool = True):
     return _topk_gemm(M, Q, want, block)
 
 
-def knn_search(X, k: int, block: int = 1024, progress=None, use_faiss: bool = True):
+def knn_search(
+    X: np.ndarray,
+    k: int,
+    block: int = 1024,
+    progress: Progress | None = None,
+    use_faiss: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
     """Top-``k`` neighbours of every row of ``X``, self-match excluded.
 
     Returns ``(nbr, nbs)`` — indices and cosine similarities, each ``(n, k)``,
@@ -181,7 +208,9 @@ def knn_search(X, k: int, block: int = 1024, progress=None, use_faiss: bool = Tr
     return _knn_gemm(X, k, n, block, progress)
 
 
-def mutual_knn(X, k: int, floor: float, block: int = 1024, progress=None) -> DSU:
+def mutual_knn(
+    X: np.ndarray, k: int, floor: float, block: int = 1024, progress: Progress | None = None
+) -> DSU:
     """Pass-1 over-cluster via a MUTUAL k-NN graph (see ``passes.py``).
 
     Union two faces only when each is among the other's ``k`` most-similar faces

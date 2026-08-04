@@ -46,7 +46,11 @@ class Found:
     faces: list = field(default_factory=list)  # kept, human
     animals: list = field(default_factory=list)  # kept, real animals
     humans: list = field(default_factory=list)  # person boxes (context)
-    report: object = None  # the raw DetectionReport
+    # The raw detector output. Defaulted the same way as FileResult.report
+    # rather than to None: decode_frame() has always replaced this with a real
+    # report or left the empty one in place, so None was a state no reader ever
+    # had to handle and every reader was written assuming it could not happen.
+    report: face_backend.DetectionReport = field(default_factory=face_backend.DetectionReport)
     human_animals: int = 0  # pets that were really people
     # (face, index into `animals`) for each face the veto dropped. Kept, not
     # just counted: they are written to nonhuman_detections so the veto stays
@@ -64,7 +68,7 @@ class FileResult:
     # always None for a photo, and for a video after collapsing.
     face_hits: list = field(default_factory=list)
     animal_hits: list = field(default_factory=list)
-    report: object = field(default_factory=face_backend.DetectionReport)
+    report: face_backend.DetectionReport = field(default_factory=face_backend.DetectionReport)
     human_animals: int = 0
     suppressed_hits: list = field(default_factory=list)  # (face, animal index)
     rotate: int = 0

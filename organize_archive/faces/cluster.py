@@ -25,13 +25,21 @@ NULL tier (a row from before the quality gate existed) reads as BORDERLINE.
 from __future__ import annotations
 
 import logging
+import sqlite3
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 from ..config import Config
 from ..db import database as db
+from ..progress import Progress
 from .knn import DSU
 from .manual_tags import repair_manual_person_files
 from .passes import BorderAssigner, CoreBuilder
+
+if TYPE_CHECKING:
+    # numpy is optional; the functions that run it import it themselves.
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +59,9 @@ class ClusterStats:
     low_quality_excluded: int = 0  # faces the FIQA gate kept out entirely
 
 
-def _apply_links(conn, cluster_list, face_ids):
+def _apply_links(
+    conn: sqlite3.Connection, cluster_list: list[list[int]], face_ids: Sequence[int]
+) -> list[list[int]]:
     """Fold the user's "same person?" answers into the automatic clusters.
 
     Constraints live in ``face_links`` anchored to face ids (stable across the
@@ -66,11 +76,12 @@ def _apply_links(conn, cluster_list, face_ids):
     links = conn.execute("SELECT face_a, face_b, kind FROM face_links").fetchall()
     if not links:
         return cluster_list
-    fid2c = {}
+    fid2c: dict[int, int] = {}
     for ci, idxs in enumerate(cluster_list):
         for i in idxs:
             fid2c[face_ids[i]] = ci
-    same, cannot = [], []
+    same: list[tuple[int, int]] = []
+    cannot: list[tuple[int, int]] = []
     for lk in links:
         ca, cb = fid2c.get(lk["face_a"]), fid2c.get(lk["face_b"])
         if ca is None or cb is None or ca == cb:
@@ -80,7 +91,7 @@ def _apply_links(conn, cluster_list, face_ids):
         return cluster_list
     dsu = DSU(len(cluster_list))
 
-    def would_violate(ra, rb):
+    def would_violate(ra: int, rb: int) -> bool:
         return any({dsu.find(ca), dsu.find(cb)} == {ra, rb} for ca, cb in cannot)
 
     for ca, cb in same:
@@ -93,7 +104,7 @@ def _apply_links(conn, cluster_list, face_ids):
     return list(merged.values())
 
 
-def _apply_manual_pins(conn, now) -> set:
+def _apply_manual_pins(conn: sqlite3.Connection, now: str) -> set[int]:
     """Force every manually-pinned face into the person that carries its pinned
     NAME, overriding whatever cluster its embedding fell into. Creates the person
     if the clustering pass produced none with that name. This is what makes a
@@ -108,10 +119,10 @@ def _apply_manual_pins(conn, now) -> set:
     ).fetchall()
     if not pins:
         return set()
-    name_to_pid = {}
+    name_to_pid: dict[str, int] = {}
     for p in conn.execute("SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''"):
         name_to_pid.setdefault(p["name"], p["id"])
-    affected: set = set()
+    affected: set[int] = set()
     for f in pins:
         name, cur_pid = f["manual_person"], f["person_id"]
         pid = name_to_pid.get(name)
@@ -120,7 +131,9 @@ def _apply_manual_pins(conn, now) -> set:
                 "INSERT INTO persons(name, cover_face_id, face_count, created_at) VALUES(?,?,0,?)",
                 (name, f["id"], now),
             )
-            pid = cur.lastrowid
+            # An INSERT that didn't raise always sets lastrowid; see
+            # db.database.get_or_create_root for why typeshed still widens it.
+            pid = cast(int, cur.lastrowid)
             name_to_pid[name] = pid
         if cur_pid != pid:
             conn.execute("UPDATE faces SET person_id=? WHERE id=?", (pid, f["id"]))
@@ -130,7 +143,7 @@ def _apply_manual_pins(conn, now) -> set:
     return affected
 
 
-def _refresh_person_stats(conn, pids) -> None:
+def _refresh_person_stats(conn: sqlite3.Connection, pids: Iterable[int]) -> None:
     """Recompute face_count + a sharp cover (highest det_score, non-hidden) for the
     given persons, dropping any left empty. Scoped to the handful of pin-affected
     persons so it's a short write — cluster_faces runs this inside its rebuild
@@ -159,7 +172,9 @@ def _refresh_person_stats(conn, pids) -> None:
         )
 
 
-def _finalize(conn, stats, now, progress):
+def _finalize(
+    conn: sqlite3.Connection, stats: ClusterStats, now: str, progress: Progress | None
+) -> ClusterStats:
     """Re-apply manual pins, tidy affected person stats, commit. Every return path
     of cluster_faces goes through here so pins are honored even when the automatic
     clustering found nothing.
@@ -179,14 +194,14 @@ def _finalize(conn, stats, now, progress):
     return stats
 
 
-def _cannot_pairs(conn) -> set:
+def _cannot_pairs(conn: sqlite3.Connection) -> set[frozenset[int]]:
     return {
         frozenset((r["face_a"], r["face_b"]))
         for r in conn.execute("SELECT face_a, face_b FROM face_links WHERE kind != 'same'")
     }
 
 
-def _load_faces(conn, stats: ClusterStats):
+def _load_faces(conn: sqlite3.Connection, stats: ClusterStats) -> list[sqlite3.Row]:
     """Every clusterable face, plus the count of those the quality gate excluded.
 
     LOW_QUALITY faces are excluded here and nowhere else needs to know: this is
@@ -209,7 +224,7 @@ def _load_faces(conn, stats: ClusterStats):
     return rows
 
 
-def _remember_named(conn) -> list[tuple[str, set]]:
+def _remember_named(conn: sqlite3.Connection) -> list[tuple[str, set[int]]]:
     """Each named person's face-id set, so the name can be carried across rebuild."""
     old_named: list[tuple[str, set]] = []
     for pid, name in conn.execute(
@@ -221,7 +236,7 @@ def _remember_named(conn) -> list[tuple[str, set]]:
     return old_named
 
 
-def _matrix(rows):
+def _matrix(rows: list[sqlite3.Row]) -> np.ndarray:
     """L2-normalized embedding matrix for ``rows``, in row order.
 
     Embedding dim is inferred from the stored blob, so a backend switch needs no
@@ -237,7 +252,13 @@ def _matrix(rows):
     return X
 
 
-def _build_cores(X, rows, cfg: Config, stats: ClusterStats, progress):
+def _build_cores(
+    X: np.ndarray,
+    rows: list[sqlite3.Row],
+    cfg: Config,
+    stats: ClusterStats,
+    progress: Progress | None,
+) -> tuple[list[list[int]], bool]:
     """Pass 1, plus the fallback for an archive that has no quality tiers yet.
 
     If every face reads as BORDERLINE (a database extracted before the FIQA gate)
@@ -262,7 +283,7 @@ def _build_cores(X, rows, cfg: Config, stats: ClusterStats, progress):
     return cores, seeded_from_all
 
 
-def _carry_names(fsets: list[set], old_named: list[tuple[str, set]]) -> dict[int, str]:
+def _carry_names(fsets: list[set[int]], old_named: list[tuple[str, set[int]]]) -> dict[int, str]:
     """Give each previously-used name to the one new cluster it best explains.
 
     Sort all (name, cluster) overlaps descending and assign greedily, each name
@@ -294,7 +315,16 @@ def _carry_names(fsets: list[set], old_named: list[tuple[str, set]]) -> dict[int
     return name_of
 
 
-def _write_people(conn, kept, X, face_ids, scores, name_of, now, stats: ClusterStats) -> None:
+def _write_people(
+    conn: sqlite3.Connection,
+    kept: list[list[int]],
+    X: np.ndarray,
+    face_ids: Sequence[int],
+    scores: Sequence[float],
+    name_of: dict[int, str],
+    now: str,
+    stats: ClusterStats,
+) -> None:
     """Insert one persons row per kept cluster and point its faces at it."""
     import numpy as np
 
@@ -309,7 +339,10 @@ def _write_people(conn, kept, X, face_ids, scores, name_of, now, stats: ClusterS
                VALUES (?,?,?,?,?)""",
             (name, face_ids[cover], len(idxs), cvec.tobytes(), now),
         )
-        assign.extend((cur.lastrowid, face_ids[i]) for i in idxs)
+        # An INSERT that didn't raise always sets lastrowid; see
+        # db.database.get_or_create_root for why typeshed still widens it.
+        pid = cast(int, cur.lastrowid)
+        assign.extend((pid, face_ids[i]) for i in idxs)
         stats.people += 1
         stats.clustered += len(idxs)
         if name:
@@ -318,7 +351,9 @@ def _write_people(conn, kept, X, face_ids, scores, name_of, now, stats: ClusterS
     conn.executemany("UPDATE faces SET person_id=? WHERE id=?", assign)
 
 
-def cluster_faces(conn, cfg: Config, progress=None) -> ClusterStats:
+def cluster_faces(
+    conn: sqlite3.Connection, cfg: Config, progress: Progress | None = None
+) -> ClusterStats:
     db.init_db(conn)
     stats = ClusterStats()
     now = db.now_iso()

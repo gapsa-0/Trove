@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
+from ..progress import Progress
 from . import backend
+from .backend import Log, PetBackend
 
 logger = logging.getLogger(__name__)
 
@@ -33,26 +36,29 @@ def scan_source(cfg: Config) -> str:
     )
 
 
-def image_count(conn, root_id=None):
+def image_count(conn: sqlite3.Connection, root_id: int | None = None) -> int:
     rc = " AND root_id=?" if root_id is not None else ""
     params = (root_id,) if root_id is not None else ()
-    return conn.execute(
+    n: int = conn.execute(
         f"""SELECT COUNT(*) FROM files WHERE present=1 AND hidden=0
             AND media_type='image'{rc}""",
         params,
     ).fetchone()[0]
+    return n
 
 
-def pending_count(conn, root_id=None, model_source=None):
+def pending_count(
+    conn: sqlite3.Connection, root_id: int | None = None, model_source: str | None = None
+) -> int:
     rc = " AND f.root_id=?" if root_id is not None else ""
-    params = []
+    params: list[object] = []
     model_clause = ""
     if model_source is not None:
         model_clause = " OR s.model_source IS NOT ?"
         params.append(model_source)
     if root_id is not None:
         params.append(root_id)
-    return conn.execute(
+    n: int = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN pet_scan s ON s.file_id=f.id
             WHERE (s.file_id IS NULL OR s.source_sha256 IS NOT f.sha256
@@ -60,11 +66,17 @@ def pending_count(conn, root_id=None, model_source=None):
               AND f.present=1 AND f.hidden=0 AND f.media_type='image'{rc}""",
         params,
     ).fetchone()[0]
+    return n
 
 
-def _pending(conn, limit, root_id=None, model_source=None):
+def _pending(
+    conn: sqlite3.Connection,
+    limit: int,
+    root_id: int | None = None,
+    model_source: str | None = None,
+) -> list[sqlite3.Row]:
     rc = " AND f.root_id=?" if root_id is not None else ""
-    params = []
+    params: list[object] = []
     model_clause = ""
     if model_source is not None:
         model_clause = " OR s.model_source IS NOT ?"
@@ -84,7 +96,7 @@ def _pending(conn, limit, root_id=None, model_source=None):
     ).fetchall()
 
 
-def make_backend(cfg: Config, log=None):
+def make_backend(cfg: Config, log: Log | None = None) -> PetBackend:
     source = scan_source(cfg)
     return backend.PetBackend(
         cfg.cache_dir,
@@ -98,18 +110,93 @@ def make_backend(cfg: Config, log=None):
     )
 
 
-def _overlap_fraction(face, animal) -> float:
+def _overlap_fraction(face: sqlite3.Row, animal: sqlite3.Row) -> float:
     left = max(face["box_x"], animal["box_x"])
     top = max(face["box_y"], animal["box_y"])
     right = min(face["box_x"] + face["box_w"], animal["box_x"] + animal["box_w"])
     bottom = min(face["box_y"] + face["box_h"], animal["box_y"] + animal["box_h"])
-    intersection = max(0, right - left) * max(0, bottom - top)
-    area = max(1, face["box_w"] * face["box_h"])
+    # Annotated rather than returned directly: a sqlite3.Row indexes to Any, so
+    # the arithmetic above is Any too and warn_return_any would let it out
+    # through a signature promising a float.
+    intersection: float = max(0, right - left) * max(0, bottom - top)
+    area: float = max(1, face["box_w"] * face["box_h"])
     return intersection / area
 
 
+def _extract_one(
+    conn: sqlite3.Connection,
+    be: PetBackend,
+    row: sqlite3.Row,
+    source: str,
+    now: str,
+    stats: PetExtractStats,
+    progress: Progress | None,
+) -> None:
+    """Detect and store one image's animals, then mark it scanned either way.
+
+    Mirrors ``faces.extract._extract_one``, down to marking the file scanned on
+    the failure path: a file that cannot be read must not be retried on every
+    pass for ever.
+    """
+    path = Path(row["root_path"]) / row["rel_path"]
+    count = 0
+    try:
+        # Standalone CLI path: plain animal detection. The GUI's fused
+        # detect stage (organize_archive/detect) is what cross-checks the
+        # faces; this only fills animal_detections for pet grouping.
+        conn.execute("DELETE FROM animal_detections WHERE file_id=?", (row["id"],))
+        detections = be.process_path(str(path))
+        for detection in detections:
+            conn.execute(
+                """INSERT INTO animal_detections
+                   (file_id,species,box_x,box_y,box_w,box_h,det_score,
+                    embedding,model_source,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    row["id"],
+                    detection.species,
+                    detection.x,
+                    detection.y,
+                    detection.w,
+                    detection.h,
+                    detection.score,
+                    detection.embedding.tobytes(),
+                    source,
+                    now,
+                ),
+            )
+        count = len(detections)
+    except Exception as error:
+        # One line, no traceback: this loop runs over the whole archive
+        # (~150k files) and a per-file exc_info would flood the rotated
+        # log before anything useful survives it. error_samples still
+        # keeps the first few failures verbatim for the CLI summary.
+        logger.warning("pet extraction failed for %s: %s", path.name, error)
+        stats.errors += 1
+        if len(stats.error_samples) < 5:
+            stats.error_samples.append(f"{path.name}: {error}")
+    conn.execute(
+        """INSERT OR REPLACE INTO pet_scan
+           (file_id,n_animals,source_sha256,model_source,scanned_at)
+           VALUES(?,?,?,?,?)""",
+        (row["id"], count, row["sha256"], source, now),
+    )
+    stats.processed += 1
+    stats.animals += count
+    stats.photos_with_animals += int(count > 0)
+    if progress is not None:
+        progress.update(stats.processed, 0, path.name)
+
+
 def extract(
-    conn, cfg: Config, *, progress=None, limit=None, batch_size=32, root_id=None, be=None
+    conn: sqlite3.Connection,
+    cfg: Config,
+    *,
+    progress: Progress | None = None,
+    limit: int | None = None,
+    batch_size: int = 32,
+    root_id: int | None = None,
+    be: PetBackend | None = None,
 ) -> PetExtractStats:
     stats = PetExtractStats()
     if not backend.available():
@@ -136,53 +223,6 @@ def extract(
         if not rows:
             break
         for row in rows:
-            path = Path(row["root_path"]) / row["rel_path"]
-            count = 0
-            try:
-                # Standalone CLI path: plain animal detection. The GUI's fused
-                # detect stage (organize_archive/detect) is what cross-checks the
-                # faces; this only fills animal_detections for pet grouping.
-                conn.execute("DELETE FROM animal_detections WHERE file_id=?", (row["id"],))
-                detections = be.process_path(str(path))
-                for detection in detections:
-                    conn.execute(
-                        """INSERT INTO animal_detections
-                           (file_id,species,box_x,box_y,box_w,box_h,det_score,
-                            embedding,model_source,created_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                        (
-                            row["id"],
-                            detection.species,
-                            detection.x,
-                            detection.y,
-                            detection.w,
-                            detection.h,
-                            detection.score,
-                            detection.embedding.tobytes(),
-                            source,
-                            now,
-                        ),
-                    )
-                count = len(detections)
-            except Exception as error:
-                # One line, no traceback: this loop runs over the whole archive
-                # (~150k files) and a per-file exc_info would flood the rotated
-                # log before anything useful survives it. error_samples still
-                # keeps the first few failures verbatim for the CLI summary.
-                logger.warning("pet extraction failed for %s: %s", path.name, error)
-                stats.errors += 1
-                if len(stats.error_samples) < 5:
-                    stats.error_samples.append(f"{path.name}: {error}")
-            conn.execute(
-                """INSERT OR REPLACE INTO pet_scan
-                   (file_id,n_animals,source_sha256,model_source,scanned_at)
-                   VALUES(?,?,?,?,?)""",
-                (row["id"], count, row["sha256"], source, now),
-            )
-            stats.processed += 1
-            stats.animals += count
-            stats.photos_with_animals += int(count > 0)
-            if progress is not None:
-                progress.update(stats.processed, 0, path.name)
+            _extract_one(conn, be, row, source, now, stats, progress)
         conn.commit()
     return stats

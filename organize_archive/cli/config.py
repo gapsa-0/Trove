@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 
 from ..config import Config
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("config", help="Show or modify configuration")
     sp.add_argument("--show", action="store_true", help="Print current config")
     sp.add_argument("--add-root", metavar="PATH", help="Add a source root")
@@ -19,7 +20,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     if args.show:
         from dataclasses import asdict
 

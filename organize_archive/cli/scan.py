@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import sqlite3
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from ..config import Config
 from ..db import database as db
 from ..scan import walker
+from ..scan.walker import ScanStats
 from ._common import _fmt_bytes
 from .progress import ScanProgress
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser("scan", help="Walk roots and index/hash media files (resumable)")
     sp.add_argument("--root", action="append", help="Scan this root only (repeatable)")
     sp.add_argument(
@@ -22,7 +26,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def _count_progress(args, roots) -> ScanProgress | None:
+def _count_progress(args: argparse.Namespace, roots: Sequence[str]) -> ScanProgress | None:
     """A pre-counted progress bar, or None with --no-progress.
 
     The count is scandir only -- no hashing -- so it is cheap enough to pay for
@@ -36,7 +40,13 @@ def _count_progress(args, roots) -> ScanProgress | None:
     return ScanProgress(total)
 
 
-def _scan_roots(conn, cfg: Config, roots, run_started: str, progress):
+def _scan_roots(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    roots: Sequence[str],
+    run_started: str,
+    progress: ScanProgress | None,
+) -> tuple[ScanStats, bool]:
     """Scan each root in turn, accumulating one ScanStats across all of them.
 
     Returns ``(totals, interrupted)``. A root that has gone missing is reported
@@ -74,7 +84,7 @@ def _scan_roots(conn, cfg: Config, roots, run_started: str, progress):
     return totals, interrupted
 
 
-def _report(totals, interrupted: bool) -> None:
+def _report(totals: ScanStats, interrupted: bool) -> None:
     """The end-of-run summary, which doubles as the resume hint after a Ctrl-C."""
     if interrupted:
         print(
@@ -94,7 +104,7 @@ def _report(totals, interrupted: bool) -> None:
             print(f"      - {s}")
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     if not Path(cfg.db_path).exists():
         print("No database yet. Run:  oa init")
         return 1

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import sys
 from pathlib import Path
@@ -10,7 +11,7 @@ from ..config import PROJECT_ROOT, Config
 from ..paths import app_data_dir
 
 
-def add_parser(sub) -> None:
+def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     sp = sub.add_parser(
         "migrate-data", help="Copy legacy project-local data into user application data"
     )
@@ -23,7 +24,7 @@ def add_parser(sub) -> None:
     sp.set_defaults(func=run)
 
 
-def run(args, cfg: Config) -> int:
+def run(args: argparse.Namespace, cfg: Config) -> int:
     source = Path(args.from_path).expanduser() if args.from_path else _legacy_data_dir()
     if not source.exists() or not source.is_dir():
         if args.from_path:

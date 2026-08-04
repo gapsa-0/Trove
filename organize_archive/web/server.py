@@ -13,6 +13,7 @@ import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 from ..config import Config, discard_superseded_secrets
@@ -69,20 +70,33 @@ def _parse_range(header: str, size: int) -> tuple[int, int] | None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    cfg: Config = None
-    jobs: JobManager = None
+    # Declared, not assigned: serve() binds both by subclassing this with them
+    # in the namespace, and this class is never instantiated directly. A `= None`
+    # placeholder would type every use below as optional and buy nothing -- an
+    # unbound Handler is a programming error either way, and this way it says so
+    # at the attribute rather than several frames later inside a route.
+    cfg: ClassVar[Config]
+    jobs: ClassVar[JobManager]
 
-    def log_message(self, fmt, *args):
+    # `format` shadows the builtin because BaseHTTPRequestHandler names it that,
+    # and an override that renames a positional parameter is a type error.
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
     # -- response helpers -------------------------------------------------
-    def _json(self, obj, status=200):
+    def _json(self, obj: Any, status: int = 200) -> None:
         # Archive state changes through POST requests, so serving a heuristic
         # browser cache entry here makes a completed add/remove appear to have
         # done nothing until another navigation happens.
         self._bytes(json.dumps(obj).encode(), "application/json", status, cache_control="no-store")
 
-    def _bytes(self, body: bytes, content_type: str, status=200, cache_control=None):
+    def _bytes(
+        self,
+        body: bytes,
+        content_type: str,
+        status: int = 200,
+        cache_control: str | None = None,
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -111,7 +125,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _send_file(self, path: Path, content_type=None, cache_control=None):
+    def _send_file(
+        self, path: Path, content_type: str | None = None, cache_control: str | None = None
+    ) -> None:
         ctype = content_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
         size = path.stat().st_size
         header = self.headers.get("Range")
@@ -150,9 +166,14 @@ class Handler(BaseHTTPRequestHandler):
         if not n:
             return {}
         try:
-            return json.loads(self.rfile.read(n) or b"{}")
+            parsed = json.loads(self.rfile.read(n) or b"{}")
         except json.JSONDecodeError:
             return {}
+        # A body is untrusted input and JSON's top level may be any type; a
+        # list here used to reach the routes as one and fail with a 500 on the
+        # first .get(). Every caller wants an object, so anything else is no
+        # more usable than an empty one.
+        return parsed if isinstance(parsed, dict) else {}
 
     def _is_cross_origin(self) -> bool:
         """Whether this request was made by a page on some *other* site.
@@ -194,7 +215,7 @@ class Handler(BaseHTTPRequestHandler):
             jobs=self.jobs,
         )
 
-    def _respond(self, result) -> None:
+    def _respond(self, result: object) -> None:
         """Serialise whatever a handler returned. A bare object is JSON 200;
         the three wrappers exist for everything else."""
         if isinstance(result, routes.FileBody):
@@ -251,14 +272,14 @@ class Handler(BaseHTTPRequestHandler):
                 # nowhere left to report this failure to, so stay silent.
                 pass
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         self._answer("GET")
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         self._answer("POST")
 
 
-def serve(cfg: Config, host="127.0.0.1", port=8756):
+def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8756) -> ThreadingHTTPServer:
     # Only shared, non-archive resources (ML models, the app icon) live at the
     # top level now; each archive's own database is created when it's added
     # (archives.add_archive) or opened for the first time by the scheduler.

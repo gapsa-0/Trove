@@ -18,8 +18,10 @@ import logging
 import os
 import tempfile
 import urllib.request
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .. import model_manifest
 from ..errors import ModelUnavailableError
@@ -35,8 +37,20 @@ except Exception:  # pragma: no cover - optional dependency
     # OSError, a mismatched binary wheel as RuntimeError. Any of those must
     # degrade to "pets unavailable" (see `available()`) rather than crash import
     # of this module.
-    cv2 = None
-    np = None
+    #
+    # Runtime sentinels, not a second type for either name: every use below is
+    # reached only past `available()`, so the checker keeps grading this file
+    # against the real cv2 and numpy rather than against `Any`.
+    cv2 = None  # type: ignore[assignment]
+    np = None  # type: ignore[assignment]
+
+# onnxruntime ships no type information, so a session is `Any` to the checker
+# whatever we call it. Naming it keeps the signatures below saying what they
+# hold instead of shrugging -- the alias is documentation, not enforcement.
+Session = Any
+
+# What a caller passes to watch a one-time model download.
+Log = Callable[[str], None]
 
 MODEL_NAME = "object_detection_yolox_2022nov.onnx"
 MODEL_URL = (
@@ -176,7 +190,7 @@ def models_ready(cache_dir: str) -> bool:
     return path.is_file() and path.stat().st_size >= MODEL_MIN_BYTES
 
 
-def ensure_model(cache_dir: str, log=None) -> Path:
+def ensure_model(cache_dir: str, log: Log | None = None) -> Path:
     path = model_path(cache_dir)
     if models_ready(cache_dir):
         return path
@@ -223,7 +237,7 @@ class HumanDetection:
     score: float
 
 
-def _load_dinov2(cache_dir: str, log=None):
+def _load_dinov2(cache_dir: str, log: Log | None = None) -> Session:
     """Create the onnxruntime session for the DINOv2 pet-reID embedder."""
     try:
         import onnxruntime as ort
@@ -255,11 +269,11 @@ class PetBackend:
         min_score: float = 0.60,
         min_px: int = 48,
         max_side: int = 1280,
-        species=(),
+        species: Iterable[str] = (),
         human_min_score: float = 0.20,
-        model_source="opencv-yolox-s-2022nov",
-        log=None,
-    ):
+        model_source: str = "opencv-yolox-s-2022nov",
+        log: Log | None = None,
+    ) -> None:
         if not available():
             raise ModelUnavailableError("pet detection needs OpenCV DNN and NumPy")
         self.min_score = float(min_score)
@@ -278,7 +292,8 @@ class PetBackend:
         self.net = cv2.dnn.readNet(str(ensure_model(cache_dir, log=log)))
         self._mean = np.array(_IMAGENET_MEAN, dtype="float32")
         self._std = np.array(_IMAGENET_STD, dtype="float32")
-        grids, expanded = [], []
+        grids: list[np.ndarray] = []
+        expanded: list[np.ndarray] = []
         for stride in self.strides:
             hsize = self.input_size[1] // stride
             wsize = self.input_size[0] // stride
@@ -289,7 +304,7 @@ class PetBackend:
         self.grids = np.concatenate(grids, axis=1)
         self.expanded_strides = np.concatenate(expanded, axis=1)
 
-    def load_bgr(self, path: str):
+    def load_bgr(self, path: str) -> tuple[np.ndarray, float, float]:
         from PIL import Image, ImageOps
 
         try:
@@ -305,8 +320,10 @@ class PetBackend:
             # archive) and the outcome never changes for the life of the
             # process, so a log line here would be pure filler.
             pass
-        with Image.open(path) as image:
-            image = ImageOps.exif_transpose(image).convert("RGB")
+        # Two names, because they are two types: `opened` is the ImageFile the
+        # decoder hands back, `image` the plain Image the rest works on.
+        with Image.open(path) as opened:
+            image = ImageOps.exif_transpose(opened).convert("RGB")
             original_w, original_h = image.size
             image.thumbnail((self.max_side, self.max_side))
             rgb = np.asarray(image)
@@ -317,18 +334,21 @@ class PetBackend:
             loaded_h / max(1, original_h),
         )
 
-    def detect(self, image_bgr) -> list[AnimalDetection]:
+    def detect(self, image_bgr: np.ndarray) -> list[AnimalDetection]:
         """Pet-species boxes only (unchanged contract for the standalone path)."""
         return self.detect_with_humans(image_bgr)[0]
 
-    def detect_with_humans(self, image_bgr):
+    def detect_with_humans(
+        self, image_bgr: np.ndarray
+    ) -> tuple[list[AnimalDetection], list[HumanDetection]]:
         """``(animals, humans)`` from ONE forward pass.
 
         ``humans`` are COCO ``person`` boxes kept at ``human_min_score`` purely as
         cross-check context — they carry no re-ID embedding (DINOv2 only runs on
         animal crops) and are never persisted as pets.
         """
-        animals, humans = [], []
+        animals: list[AnimalDetection] = []
+        humans: list[HumanDetection] = []
         for species, box, score in self._forward(image_bgr):
             if species == "person":
                 humans.append(HumanDetection(*box, score=score))
@@ -349,7 +369,7 @@ class PetBackend:
             )
         return animals, humans
 
-    def detect_humans(self, image_bgr) -> list[HumanDetection]:
+    def detect_humans(self, image_bgr: np.ndarray) -> list[HumanDetection]:
         """Person boxes only — no animal crops, so no DINOv2 work.
 
         Used for the quarter-turn re-test, where the animal boxes of the rotated
@@ -361,7 +381,7 @@ class PetBackend:
             if species == "person"
         ]
 
-    def _letterbox(self, image_bgr):
+    def _letterbox(self, image_bgr: np.ndarray) -> tuple[np.ndarray, float]:
         """Resize into the 640x640 letterbox YOLOX expects; returns (blob, ratio)."""
         original_h, original_w = image_bgr.shape[:2]
         rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -378,7 +398,7 @@ class PetBackend:
         )
         return padded.transpose(2, 0, 1)[None], ratio
 
-    def _decode(self, output):
+    def _decode(self, output: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Raw head output -> ``(boxes_xywh, class_ids, confidences)``."""
         dets = output[0].copy()
         dets[:, :2] = (dets[:, :2] + self.grids[0]) * self.expanded_strides[0]
@@ -390,7 +410,7 @@ class PetBackend:
         scores = dets[:, 4:5] * dets[:, 5:]
         return boxes, np.argmax(scores, axis=1), np.max(scores, axis=1)
 
-    def _eligible(self, class_ids, confidences) -> list[int]:
+    def _eligible(self, class_ids: np.ndarray, confidences: np.ndarray) -> list[int]:
         """Indices worth running NMS on: pet species at ``min_score``, plus
         ``person`` at the lower ``human_min_score``."""
         return [
@@ -400,7 +420,9 @@ class PetBackend:
             or (COCO_CLASSES[int(class_id)] == "person" and confidences[i] >= self.human_min_score)
         ]
 
-    def _nms(self, boxes: list, scores: list, classes: list, floor: float):
+    def _nms(
+        self, boxes: list, scores: list, classes: list, floor: float
+    ) -> Sequence[int] | np.ndarray:
         """Per-class NMS, via the batched API where OpenCV has it."""
         if hasattr(cv2.dnn, "NMSBoxesBatched"):
             return cv2.dnn.NMSBoxesBatched(boxes, scores, classes, floor, 0.50)
@@ -417,7 +439,7 @@ class PetBackend:
             kept.extend(local[int(index)] for index in np.asarray(selected).reshape(-1))
         return kept
 
-    def _forward(self, image_bgr):
+    def _forward(self, image_bgr: np.ndarray) -> list[tuple[str, tuple[int, int, int, int], float]]:
         """One YOLOX pass -> ``(species, (x, y, w, h), score)`` in image pixels.
 
         Boxes are already NMS'd and mapped back out of the letterboxed 640x640
@@ -445,7 +467,7 @@ class PetBackend:
             nms_floor,
         )
 
-        out = []
+        out: list[tuple[str, tuple[int, int, int, int], float]] = []
         for local_index in np.asarray(keep).reshape(-1):
             source_index = eligible[int(local_index)]
             x, y, width, height = boxes[source_index]
@@ -462,7 +484,7 @@ class PetBackend:
             )
         return out
 
-    def _embed_crop(self, crop_bgr) -> np.ndarray:
+    def _embed_crop(self, crop_bgr: np.ndarray) -> np.ndarray:
         """384-d L2-normalized DINOv2 re-ID embedding of an animal crop.
 
         Cosine similarity between two crops of the same individual is high; the
@@ -476,7 +498,10 @@ class PetBackend:
         x = x.transpose(2, 0, 1)[None]  # (1,3,224,224) NCHW
         feat = self._dino.run(None, {"input": x})[0].reshape(-1).astype("float32")
         n = float(np.linalg.norm(feat))
-        return feat if n == 0.0 else feat / n
+        # Annotated rather than returned directly: the session's output is Any, and
+        # warn_return_any would let that out through a signature promising an array.
+        unit: np.ndarray = feat if n == 0.0 else feat / n
+        return unit
 
     def process_path(self, path: str) -> list[AnimalDetection]:
         image, scale_x, scale_y = self.load_bgr(path)

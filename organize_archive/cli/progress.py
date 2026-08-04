@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 import sys
 import time
+from typing import TextIO
 
 
 def _fmt_hms(seconds: float) -> str:
@@ -27,11 +28,11 @@ class ScanProgress:
     def __init__(
         self,
         total: int | None,
-        stream=None,
+        stream: TextIO | None = None,
         width: int = 32,
         show_bytes: bool = True,
         label: str = "",
-    ):
+    ) -> None:
         self.total = total or 0
         self.stream = stream or sys.stdout
         self.width = width

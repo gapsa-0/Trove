@@ -14,8 +14,21 @@ layering new rows on stale ones. The one thing that must survive it is a
 
 from __future__ import annotations
 
+import sqlite3
+from typing import cast
 
-def write_scan_markers(conn, fid, result, sha256, pet_src, now):
+from ..faces.backend import Face
+from .results import FileResult
+
+
+def write_scan_markers(
+    conn: sqlite3.Connection,
+    fid: int,
+    result: FileResult,
+    sha256: str | None,
+    pet_src: str,
+    now: str,
+) -> None:
     """Mark this file scanned by BOTH detectors, with what each one found.
 
     Always written together, and written whether or not detection succeeded:
@@ -53,7 +66,15 @@ def write_scan_markers(conn, fid, result, sha256, pet_src, now):
     )
 
 
-def rewrite_file_detections(conn, fid, now, result, pet_src, fiqa_model, sha256):
+def rewrite_file_detections(
+    conn: sqlite3.Connection,
+    fid: int,
+    now: str,
+    result: FileResult,
+    pet_src: str,
+    fiqa_model: str | None,
+    sha256: str | None,
+) -> None:
     """Replace every detection row for one file with this pass's findings."""
     carried = _carry_reviews(conn, fid)
     conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
@@ -72,7 +93,7 @@ def rewrite_file_detections(conn, fid, now, result, pet_src, fiqa_model, sha256)
     _save_suppressed(conn, fid, now, result, animal_ids, carried, sha256)
 
 
-def _carry_reviews(conn, fid) -> dict[tuple[int, int, int, int], str]:
+def _carry_reviews(conn: sqlite3.Connection, fid: int) -> dict[tuple[int, int, int, int], str]:
     """This file's already-reviewed suppressions, keyed by box.
 
     A rescan re-runs the animal veto and would suppress the same face again --
@@ -91,9 +112,11 @@ def _carry_reviews(conn, fid) -> dict[tuple[int, int, int, int], str]:
     return {(r["box_x"], r["box_y"], r["box_w"], r["box_h"]): r["review_status"] for r in rows}
 
 
-def _save_animals(conn, fid, now, result, pet_src) -> list[int]:
+def _save_animals(
+    conn: sqlite3.Connection, fid: int, now: str, result: FileResult, pet_src: str
+) -> list[int]:
     """Insert this file's animals, returning their new row ids in order."""
-    ids = []
+    ids: list[int] = []
     for a, offset in result.animal_hits:
         cur = conn.execute(
             """INSERT INTO animal_detections
@@ -114,11 +137,15 @@ def _save_animals(conn, fid, now, result, pet_src) -> list[int]:
                 now,
             ),
         )
-        ids.append(cur.lastrowid)
+        # An INSERT that didn't raise always sets lastrowid; see
+        # db.database.get_or_create_root for why typeshed still widens it.
+        ids.append(cast(int, cur.lastrowid))
     return ids
 
 
-def _save_faces(conn, fid, now, result, fiqa_model) -> None:
+def _save_faces(
+    conn: sqlite3.Connection, fid: int, now: str, result: FileResult, fiqa_model: str | None
+) -> None:
     for fc, offset in result.face_hits:
         conn.execute(
             """INSERT INTO faces
@@ -156,7 +183,15 @@ def _save_faces(conn, fid, now, result, fiqa_model) -> None:
         )
 
 
-def _save_suppressed(conn, fid, now, result, animal_ids, carried, sha256) -> None:
+def _save_suppressed(
+    conn: sqlite3.Connection,
+    fid: int,
+    now: str,
+    result: FileResult,
+    animal_ids: list[int],
+    carried: dict[tuple[int, int, int, int], str],
+    sha256: str | None,
+) -> None:
     """Record the faces the animal veto dropped, so they stay reviewable.
 
     Without this the veto is unappealable. A face inside an animal box is
@@ -206,10 +241,12 @@ def _save_suppressed(conn, fid, now, result, animal_ids, carried, sha256) -> Non
             ),
         )
         if status == "human":
-            _restore_reviewed_face(conn, fid, fc, cur.lastrowid, now)
+            _restore_reviewed_face(conn, fid, fc, cast(int, cur.lastrowid), now)
 
 
-def _restore_reviewed_face(conn, fid, fc, detection_id, now) -> None:
+def _restore_reviewed_face(
+    conn: sqlite3.Connection, fid: int, fc: Face, detection_id: int, now: str
+) -> None:
     """Put back a face the user has already ruled human.
 
     The rewrite deleted this file's faces, including one an earlier review had

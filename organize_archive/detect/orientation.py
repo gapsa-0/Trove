@@ -15,11 +15,18 @@ detectors fire happily on upside-down subjects.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..config import Config
+from ..faces.backend import FaceBackend
+from ..pets.backend import PetBackend
 from .geometry import rotate_image
 
+if TYPE_CHECKING:
+    import numpy as np
 
-def _face_quorum_turn(img, face_be, cfg: Config) -> tuple[int, float, str]:
+
+def _face_quorum_turn(img: np.ndarray, face_be: FaceBackend, cfg: Config) -> tuple[int, float, str]:
     """The turn at which several faces resolve, if there is one.
 
     Several faces that only resolve once the photo is turned is decisive --
@@ -32,7 +39,8 @@ def _face_quorum_turn(img, face_be, cfg: Config) -> tuple[int, float, str]:
     a cake figurine or someone lying down -- that was measured on this archive,
     and single-face evidence is not used at all.
     """
-    best_deg, best = 0, []
+    best_deg = 0
+    best: list[float] = []  # the accepted face scores at best_deg
     for deg in (90, 270):
         faces = [s for s in face_be.probe_faces(rotate_image(img, deg)) if s >= cfg.faces_min_score]
         if len(faces) > len(best):
@@ -42,7 +50,7 @@ def _face_quorum_turn(img, face_be, cfg: Config) -> tuple[int, float, str]:
     return 0, 0.0, ""
 
 
-def _best_person(pet_be, img) -> tuple[float, float]:
+def _best_person(pet_be: PetBackend, img: np.ndarray) -> tuple[float, float]:
     """``(confidence, share of the frame)`` of the most confident person box."""
     h, w = img.shape[:2]
     frame = max(1, w * h)
@@ -51,7 +59,11 @@ def _best_person(pet_be, img) -> tuple[float, float]:
 
 
 def _person_box_turn(
-    img, pet_be, cfg: Config, subject_share: float, animal_score: float
+    img: np.ndarray,
+    pet_be: PetBackend | None,
+    cfg: Config,
+    subject_share: float,
+    animal_score: float,
 ) -> tuple[int, float, str]:
     """The turn at which a dominant subject reads as a ``person`` and not upright.
 
@@ -98,7 +110,14 @@ def _person_box_turn(
     return 0, 0.0, ""
 
 
-def resolve_rotation(img, face_be, pet_be, cfg: Config, subject_share: float, animal_score: float):
+def resolve_rotation(
+    img: np.ndarray,
+    face_be: FaceBackend | None,
+    pet_be: PetBackend | None,
+    cfg: Config,
+    subject_share: float,
+    animal_score: float,
+) -> tuple[int, float, str]:
     """Find the quarter turn that makes this photo's subjects upright.
 
     Returns ``(degrees, confidence, source)``, or ``(0, 0.0, "")`` to leave the

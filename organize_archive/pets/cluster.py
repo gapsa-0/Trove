@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections import Counter
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from ..config import Config
 from ..db import database as db
 from .manual_tags import repair_manual_pet_files
+
+if TYPE_CHECKING:
+    # numpy is an optional dependency, imported inside the two functions that
+    # actually run it; this is the name the annotations use.
+    import numpy as np
 
 
 @dataclass
@@ -19,11 +26,11 @@ class PetClusterStats:
     names_preserved: int = 0
 
 
-def _clusters(vectors, threshold):
+def _clusters(vectors: np.ndarray, threshold: float) -> list[list[int]]:
     """Greedy complete-link grouping; every member must match every other."""
-    groups = []
+    groups: list[list[int]] = []
     for index, vector in enumerate(vectors):
-        choices = []
+        choices: list[tuple[float, int]] = []
         for group_index, group in enumerate(groups):
             similarities = vectors[group] @ vector
             if float(similarities.min()) >= threshold:
@@ -35,7 +42,9 @@ def _clusters(vectors, threshold):
     return groups
 
 
-def _apply_links(conn, groups, emb_rows):
+def _apply_links(
+    conn: sqlite3.Connection, groups: list[list[int]], emb_rows: list[sqlite3.Row]
+) -> list[list[int]]:
     """Fold durable "same pet?" / "different pet?" answers (``pet_links``)
     into the automatic groups, mirroring ``faces/cluster.py``'s
     ``_apply_links`` (read that one first). Links are anchored to DETECTION
@@ -72,13 +81,14 @@ def _apply_links(conn, groups, emb_rows):
     # the coupling).
     parent = list(range(len(groups)))
 
-    def find(x):
+    def find(x: int) -> int:
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
         return x
 
-    same, cannot = [], []
+    same: list[tuple[int, int]] = []
+    cannot: list[tuple[int, int]] = []
     for link in links:
         ga = det_to_group.get(link["det_a"])
         gb = det_to_group.get(link["det_b"])
@@ -86,7 +96,7 @@ def _apply_links(conn, groups, emb_rows):
             continue
         (same if link["kind"] == "same" else cannot).append((ga, gb))
 
-    def would_violate(ra, rb):
+    def would_violate(ra: int, rb: int) -> bool:
         return any({find(ga), find(gb)} == {ra, rb} for ga, gb in cannot)
 
     for ga, gb in same:
@@ -100,9 +110,9 @@ def _apply_links(conn, groups, emb_rows):
     return list(merged.values())
 
 
-def _remember_named_pets(conn) -> dict:
+def _remember_named_pets(conn: sqlite3.Connection) -> dict[int, dict[str, Any]]:
     """Each named pet's detection-id set, so the name can be carried over."""
-    old_members = {}
+    old_members: dict[int, dict[str, Any]] = {}
     for pet in conn.execute("SELECT id,name FROM pets WHERE name IS NOT NULL"):
         old_members[pet["id"]] = {
             "name": pet["name"],
@@ -116,7 +126,7 @@ def _remember_named_pets(conn) -> dict:
     return old_members
 
 
-def _species_groups(V, emb_rows, cfg: Config) -> list[list[int]]:
+def _species_groups(V: np.ndarray, emb_rows: list[sqlite3.Row], cfg: Config) -> list[list[int]]:
     """Cluster within each species, as one flat list of groups.
 
     Each group is a list of GLOBAL positions into emb_rows/V (not positions
@@ -131,7 +141,7 @@ def _species_groups(V, emb_rows, cfg: Config) -> list[list[int]]:
     return groups
 
 
-def _majority_species(emb_rows, group: list[int]) -> str:
+def _majority_species(emb_rows: list[sqlite3.Row], group: list[int]) -> str:
     """The species of a merged group: the MAJORITY among its members, not a
     single per-species pass's label -- a pet_links merge can pull in a detection
     the detector mis-typed (e.g. a dog once read as a cat).
@@ -143,15 +153,19 @@ def _majority_species(emb_rows, group: list[int]) -> str:
     counts = Counter(emb_rows[i]["species"] for i in group)
     top = max(counts.values())
     tied = {sp for sp, c in counts.items() if c == top}
-    return max(
+    # Annotated rather than returned directly: a sqlite3.Row indexes to Any,
+    # and warn_return_any would let that out through a signature promising str.
+    winner: str = max(
         (emb_rows[i] for i in group if emb_rows[i]["species"] in tied),
         key=lambda row: row["det_score"],
     )["species"]
+    return winner
 
 
-def _carried_name(ids: set, old_members: dict) -> str | None:
+def _carried_name(ids: set[int], old_members: dict[int, dict[str, Any]]) -> str | None:
     """The previous name that best explains this group, by detection overlap."""
-    best_name, best_overlap = None, 0
+    best_name: str | None = None
+    best_overlap = 0
     for old in old_members.values():
         overlap = len(ids & old["ids"])
         if overlap > best_overlap:
@@ -159,7 +173,15 @@ def _carried_name(ids: set, old_members: dict) -> str | None:
     return best_name
 
 
-def _write_pet(conn, V, emb_rows, group: list[int], old_members: dict, now: str, stats) -> None:
+def _write_pet(
+    conn: sqlite3.Connection,
+    V: np.ndarray,
+    emb_rows: list[sqlite3.Row],
+    group: list[int],
+    old_members: dict[int, dict[str, Any]],
+    now: str,
+    stats: PetClusterStats,
+) -> None:
     """Insert one pets row for a surviving group and point its detections at it."""
     import numpy as np
 
@@ -190,7 +212,9 @@ def _write_pet(conn, V, emb_rows, group: list[int], old_members: dict, now: str,
     stats.names_preserved += int(best_name is not None)
 
 
-def cluster_pets(conn, cfg: Config, root_id=None) -> PetClusterStats:
+def cluster_pets(
+    conn: sqlite3.Connection, cfg: Config, root_id: int | None = None
+) -> PetClusterStats:
     import numpy as np
 
     stats = PetClusterStats()
