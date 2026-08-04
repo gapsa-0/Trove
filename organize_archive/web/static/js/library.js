@@ -34,8 +34,8 @@ export async function renderPhotos(m) {
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
   const g = restored ? S.grid : {
     offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
-    place: "", onlyIndexed: false, onlyLocated: false, rawQuery: "", searchedQuery: "", query: "", expandedQuery: "",
-    expandedEmbeddingQuery: "", sort: "", error: "", topMatchesOnly: true,
+    place: "", onlyIndexed: false, onlyLocated: false, rawQuery: "", searchedQuery: "", query: "",
+    expandedQuery: "", sort: "", error: "", topMatchesOnly: true,
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
     anchor: null, savedScrollTop: 0,
   };
@@ -426,7 +426,10 @@ export async function loadGrid(direction = "append") {
       // When local translation succeeds it replaces, rather than supplements,
       // the Spanish semantic query. This avoids admitting weak matches unique to
       // the original-language vector. English and fallback searches use g.query.
-      p.append("q", g.expandedEmbeddingQuery || g.query);
+      // Sent verbatim: a query that arrived through the translator is embedded
+      // as exactly the English someone could have typed themselves, so the two
+      // routes to the same words cannot give different results.
+      p.append("q", g.expandedQuery || g.query);
       // Only sent when the user widened the search: absence means the tuned
       // relevance cuts apply, so the common URL stays the default one.
       if (g.topMatchesOnly === false) p.set("top", "no");
