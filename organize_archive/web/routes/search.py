@@ -37,15 +37,31 @@ def _warm_archive_center(db_path: str, rid: int | None) -> None:
 
 
 def semantic_status(req: Request) -> dict:
-    """Semantic index state and whether the local SigLIP model is available."""
+    """Semantic index state, and whether this archive can search by description.
+
+    ``configured`` answers the only question its callers ask -- *will this
+    archive ever have anything to search?* -- which takes two facts, not one.
+    It used to report solely whether the SigLIP dependencies import, so an
+    archive that declined Search by description was told the feature was
+    configured and then shown "0 files searchable, none queued" forever: its
+    semantic stage is left out of the pipeline entirely (ADR 0015), so nothing
+    was ever going to be indexed for it.
+    """
     from ...services import semantic
 
     rid = req.root_id
     db_path = req.db(rid)
     status = search.semantic_summary(db_path, rid)
-    # Nothing left to configure — the stage runs as soon as the
-    # dependencies are importable, and downloads its own weights.
-    status["configured"] = semantic.available()
+    # The feature id is spelled out rather than imported, the same way the
+    # catalogue spells out stage kinds; tests/unit/test_features.py checks it.
+    enabled = "semantic" in req.cfg.archive_features(rid)
+    # Beyond being chosen there is nothing to configure: the stage runs as soon
+    # as the dependencies are importable, and downloads its own weights.
+    status["configured"] = enabled and semantic.available()
+    # Kept apart so the client can tell "this archive did not ask for it" from
+    # "this build cannot do it" -- one is a choice to undo on the setup screen,
+    # the other is an installation that has no such feature to offer.
+    status["enabled"] = enabled
     if status["configured"] and status.get("indexed") and req.cfg.semantic_search_center_embeddings:
         _warm_archive_center(db_path, rid)
     return status

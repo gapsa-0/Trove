@@ -27,6 +27,9 @@ import {
 import {
   esc, toast,
 } from "./dom.js";
+import {
+  ICONS,
+} from "./state.js";
 
 // The catalogue is app-wide and immutable within a session; the rest is this
 // visit's work in progress. `archive` is null while adding a folder that has
@@ -44,6 +47,13 @@ const SETUP = {
 export function isSetupOpen() { return SETUP.path !== "" || SETUP.archive !== null; }
 
 function feature(id) { return SETUP.catalogue.find(f => f.id === id); }
+
+// The feature's mark. The catalogue sends a key rather than a drawing
+// (organize_archive/features.py), and it resolves against the same ICONS the
+// nav and the Overview health cards draw from — which is the whole point of
+// it: the mark on the card you press here is the mark on the card reporting
+// that work later, and on the section it unlocks.
+function mark(f) { return `<i class="feat-mark" aria-hidden="true">${ICONS[f.icon] || ""}</i>`; }
 function folderName(path) { return (path || "").replace(/[/\\]+$/, "").split(/[/\\]/).pop() || path; }
 
 // What the first run of this archive will actually download. A feature whose
@@ -195,7 +205,7 @@ function chipItem(f) {
       </button>`;
   return `<span class="set-chip${f.required ? " fixed" : ""}" data-feature="${f.id}"
       ${f.required ? "" : `draggable="true"`}>
-      <span class="set-node" aria-hidden="true"></span>${esc(f.label)}${out}</span>`;
+      ${mark(f)}${esc(f.label)}${out}</span>`;
 }
 
 function cardItem(f) {
@@ -213,7 +223,7 @@ function cardItem(f) {
     ? ` onclick="toggleFeature('${f.id}')"` : ""}>
         <span class="set-cover">${preview(f)}</span>
         <div class="set-meta">
-          <span class="set-card-name">${esc(f.label)}</span>
+          <span class="set-card-name">${mark(f)}${esc(f.label)}</span>
           <p class="set-card-line">${esc(f.tagline)}</p>
           <button class="set-flip" type="button"
             onclick="event.stopPropagation();flipFeature('${f.id}')">What this does</button>
@@ -224,7 +234,7 @@ function cardItem(f) {
         </div>
       </div>
       <div class="set-face set-back"${back ? "" : " hidden"}>
-        <span class="set-card-name">${esc(f.label)}</span>
+        <span class="set-card-name">${mark(f)}${esc(f.label)}</span>
         <p class="set-card-detail">${esc(f.detail)}</p>
         <button class="set-flip" type="button" onclick="flipFeature('${f.id}')">Back</button>
       </div>

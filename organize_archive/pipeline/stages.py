@@ -74,29 +74,21 @@ STAGES: tuple[StageDef, ...] = (
     StageDef(SEMANTIC, (DEDUP,), "semantic", True),
 )
 
-# Display cards, in the order the Overview renders them.
+# Display cards, in the order the Overview renders them. Dependency-ordered,
+# which _mark_stalled's single forward walk relies on, and the same order the
+# setup panel draws its chain in (``tests/unit/test_features.py``).
 CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic")
-# Coherent operation names (one per card), in a single consistent format.
-CARD_LABEL = {
-    "scan": "Scan",
-    "dedup": "Deduplication",
-    "detect": "People & pets",
-    "places": "Location mapping",
-    "semantic": "Semantic indexing",
-}
-# What a card says while its stage is actively running, one consistent
-# "<verb>ing <object>…" format across every stage.
-_RUN_TEXT = {
-    "scan": "Scanning files…",
-    "dedup": "Finding duplicates…",
-    "detect": "Detecting people & pets…",
-    "places": "Mapping locations…",
-    "semantic": "Indexing media…",
-}
-_UNAVAILABLE_TEXT = {
-    "detect": "Detection unavailable",
-    "semantic": "Semantic indexing unavailable",
-}
+# What each card is *called*, what it says while it runs and which mark it
+# carries all come from ``features.py``, composed per card from the features
+# the archive actually enabled -- there is deliberately no table of card names
+# here. Three of them used to live in this module and two more in the frontend,
+# and every one of them named the same five things differently from the setup
+# panel that offered them.
+#
+# The one string with nowhere better to live: an unavailable stage is one whose
+# optional dependency will not import, which is the same condition the setup
+# panel reports on the feature's own card, in these words.
+_UNAVAILABLE_TEXT = "Not in this build"
 
 
 def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
@@ -388,7 +380,7 @@ def _card(
     progress = next((m["progress"] for m in members if m["progress"]), None)
     blocker = lead["blocker"]
     blocker_card[card_id] = _CARD_OF.get(blocker) if blocker else None
-    message = _message(card_id, state, pending, blocker, lead.get("error"))
+    message = _message(card_id, state, pending, blocker, lead.get("error"), enabled)
 
     if card_id == "scan":
         progress, message = _scan_card_progress(members, progress, message)
@@ -404,7 +396,12 @@ def _card(
     bc_id = blocker_card[card_id]
     return {
         "id": card_id,
-        "label": features.card_label(card_id, enabled, CARD_LABEL[card_id]),
+        "label": features.card_label(card_id, enabled),
+        # A key into the frontend's ICONS, not a drawing: the same mark this
+        # feature carries on its setup card and (where it has one) its nav
+        # section, so the card watching the work is recognisably the card that
+        # asked for it.
+        "icon": features.card_icon(card_id, enabled),
         "state": state,
         "pending": pending,
         "counted": counted,
@@ -418,7 +415,7 @@ def _card(
         # True while a paused stage's job is still winding down to its next
         # batch checkpoint -- set by snapshot, which knows about the pause.
         "pausing": False,
-        "waiting_on": CARD_LABEL.get(bc_id) if bc_id else None,
+        "waiting_on": features.card_label(bc_id, enabled) if bc_id else None,
         "message": message,
     }
 
@@ -432,11 +429,16 @@ def _mark_up_next(result: list[dict], blocker_card: dict[str, str | None]) -> No
     of identical "waiting" cards.
     """
     running_cards = {c["id"] for c in result if c["state"] == "running"}
+    # Read back off the cards rather than recomposed: a blocker is always a
+    # card that was built (it is a dependency, and those are required
+    # features), and taking its name from the card itself is what guarantees
+    # the two say the same thing.
+    label = {c["id"]: c["label"] for c in result}
     for c in result:
         bc = blocker_card.get(c["id"])
         if c["state"] == "blocked" and bc is not None and bc in running_cards:
             c["next"] = True
-            c["message"] = f"Up next · after {CARD_LABEL[bc]}"
+            c["message"] = f"Up next · after {label[bc]}"
 
 
 def _mark_stalled(
@@ -475,9 +477,11 @@ def cards(
     archive does not run disappears from the Overview: ``stage_states`` already
     left its stages out.
 
-    ``enabled`` is only used to name a card whose owning features are partly
-    switched on ("People" rather than "People & pets"); the default keeps the
-    catalogue's own wording.
+    ``enabled`` is what every word and mark on a card is composed from: its
+    name, its running line, its icon, and the name of whatever a blocked card
+    is waiting for all come from the feature catalogue, so a card describes the
+    work this archive asked for and no other ("People", not "People & pets", on
+    an archive that never wanted pets).
     """
     by_card: dict[str, list[dict]] = {}
     for s in states:
@@ -523,16 +527,25 @@ def is_stage_kind(kind: str) -> bool:
 
 
 def _message(
-    card_id: str, state: str, pending: int | None, blocker: str | None, error: str | None
+    card_id: str,
+    state: str,
+    pending: int | None,
+    blocker: str | None,
+    error: str | None,
+    enabled: tuple[str, ...],
 ) -> str | None:
     """Fixed wording the client shows for every non-terminal state. The
     up_to_date ("done") message is left to the client, which already holds the
-    per-domain summary numbers (duplicate count, faces found, …)."""
+    per-domain summary numbers (duplicate count, faces found, …).
+
+    ``enabled`` is what lets a card speak about the work this archive asked
+    for: both the running line and the name of whatever a blocked card waits
+    on are composed from the feature set (see ``features.card_running``)."""
     if state == "running":
-        return _RUN_TEXT.get(card_id, "Working now")
+        return features.card_running(card_id, enabled)
     if state == "blocked":
         blocker_card = _CARD_OF.get(blocker) if blocker else None
-        waiting = CARD_LABEL.get(blocker_card, "earlier steps") if blocker_card else "earlier steps"
+        waiting = features.card_label(blocker_card, enabled) if blocker_card else "earlier steps"
         return f"Waiting for {waiting}…"
     if state == "queued":
         if pending and pending > 0:
@@ -540,7 +553,7 @@ def _message(
             return f"{pending:,} {noun} queued"
         return "Queued"
     if state == "unavailable":
-        return _UNAVAILABLE_TEXT.get(card_id, "Not available")
+        return _UNAVAILABLE_TEXT
     if state == "error":
         return error or "Last run failed, will retry"
     return None

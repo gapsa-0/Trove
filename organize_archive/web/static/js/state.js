@@ -15,6 +15,10 @@ export const ICONS = {
   pets: '<svg viewBox="0 0 24 24"><path d="M8.5 10.5C6 7 3 7.5 3 11c0 2 1.5 3.5 3.5 3.5C5 18 7.5 21 12 21s7-3 5.5-6.5C19.5 14.5 21 13 21 11c0-3.5-3-4-5.5-.5"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M10 17h4"/></svg>',
   places: '<svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   dups: '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h1"/></svg>',
+  // Search by description unlocks no nav section of its own, so this mark is
+  // only ever drawn on its setup card and its Overview card. It is the same
+  // magnifier the setup card's preview types into.
+  semantic: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg>',
   settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
   sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24"><path d="M20.5 15.3A9 9 0 0 1 8.7 3.5 9 9 0 1 0 20.5 15.3Z"/></svg>'
@@ -26,7 +30,13 @@ export const ICONS = {
 // features existed reports the full set, so nothing disappears on upgrade.
 export const SECTIONS = [
   { id: "overview", label: "Overview" },
-  { id: "library", label: "Library" },
+  // "Browse", not "Library": every other section is named for what it holds,
+  // and this one is named for what you do there -- look through the whole
+  // archive, by filter or by description. "Library" stays the word for the
+  // collection itself ("Search your library", "Library health"), which is
+  // exactly the thing this screen is one view of. The id is untouched: it is
+  // in URL hashes, in the feature catalogue's `sections`, and in ICONS.
+  { id: "library", label: "Browse" },
   { id: "timeline", label: "Timeline" },
   { id: "people", label: "People" },
   { id: "pets", label: "Pets" },
@@ -43,6 +53,15 @@ export function archiveSections(archive) {
   const on = new Set(archive?.features || []);
   if (!on.size) return SECTIONS;
   return SECTIONS.filter(s => !SECTION_FEATURE[s.id] || on.has(SECTION_FEATURE[s.id]));
+}
+// Whether an archive runs one feature. For the features that unlock no section
+// of their own and so cannot be gated by hiding one: Search by description
+// lives *inside* Browse, as the composer at the top of it, and an archive that
+// declined the feature must not be offered a search that will never have
+// anything to find. Same "unconfigured means everything" rule as above.
+export function archiveHasFeature(archive, id) {
+  const on = new Set(archive?.features || []);
+  return !on.size || on.has(id);
 }
 export const S = {
   arch: null, section: "overview", grid: null,

@@ -227,6 +227,18 @@ button.stat:hover {
   font-weight: 680
 }
 
+/* The feature's own mark (drawn by base.css), the same one on its setup card
+   and its nav section. Muted rather than accented: it is here to be
+   recognised, not to compete with the state colours the card already carries
+   in its border and its dot. */
+.health-task-head .feat-mark {
+  color: var(--muted)
+}
+
+.health-task.running .feat-mark {
+  color: var(--accent)
+}
+
 /* Per-stage pause/resume. Dimmed until the card is hovered or the stage is
    already paused, so five of these never compete with the status text --
    but never fully hidden, or nobody would find them. */
@@ -282,8 +294,11 @@ button.stat:hover {
   color: var(--muted)
 }
 
+/* No left indent: the state dot and spinner live in this line now, so it
+   starts where the head does rather than hanging under a marker that has
+   moved. */
 .health-task-state {
-  margin: 5px 0 0 14px;
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;

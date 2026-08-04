@@ -105,6 +105,10 @@ def features(cfg: Config) -> list[dict[str, Any]]:
             {
                 "id": feature.id,
                 "label": feature.label,
+                # The mark the panel draws beside the name, and the same one
+                # the Overview card and nav section for this feature carry --
+                # a key into the frontend's ICONS, resolved there.
+                "icon": feature.icon,
                 "tagline": feature.tagline,
                 "detail": feature.detail,
                 "required": feature.required,

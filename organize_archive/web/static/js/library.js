@@ -20,7 +20,7 @@ import {
   setPeopleChecks, warmLocalTranslator,
 } from "./search.js";
 import {
-  S, TYPE_ICON, typeLabel,
+  S, TYPE_ICON, archiveHasFeature, typeLabel,
 } from "./state.js";
 import {
   applyTimelineFilters,
@@ -41,12 +41,21 @@ export async function renderPhotos(m) {
   };
   S.grid = g;
   S.gallery = g.pages.flatMap(page => page.items.map(item => item.id));
+  // Search by description is a feature of this screen, not a screen of its
+  // own, so it is the one feature that cannot be switched off by dropping a
+  // nav section. Without this the composer rendered on every archive, and an
+  // archive that declined the feature was invited to search an index whose
+  // stage the scheduler will never start -- then told "no files searchable by
+  // description yet", promising work that was never coming.
+  const searchable = archiveHasFeature(S.arch, "semantic");
   m.innerHTML = `<div class="pagehead">
-      <div><h2 class="sec">Library</h2>
-      <p>Browse and search every item, with filters that work together.</p></div>
+      <div><h2 class="sec">Browse</h2>
+      <p>${searchable
+    ? "Look through every item, by filter or by description."
+    : "Look through every item, with filters that work together."}</p></div>
     </div>
     <div class="library-controls">
-      <form class="library-search" onsubmit="return semanticSubmit(event)">
+      ${searchable ? `<form class="library-search" onsubmit="return semanticSubmit(event)">
         <div class="semantic-composer" id="semantic-q" contenteditable="true" role="textbox"
           aria-label="Search your library by description" data-placeholder="Search your library, describe anything"
           spellcheck="true" oninput="onSemanticComposerInput()" onkeydown="onSemanticComposerKeydown(event)"
@@ -54,7 +63,7 @@ export async function renderPhotos(m) {
         <button class="btn" type="submit">Search</button>
       </form>
       <div class="active-query" id="active-query" aria-live="polite" hidden></div>
-      <div class="search-reach" id="search-reach" aria-live="polite" hidden></div>
+      <div class="search-reach" id="search-reach" aria-live="polite" hidden></div>` : ""}
       <div class="library-toolbar">
         <div class="filterbar" id="filterbar"></div>
         <div class="chips">
@@ -66,9 +75,11 @@ export async function renderPhotos(m) {
     <div class="infinite-status top" id="grid-top-sentinel" aria-hidden="true"></div>
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="grid-sentinel" aria-live="polite"></div>`;
+  // Absent on an archive that does not run Search by description, where the
+  // rest of this screen — grid, filters, sort, paging — is unaffected.
   const composer = document.getElementById("semantic-q");
-  composer.addEventListener("compositionstart", () => S.composerComposing = true);
-  composer.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
+  composer?.addEventListener("compositionstart", () => S.composerComposing = true);
+  composer?.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
   // Start loading the translation model on the first keystroke, not when the
   // screen opens: it is 23 MB, and opening Library is no evidence that anyone
   // intends to search. The server-side warm-ups can afford to be eager because
@@ -78,7 +89,7 @@ export async function renderPhotos(m) {
   // itself (renderSemanticComposer) -- so focus would fire on every search
   // whether or not anyone had touched the box. The rest of the typing still
   // covers the load.
-  composer.addEventListener("input", warmLocalTranslator, { once: true });
+  composer?.addEventListener("input", warmLocalTranslator, { once: true });
   await buildFilterBar();
   if (gen !== S.nav) return;
   renderSearchReach();

@@ -15,10 +15,6 @@ import {
 /* ---------- persistent pipeline status (sidebar, shown on every section) ----
    The pipeline runs itself; this ambient chip is the only status the user
    needs and it carries no controls. */
-const JOB_LABEL = {
-  scan: "Scanning files…", enrich: "Reading metadata…", detect: "Detecting people & pets…",
-  face_cluster: "Updating people…", places: "Updating map places…", dedup: "Finding duplicates…", semantic: "Indexing search…"
-};
 // The sidebar chip and the Overview health cards read the SAME pipeline
 // snapshot, so they can never tell the user two different things.
 export const CARD_KIND = { scan: "scan", dedup: "dedup", detect: "detect", places: "places", semantic: "semantic" };
@@ -30,12 +26,19 @@ function gstatPct(pct) {
 }
 function gstatRow(run) {
   const pct = run.progress && run.progress.percent != null ? run.progress.percent : null;
-  // The label's trailing ellipsis meant "in progress"; the bar says that now,
-  // and dropping it keeps the real text-overflow ellipsis unambiguous.
-  // A job winding down after a pause says so instead of naming work it is
-  // about to stop doing, so the chip and the health card agree.
+  // The card's own line, not a wording of the chip's own. This module used to
+  // keep a table of running labels, which is how the chip came to say
+  // "Indexing search…" about the card next to it reading "Semantic indexing"
+  // about the feature the user had chosen as "Search by description". The
+  // snapshot already carries one composed line per running stage; taking it
+  // verbatim is what makes those three the same sentence.
+  //
+  // The trailing ellipsis meant "in progress"; the bar says that now, and
+  // dropping it keeps the real text-overflow ellipsis unambiguous. A job
+  // winding down after a pause says so instead of naming work it is about to
+  // stop doing.
   const label = run.pausing ? "Pausing"
-    : (JOB_LABEL[CARD_KIND[run.id]] || run.label).replace(/…$/, "");
+    : (run.message || run.label || "").replace(/…$/, "");
   return `<div class="grow"><div class="gline"><span class="gtxt">${label}</span>`
     + (pct != null ? `<span class="gpct">${gstatPct(pct)}</span>` : "") + `</div>`
     + (pct != null

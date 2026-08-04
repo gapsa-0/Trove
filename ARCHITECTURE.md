@@ -201,6 +201,24 @@ own previous `user_version` so it cannot fire twice.
   "disabled" state to render anywhere. An archive registered before this
   existed has no `features` key and gets the full set, so an upgrade never
   switches off work already in progress.
+- **A feature is named and marked once, in `features.py`, for every surface
+  that shows it.** The setup card, the pipeline chip, the Overview health card
+  and the sidebar status line all resolve through `card_label`, `card_running`
+  and `card_icon`; none of them keeps a wording or an icon of its own. Three
+  such tables used to live in `pipeline/stages.py` and the frontend, and all
+  three named the same five things differently from the panel that offered
+  them. A card whose feature is only partly enabled is composed from the half
+  that is on, which is why the shared People & pets card can say "Finding
+  pets…" — see `tests/unit/test_features.py`, which also pins the invariants
+  the composition rests on (features sharing a card share a verb; the panel's
+  chain order is the Overview's card order).
+- **A feature that unlocks no section is gated where it lives.** Hiding a nav
+  section is how most features disappear, and Search by description has none —
+  it is the composer at the top of Browse. So `library.js` gates that composer
+  on the feature (`archiveHasFeature`), and `/api/browse/semantic/status`
+  reports `configured` only when the archive both chose the feature and can
+  run it. Reporting importability alone was the bug: an archive that declined
+  the feature was offered a search over an index nothing would ever write.
 - A stage may only depend on a stage owned by a *required* feature. Otherwise a
   stage whose dependency was switched off would sit blocked on a state that can
   never arrive — `tests/unit/test_features.py` enforces this rather than

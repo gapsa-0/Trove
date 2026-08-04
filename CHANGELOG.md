@@ -52,7 +52,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `oa logs` prints the application log, or `oa logs --path` its location, so a
   bug report can carry the evidence needed to act on it.
 
+### Fixed
+
+- An archive set up **without** Search by description was still shown the
+  description-search box at the top of its browse screen, above a line
+  promising files "queued for indexing". Nothing was queued and nothing ever
+  would be — declining the feature leaves its indexing stage out of the
+  pipeline entirely — so the search could only ever come back empty. The box
+  and that line now appear only on archives that run the feature; the grid,
+  filters and sorting are unaffected.
+
 ### Changed
+
+- **The Library section is now called Browse.** Every other section is named
+  for what it holds — People, Places, Duplicates — and this one is named for
+  what you do there: look through the whole archive, by filter or by
+  description. "Library" still means the collection itself, as in Library
+  health on the Overview.
+
+- **A feature is called the same thing everywhere, and carries the same mark.**
+  The setup screen offered "Search by description"; Library health then reported
+  on it as "Semantic indexing" and the sidebar announced it as "Indexing search…",
+  and nothing on any of those screens said they were the same thing. Every card,
+  chip and status line now takes its name from the feature you chose, and each
+  feature has one icon — on the card you press, on the link in the pipeline, on
+  the card reporting its progress, and on the section it unlocks. The shared
+  People & pets card also stops naming the half you did not ask for: on a
+  pets-only archive it says "Finding pets…" rather than promising people it was
+  never going to look for.
 
 - **Model weights are downloaded when you create the archive, not hours later.**
   The setup screen quotes what a feature costs to download, and the download then

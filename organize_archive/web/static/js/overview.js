@@ -206,9 +206,13 @@ function healthCard(stage) {
   // untouched here -- its dot/spinner already come from `st`.
   const stopped = (allPaused || stage.stalled) && st !== "running";
   const dot = stage.next ? "next" : (stopped ? "check" : (HEALTH_DOT[st] || "check"));
-  const head = (st === "running"
-    ? `<span class="spin"></span>${stage.label}`
-    : `<span class="dot ${dot}"></span>${stage.label}`) + stagePauseButton(stage);
+  // The head is identity and the line below it is state, which is what makes
+  // room for the mark: the feature's own icon, the one it carried on the card
+  // the user pressed to switch this work on. The spinner/dot moved down to sit
+  // with the words it qualifies rather than competing with the mark up here.
+  const head = `<span class="feat-mark">${ICONS[stage.icon] || ""}</span>`
+    + stage.label + stagePauseButton(stage);
+  const mark = st === "running" ? `<span class="spin"></span>` : `<span class="dot ${dot}"></span>`;
   const message = pausing ? "Pausing…"
     : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
   let prog = "";
@@ -229,7 +233,7 @@ function healthCard(stage) {
   const cls = stopped ? "paused" : (stage.next ? "next" : (HEALTH_CARDCLASS[st] || ""));
   return `<div class="health-task ${cls}">
       <div class="health-task-head">${head}</div>
-      <div class="health-task-state">${message}${prog}</div></div>`;
+      <div class="health-task-state">${mark}${message}${prog}</div></div>`;
 }
 // Per-stage pause/resume. One button per card, on top of
 // the whole-pipeline switch in the panel heading: it stops just this stage
@@ -277,7 +281,7 @@ function renderHealthCards() {
   const snap = S.pipeline;
   renderPauseControl();
   if (!snap || !snap.stages) {
-    el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-head"><span class="spin"></span>Checking for work…</div></div></div>`;
+    el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-state"><span class="spin"></span>Checking for work…</div></div></div>`;
     return;
   }
   el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;

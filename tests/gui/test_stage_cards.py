@@ -81,7 +81,7 @@ def _snapshot(monkeypatch, jobs, *states):
 
 def test_a_preparing_stage_shows_no_bar_and_leads_with_what_it_is_doing():
     """The first-run case this exists for: a 249 MB download reported as a
-    stalled 12% bar next to "Detecting people & pets…"."""
+    stalled 12% bar next to "Finding people & pets…"."""
     downloading = _progress(phase="preparing", current="downloading adaface model — 42% of 249 MB")
 
     card = _card(_stage(progress=downloading))
@@ -109,7 +109,7 @@ def test_the_bar_and_the_running_text_come_back_once_the_loop_starts():
     card = _card(_stage(progress=_progress(phase="working", current="2019/IMG_1.jpg")))
 
     assert card["progress"]["done"] == 600
-    assert card["message"] == "Detecting people & pets…"
+    assert card["message"] == "Finding people & pets…"
 
 
 def test_a_preparing_dedup_does_not_claim_to_be_fingerprinting():
@@ -169,7 +169,7 @@ def test_a_stage_nobody_paused_keeps_its_running_text(monkeypatch):
 
     card = next(c for c in snap["stages"] if c["id"] == "detect")
     assert card["pausing"] is False
-    assert card["message"] == "Detecting people & pets…"
+    assert card["message"] == "Finding people & pets…"
 
 
 def test_a_stage_stopped_mid_run_keeps_the_bar_it_reached(monkeypatch):

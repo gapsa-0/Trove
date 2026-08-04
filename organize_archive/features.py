@@ -26,6 +26,14 @@ than in the frontend so that the words describing a feature sit next to the
 stages that implement it, and a feature that grows a stage cannot quietly keep
 a description that no longer matches what it does.
 
+They are also what the *rest* of the app calls the same work. A feature is
+chosen on the setup panel and then reported on by an Overview card and a
+sidebar chip, and those three surfaces each used to keep a wording of their
+own: "Search by description" was configured, then progressed as "Semantic
+indexing", then announced as "Indexing search…". ``card_label``,
+``card_running`` and ``card_icon`` are how that stopped — one name and one mark
+per feature, composed here for whichever card ends up showing it.
+
 L0: this module is a table and the functions that query it. It names stage
 kinds and section ids as plain strings on purpose -- importing the pipeline to
 get them would invert the layering, and ``tests/unit/test_features.py`` checks
@@ -48,10 +56,25 @@ class Feature:
     """One thing an archive can be asked to do, and everything that follows from it."""
 
     id: str
+    # What this feature is called, everywhere. The setup card, the chain link,
+    # the Overview card reporting its progress and the sidebar chip all read
+    # this one string, so the archive that chose "Search by description" is
+    # never afterwards shown a card called "Semantic indexing".
     label: str
+    # The mark that identifies it, on the same four surfaces. A key into the
+    # frontend's ICONS table rather than the drawing itself: markup belongs in
+    # the frontend, but *which* mark is part of what a feature is called.
+    icon: str
     # One line, shown under the title on the card. Says what the user gets, in
     # their words -- never the name of the model or the stage.
     tagline: str
+    # The Overview card's line while its stages run, kept in the two halves a
+    # fused card has to recombine: "Finding" + "people" + "pets" gives
+    # "Finding people & pets…", where two finished sentences could not be
+    # joined. Features sharing a card must therefore share a verb, which
+    # ``tests/unit/test_features.py`` checks.
+    verb: str
+    noun: str
     # The paragraph behind the card's "What this does". Long enough to answer
     # "should I turn this on", which means it has to be honest about cost.
     detail: str
@@ -85,7 +108,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(
         id="index",
         label="Indexing",
+        icon="library",
         tagline="Find every file and work out when it was taken",
+        verb="Scanning",
+        noun="files",
         detail=(
             "Walks the folder and records every photo, video, audio file and document "
             "it finds, then resolves a date for each one from Google Takeout sidecars, "
@@ -101,7 +127,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(
         id="duplicates",
         label="Duplicates",
+        icon="dups",
         tagline="Group the copies of the same thing",
+        verb="Finding",
+        noun="duplicates",
         detail=(
             "Groups byte-identical copies, and photos that are the same shot re-saved by "
             "a different export or messaging app. One copy in each group is picked as the "
@@ -116,7 +145,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(
         id="people",
         label="People",
+        icon="people",
         tagline="Group photos by who is in them",
+        verb="Finding",
+        noun="people",
         detail=(
             "Finds faces, checks each one is sharp, large and complete enough to trust, "
             "and groups them into people you can name, correct, merge and split. Video is "
@@ -133,7 +165,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(
         id="pets",
         label="Pets",
+        icon="pets",
         tagline="Find the cats, dogs, birds and horses",
+        verb="Finding",
+        noun="pets",
         detail=(
             "Finds cats, dogs, birds and horses, then groups the ones it is confident are "
             "the same animal, so a pet gets a page of its own the way a person does."
@@ -149,7 +184,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(
         id="places",
         label="Places",
+        icon="places",
         tagline="Find the places you go and put them on a map",
+        verb="Mapping",
+        noun="locations",
         detail=(
             "Gathers photos that already carry GPS coordinates into the places you keep "
             "going back to, so you can name them, pin them and correct them. Photos that "
@@ -163,7 +201,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(
         id="semantic",
         label="Search by description",
+        icon="semantic",
         tagline="Find a photo by describing what is in it",
+        verb="Indexing",
+        noun="photos for search",
         detail=(
             "Indexes every photo and video as an embedding, a fingerprint of what is "
             "actually in the frame, so “a dog on the beach” finds the shot without "
@@ -241,14 +282,60 @@ def owners(card: str) -> tuple[Feature, ...]:
     return tuple(f for f in FEATURES if f.card == card)
 
 
-def card_label(card: str, enabled: Iterable[str], default: str) -> str:
-    """What to call a card whose owning features are not all switched on.
+def _live(card: str, enabled: Iterable[str]) -> tuple[Feature, ...]:
+    """The features that put work on one card and are switched on here.
 
-    The detect card reads "People & pets" when both are on, and simply "People"
-    (or "Pets") when one of them is not — a card naming work the archive was
-    never asked to do is a card the user cannot act on.
+    Falls back to every owner when none of them is, which keeps the three
+    naming helpers total. A card with no live owner is never rendered — the
+    pipeline does not build one — so this is a default, not a case.
     """
-    on = [f for f in owners(card) if f.id in set(enabled)]
-    if len(on) == 1 and len(owners(card)) > 1:
-        return on[0].label
-    return default
+    on = set(enabled)
+    return tuple(f for f in owners(card) if f.id in on) or owners(card)
+
+
+def _joined(parts: Iterable[str]) -> str:
+    """Sentence-case join, for the one card two features share.
+
+    The first part keeps its capital and the rest lose theirs, so People and
+    Pets read as "People & pets" rather than as two titles bolted together.
+    """
+    return " & ".join(p if i == 0 else p[:1].lower() + p[1:] for i, p in enumerate(parts))
+
+
+def card_label(card: str, enabled: Iterable[str]) -> str:
+    """What to call one Overview card: the name of the feature that put it there.
+
+    This is deliberately the *same* string the setup panel prints on the card
+    the user pressed. Those two screens used to keep separate wordings, so an
+    archive was configured with "Search by description" and then reported on
+    under "Semantic indexing", and nothing on either screen said they were the
+    same thing.
+
+    A card whose owning features are not all switched on is named after the
+    ones that are — "People" rather than "People & pets" — because a card
+    naming work the archive was never asked to do is a card the user cannot act
+    on.
+    """
+    return _joined(f.label for f in _live(card, enabled))
+
+
+def card_running(card: str, enabled: Iterable[str]) -> str:
+    """What one Overview card says while its stages are actually running.
+
+    Composed rather than stored so that the fused detect card reports the half
+    it is running: an archive that asked only for Pets gets "Finding pets…",
+    where the fixed string it used to show promised people it was never going
+    to look for.
+    """
+    live = _live(card, enabled)
+    return f"{live[0].verb} {_joined(f.noun for f in live)}…"
+
+
+def card_icon(card: str, enabled: Iterable[str]) -> str:
+    """The mark one Overview card carries, keyed into the frontend's ICONS.
+
+    A fused card takes the mark of whichever half is listed first — the same
+    half whose label opens its title, so the name and the mark never point at
+    different features.
+    """
+    return _live(card, enabled)[0].icon

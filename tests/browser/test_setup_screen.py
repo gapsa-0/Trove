@@ -274,7 +274,29 @@ def test_the_nav_only_offers_what_the_archive_runs(open_app, archive):
         assert "Places" in labels
         assert "People" not in labels and "Pets" not in labels
         # The ones every archive has are untouched.
-        assert {"Overview", "Library", "Timeline", "Duplicates"} <= set(labels)
+        assert {"Overview", "Browse", "Timeline", "Duplicates"} <= set(labels)
+        assert app.errors() == []
+
+
+def test_browse_only_offers_description_search_to_an_archive_that_runs_it(open_app, archive):
+    """The one feature that unlocks no section of its own: Search by
+    description lives inside Browse, so switching it off cannot be expressed by
+    dropping a nav item and has to be expressed here. Left ungated, the
+    composer invited a search of an index whose stage the scheduler never
+    starts, over a line promising files "queued for indexing"."""
+    with open_app("library", wait_for=".library-controls") as app:
+        assert app.count(".semantic-composer") == 1
+        assert app.errors() == []
+
+    _configure(archive, features=["index", "duplicates", "places"])
+
+    with open_app("library", wait_for=".library-controls") as app:
+        assert app.count(".semantic-composer") == 0
+        assert app.count(".search-reach") == 0
+        # The rest of the screen is untouched: this removes a search, not a way
+        # of looking through the archive.
+        assert app.count("#filterbar") == 1
+        assert app.count("#grid") == 1
         assert app.errors() == []
 
 

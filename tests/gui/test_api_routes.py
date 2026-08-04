@@ -150,7 +150,7 @@ API_GET_CASES = [
     pytest.param("/api/folders?root={root_id}", {"folders"}, id="GET /api/folders"),
     pytest.param(
         "/api/browse/semantic/status?root={root_id}",
-        {"total", "indexed", "skipped", "errors", "pending", "by_type", "configured"},
+        {"total", "indexed", "skipped", "errors", "pending", "by_type", "configured", "enabled"},
         id="GET /api/browse/semantic/status",
     ),
     pytest.param(
@@ -192,6 +192,33 @@ def test_every_get_api_route_answers_with_its_shape(live_server, path_template, 
     assert status == 200, body
     payload = json.loads(body)
     assert expected_keys <= payload.keys(), payload
+
+
+def test_semantic_status_is_not_configured_on_an_archive_that_declined_it(live_server):
+    """``configured`` has to mean "this archive will have something to search",
+    which takes the feature choice as well as the importable model.
+
+    It used to report only the latter, so an archive set up without Search by
+    description was told the feature was configured — and the Browse screen
+    then offered a composer over an index whose stage the scheduler leaves out
+    of the pipeline entirely, above a line promising files "queued for
+    indexing" that nothing would ever index.
+    """
+    base, root_id = live_server.base_url, live_server.ids["root_id"]
+    path = f"/api/browse/semantic/status?root={root_id}"
+
+    status, _ct, body = _get(base, path)
+    assert status == 200, body
+    assert json.loads(body)["enabled"] is True
+
+    ok, body = _post(base, "/api/archive/configure", {"root_id": root_id, "features": ["places"]})
+    assert ok == 200, body
+
+    status, _ct, body = _get(base, path)
+    assert status == 200, body
+    payload = json.loads(body)
+    assert payload["enabled"] is False
+    assert payload["configured"] is False
 
 
 def test_get_settings_returns_the_constant_empty_object(live_server):

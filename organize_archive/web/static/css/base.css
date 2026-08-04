@@ -43,3 +43,24 @@ button {
 .muted {
   color: var(--muted);
 }
+
+/* A feature's mark: one drawing at one size, wherever a feature is named --
+   the setup card, its link in the pipeline chain, and the Overview card
+   reporting that work. It lives here rather than in any one of those
+   stylesheets because being the same mark in all three is the entire point of
+   it (organize_archive/features.py). Colour is left to each surface, which is
+   the only thing about it that legitimately differs. */
+.feat-mark {
+  display: flex;
+  flex: none;
+}
+
+.feat-mark svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
