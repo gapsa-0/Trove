@@ -110,7 +110,7 @@ def test_item_still_reports_a_named_place_below_threshold(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# The un-clustered map view (things_to_fix #33) reads the same floor, but must
+# The un-clustered map view reads the same floor, but must
 # still show the files it hides places for -- one dot per geotagged file, and
 # the ones with no *shown* place identified as such so they can be greyed out.
 # ---------------------------------------------------------------------------

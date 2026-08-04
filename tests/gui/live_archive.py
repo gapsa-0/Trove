@@ -301,8 +301,8 @@ def live_server(tmp_path, monkeypatch):
     # query into a vector. Unstubbed, it loads the actual SigLIP text tower
     # (organize_archive/embeddings/backend.py:load_text), which downloads
     # ~372 MB the first time -- and this test's XDG-isolated cache dir never
-    # has it cached, so that would be a real network fetch. CLAUDE.md's
-    # local-only rule (and this sandboxed test run) both forbid that, so only
+    # has it cached, so that would be a real network fetch. CONTRIBUTING's
+    # no-network rule (and this sandboxed test run) both forbid that, so only
     # the embedding step is stubbed to a fixed unit vector; the rest of the
     # route (query parsing, search.semantic_search against whatever's in
     # semantic_embeddings) still runs for real.

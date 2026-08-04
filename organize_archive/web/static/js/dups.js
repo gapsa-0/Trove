@@ -49,7 +49,7 @@ export async function renderDedup(m) {
     },
   });
 }
-// What the redundant copies actually ARE (things_to_fix #35). "27,318
+// What the redundant copies actually ARE. "27,318
 // duplicates" hides two things worth knowing: how many are byte-identical
 // (safe, boring) versus only visually the same (a re-compressed export,
 // where the kept copy is a judgement call), and whether the space is going

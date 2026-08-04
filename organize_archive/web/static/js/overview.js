@@ -201,7 +201,7 @@ function healthCard(stage) {
       <div class="health-task-head">${head}</div>
       <div class="health-task-state">${message}${prog}</div></div>`;
 }
-// Per-stage pause/resume (things_to_fix #32). One button per card, on top of
+// Per-stage pause/resume. One button per card, on top of
 // the whole-pipeline switch in the panel heading: it stops just this stage
 // and lets the others carry on. Deliberately inert while the whole pipeline
 // is paused -- nothing is running, so there is nothing here to stop.
@@ -249,7 +249,7 @@ function renderHealthCards() {
   }
   el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;
 }
-// Whole-pipeline pause/resume (things_to_fix #19): pausing cancels every
+// Whole-pipeline pause/resume: pausing cancels every
 // running job at its next batch checkpoint (see JobManager.set_paused), and
 // the scheduler simply stops starting new ones until resumed. Individual
 // stages have their own buttons on the cards (stagePauseButton); this one

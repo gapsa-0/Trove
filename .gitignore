@@ -40,12 +40,6 @@ packaging/models/staged/
 plan/
 fast_tasks.md
 
-# Local working notes for AI assistants: they describe this specific machine's
-# archive (paths, family folder names) and are not useful to anyone else.
-CLAUDE.md
-.claude/
-AGENTS.md
-
 # Obsidian's per-vault settings, including workspace.json, which records which
 # panes this machine happens to have open. Editor state, not project state.
 .obsidian/

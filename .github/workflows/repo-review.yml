@@ -44,7 +44,7 @@ jobs:
                 look for modules nothing imports. Delete rather than comment out.
           - [ ] **Dependabot** — merge each open PR or close it with a reason.
           - [ ] **ADRs** — has a decision been reversed in practice? Write the
-                superseding record. Same question for `CLAUDE.md` and `ARCHITECTURE.md`:
-                does every path in them still exist?
+                superseding record. Same question for `ARCHITECTURE.md` and
+                `CONTRIBUTING.md`: does every path in them still exist?
           BODY
           )"

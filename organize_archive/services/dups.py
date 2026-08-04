@@ -28,7 +28,7 @@ def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[st
             WHERE 1=1{rc}""",
         rp,
     ).fetchone()
-    # Breakdown of the redundant copies (things_to_fix #35): "24,102
+    # Breakdown of the redundant copies: "24,102
     # duplicates" says nothing about what they are. Two cuts of the same
     # rows, so both add up to `duplicates`/`reclaimable` exactly:
     #

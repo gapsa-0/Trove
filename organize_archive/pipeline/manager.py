@@ -101,14 +101,14 @@ class JobManager:
         # When a stage's job errors, hold off auto-restarting that kind for a
         # cooldown so a hard failure can't hot-loop through the nudge path.
         self._error_at: dict[tuple[int, str], float] = {}
-        # Whole-pipeline pause (things_to_fix #19): one global flag, not
+        # Whole-pipeline pause: one global flag, not
         # per-archive -- only one archive is ever open at a time (see
         # current_root_id). Seeded from the persisted config so a pause
         # survives an app restart.
         self._paused = bool(getattr(cfg, "pipeline_paused", False))
         # Per-stage pause, by display card id. Separate from the global flag
-        # above and only consulted while it is off (things_to_fix #32: pausing
-        # one stage is about letting the others keep going). Persisted the same
+        # above and only consulted while it is off -- pausing one stage is
+        # about letting the others keep going. Persisted the same
         # way, so a stage the user stopped stays stopped across a restart.
         self._paused_stages: set[str] = set(getattr(cfg, "paused_stages", None) or [])
         # Work is deliberately opt-in per visible archive.  Starting the GUI

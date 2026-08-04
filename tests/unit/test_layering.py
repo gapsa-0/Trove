@@ -1,6 +1,6 @@
 """The package's layering, as an executable rule rather than a convention.
 
-`organize_archive` started with the layout CLAUDE.md describes and grew a
+`organize_archive` started with the layout ARCHITECTURE.md describes and grew a
 second, undeclared structure inside the package now called `web/` — which is
 how a face-clustering algorithm ended up importing the web layer:
 

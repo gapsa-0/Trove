@@ -77,7 +77,7 @@ export function disposeMap() {
   if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; MAP_TILES = null; }
 }
 export let MAP = null, MAP_LAYER = null, MAP_TILES = null, MAP_CLUSTERS = [], MAP_HIDDEN = {};
-// Un-clustered view (things_to_fix #33): every geotagged file as its own
+// Un-clustered view: every geotagged file as its own
 // point. Fetched once, lazily, the first time the user asks for it -- it is
 // a much bigger payload than the ~hundreds of place centroids, and most
 // visits never leave the clustered view.

@@ -86,6 +86,6 @@ documentation, because the next person reads it, believes it, and builds on it.
 If one has been reversed, write the superseding ADR — the point is the trail,
 not being right the first time.
 
-Same question for `CLAUDE.md` and `ARCHITECTURE.md`: does every path in them
-still exist? An assistant or a newcomer working from a stale map will faithfully
-recreate the structure the map describes.
+Same question for `ARCHITECTURE.md` and `CONTRIBUTING.md`: does every path in
+them still exist? A newcomer working from a stale map will faithfully recreate
+the structure the map describes.
