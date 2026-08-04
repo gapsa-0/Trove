@@ -234,7 +234,7 @@ path did not, so catalogues built by earlier versions keep working.
 ```bash
 git clone https://github.com/gapsa-0/Trove.git && cd Trove
 make setup          # venv + every extra, at the tested versions
-make check          # lint and the full test suite — what CI runs
+make check          # lint, the test suite, and the browser tier — what CI runs
 ```
 
 `make` on its own lists the other targets. If your system has no `python3.13`,

@@ -27,8 +27,9 @@ desktop JS lint), `handlers` (checks every inline `on*` handler — in the marku
 template literals the screen modules generate markup with — resolves to
 something `main.js` actually exports; nothing else catches a handler that
 silently does nothing when clicked), `sizes` (the file and function size
-ratchet — see "Definition of done"), and `test` (the full suite,
-`.venv/bin/python -m pytest -q`).
+ratchet — see "Definition of done"), `test` (the suite, `.venv/bin/python -m
+pytest -q -m "not browser"`), and `test-browser` (the frontend, in a real
+headless Chrome — skipped automatically if none is installed).
 
 For the day-to-day save loop, `make test-fast` runs the unit tier only, skipping
 tests marked `slow`: `.venv/bin/python -m pytest -q -m "not slow" tests/unit`.
@@ -173,8 +174,15 @@ repeats the list so it gets checked rather than remembered.
   merges, migrations, thumbnailing).
 - `tests/gui/` — anything touching `JobManager`, the pipeline scheduler, or a
   live server (API routes, job logging, pipeline pause/resume).
+- `tests/browser/` — the frontend, driven in a real headless Chrome. This is
+  the only tier that executes the ES modules under `web/static/js/`, so it is
+  where "the screen renders" and "navigating between screens raises nothing"
+  are checked. **Not part of `make test`**: those tests start a browser, and
+  the default suite must not depend on one. `make test-browser` runs them, and
+  they skip themselves when no Chrome can be found, so a machine without one
+  sees skips rather than failures.
 
-All three tiers share `tests/factories.py` (`make_db`, `make_archive`,
+All four tiers share `tests/factories.py` (`make_db`, `make_archive`,
 `add_file`, `add_date`, `add_geo`, `add_person`, `add_face`, `add_pet`,
 `add_place`, and friends) and `tests/helpers.py` (`serve_in_thread`,
 `wait_until`) — read those before hand-rolling another way to build a fake
@@ -193,11 +201,20 @@ no-op.
 
 ## How to look at a GUI change
 
-This machine has no selenium, playwright, or puppeteer. `tools/dev/cdp_shot.py`
-is a stdlib-only tool that drives an already-running headless Chrome over the
-DevTools Protocol to take one screenshot; `tools/dev/shoot_all.py` (imports
-`cdp_shot.py` by path) drives the same protocol to shoot every route in both
-themes and diff two runs, and is what `make shots` calls.
+Start with `make test-browser`: it drives the real frontend in a headless
+Chrome it starts itself, and answers "does every screen still render, and does
+moving between them raise anything". That is the automated half, and it is
+where a new assertion about frontend *behaviour* belongs.
+
+The rest of this section is the manual half — for looking at how a change
+*appears*, which no assertion covers.
+
+There is no selenium, playwright, or puppeteer here; all three of these drive
+Chrome over the DevTools Protocol from the stdlib. `tools/dev/cdp_shot.py`
+holds the client (`Tab`/`open_tab`) and a one-shot screenshot CLI on top of it;
+`tools/dev/shoot_all.py` (imports `cdp_shot.py` by path) uses the same client
+to shoot every route in both themes and diff two runs, and is what `make shots`
+calls; `tests/browser/` asserts through it.
 
 1. Start headless Chrome with a debugging port:
 

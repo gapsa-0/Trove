@@ -58,6 +58,15 @@ jobs:
       # place every future change lands.
       - run: python tools/dev/check_sizes.py
       - run: make test
+      # The frontend is ~4k lines of ES modules that no other step executes:
+      # eslint grades syntax and check_handlers.py proves an inline on* names
+      # something real, but neither can see a renderer that throws on load or a
+      # screen that paints empty over a good response. This drives the real
+      # thing in the Chrome the runner image already ships, through the same
+      # stdlib DevTools client as the screenshot tooling -- no new dependency
+      # and no browser download. It skips itself if no Chrome is found, so it
+      # can never turn a missing browser into a red build.
+      - run: make test-browser
       - run: python packaging/scripts/stage-tools.py --validate
       - run: python packaging/scripts/stage-models.py --validate
   electron:

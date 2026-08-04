@@ -81,6 +81,12 @@ markers = [
   # drive the scheduler by hand. Re-measure with --durations before adding one.
   "slow: measured over ~1s (re-check with --durations, don't assume)",
   "models: needs ONNX weights or a tokenizer checkpoint on disk",
+  # Applied automatically to everything under tests/browser (its conftest's
+  # pytest_collection_modifyitems), never written by hand. It exists so the
+  # default suite can deselect the tier: those tests start a real Chrome, and
+  # `make test` must not depend on one being installed. `make test-browser`
+  # is how you ask for them.
+  "browser: drives a real headless Chrome (deselected by `make test`)",
 ]
 
 # Coverage is a map of where a refactor is flying blind, not a target. There is

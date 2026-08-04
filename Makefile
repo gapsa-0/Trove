@@ -70,8 +70,17 @@ fmt:             ## Autoformat
 	$(PY) -m ruff format .
 	$(PY) -m ruff check --fix .
 
-test:            ## Full test suite
-	$(PY) -m pytest -q
+# The browser tier is deselected here rather than skipped inside itself: it
+# starts a real Chrome, and `make test` should not quietly depend on one being
+# installed. It skips itself too when none can be found, so the CI step that
+# does run it degrades to a skip rather than a failure on a runner without one.
+test:            ## Full test suite (without the browser tier -- see test-browser)
+	$(PY) -m pytest -q -m "not browser"
+
+# Starts its own headless Chrome per session, or attaches to one you already
+# have with TROVE_CDP_PORT=9333. Skips itself if neither is available.
+test-browser:    ## Browser tier: drive the real frontend in headless Chrome
+	$(PY) -m pytest -q -m browser tests/browser
 
 # The per-save loop, and it only earns that name at ~2s. Naming the tier is not
 # redundant with -m "not slow": deselecting the slow marks alone still leaves
@@ -100,7 +109,7 @@ shots:           ## Screenshot every route into shots/ as a refactor guardrail
 api-docs:        ## Regenerate docs/dev/api.md from the route tables
 	$(PY) tools/dev/gen_api_docs.py
 
-check: lint handlers sizes test ## Everything CI runs
+check: lint handlers sizes test test-browser ## Everything CI runs
 
 # `build/lib/` is a setuptools staging directory that is never cleaned between
 # builds, so a `pip wheel` in a working copy copies the current tree in beside
