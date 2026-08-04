@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Screenshot every GUI screen, in both themes, as a refactor guardrail.
 
-The GUI is server-rendered SQLite reads plus a big single-file `index.html`
-front end (see CLAUDE.md "Architecture"). A refactor of the query layer or
+The GUI is server-rendered SQLite reads plus a static ES-module front end
+(see ARCHITECTURE.md, and ADR 0002). A refactor of the query layer or
 the HTML/JS can silently break a screen -- an exception swallowed by a
 `.catch`, a renderer that now throws on load, a route that stopped matching
 -- and nothing in the test suite looks at the *rendered pixels*. This tool
@@ -55,8 +55,8 @@ capture time varies run to run -- 2-20% of pixels, concentrated in the lower
 rows. Treat those two as eyeball-only; read the crop, do not trust their exit
 code. Everything else is a real signal.
 
-Two traps already burned once fixed here (see CLAUDE.md "Verifying GUI
-changes"):
+Two traps already burned once fixed here (see CONTRIBUTING.md, "How to look
+at a GUI change"):
 
 1. Every tab left open keeps polling the server (the GUI runs a job-status
    `setInterval`); a handful of leftover tabs starves the browser and makes
@@ -75,7 +75,6 @@ changes"):
 from __future__ import annotations
 
 import argparse
-import base64
 import importlib.util
 import json
 import sys
@@ -214,16 +213,7 @@ class Shooter:
         self.port = port
         self.block_tiles = block_tiles
 
-    def _call(self, sock, ws, msgid_box, method, params=None):
-        msgid_box[0] += 1
-        mid = msgid_box[0]
-        cdp.ws_send_text(sock, json.dumps({"id": mid, "method": method, "params": params or {}}))
-        while True:
-            obj = json.loads(ws.recv_message())
-            if obj.get("id") == mid:
-                return obj
-
-    def _settle_images(self, sock, ws, msgid_box, cap=8.0, poll=0.4, stable_polls=3):
+    def _settle_images(self, tab, cap=8.0, poll=0.4, stable_polls=3):
         """Block until the page's images stop arriving, or `cap` seconds.
 
         A fixed sleep is the only thing that works for the app's own fetches
@@ -241,10 +231,7 @@ class Shooter:
         expr = "Array.from(document.images).filter(i => !i.complete).length"
         waited, last, repeats = 0.0, None, 0
         while waited < cap:
-            res = self._call(
-                sock, ws, msgid_box, "Runtime.evaluate", {"expression": expr, "returnByValue": True}
-            )
-            pending = res.get("result", {}).get("result", {}).get("value")
+            pending = tab.evaluate(expr)
             if pending == 0:
                 return waited
             repeats = repeats + 1 if pending == last else 0
@@ -266,41 +253,26 @@ class Shooter:
         # be installed before the app's own startup script reads
         # localStorage, and that race is only safely avoidable by attaching
         # first and navigating second.
-        tab = cdp.http_json(self.port, "/json/new", method="PUT")
-        tab_id = tab["id"]
-        sock = cdp.ws_connect(tab["webSocketDebuggerUrl"])
-        ws = cdp.WS(sock)
-        msgid_box = [0]
-        try:
-            self._call(sock, ws, msgid_box, "Page.enable")
-            self._call(sock, ws, msgid_box, "Emulation.setDeviceMetricsOverride", VIEWPORT)
+        with cdp.open_tab(port=self.port) as tab:
+            tab.call("Page.enable")
+            tab.call("Emulation.setDeviceMetricsOverride", VIEWPORT)
             if self.block_tiles:
-                self._call(sock, ws, msgid_box, "Network.enable")
-                self._call(sock, ws, msgid_box, "Network.setBlockedURLs", {"urls": TILE_HOSTS})
-            self._call(
-                sock,
-                ws,
-                msgid_box,
+                tab.call("Network.enable")
+                tab.call("Network.setBlockedURLs", {"urls": TILE_HOSTS})
+            tab.call(
                 "Page.addScriptToEvaluateOnNewDocument",
                 {"source": _SEED_JS.format(theme=theme)},
             )
-            self._call(sock, ws, msgid_box, "Page.navigate", {"url": url})
+            tab.call("Page.navigate", {"url": url})
             time.sleep(wait)
-            self._settle_images(sock, ws, msgid_box)
+            self._settle_images(tab)
             if post:
-                self._call(sock, ws, msgid_box, "Runtime.evaluate", {"expression": post})
+                tab.call("Runtime.evaluate", {"expression": post})
                 time.sleep(post_wait)
-                self._settle_images(sock, ws, msgid_box)
-            res = self._call(sock, ws, msgid_box, "Page.captureScreenshot", {"format": "png"})
-            data = base64.b64decode(res["result"]["data"])
+                self._settle_images(tab)
+            data = tab.screenshot()
             outfile.write_bytes(data)
             return len(data)
-        finally:
-            sock.close()
-            try:
-                cdp.http_json(self.port, f"/json/close/{tab_id}")
-            except Exception:
-                pass
 
 
 def cmd_shoot(args):
