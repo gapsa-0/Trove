@@ -8,6 +8,9 @@ import {
   jget,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   fmtBytes,
 } from "./dom.js";
 import {
@@ -25,7 +28,7 @@ export async function renderDedup(m) {
   const gen = S.nav, root = S.arch.id;
   const ds = await jget("/api/dups/summary?root=" + root);
   if (gen !== S.nav) return;
-  m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
+  m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div>${docsButton("dups")}</div>
     <div class="statrow">
       <div class="stat"><div class="k">Unique files</div><div class="v">${(ds.unique || 0).toLocaleString()}</div></div>
       <div class="stat"><div class="k">Duplicate groups</div><div class="v">${ds.groups.toLocaleString()}</div></div>

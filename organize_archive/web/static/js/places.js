@@ -22,6 +22,9 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   esc, toast,
 } from "./dom.js";
 import {
@@ -87,7 +90,7 @@ let MAP_POINT_LAYER = null, MAP_POINT_BUILT = null;
 export async function renderMap(m) {
   const gen = S.nav, root = S.arch.id;
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Places</h2>
-      <p>Explore geolocated media and give meaningful names to the places you return to.</p></div></div>
+      <p>Explore geolocated media and give meaningful names to the places you return to.</p></div>${docsButton("places")}</div>
     <div class="statrow map-stats">
       <div class="stat"><div><div class="k">Photos in places</div><div class="v" id="map-photo-count">-</div></div></div>
       <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">-</div></div></div>

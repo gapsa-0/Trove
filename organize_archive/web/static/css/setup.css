@@ -460,6 +460,29 @@
   text-decoration: underline;
 }
 
+/* The back of a card ends with two offers: turn it over again, and read what
+   this stage actually does. The second one is the only place on this screen
+   that leaves it, and it belongs here rather than on the front -- someone who
+   turned the card over has already asked the question it answers. */
+.set-back-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.set-back-foot .set-flip {
+  align-self: auto;
+}
+
+.set-back-foot .doc-more {
+  color: var(--muted);
+}
+
+.set-back-foot .doc-more:hover {
+  color: var(--accent);
+}
+
 .set-card-foot {
   display: flex;
   align-items: center;

@@ -77,6 +77,20 @@
   height: 18px
 }
 
+/* An open book, for the reference pages. Drawn straight into the bar button
+   rather than through .gear-icon's wrapper, since it needs no sizing box of
+   its own. */
+.p-tool-icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
 .gear-icon svg {
   width: 100%;
   height: 100%;

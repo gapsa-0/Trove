@@ -18,6 +18,9 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   esc, setText, toast,
 } from "./dom.js";
 import {
@@ -36,13 +39,13 @@ export async function renderFaces(m) {
   const sum = await jget("/api/faces/summary?root=" + root);
   if (gen !== S.nav) return;
   if (!sum.backend_available) {
-    m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces and organize them with names.</p></div></div>
+    m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces and organize them with names.</p></div>${docsButton("people")}</div>
       <div class="panel"><div class="d pending"><span class="dot pending"></span>Face detection needs OpenCV's DNN face module.</div>
       <p class="muted">Install a modern <code>opencv-python</code> (the <code>media</code> extra) and reopen this tab.</p></div>`;
     return;
   }
   S.faceSum = sum;
-  m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces, review matches, and add names without leaving this page.</p></div></div>
+  m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces, review matches, and add names without leaving this page.</p></div>${docsButton("people")}</div>
     <div class="statrow">
       <div class="stat"><div class="k">People</div><div class="v" id="fs-people">${sum.people.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Faces</div><div class="v" id="fs-faces">${sum.faces.toLocaleString()}</div></div>

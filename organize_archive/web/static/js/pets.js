@@ -21,6 +21,9 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   esc, setText, toast,
 } from "./dom.js";
 import {
@@ -46,7 +49,7 @@ export async function renderPets(m) {
   if (gen !== S.nav) return;
   S.petJobRunning = false; S.petStamp = petStamp(sum);
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Pets</h2>
-      <p>Locally detected animals, likely identities, and non-human face review.</p></div></div>
+      <p>Locally detected animals, likely identities, and non-human face review.</p></div>${docsButton("pets")}</div>
     <div class="statrow">
       <div class="stat"><div class="k">Likely pets</div><div class="v" id="ps-pets">${sum.pets.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Animals</div><div class="v" id="ps-detections">${sum.detections.toLocaleString()}</div></div>

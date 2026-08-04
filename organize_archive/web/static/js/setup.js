@@ -25,6 +25,9 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
+  featureDocsLink,
+} from "./docs.js";
+import {
   esc, toast,
 } from "./dom.js";
 import {
@@ -236,7 +239,10 @@ function cardItem(f) {
       <div class="set-face set-back"${back ? "" : " hidden"}>
         <span class="set-card-name">${mark(f)}${esc(f.label)}</span>
         <p class="set-card-detail">${esc(f.detail)}</p>
-        <button class="set-flip" type="button" onclick="flipFeature('${f.id}')">Back</button>
+        <div class="set-back-foot">
+          <button class="set-flip" type="button" onclick="flipFeature('${f.id}')">Back</button>
+          ${featureDocsLink(f.id)}
+        </div>
       </div>
     </li>`;
 }

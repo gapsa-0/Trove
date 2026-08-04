@@ -13,6 +13,9 @@ import {
   jpost,
 } from "./api.js";
 import {
+  docsHashSlug, openDocs,
+} from "./docs.js";
+import {
   renderDedup,
 } from "./dups.js";
 import {
@@ -50,6 +53,11 @@ import {
 } from "./timeline.js";
 
 export function applyHash() {
+  // Reference pages first: they are a top-level screen of their own and answer
+  // without an archive, so a bookmark straight into one has to work before any
+  // archive has been opened.
+  const doc = docsHashSlug(location.hash);
+  if (doc) { openDocs(doc); return true; }
   const m = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);
   if (m) { const a = ARCHIVES.find(x => x.id == +m[1]); if (a) { openArchive(a, m[2]); return true; } }
   return false;

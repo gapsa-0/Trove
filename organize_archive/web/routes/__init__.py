@@ -28,6 +28,7 @@ from collections.abc import Callable
 from . import (
     archives,
     browse,
+    docs,
     dups,
     media,
     overview,
@@ -61,6 +62,8 @@ GET_ROUTES: dict[str, Handler] = {
     "/api/archives": archives.archive_list,
     "/api/features": archives.feature_list,
     "/api/settings": static.settings,
+    "/api/docs": docs.catalogue,
+    "/api/docs/page": docs.page,
     "/api/pipeline": pipeline.snapshot,
     "/api/summary": overview.summary,
     "/api/timeline": overview.timeline,

@@ -29,6 +29,7 @@
   <link rel="stylesheet" href="/static/css/start-page.css">
   <link rel="stylesheet" href="/static/css/setup.css">
   <link rel="stylesheet" href="/static/css/merge.css">
+  <link rel="stylesheet" href="/static/css/docs.css">
   <script src="/vendor/leaflet.js"></script>
   <script>
     if ("serviceWorker" in navigator)
@@ -72,6 +73,12 @@
         <b>Trove</b>
       </div>
       <div class="p-tools">
+        <button class="gear-fab" type="button" onclick="openDocs('index')" aria-label="Open the reference pages">
+          <svg class="p-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H5.5A1.5 1.5 0 0 1 4 15.5Z" />
+            <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h4.5a1.5 1.5 0 0 0 1.5-1.5Z" />
+          </svg><span>How it works</span>
+        </button>
         <button class="gear-fab" type="button" onclick="openSettings()" aria-label="Open settings">
           <span class="gear-icon" aria-hidden="true"></span><span>Settings</span>
         </button>
@@ -110,6 +117,15 @@
   <div id="setup">
     <div id="setup-body"></div>
   </div>
+
+  <!-- REFERENCE PAGES: what each stage of the pipeline actually does, from the
+       Markdown under organize_archive/web/docs/. A top-level screen beside the
+       picker and setup rather than a section in the archive nav, because these
+       pages describe the app rather than any one folder -- and because the
+       moment they are worth the most is the setup screen, where someone is
+       deciding whether a feature is worth its download. Filled entirely by
+       static/js/docs.js. -->
+  <div id="docs"></div>
 
   <!-- APP SHELL -->
   <div id="app">

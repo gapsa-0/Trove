@@ -10,6 +10,9 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   fmtBytes, toast,
 } from "./dom.js";
 import {
@@ -44,6 +47,7 @@ export async function renderOverview(m) {
   m.innerHTML = `<div class="pagehead">
       <div><h2 class="sec">Library overview</h2>
       <p>Everything important about this archive, at a glance.</p></div>
+      ${docsButton("overview")}
     </div>
     <div class="statrow">
       ${statTile("library", "blue", "All files", "ov-total", s.total)}

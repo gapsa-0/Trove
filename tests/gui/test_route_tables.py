@@ -29,12 +29,14 @@ from organize_archive.web import server
 # check, and once the chains are gone it is a plain read of the tables.
 # ---------------------------------------------------------------------------
 
-# GET, exact (29: 25 /api + 4 non-api).
+# GET, exact (31: 27 /api + 4 non-api).
 GET_EXACT = {
     "/api/health",
     "/api/archives",
     "/api/features",
     "/api/settings",
+    "/api/docs",
+    "/api/docs/page",
     "/api/summary",
     "/api/timeline",
     "/api/dates/sources",

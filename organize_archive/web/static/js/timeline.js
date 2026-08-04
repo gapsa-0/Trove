@@ -10,6 +10,9 @@ import {
   jget,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   esc,
 } from "./dom.js";
 import {
@@ -45,7 +48,7 @@ export async function renderTimeline(m) {
   const gen = S.nav;
   S.timeline = { bucket: "month", year: "", month: "", people: [], place: "" };
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Timeline</h2>
-      <p>See how your archive grows over time, then narrow it by date, people together, or place.</p></div></div>
+      <p>See how your archive grows over time, then narrow it by date, people together, or place.</p></div>${docsButton("timeline")}</div>
     <div class="filterbar" id="tl-filterbar"></div>
     <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
     <canvas id="tlc2" width="1180" height="380"></canvas>

@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**69 routes**: 29 GET (exact) + 12 GET (prefix) + 28 POST.
+**71 routes**: 31 GET (exact) + 12 GET (prefix) + 28 POST.
 
 ## GET -- exact path
 
@@ -20,6 +20,8 @@ build if this file has drifted from the route tables.
 | `/api/archives` | Every registered archive, for the picker. | `organize_archive/web/routes/archives.py::archive_list` |
 | `/api/features` | Every feature an archive can be given, for the setup panel. | `organize_archive/web/routes/archives.py::feature_list` |
 | `/api/settings` | No user-configurable settings exist yet; always answers with an empty object. | `organize_archive/web/routes/static.py::settings` |
+| `/api/docs` | Every reference page in reading order, for the index rail. | `organize_archive/web/routes/docs.py::catalogue` |
+| `/api/docs/page` | One reference page, rendered, by ``?slug=``. | `organize_archive/web/routes/docs.py::page` |
 | `/api/pipeline` | The resolved status of every pipeline stage for one archive. | `organize_archive/web/routes/pipeline.py::snapshot` |
 | `/api/summary` | Counts, size, media types and date range for one archive. | `organize_archive/web/routes/overview.py::summary` |
 | `/api/timeline` | Counts of matching, non-hidden media bucketed by month or year, for the timeline chart. | `organize_archive/web/routes/overview.py::timeline` |
@@ -29,7 +31,7 @@ build if this file has drifted from the route tables.
 | `/api/media` | The media grid: filtered, sorted and paginated files for the archive. | `organize_archive/web/routes/browse.py::media` |
 | `/api/browse/filters` | The distinct filter values (years, types, folders...) the Browse UI offers. | `organize_archive/web/routes/browse.py::filters` |
 | `/api/folders` | The folder tree with per-folder file counts. | `organize_archive/web/routes/browse.py::folders` |
-| `/api/browse/semantic/status` | Semantic index state and whether the local SigLIP model is available. | `organize_archive/web/routes/search.py::semantic_status` |
+| `/api/browse/semantic/status` | Semantic index state, and whether this archive can search by description. | `organize_archive/web/routes/search.py::semantic_status` |
 | `/api/browse/semantic/search` | Free-text semantic search over the archive's media, ranked by embedding similarity. | `organize_archive/web/routes/search.py::semantic_search` |
 | `/api/map/clusters` | Place clusters (grouped geotagged files) with at least the configured minimum media. | `organize_archive/web/routes/places.py::clusters` |
 | `/api/map/points` | Every geotagged file as a single un-clustered map point. | `organize_archive/web/routes/places.py::points` |

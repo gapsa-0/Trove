@@ -10,6 +10,9 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
+  docsButton,
+} from "./docs.js";
+import {
   esc, fmtDate, toast,
 } from "./dom.js";
 import {
@@ -53,6 +56,7 @@ export async function renderPhotos(m) {
       <p>${searchable
     ? "Look through every item, by filter or by description."
     : "Look through every item, with filters that work together."}</p></div>
+      ${docsButton("library")}
     </div>
     <div class="library-controls">
       ${searchable ? `<form class="library-search" onsubmit="return semanticSubmit(event)">

@@ -48,6 +48,9 @@ import {
 import {
   closeArchiveSetup, flipFeature, removeFeature, setArchiveName, submitArchiveSetup, toggleFeature,
 } from "./setup.js";
+import {
+  closeDocs, docsHashSlug, docsOpen, docsSlug, openDocs, showDoc,
+} from "./docs.js";
 
 import {
   S,
@@ -72,6 +75,12 @@ document.addEventListener("toggle", event => {
 }, true);
 
 window.addEventListener("hashchange", () => {
+  // A reference page can be reached by the browser's own navigation -- a link
+  // between two of them, or Back out of one -- so the same routing that runs on
+  // load has to run here, and before the archive match.
+  const doc = docsHashSlug(location.hash);
+  if (doc) { if (doc !== docsSlug()) openDocs(doc); return; }
+  if (docsOpen()) closeDocs();
   const match = (location.hash || "").match(/#\/archive\/(\d+)\/(\w+)/);
   if (!match) return;
   const archive = ARCHIVES.find(item => item.id === Number(match[1]));
@@ -90,6 +99,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
     closeSettings(); return;
   }
+  if (e.key === "Escape" && docsOpen()) { closeDocs(); return; }
   if (e.key === "Escape") { closeModal(); return; }
   if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
   if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
@@ -110,12 +120,15 @@ loadPicker().then(applyHash);
 Object.assign(window, {
   addArchiveFromForm, addPersonPicker, addPetPicker, answerSuggest, applyFilters,
   applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
-  closeArchiveSetup, closeModal, closePick, closePlaceCluster, closeSettings, editClusterName,
-  editDate, editPersonName, editPlace, flipFeature, hidePerson, mergeAskCancel, newPlace, onAddPerson,
+  closeArchiveSetup, closeDocs, closeModal, closePick, closePlaceCluster, closeSettings,
+  editClusterName, editDate, editPersonName, editPlace, flipFeature, hidePerson, mergeAskCancel,
+  newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
-  openItem, openSettings, reassignFace, removeFeature, removeManualPerson, removeManualPet,
+  openDocs, openItem, openSettings, reassignFace, removeFeature, removeManualPerson,
+  removeManualPet,
   renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setArchiveName, setMapView,
-  setStorageMetric, showSection, submitArchiveSetup, toPicker, toggleFeature, toggleNav, togglePipelinePause,
+  setStorageMetric, showDoc, showSection, submitArchiveSetup, toPicker, toggleFeature, toggleNav,
+  togglePipelinePause,
   toggleStagePause, toggleTheme, undoMerge,
 });
