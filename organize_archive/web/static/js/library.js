@@ -34,7 +34,7 @@ export async function renderPhotos(m) {
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
   const g = restored ? S.grid : {
     offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
-    place: "", onlyIndexed: false, onlyLocated: false, rawQuery: "", searchedQuery: "", query: "",
+    place: "", rawQuery: "", searchedQuery: "", query: "",
     expandedQuery: "", sort: "", error: "", topMatchesOnly: true,
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
     anchor: null, savedScrollTop: 0,
@@ -69,13 +69,18 @@ export async function renderPhotos(m) {
   const composer = document.getElementById("semantic-q");
   composer.addEventListener("compositionstart", () => S.composerComposing = true);
   composer.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
+  // Start loading the translation model on the first keystroke, not when the
+  // screen opens: it is 23 MB, and opening Library is no evidence that anyone
+  // intends to search. The server-side warm-ups can afford to be eager because
+  // they cost the visitor nothing; this one is downloaded to their machine.
+  //
+  // Typing rather than focus, because submitting a search focuses the composer
+  // itself (renderSemanticComposer) -- so focus would fire on every search
+  // whether or not anyone had touched the box. The rest of the typing still
+  // covers the load.
+  composer.addEventListener("input", warmLocalTranslator, { once: true });
   await buildFilterBar();
   if (gen !== S.nav) return;
-  // Opening Library is the earliest moment we know a search is plausible, and
-  // both halves of the first-search cost can be started now rather than while
-  // someone waits: the translation model here, and this archive's embedding
-  // centre on the server, which renderSearchReach's status call kicks off.
-  warmLocalTranslator();
   renderSearchReach();
   renderSortOptions(g);
   renderActiveQuery(g);
@@ -140,30 +145,11 @@ async function buildFilterBar() {
   parts.push(peopleFilterHTML("f", f.people || []));
   parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()" ${f.places && f.places.length ? "" : "disabled"} title="${f.places && f.places.length ? "Filter by place" : "Name places in Places to enable this filter"}">` +
     opt("", f.places && f.places.length ? "All places" : "No places named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
-  // Indexing coverage. One box, not a select: the only question worth
-  // asking is "show me what is done", and the unchecked state already
-  // means "everything". Disabled with a reason until anything is indexed,
-  // as the places filter waits for a named place.
-  parts.push(`<label class="fcheck" id="f-indexed-box">` +
-    `<input type="checkbox" id="f-indexed" onchange="applyFilters()">` +
-    `Show only indexed files</label>`);
-  // The companion to the 📍 tile badge, same as the box above is to the pip:
-  // each marker the grid draws should be something you can also filter down
-  // to, instead of only being able to spot it by eye.
-  parts.push(`<label class="fcheck" id="f-located-box">` +
-    `<input type="checkbox" id="f-located" onchange="applyFilters()">` +
-    `Show only files with a location</label>`);
-  // Only meaningful while a description search is running, so unlike the two
-  // above it is hidden rather than disabled when there is no query — a dead
-  // control with nothing to explain is worse than no control.
-  parts.push(`<label class="fcheck" id="f-top-box" hidden>` +
-    `<input type="checkbox" id="f-top" checked onchange="applyFilters()">` +
-    `Show only top matches</label>`);
+  // The result-scope toggle is deliberately not here: it does not narrow the
+  // library the way these do, it says how much of one search's ranking you are
+  // looking at. It lives on the search's own line instead (renderActiveQuery).
   parts.push(`<button class="linkbtn" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
   bar.innerHTML = parts.join("");
-  renderIndexedFilter(S.grid);
-  renderLocatedFilter();
-  renderTopMatchesFilter(S.grid);
   renderSemanticComposer(false);
 }
 function setLibraryMonthOptions(y, selected = "") {
@@ -180,59 +166,6 @@ function setLibraryMonthOptions(y, selected = "") {
       msel.disabled = false;
       msel.value = selected;
     }
-  }
-}
-/* A description search only ever returns media it was able to find, so
-   every hit is already indexed and this box cannot change the answer.
-   Rather than let it sit there appearing to work, it goes disabled for as
-   long as a query is running. The checked state is kept, not cleared, so
-   going back to plain browsing restores what the user set. */
-export function renderIndexedFilter(g) {
-  const box = document.getElementById("f-indexed"); if (!box) return;
-  const searching = !!(g && g.query);
-  const live = !!(S.filterOpts && S.filterOpts.indexed_any);
-  box.disabled = searching || !live;
-  const wrap = document.getElementById("f-indexed-box");
-  if (wrap) {
-    wrap.classList.toggle("is-disabled", box.disabled);
-    wrap.title = searching
-      ? "A description search only ever returns indexed files"
-      : live ? "Hide files that description search cannot reach yet"
-        : "Nothing is indexed yet — indexing has not reached any media";
-  }
-}
-/* Description search hides weak matches by default, which is right nearly
-   always and wrong exactly when the archive holds something the cuts trimmed.
-   This is the way back to the full ranking: unchecked, every indexed file is
-   returned in similarity order and the user decides where the results stop
-   being useful. Appears only while a query is running, because with nothing
-   searched there is no ranking to widen. */
-export function renderTopMatchesFilter(g) {
-  const wrap = document.getElementById("f-top-box"); if (!wrap) return;
-  const searching = !!(g && g.query);
-  wrap.hidden = !searching;
-  const box = document.getElementById("f-top");
-  if (box) {
-    box.checked = !g || g.topMatchesOnly !== false;
-    wrap.title = box.checked
-      ? "Showing the strong matches only — uncheck to rank the whole archive"
-      : "Ranking every indexed file, weakest matches included";
-  }
-}
-/* Unlike the indexed box this one stays live during a description search:
-   narrowing "a dog" down to the geotagged ones is a real question, and
-   semantic_search takes the filter. It only goes dead when the archive has
-   no located media at all, where it could return nothing but an empty grid. */
-function renderLocatedFilter() {
-  const box = document.getElementById("f-located"); if (!box) return;
-  const live = !!(S.filterOpts && S.filterOpts.located_any);
-  box.disabled = !live;
-  const wrap = document.getElementById("f-located-box");
-  if (wrap) {
-    wrap.classList.toggle("is-disabled", !live);
-    wrap.title = live
-      ? "Show only media that carries a location, marked 📍 in the grid"
-      : "No media in this archive has a location";
   }
 }
 /* Sort: date only for now. "" means the list's natural order -- best match
@@ -265,11 +198,6 @@ function restoreLibraryControls(g) {
   setLibraryMonthOptions(g.year, (g.month || "").slice(5, 7));
   const type = document.getElementById("f-type"); if (type) type.value = g.type || "";
   const place = document.getElementById("f-place"); if (place) place.value = g.place || "";
-  const indexedBox = document.getElementById("f-indexed");
-  if (indexedBox) { indexedBox.checked = !!g.onlyIndexed; renderIndexedFilter(g); }
-  const locatedBox = document.getElementById("f-located");
-  if (locatedBox) { locatedBox.checked = !!g.onlyLocated; renderLocatedFilter(); }
-  renderTopMatchesFilter(g);
   setPeopleChecks("f", g.people || []);
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
   const composer = document.getElementById("semantic-q");
@@ -318,15 +246,6 @@ export function applyFilters() {
   g.type = selVal("f-type");
   g.people = checkedPeople("f");
   g.place = selVal("f-place");
-  const indexedBox = document.getElementById("f-indexed");
-  g.onlyIndexed = !!(indexedBox && indexedBox.checked);
-  const locatedBox = document.getElementById("f-located");
-  g.onlyLocated = !!(locatedBox && locatedBox.checked);
-  // Checked is the default, so read the box as "not explicitly widened" -- a
-  // missing element (no search running) must not read as unchecked.
-  const topBox = document.getElementById("f-top");
-  g.topMatchesOnly = !topBox || topBox.checked;
-  renderTopMatchesFilter(g);
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
   resetGridResults(g);
   updateClearBtn();
@@ -342,11 +261,6 @@ export function resetGridResults(g) {
 }
 export function clearFilters() {
   ["f-year", "f-type", "f-place"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
-  const indexedBox = document.getElementById("f-indexed"); if (indexedBox) indexedBox.checked = false;
-  const locatedBox = document.getElementById("f-located"); if (locatedBox) locatedBox.checked = false;
-  // Back to its default, which is on -- the other two clear to "no filter",
-  // and for this one "no filter" is the checked state.
-  const topBox = document.getElementById("f-top"); if (topBox) topBox.checked = true;
   clearPeopleChecks("f");
   S.grid.inferredPeople = [];
   const msel = document.getElementById("f-month");
@@ -355,10 +269,11 @@ export function clearFilters() {
 }
 export function updateClearBtn() {
   const g = S.grid, b = document.getElementById("f-clear");
-  // topMatchesOnly counts inverted: it is a filter when *off*, since on is the
-  // default state everything else calls "no filter".
-  if (b) b.style.display = (g.year || g.month || g.type || g.people.length || g.place
-    || g.onlyIndexed || g.onlyLocated || g.topMatchesOnly === false) ? "inline" : "none";
+  // Deliberately not counting the result-scope toggle: it is not a filter on
+  // the library, it is which slice of one search's ranking is on screen, and
+  // it clears with the search rather than with these.
+  if (b) b.style.display = (g.year || g.month || g.type || g.people.length || g.place)
+    ? "inline" : "none";
 }
 /* Why the empty state is painted from the render and not from the response:
    a grid restored by renderPhotos replays its stored pages without fetching
@@ -415,12 +330,6 @@ export async function loadGrid(direction = "append") {
     if (g.type) p.set("type", g.type); if (g.year) p.set("year", g.year);
     if (g.month) p.set("month", g.month);
     g.people.forEach(id => p.append("person", id)); if (g.place) p.set("place", g.place);
-    // Not sent to the semantic endpoint: every hit it returns is indexed,
-    // so the parameter would be inert there (see renderIndexedFilter).
-    if (!g.query && g.onlyIndexed) p.set("indexed", "yes");
-    // Sent to both endpoints: a description search can be narrowed by
-    // location just as the plain grid can.
-    if (g.onlyLocated) p.set("located", "yes");
     if (g.sort) p.set("sort", g.sort);
     if (g.query) {
       // When local translation succeeds it replaces, rather than supplements,

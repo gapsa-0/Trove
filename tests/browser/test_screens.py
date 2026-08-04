@@ -81,29 +81,63 @@ def test_the_places_screen_draws_a_map_without_reaching_a_tile_server(open_app):
         assert app.errors() == []
 
 
-def test_the_top_matches_box_appears_only_once_a_search_has_run(open_app):
-    """It is hidden, not disabled, until there is a ranking for it to widen.
+def test_the_result_scope_appears_with_the_search_it_belongs_to(open_app):
+    """It lives on the query's own line, so it exists only while one is running.
 
-    The other two filter checkboxes stay visible and grey out when they cannot
-    apply, because "show only indexed files" still means something while you
-    browse. This one does not: with nothing searched there is no relevance cut
-    in play, so a permanently visible control would be explaining a state the
-    screen is not in. Driven through the form's own submit handler rather than
-    by calling the renderer, so what is checked is the path a user takes.
+    Not in the filter bar and not a checkbox: this says how much of one
+    search's ranking is on screen, which is a different kind of question from
+    "which files count", and with nothing searched there is no ranking to
+    widen. Driven through the form's own submit handler rather than by calling
+    the renderer, so what is checked is the path a user takes.
 
     The search itself needs the embedding model and will fail in this tier --
-    which is fine and is the point: the box is part of the search *controls*,
-    so it has to appear when the query is submitted rather than when results
-    come back, or it would never show up on the searches that returned nothing.
+    which is fine and is the point: the control belongs to the *search*, so it
+    has to appear when the query is submitted rather than when results come
+    back, or it would never show up on the searches that returned nothing.
     """
     with open_app("library") as app:
-        app.wait_for("#f-top-box")
-        assert app.count("#f-top-box[hidden]") == 1
+        # The filter bar is built after the screen's markup lands, so waiting
+        # on #main alone would let the submit below race renderPhotos.
+        app.wait_for("#f-clear")
+        assert app.count(".aq-scope") == 0
 
         app.tab.evaluate(
-            "document.querySelector('#semantic-q').textContent = 'beach';"
+            "document.querySelector('#semantic-q').textContent = 'the beach';"
             "document.querySelector('.library-search').requestSubmit()"
         )
 
-        app.wait_for("#f-top-box:not([hidden])")
-        assert app.tab.evaluate("document.querySelector('#f-top').checked") is True
+        app.wait_for(".aq-scope")
+        assert (
+            app.tab.evaluate(
+                "document.querySelector('.aq-scope button[aria-pressed=\"true\"]').textContent"
+            )
+            == "Top matches"
+        )
+
+
+def test_choosing_all_results_widens_the_search_it_is_attached_to(open_app):
+    """Clicking the other segment moves the state the request is built from.
+
+    Asserted through which segment is lit rather than on results: this tier has
+    no embedding model, so the fetch behind the click cannot succeed. That is
+    not a weaker check than reading the state directly -- the pressed segment
+    is rendered *from* `topMatchesOnly`, so it can only move if the grid state
+    moved with it, and that state is what decides whether `top=no` is sent.
+    """
+    with open_app("library") as app:
+        app.wait_for("#f-clear")
+        app.tab.evaluate(
+            "document.querySelector('#semantic-q').textContent = 'the beach';"
+            "document.querySelector('.library-search').requestSubmit()"
+        )
+        app.wait_for(".aq-scope")
+
+        app.click(".aq-scope button:last-child")
+
+        assert (
+            app.tab.evaluate(
+                "document.querySelector('.aq-scope button[aria-pressed=\"true\"]').textContent"
+            )
+            == "All results"
+        )
+        assert app.count(".aq-scope button[aria-pressed='true']") == 1

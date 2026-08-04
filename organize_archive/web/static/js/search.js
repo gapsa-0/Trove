@@ -4,8 +4,8 @@
 // could actually see.
 
 import {
-  checkedPeople, loadGrid, renderIndexedFilter, renderSortOptions, renderTopMatchesFilter,
-  resetGridResults, updateClearBtn, updatePeopleFilterLabel,
+  checkedPeople, loadGrid, renderSortOptions, resetGridResults, updateClearBtn,
+  updatePeopleFilterLabel,
 } from "./library.js";
 import {
   jget,
@@ -333,8 +333,6 @@ export async function semanticSubmit(ev) {
   renderSemanticComposer(true);
   renderSortOptions(g);
   renderActiveQuery(g);
-  renderIndexedFilter(g);
-  renderTopMatchesFilter(g);
   if (submit) { submit.disabled = true; submit.textContent = "Searching…"; }
   const expandedQuery = await localEnglishTranslation(g.query);
   if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;
@@ -383,7 +381,44 @@ export function renderActiveQuery(g) {
   clear.type = "button"; clear.className = "linkbtn aq-clear";
   clear.textContent = "Clear search";
   clear.onclick = clearSearch;
-  el.replaceChildren(label, phrase, clear);
+  const parts = [label, phrase];
+  if (g.query) parts.push(resultScopeControl(g));
+  el.replaceChildren(...parts, clear);
+}
+/* How much of the ranking is on screen -- two views of one result set, not a
+   filter on the library, which is why it sits on the search's own line rather
+   than in the filter bar and clears when the search does.
+
+   Two labelled segments rather than a checkbox: "top matches" and "everything"
+   are alternatives worth naming, and a checkbox can only name one of them and
+   leave the other implied. Only rendered for a description search, since
+   browsing has no ranking to widen. */
+function resultScopeControl(g) {
+  const wrap = document.createElement("span");
+  wrap.className = "aq-scope";
+  wrap.setAttribute("role", "group");
+  wrap.setAttribute("aria-label", "How many results to show");
+  const trimmed = g.topMatchesOnly !== false;
+  [["Top matches", true, "Only the strong matches for this search"],
+    ["All results", false, "Every indexed file, ranked by similarity"]].forEach(
+    ([text, wantsTrimmed, hint]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = text;
+      button.title = hint;
+      button.setAttribute("aria-pressed", String(trimmed === wantsTrimmed));
+      button.onclick = () => setResultScope(wantsTrimmed);
+      wrap.append(button);
+    });
+  return wrap;
+}
+function setResultScope(trimmed) {
+  const g = S.grid;
+  if (g.topMatchesOnly === trimmed) return;
+  g.topMatchesOnly = trimmed;
+  renderActiveQuery(g);
+  resetGridResults(g);
+  loadGrid();
 }
 function clearSearch() {
   const composer = document.getElementById("semantic-q");

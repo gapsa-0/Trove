@@ -186,6 +186,73 @@
   white-space: nowrap
 }
 
+/* Result scope: two views of one ranking, so a segmented pair rather than a
+   checkbox — both options stay named and which one you are in is the lit one.
+   Sits with the query it belongs to, not in the filter bar, because it does
+   not narrow the library. */
+.active-query .aq-scope {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel2)
+}
+
+.active-query .aq-scope button {
+  padding: 3px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease
+}
+
+.active-query .aq-scope button:hover {
+  color: var(--text)
+}
+
+/* The lit segment reads as a raised chip on the recessed track — the one
+   piece of depth in this line, so which view you are in is legible at a
+   glance without a second label saying so. */
+.active-query .aq-scope button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 550;
+  box-shadow: var(--shadow-sm);
+  cursor: default
+}
+
+.active-query .aq-scope button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px
+}
+
+/* The raised/recessed pair has to be re-derived for dark, not inherited: there
+   --panel is darker than --panel2, so reusing the light rule above would light
+   the active segment by making it the *darker* of the two and invert the depth
+   the whole control reads by. */
+:root[data-theme="dark"] .active-query .aq-scope {
+  background: rgba(0, 0, 0, .28);
+  border-color: rgba(255, 255, 255, .07)
+}
+
+:root[data-theme="dark"] .active-query .aq-scope button[aria-pressed="true"] {
+  background: var(--panel2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .45)
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .active-query .aq-scope button {
+    transition: none
+  }
+}
+
 /* Search reach: how much of the library the description search can currently
    find, broken down by media type. Colored keys match the Overview's
    Storage panel so a hue means the same type everywhere. */
@@ -250,54 +317,6 @@
 
 .fsel:hover {
   border-color: var(--line-strong)
-}
-
-/* Sits in the same row as the .fsel pills and has to read as one of them:
-   same height, radius, border and type size. It is a checkbox rather than
-   a third "any / yes / no" select because there is only one question worth
-   asking here -- show me what is done -- and a select made the reader pick
-   an answer to a question they had not asked. */
-.fcheck {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--panel);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .02);
-}
-
-.fcheck:hover {
-  border-color: var(--line-strong);
-}
-
-.fcheck:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.fcheck input {
-  accent-color: var(--accent);
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  cursor: pointer;
-}
-
-.fcheck.is-disabled {
-  color: var(--muted);
-  cursor: not-allowed;
-  opacity: .6;
-}
-
-.fcheck.is-disabled input {
-  cursor: not-allowed;
 }
 
 .multi-filter {
