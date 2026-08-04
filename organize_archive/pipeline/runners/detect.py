@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sqlite3
+from dataclasses import dataclass
+from typing import Any
+
 from ..job import JobContext, Runner
 
 # Images per detect-then-recluster chunk in the detect job (see run() below):
@@ -12,6 +16,106 @@ from ..job import JobContext, Runner
 _DETECT_CHUNK = 600
 
 
+@dataclass
+class _Totals:
+    """What one detect run found, summed across its chunks.
+
+    A bundle rather than seven locals because all seven travel together from
+    the chunk loop to the closing message, and passing them individually is
+    how a helper ends up with an argument list nobody can read.
+    """
+
+    processed: int = 0
+    faces: int = 0
+    animals: int = 0
+    suppressed: int = 0
+    human_pets: int = 0
+    turned: int = 0
+    restored: int = 0
+
+
+def _detect_backlog(
+    ctx: JobContext, root_id: int, already: int, face_be: Any, pet_be: Any
+) -> _Totals:
+    """Detect in chunks, re-clustering people and pets after each one.
+
+    Clustering inside the loop rather than once at the end is what makes both
+    views fill in progressively during a run measured in hours.
+
+    The two backends are ``Any`` because their classes live in ``faces/`` and
+    ``pets/``, which are still on mypy's not-reviewed list, so a real
+    annotation would resolve to ``Any`` anyway -- and either may be None, since
+    ``make_backends`` degrades to faces-only or pets-only.
+    """
+    from ...detect import extract as dx
+    from ...faces import cluster as fc
+    from ...pets import cluster as pc
+
+    conn, job = ctx.require_conn(), ctx.job
+    totals = _Totals()
+    while True:
+        ctx.raise_if_cancelled()
+        prog = ctx.progress(base=already + totals.processed, fixed_total=True)
+        st = dx.extract(
+            conn,
+            ctx.cfg,
+            progress=prog,
+            limit=_DETECT_CHUNK,
+            face_be=face_be,
+            pet_be=pet_be,
+            cache_dir=ctx.cfg.archive_cache_dir(root_id),
+        )
+        if st.processed == 0:
+            return totals
+        totals.processed += st.processed
+        totals.faces += st.faces_found
+        totals.animals += st.animals
+        totals.suppressed += st.nonhuman_suppressed
+        totals.human_pets += st.human_animals_dropped
+        totals.turned += st.rotated
+        job.current = "grouping people & pets…"
+        fc.cluster_faces(conn, ctx.cfg)
+        pc.cluster_pets(conn, ctx.cfg, root_id=root_id)
+
+
+def _reattach_identities(ctx: JobContext, totals: _Totals) -> None:
+    """Give names, pins and review answers back after an embedder migration.
+
+    The backlog is empty by the time this runs, so a migration staged earlier
+    now has every re-extracted face it needs. Only here, never mid-run: a
+    partially re-extracted archive would strand identities on faces that have
+    not been detected yet. The re-cluster afterwards is what makes the restored
+    pins actually take effect.
+    """
+    from ...faces import cluster as fc
+    from ...faces import migrate_adaface
+
+    conn = ctx.require_conn()
+    if not migrate_adaface.pending(conn):
+        return
+    ctx.job.current = "restoring names and corrections…"
+    totals.restored = migrate_adaface.reattach(conn, ctx.cfg).faces_reattached
+    fc.cluster_faces(conn, ctx.cfg)
+
+
+def _summarise(conn: sqlite3.Connection, totals: _Totals) -> str:
+    """The one line the finished stage card shows.
+
+    Every clause after the first is conditional: a run that suppressed nothing
+    and turned nothing says so by staying quiet, rather than reporting zeroes.
+    """
+    people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
+    return (
+        f"{totals.faces} faces · {people} people · {totals.animals} animals · "
+        f"{groups} pet groups"
+        + (f" · {totals.suppressed} animal-face FPs dropped" if totals.suppressed else "")
+        + (f" · {totals.human_pets} people misread as pets" if totals.human_pets else "")
+        + (f" · {totals.turned} photos turned upright" if totals.turned else "")
+        + (f" · {totals.restored} identities restored" if totals.restored else "")
+    )
+
+
 def run(ctx: JobContext) -> None:
     # Part of the automatic pipeline (after dedup). ONE decode per image runs
     # both detectors — people via SCRFD, animals via YOLOX — and the animal
@@ -19,8 +123,6 @@ def run(ctx: JobContext) -> None:
     # dropped from People). Detect in chunks and re-cluster people + pets after
     # each so both views fill in progressively during a long run.
     from ...detect import extract as dx
-    from ...faces import cluster as fc
-    from ...pets import cluster as pc
 
     conn, job = ctx.require_conn(), ctx.job
     # detect is only ever started by the scheduler, always with the currently
@@ -45,57 +147,9 @@ def run(ctx: JobContext) -> None:
     # Fail here rather than inside the first chunk: extract() would otherwise
     # load the models a second time to reach the same conclusion.
     loaded.require()
-    face_be, pet_be = loaded.face, loaded.pet
-    processed = faces_found = animals = suppressed = human_pets = 0
-    turned = 0
-    while True:
-        ctx.raise_if_cancelled()
-        prog = ctx.progress(base=already + processed, fixed_total=True)
-        st = dx.extract(
-            conn,
-            ctx.cfg,
-            progress=prog,
-            limit=_DETECT_CHUNK,
-            face_be=face_be,
-            pet_be=pet_be,
-            cache_dir=ctx.cfg.archive_cache_dir(root_id),
-        )
-        if st.processed == 0:
-            break
-        processed += st.processed
-        faces_found += st.faces_found
-        animals += st.animals
-        suppressed += st.nonhuman_suppressed
-        human_pets += st.human_animals_dropped
-        turned += st.rotated
-        job.current = "grouping people & pets…"
-        fc.cluster_faces(conn, ctx.cfg)
-        pc.cluster_pets(conn, ctx.cfg, root_id=root_id)
-
-    # The backlog is empty, so an embedder migration staged earlier now has
-    # every re-extracted face it needs: give the names, pins and review
-    # answers back to the faces they belong to, then cluster once more so
-    # those restored pins actually take effect. Only here, never mid-run: a
-    # partially re-extracted archive would strand identities on faces that
-    # have not been detected yet.
-    from ...faces import migrate_adaface
-
-    restored = 0
-    if migrate_adaface.pending(conn):
-        job.current = "restoring names and corrections…"
-        restored = migrate_adaface.reattach(conn, ctx.cfg).faces_reattached
-        fc.cluster_faces(conn, ctx.cfg)
-
-    people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
-    groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
-    job.message = (
-        f"{faces_found} faces · {people} people · {animals} animals · "
-        f"{groups} pet groups"
-        + (f" · {suppressed} animal-face FPs dropped" if suppressed else "")
-        + (f" · {human_pets} people misread as pets" if human_pets else "")
-        + (f" · {turned} photos turned upright" if turned else "")
-        + (f" · {restored} identities restored" if restored else "")
-    )
+    totals = _detect_backlog(ctx, root_id, already, loaded.face, loaded.pet)
+    _reattach_identities(ctx, totals)
+    job.message = _summarise(conn, totals)
 
 
 RUNNER = Runner(kind="detect", run=run)
