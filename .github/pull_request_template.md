@@ -19,5 +19,3 @@ genuinely does not apply, rather than leaving it blank and ambiguous.
       it picks up rather than redoing or double-counting
 - [ ] Nothing writes to a source archive root
 - [ ] A decision that closes off an alternative has an ADR under `docs/adr/`
-- [ ] Commit messages have no AI-attribution trailer (no `Co-Authored-By`, no
-      "generated with" footer)

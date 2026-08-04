@@ -75,13 +75,6 @@ Type web/routes/ and put it in the strict mypy list
 Give the shared People/Pets card pieces their own module
 ```
 
-## No AI attribution in commit messages
-
-No `Co-Authored-By` trailer, no "generated with" footer, no trailer of any
-kind identifying an AI tool — regardless of how the commit was produced. This
-is a standing project rule, not a preference, and it applies even when a tool
-would add such a trailer by default. Write the commit body and stop there.
-
 ## Definition of done
 
 A change is finished when all of these are true. The pull request template
@@ -115,7 +108,6 @@ repeats the list so it gets checked rather than remembered.
 - **A decision that closes off an alternative gets an ADR** under `docs/adr/`,
   so it is not re-argued in six months by someone who cannot see why the
   obvious-looking alternative was rejected.
-- **No AI attribution in the commit message** — see above.
 
 ## The routine
 
