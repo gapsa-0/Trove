@@ -18,6 +18,14 @@ typed, `disallow_untyped_defs` and all — and both still appear in the
 `D101`/`D103` exemption list, alongside `paths.py` and packages like `dedup/`,
 `faces/`, and `web/*.py` that are not mypy-strict at all.
 
+> **Note, 2026-08-04.** The mypy half of that comparison has since moved: 0010's
+> two lists were completed and retired, so *every* package is mypy-strict now and
+> the settings are `[tool.mypy]` globals. The decision below is unaffected —
+> strengthened, if anything, since the docstring exemption list is now the only
+> per-package list left and its independence from typing is no longer a claim
+> about two lists but about one list and a global. The counts above are kept as
+> written because they are what the decision was made on.
+
 Lifting the exemption for just `config/`, `pipeline/`, and `paths.py` — the
 part of the exemption list that overlaps mypy's strict block — and running
 `ruff check --select D101,D103` against them today reports 18 missing
@@ -43,12 +51,11 @@ than the function having no docstring at all.
 
 ## Consequences
 
-- Both lists only ever shrink (a line is removed once that package's public
-  surface is actually documented, in the same commit), the same rule as
-  0010's strict-typing list, but membership is independent: removing a
-  package from the mypy "not reviewed yet" list does not remove it from the
-  `D101`/`D103` exemption, and typing a package first (as `config/` and
-  `pipeline/` already are) does not create pressure to document it next.
+- The `D101`/`D103` exemption list only ever shrinks (a line is removed once
+  that package's public surface is actually documented, in the same commit) —
+  the same rule 0010's typing list ran on until it emptied. Membership stayed
+  independent throughout, and still is: the whole package becoming mypy-strict
+  did not remove a single line from the exemption list, and should not.
 - A reader who sees `config/` or `pipeline/` fully typed but exempt from
   `D101`/`D103` should not read that as an oversight to "fix" by deleting
   the per-file-ignore line — the two are deliberately decoupled, and adding
