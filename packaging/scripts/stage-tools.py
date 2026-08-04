@@ -282,6 +282,91 @@ def probe_env(target: str, stage_tmp: Path) -> dict:
     return runtime.tool_env(base)
 
 
+def fetch_archive(item: dict, download_tmp: Path, archives: dict[tuple[str, str], Path]) -> Path:
+    """Download one tool's archive and verify it, reusing an already-fetched one.
+
+    Keyed on (url, digest) because several tools ship inside the same archive:
+    ffmpeg and ffprobe come out of one download, and fetching it twice would
+    double the build's network time for no gain. A digest mismatch raises here,
+    before anything is extracted, so bad bytes never reach the stage directory.
+    """
+    key = (item["url"], item["sha256"].lower())
+    archive = archives.get(key)
+    if archive is not None:
+        return archive
+    archive = download_tmp / f"download-{len(archives)}"
+    urllib.request.urlretrieve(item["url"], archive)
+    actual_hash = sha256(archive).lower()
+    if actual_hash != key[1]:
+        raise ValueError(f"SHA-256 mismatch for {item['name']}: got {actual_hash}")
+    archives[key] = archive
+    return archive
+
+
+def probe_version(item: dict, target: str, staged: Path, stage_tmp: Path) -> str:
+    """Run the staged binary once and read the version it reports.
+
+    This is the first thing that actually *runs* a staged binary, so it gets
+    the same library path the app will. A shared build without that dies with
+    "error while loading shared libraries" under check=True, which is the
+    point: staging should fail here, on the build machine, rather than in a
+    user's install. Cross-staging cannot run the binary at all, and says so
+    rather than pretending it verified something.
+    """
+    if not can_probe(target):
+        runtime_version = f"not probed (staged for {target} on {sys.platform})"
+        print(
+            f"warning: {item['name']} staged without a version probe ({runtime_version})",
+            file=sys.stderr,
+        )
+        return runtime_version
+    probe = subprocess.run(
+        [str(staged), *version_args(item["name"])],
+        check=True,
+        text=True,
+        capture_output=True,
+        env=probe_env(target, stage_tmp),
+    )
+    return (probe.stdout or probe.stderr).splitlines()[0]
+
+
+def stage_one(item: dict, target: str, stage_tmp: Path, extracted: Path) -> dict:
+    """Copy one tool out of its extracted archive, and describe what was staged.
+
+    Returns the tool's ``tools-build-info.json`` entry, which is the record of
+    exactly what shipped: pinned digest, upstream url, and the version the
+    binary itself reported when run.
+    """
+    executable = executable_for(item, target)
+    hits = [path for path in extracted.rglob(executable) if path.is_file()]
+    if len(hits) != 1:
+        raise ValueError(f"expected one {executable} in {item['name']} archive, found {len(hits)}")
+    staged = stage_tmp / staged_name_for(item, target)
+    shutil.copy2(hits[0], staged)
+    if target.startswith("linux-"):
+        staged.chmod(staged.stat().st_mode | 0o111)
+    support = item.get("support_dir")
+    if support:
+        # The runtime tree ships beside the executable inside the archive
+        # and must keep that relative position once staged.
+        source_dir = hits[0].parent / support
+        if not source_dir.is_dir():
+            raise ValueError(f"missing support_dir {support!r} for {item['name']}")
+        destination_dir = stage_tmp / support
+        if not destination_dir.exists():
+            shutil.copytree(source_dir, destination_dir)
+    staged_libs = stage_runtime_libs(item, extracted, stage_tmp)
+    return {
+        "name": item["name"],
+        "version": item["version"],
+        "url": item["url"],
+        "sha256": item["sha256"].lower(),
+        "license": item["license"],
+        "runtime_version": probe_version(item, target, staged, stage_tmp),
+        "runtime_libs": staged_libs,
+    }
+
+
 def stage_target(target: str) -> Path:
     tools, unavailable = validate_target(target)
     final_stage = ROOT / "packaging" / "tools" / "staged" / target
@@ -294,70 +379,11 @@ def stage_target(target: str) -> Path:
         archives: dict[tuple[str, str], Path] = {}
         build_info: list[dict] = []
         for item in tools:
-            key = (item["url"], item["sha256"].lower())
-            archive = archives.get(key)
-            if archive is None:
-                archive = download_tmp / f"download-{len(archives)}"
-                urllib.request.urlretrieve(item["url"], archive)
-                actual_hash = sha256(archive).lower()
-                if actual_hash != key[1]:
-                    raise ValueError(f"SHA-256 mismatch for {item['name']}: got {actual_hash}")
-                archives[key] = archive
+            archive = fetch_archive(item, download_tmp, archives)
             extracted = download_tmp / f"extract-{item['name']}"
             extracted.mkdir()
             extract(archive, extracted)
-            executable = executable_for(item, target)
-            hits = [path for path in extracted.rglob(executable) if path.is_file()]
-            if len(hits) != 1:
-                raise ValueError(
-                    f"expected one {executable} in {item['name']} archive, found {len(hits)}"
-                )
-            staged = stage_tmp / staged_name_for(item, target)
-            shutil.copy2(hits[0], staged)
-            if target.startswith("linux-"):
-                staged.chmod(staged.stat().st_mode | 0o111)
-            support = item.get("support_dir")
-            if support:
-                # The runtime tree ships beside the executable inside the archive
-                # and must keep that relative position once staged.
-                source_dir = hits[0].parent / support
-                if not source_dir.is_dir():
-                    raise ValueError(f"missing support_dir {support!r} for {item['name']}")
-                destination_dir = stage_tmp / support
-                if not destination_dir.exists():
-                    shutil.copytree(source_dir, destination_dir)
-            staged_libs = stage_runtime_libs(item, extracted, stage_tmp)
-            if can_probe(target):
-                # The probe is the first thing that actually *runs* a staged
-                # binary, so give it the same library path the app will. A shared
-                # build without this dies with "error while loading shared
-                # libraries" under check=True, which is the point: staging should
-                # fail here, on the build machine, rather than in a user's install.
-                probe = subprocess.run(
-                    [str(staged), *version_args(item["name"])],
-                    check=True,
-                    text=True,
-                    capture_output=True,
-                    env=probe_env(target, stage_tmp),
-                )
-                runtime_version = (probe.stdout or probe.stderr).splitlines()[0]
-            else:
-                runtime_version = f"not probed (staged for {target} on {sys.platform})"
-                print(
-                    f"warning: {item['name']} staged without a version probe ({runtime_version})",
-                    file=sys.stderr,
-                )
-            build_info.append(
-                {
-                    "name": item["name"],
-                    "version": item["version"],
-                    "url": item["url"],
-                    "sha256": item["sha256"].lower(),
-                    "license": item["license"],
-                    "runtime_version": runtime_version,
-                    "runtime_libs": staged_libs,
-                }
-            )
+            build_info.append(stage_one(item, target, stage_tmp, extracted))
         info = {"target": target, "tools": build_info, "unavailable": unavailable}
         (stage_tmp / "tools-build-info.json").write_text(
             json.dumps(info, indent=2) + "\n", encoding="utf-8"
