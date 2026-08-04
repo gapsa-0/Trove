@@ -109,12 +109,14 @@ FEATURES: tuple[Feature, ...] = (
         id="index",
         label="Indexing",
         icon="library",
-        tagline="Find every file and work out when it was taken",
+        tagline="Find every file and extract its metadata",
         verb="Scanning",
         noun="files",
         detail=(
-            "Walks the folder and records every photo, video, audio file and document "
-            "it finds, then resolves a date for each one from Google Takeout sidecars, "
+            "Walks the folder and every folder inside it, to any depth, and records "
+            "every file it finds. For each one it extracts what the file already "
+            "knows about itself: its dimensions, its camera, its GPS coordinates if "
+            "it has any, and above all a date, resolved from Google Takeout sidecars, "
             "embedded metadata, the filename, and finally the file's own timestamp. "
             "Each date keeps a note of where it came from, and nothing is moved, "
             "renamed or edited."
