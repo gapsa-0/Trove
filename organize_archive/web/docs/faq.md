@@ -1,6 +1,6 @@
 ---
 title: Common questions
-summary: The practical ones: time, disk, moving files, backups, and starting over.
+summary: The practical ones: time, adding and deleting files, disk, backups, starting over.
 ---
 
 Answers to the things people ask before and after adding their first folder. If
@@ -52,19 +52,44 @@ No, and it makes no difference if you do. Trove walks every subfolder to any
 depth and never reads folder names to guess anything. A single heap of 80,000
 files works exactly as well as a tidy year-by-month tree.
 
-## What happens if I move, rename or delete files afterwards?
+## I added new photos to the folder. Do I need to do anything?
 
-Trove notices on the next scan.
+No. Drop them in and carry on.
 
-- **Deleted or on a disconnected drive:** the file is marked missing, not
-  removed from the catalogue. Its faces, names and dates are still there if it
-  comes back.
+While the archive is open, Trove counts the files under it every minute or so,
+using a cheap directory listing that opens nothing. When the count stops
+matching the catalogue it scans, and it only looks at what is new: adding fifty
+photos to a folder of 150,000 costs the fifty. Their dates, faces, places and
+search vectors follow on their own.
+
+If Trove is closed, or that archive is not the one open, nothing happens in the
+background and the new files are picked up next time you open it. There is no
+re-scan button because there is nothing for it to do.
+
+## What if I delete files from the folder?
+
+Also fine, and you do not need to tell Trove either. It notices the count fall
+and marks those rows **missing** rather than deleting them.
+
+A missing file stops appearing in Browse, on the Timeline, in People, Pets,
+Places and search results, and its duplicate group closes up around it. Keeping
+the row is what lets an unplugged drive or a restored backup bring everything
+back exactly as it was, names and corrections included.
+
+Deleting from your folder is always safe. Trove never re-creates a file and has
+no opinion about what you remove.
+
+## What if I move, rename or edit files?
+
 - **Moved or renamed inside the archive:** Trove sees one file gone and one
-  arrived. Because [Duplicates](duplicates.md) works on content, it recognises
-  the same photo, but the per-file work is done again.
+  arrived, so the old row goes missing and the new one is catalogued fresh.
+  Because [Duplicates](duplicates.md) works on content rather than paths, the
+  two are still recognised as the same photo.
 - **Edited in place:** everything derived from the old bytes is cleared and
   recomputed, since it is now wrong rather than merely old. A place you
-  attached by hand survives.
+  attached by hand survives, because that is your judgement about the file
+  rather than a fact about its contents.
+- **Moved out of the archive entirely:** the same as deleting it.
 
 ## Can I add a folder that is inside another archive?
 

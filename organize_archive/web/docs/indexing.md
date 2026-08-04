@@ -1,12 +1,13 @@
 ---
 title: Indexing
-summary: Which files are catalogued, and how a date is worked out for each one.
+summary: Which files are catalogued, how each one is dated, and how changes are picked up.
 feature: index
 ---
 
 Indexing is the stage that makes the archive exist. It walks the folder you
-added, records one row for every file it finds, and resolves a date for each
-one. Everything else on these pages is built on what it produces.
+added, records one row for every file it finds, and extracts that file's
+metadata: its dimensions, its GPS coordinates if it carries any, and above
+all a date. Everything else on these pages is built on what it produces.
 
 It reads, and only reads. Nothing is moved, renamed, edited or converted, and
 nothing is written into your folder.
@@ -62,6 +63,29 @@ Takeout export contains one JSON file per photo and cataloguing them would
 double the size of your library with files nobody wants to browse. Those same
 files are read as *metadata*, which is where most of your dates come from.
 
+## What is extracted from each file
+
+Reading a file's metadata means reading it from three places at once, because
+no single one of them is reliable across an archive that has been through
+phones, exports and messaging apps. The Takeout sidecar beside it, the tags
+embedded in the file itself, and in the last resort the filename and the
+file's own timestamps.
+
+What comes out of that:
+
+| Recorded | Used for |
+| --- | --- |
+| A date, and which source it came from | The Timeline, sorting, and the date shown on every item |
+| GPS coordinates, and which source they came from | [Places](places.md) |
+| Width, height and duration | The Storage panel, and sizing previews |
+| Camera make and model | Shown on the item |
+| Orientation | Turning a photo the right way up before anything looks at it |
+| The real file type, sniffed from content | Correcting a file whose extension is wrong or missing |
+
+Coordinates only exist if the file already carried them. Nothing here looks up
+an address or contacts a mapping service, and a photo with no GPS tag simply
+has none. Most files in most archives fall into that group.
+
 ## Working out the date
 
 This is the hard part, and it is why the stage takes as long as it does. Most
@@ -100,30 +124,61 @@ overwritten by a later scan.
 evening photo can roll into the next day. Setting `timezone` to an IANA zone
 name converts Takeout's timestamps to local wall-clock time before storing.
 
-## Scanning again
+## Adding and deleting files afterwards
+
+Your folder is yours. Keep putting photos in it, keep clearing things out, and
+keep using whatever program you already use to do that. Trove is watching the
+count, not asking you to go through it.
+
+**You never have to tell Trove that something changed.** There is no re-scan
+button, because there is nothing for it to do that does not already happen.
+
+While an archive is open, Trove counts the files under it every minute or so.
+That count is a cheap directory listing, not a re-read: it does not open a
+single file. When the count no longer matches what the catalogue holds, a scan
+starts on its own and the Overview says so.
+
+- **You added files.** They are picked up, and only they are. Everything
+  already catalogued is skipped without being opened, so dropping fifty photos
+  into a folder of 150,000 costs the fifty. Their dates, faces, places and
+  search vectors follow automatically, in the usual order.
+- **You deleted files.** Trove notices the count fall and marks those rows
+  **missing** rather than deleting them. A missing file stops appearing in
+  Browse, on the Timeline, in People, Pets, Places and search results, and its
+  duplicate group closes up around it. Nothing is removed from the catalogue,
+  which is what lets an unplugged drive or a restored backup bring everything
+  back exactly as it was, names and corrections included.
+
+If the archive is closed when you make the change, nothing is scanned in the
+background. Trove notices the next time you open it.
+
+Two useful consequences. Deleting files is safe: Trove has no opinion about it
+and never re-creates anything. And nothing you do in your file manager can
+corrupt the catalogue, because the catalogue is only ever a description of what
+was there last time it looked.
+
+## What a re-scan actually does
 
 The walk is incremental, and safe to interrupt. Rows are written in batches, so
 closing Trove mid-scan loses at most the last batch, and re-running picks up
 where it stopped.
 
-On a later scan, a file whose **size and modification time both match** what
-was recorded, and which already has a content hash, is skipped without being
-opened. That is the whole reason a re-scan of 150,000 files takes seconds
-rather than an hour.
+A file whose **size and modification time both match** what was recorded, and
+which already has a content hash, is skipped without being opened. That is the
+whole reason a re-scan of 150,000 files takes seconds rather than an hour, and
+why leaving Trove open costs you nothing.
 
-Three things can change, and each is handled differently:
+Beyond appearing and disappearing, two things can happen to a file that stays:
 
-- **The file changed** (same path, different content). Everything derived from
-  the old bytes is wrong rather than stale, so its dates, metadata, faces,
-  animals, fingerprints and search vectors are cleared and recomputed. One
-  thing survives: a place you attached by hand, which is your judgement about
-  the path rather than a fact about the bytes.
-- **The file is gone.** It is marked missing rather than deleted from the
-  catalogue, so its faces and names are still there if you plug the drive back
-  in or restore it from a backup.
-- **The file moved** within the archive. Trove sees a file gone and a new file
-  arrived. Because duplicate grouping works on content, the two are recognised
-  as the same photo, but per-file work is done again.
+- **It changed** (same path, different content). Everything derived from the
+  old bytes is wrong rather than stale, so its dates, metadata, faces, animals,
+  fingerprints and search vectors are cleared and recomputed. One thing
+  survives: a place you attached by hand, which is your judgement about the
+  path rather than a fact about the bytes.
+- **It moved or was renamed** inside the archive. Trove sees one file gone and
+  one arrived, so the old row goes missing and the new one is catalogued from
+  scratch. Because [Duplicates](duplicates.md) works on content rather than
+  paths, the two are still recognised as the same photo.
 
 ## The numbers
 

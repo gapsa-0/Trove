@@ -62,7 +62,7 @@ Adding the same folder twice is refused.
 When you add a folder, Trove asks what work it should do on it. Two stages are
 not optional, because everything else is built on what they produce:
 
-- **[Indexing](indexing.md)** finds every file and works out its date.
+- **[Indexing](indexing.md)** finds every file and extracts its metadata.
 - **[Duplicates](duplicates.md)** groups the copies of the same thing.
 
 The other four are yours to choose, and the reason you are asked at all is that
@@ -105,6 +105,13 @@ there when you want the machine back.
 A first run on a large archive takes hours. It is resumable: closing Trove
 mid-scan loses nothing, and reopening picks up where it stopped.
 
+**It keeps up on its own after that.** Add photos to the folder, delete some,
+reorganise it however you like, using whatever program you normally use. While
+the archive is open Trove checks the file count every minute or so and catches
+up by itself, looking only at what actually changed. There is no re-scan button
+and nothing to remember. [Indexing](indexing.md) describes exactly what happens
+to a file that appears, disappears, moves or changes.
+
 ## Two things that are true of every stage
 
 **Nothing leaves this computer.** Every model on these pages runs locally, on
@@ -145,4 +152,5 @@ default shown here. You do not need to touch any of them.
 - The page for whichever screen you are looking at. Every section in the app
   has a **How this works** button that opens it.
 - [Common questions](faq.md), for the practical ones: how long it takes, what
-  happens when you move files, how to back it up, and how to start over.
+  happens when you add or delete files, how to back it up, and how to start
+  over.
