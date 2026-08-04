@@ -4,8 +4,9 @@
 into the five display cards" -- a question the scheduler asks too, which is why
 the two can never disagree. This module answers the one question only the GUI
 asks: what should the user be told *right now*. That is the resolved cards,
-plus the running jobs that belong to no card, the pause overlay, and one
-overall verdict for the sidebar chip.
+plus three things the scheduler has no use for -- the running jobs that belong
+to no card, the pause overlay (including the seconds where a pause has been
+asked for but not yet reached), and one overall verdict for the sidebar chip.
 
 Nothing here decides anything: every state it reports was resolved in
 ``stages``. It only chooses words.
@@ -53,6 +54,7 @@ def _extra_jobs(jobs: JobManager, root_id: int) -> list[dict[str, Any]]:
                 "counted": False,
                 "progress": job_progress(j),
                 "next": False,
+                "pausing": False,
                 "waiting_on": None,
                 "message": f"{_EXTRA_JOB_LABEL.get(kind, kind)}…",
                 "paused": False,
@@ -60,6 +62,41 @@ def _extra_jobs(jobs: JobManager, root_id: int) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def _apply_pause(card_list: list[dict], extra: list[dict], paused: bool) -> None:
+    """Say what a pause is actually doing, which is rarely "stopped, now".
+
+    Pausing only *asks* the running job to stop, at its next batch checkpoint.
+    A card that goes on saying "Scanning files…" for those seconds reads first
+    as a button that did nothing, then as a stage that quit for no reason -- so
+    it says "Pausing…", and keeps its bar moving because the work really is.
+    Once stopped it keeps the bar it reached (``stages._stopped_progress``): a
+    paused run is suspended, not discarded, and "Paused" on its own loses how
+    far it got.
+    """
+    for c in card_list:
+        stopping = paused or c["paused"]
+        frozen = c.pop("stopped_progress", None)
+        if c["state"] == "running":
+            if stopping:
+                c["pausing"] = True
+                c["message"] = "Pausing…"
+        elif c["state"] not in ("queued", "blocked", "error"):
+            continue
+        elif stopping:
+            c["next"] = False
+            c["message"] = "Paused"
+            if frozen and not c["progress"]:
+                c["progress"] = frozen
+        elif c["stalled"]:
+            c["next"] = False
+            c["message"] = f"Waiting for {c['waiting_on'] or 'earlier steps'} (paused)"
+    # The whole-pipeline pause cancels the non-stage jobs too
+    # (JobManager._cancel_running takes no kinds); a per-stage one never does.
+    for e in extra if paused else ():
+        e["pausing"] = True
+        e["message"] = "Pausing…"
 
 
 def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dict[str, Any]:
@@ -75,6 +112,8 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
     card at a time: their message becomes "Paused", and a card stuck behind one
     says so too instead of promising work that can never start.
 
+    A pause is not instant, and ``_apply_pause`` is what says so honestly.
+
     ``extra`` carries running non-stage jobs (see _extra_jobs). They count
     toward ``overall`` -- reporting "idle" while a recluster holds the writer
     would be a lie -- but stay out of ``stages`` so the Overview grid is
@@ -85,15 +124,7 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
     per_stage = frozenset(jobs.paused_stages()) if hasattr(jobs, "paused_stages") else frozenset()
     card_list = cards(states, per_stage)
     extra = _extra_jobs(jobs, root_id)
-    for c in card_list:
-        if c["state"] not in ("queued", "blocked", "error"):
-            continue
-        if paused or c["paused"]:
-            c["next"] = False
-            c["message"] = "Paused"
-        elif c["stalled"]:
-            c["next"] = False
-            c["message"] = f"Waiting for {c['waiting_on'] or 'earlier steps'} (paused)"
+    _apply_pause(card_list, extra, paused)
     if extra or any(c["state"] == "running" for c in card_list):
         overall = "running"
     elif paused:

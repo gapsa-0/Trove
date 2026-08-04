@@ -1,17 +1,25 @@
-"""What a status card says while a stage is starting up.
+"""What a status card says while a stage is starting up or stopping.
 
-Between "the stage I depend on finished" and "I am processing file 1" a stage
-can spend minutes counting 150k files or fetching ~310 MB of model weights. The
-card painted a 0% progress bar across all of it -- a bar whose total nothing had
-started consuming -- and the download's own percentage was relegated to the
-small detail line beside it.
-These drive ``stages.cards`` directly with crafted stage states, which is the
-same input the scheduler and the GUI both resolve through.
+Both ends of a stage's life used to be reported as if it were mid-loop:
+
+* Between "the stage I depend on finished" and "I am processing file 1" a stage
+  can spend minutes counting 150k files or fetching ~310 MB of model weights.
+  The card painted a 0% progress bar across all of it -- a bar whose total
+  nothing had started consuming -- and the download's own percentage was
+  relegated to the small detail line beside it.
+* Pausing only *asks* the running job to stop, at its next batch checkpoint, so
+  the card went on saying "Scanning files…" for seconds and then stopped dead;
+  and once it had stopped, the bar vanished, losing how far in it got.
+
+These drive ``stages.cards``/``status.snapshot`` directly with crafted stage
+states, which is the same input the scheduler and the GUI both resolve through.
 """
 
 from __future__ import annotations
 
+from organize_archive.config import Config
 from organize_archive.pipeline import stages as stages_mod
+from organize_archive.pipeline import status as status_mod
 
 
 def _progress(**over):
@@ -28,6 +36,7 @@ def _stage(kind="detect", card="detect", state="running", **over):
         "state": state,
         "pending": 4400,
         "progress": _progress() if state == "running" else None,
+        "stopped_progress": None,
         "blocker": None,
         "error": None,
     }
@@ -38,6 +47,31 @@ def _stage(kind="detect", card="detect", state="running", **over):
 def _card(*states, card_id=None):
     cards = {c["id"]: c for c in stages_mod.cards(list(states))}
     return cards[card_id or states[0]["card"]]
+
+
+class _FakeJobs:
+    """Enough JobManager for snapshot(); stage_states is monkeypatched away."""
+
+    def __init__(self, paused=False, stages=()):
+        self._paused, self._stages = paused, set(stages)
+
+    def paused(self):
+        return self._paused
+
+    def paused_stages(self):
+        return set(self._stages)
+
+    def list(self, root_id=None):
+        return []
+
+
+def _snapshot(monkeypatch, jobs, *states):
+    monkeypatch.setattr(
+        stages_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [dict(s) for s in states],
+    )
+    return status_mod.snapshot(Config(), jobs, 1, "/fake")
 
 
 # ---------------------------------------------------------------------------
@@ -102,3 +136,84 @@ def test_a_preparing_scan_is_not_reported_as_finalizing_metadata():
 
     assert card["progress"] is None
     assert card["message"] == "Preparing… · counting files on disk"
+
+
+# ---------------------------------------------------------------------------
+# Pausing: the wind-down, and the bar a stopped run leaves behind
+# ---------------------------------------------------------------------------
+
+
+def test_a_stage_winding_down_says_pausing_and_keeps_its_bar(monkeypatch):
+    snap = _snapshot(monkeypatch, _FakeJobs(stages={"detect"}), _stage())
+
+    card = next(c for c in snap["stages"] if c["id"] == "detect")
+    assert card["state"] == "running"  # the job really is still going
+    assert card["pausing"] is True
+    assert card["message"] == "Pausing…"
+    assert card["progress"]["done"] == 600, "the bar must not vanish while work continues"
+
+
+def test_the_whole_pipeline_pause_puts_every_running_card_into_pausing(monkeypatch):
+    snap = _snapshot(
+        monkeypatch,
+        _FakeJobs(paused=True),
+        _stage(kind="scan", card="scan"),
+        _stage(),
+    )
+
+    assert [c["message"] for c in snap["stages"]] == ["Pausing…", "Pausing…"]
+
+
+def test_a_stage_nobody_paused_keeps_its_running_text(monkeypatch):
+    snap = _snapshot(monkeypatch, _FakeJobs(stages={"scan"}), _stage())
+
+    card = next(c for c in snap["stages"] if c["id"] == "detect")
+    assert card["pausing"] is False
+    assert card["message"] == "Detecting people & pets…"
+
+
+def test_a_stage_stopped_mid_run_keeps_the_bar_it_reached(monkeypatch):
+    """Paused work is suspended, not discarded: it resumes from the batches it
+    committed, so "Paused" alone throws away the only interesting number."""
+    stopped = _stage(state="queued", stopped_progress=_progress(phase="working"))
+
+    snap = _snapshot(monkeypatch, _FakeJobs(stages={"detect"}), stopped)
+
+    card = next(c for c in snap["stages"] if c["id"] == "detect")
+    assert card["message"] == "Paused"
+    assert card["progress"]["done"] == 600
+
+
+def test_a_queued_stage_that_is_not_paused_shows_no_leftover_bar(monkeypatch):
+    """The frozen bar is a pause affordance; a stage merely waiting its turn
+    must not show one, or every restart would look mid-run."""
+    stopped = _stage(state="queued", stopped_progress=_progress(phase="working"))
+
+    snap = _snapshot(monkeypatch, _FakeJobs(), stopped)
+
+    card = next(c for c in snap["stages"] if c["id"] == "detect")
+    assert card["progress"] is None
+    assert "stopped_progress" not in card, "internal-only; never reaches the client"
+
+
+# ---------------------------------------------------------------------------
+# Which finished job counts as "stopped mid-run"
+# ---------------------------------------------------------------------------
+
+
+def test_only_a_cancelled_job_leaves_a_bar_behind():
+    cancelled = {"status": "cancelled", "done": 600, "total": 5000, "phase": "working"}
+    assert stages_mod._stopped_progress(cancelled)["done"] == 600
+
+    for status in ("done", "error", "running"):
+        assert stages_mod._stopped_progress({**cancelled, "status": status}) is None
+
+
+def test_a_job_cancelled_while_preparing_leaves_no_bar():
+    """It never reached a count worth showing, and 0/0 only looks broken."""
+    assert (
+        stages_mod._stopped_progress(
+            {"status": "cancelled", "done": 0, "total": 0, "phase": "preparing"}
+        )
+        is None
+    )

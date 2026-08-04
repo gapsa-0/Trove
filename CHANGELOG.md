@@ -61,6 +61,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Pausing responds immediately. A pause asks the running job to stop at its next
+  batch checkpoint, which takes seconds, and the card went on reporting the work
+  as if nothing had happened before stopping abruptly; it now says "Pausing…" the
+  moment you press it. A stage stopped part-way also keeps the progress bar it
+  reached, since the run is suspended rather than thrown away.
+
 - Seeking in a video or audio file is reliable. The server mishandled two of the
   requests a player makes: asking for a position past the end of the file produced
   a malformed reply instead of a "that range does not exist" answer, and asking for

@@ -32,7 +32,10 @@ function gstatRow(run) {
   const pct = run.progress && run.progress.percent != null ? run.progress.percent : null;
   // The label's trailing ellipsis meant "in progress"; the bar says that now,
   // and dropping it keeps the real text-overflow ellipsis unambiguous.
-  const label = (JOB_LABEL[CARD_KIND[run.id]] || run.label).replace(/…$/, "");
+  // A job winding down after a pause says so instead of naming work it is
+  // about to stop doing, so the chip and the health card agree.
+  const label = run.pausing ? "Pausing"
+    : (JOB_LABEL[CARD_KIND[run.id]] || run.label).replace(/…$/, "");
   return `<div class="grow"><div class="gline"><span class="gtxt">${label}</span>`
     + (pct != null ? `<span class="gpct">${gstatPct(pct)}</span>` : "") + `</div>`
     + (pct != null

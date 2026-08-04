@@ -174,20 +174,33 @@ function healthDoneMessage(id) {
 }
 function healthCard(stage) {
   const st = stage.state;
+  const allPaused = !!(S.pipeline && S.pipeline.paused);
+  // Pausing only ASKS the running job to stop, at its next batch checkpoint,
+  // so there are seconds where the stage is paused and still working. Saying
+  // "Scanning files…" through them reads as a button that did nothing, then as
+  // a stage that stopped for no reason. The server says the same thing on its
+  // next poll (stages.snapshot sets `pausing`); repeating the rule here is
+  // what makes the click feel instant, up to 1.2s before that poll lands.
+  const pausing = st === "running" && (allPaused || !!stage.paused || !!stage.pausing);
   // Paused cards should read as stopped, not "about to run": swap the amber
   // pending dot for the same neutral one blocked cards use. `stalled` covers
   // both a stage the user paused and one queued behind a paused stage --
-  // neither is going to start. A genuinely still-running (winding-down)
-  // stage is untouched here -- its dot/spinner already come from `st`.
-  const stopped = (!!(S.pipeline && S.pipeline.paused) || stage.stalled) && st !== "running";
+  // neither is going to start. A still-running (winding-down) stage is
+  // untouched here -- its dot/spinner already come from `st`.
+  const stopped = (allPaused || stage.stalled) && st !== "running";
   const dot = stage.next ? "next" : (stopped ? "check" : (HEALTH_DOT[st] || "check"));
   const head = (st === "running"
     ? `<span class="spin"></span>${stage.label}`
     : `<span class="dot ${dot}"></span>${stage.label}`) + stagePauseButton(stage);
-  const message = st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || "");
+  const message = pausing ? "Pausing…"
+    : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
   let prog = "";
+  // Not gated on "running": a stage stopped mid-run keeps the bar it reached
+  // (the server hands it back for a paused card -- see stages._stopped_progress),
+  // because the run is suspended rather than discarded. A stage that is still
+  // preparing has no bar to show, and the server sends none.
   const p = stage.progress;
-  if (st === "running" && p && (p.total || p.done)) {
+  if (p && (p.total || p.done)) {
     const pct = Math.max(0, Math.min(100, p.percent != null ? p.percent : 0));
     prog = `<div class="job" style="margin-top:8px; border:none; padding:0; background:transparent"><div class="progress"><div class="progfill" style="width:${pct}%"></div></div>
         <div class="cur" style="margin-top:4px">${pct}% · ${(p.done || 0).toLocaleString()}${p.total ? "/" + p.total.toLocaleString() : ""} · ${p.elapsed || 0}s${p.current ? " · " + p.current : ""}</div></div>`;
@@ -227,10 +240,13 @@ export async function toggleStagePause(id, event) {
   if (!stage) return;
   const next = !stage.paused;
   // Paint the new state at once (the poll is up to 1.2s away), then let
-  // refreshPipeline replace it with whatever the server actually did.
+  // refreshPipeline replace it with whatever the server actually did. A card
+  // still running turns into "Pausing…" from this alone -- see healthCard.
   stage.paused = next;
+  stage.pausing = next && stage.state === "running";
   S.pausing = true;
   renderHealthCards();
+  renderGstat(S.pipeline);   // the sidebar chip reads `pausing` off the same object
   try {
     const r = await jpost("/api/pipeline/pause", { paused: next, stage: id });
     if (r && r.error) toast(r.error, true);
@@ -265,7 +281,15 @@ export async function togglePipelinePause() {
   if (!S.arch || S.pausing) return;
   const next = !(S.pipeline && S.pipeline.paused);
   S.pausing = true;
-  renderPauseControl();
+  // Same instant repaint as the per-stage button: every still-running card
+  // turns into "Pausing…" now rather than at the next poll.
+  if (S.pipeline) {
+    S.pipeline.paused = next;
+    for (const s of S.pipeline.stages || []) s.pausing = next && s.state === "running";
+    for (const e of S.pipeline.extra || []) e.pausing = next;
+  }
+  renderHealthCards();
+  renderGstat(S.pipeline);
   try {
     const r = await jpost("/api/pipeline/pause", { paused: next });
     if (r && r.error) toast(r.error, true);

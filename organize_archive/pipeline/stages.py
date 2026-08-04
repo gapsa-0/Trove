@@ -239,6 +239,7 @@ def stage_states(
                 "state": state,
                 "pending": pending[k],
                 "progress": job_progress(job),
+                "stopped_progress": _stopped_progress(last.get(k)),
                 "blocker": blocker,
                 "error": (last.get(k) or {}).get("message") if state == "error" else None,
             }
@@ -262,6 +263,20 @@ def job_progress(job: dict | None) -> dict | None:
         "elapsed": job.get("elapsed", 0),
         "phase": job.get("phase", "working"),
     }
+
+
+def _stopped_progress(job: dict | None) -> dict | None:
+    """Where a job stopped mid-run had got to, for ``_apply_pause`` to show.
+
+    Only a *cancelled* job qualifies: that is the pause path, and its committed
+    batches are what the next run resumes from. A finished run has nothing to
+    resume, an errored one is reported as an error, and one still preparing
+    never reached a count worth drawing.
+    """
+    if not job or job.get("status") != "cancelled":
+        return None
+    p = job_progress(job)
+    return p if p and p["phase"] == "working" and (p["done"] or p["total"]) else None
 
 
 # Precedence when several stages share one card (scan + enrich): the most
@@ -367,7 +382,15 @@ def _card(card_id: str, members: list[dict], blocker_card: dict[str, str | None]
         "pending": pending,
         "counted": counted,
         "progress": progress,
+        # Promoted to `progress` by _apply_pause, which knows whether this card
+        # is paused rather than merely queued, and dropped by it otherwise.
+        "stopped_progress": next(
+            (m.get("stopped_progress") for m in members if m.get("stopped_progress")), None
+        ),
         "next": False,
+        # True while a paused stage's job is still winding down to its next
+        # batch checkpoint -- set by snapshot, which knows about the pause.
+        "pausing": False,
         "waiting_on": CARD_LABEL.get(bc_id) if bc_id else None,
         "message": message,
     }
