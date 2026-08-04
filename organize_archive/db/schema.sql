@@ -30,7 +30,21 @@ CREATE INDEX IF NOT EXISTS idx_files_sha256     ON files(sha256);
 CREATE INDEX IF NOT EXISTS idx_files_fast_hash  ON files(fast_hash);
 CREATE INDEX IF NOT EXISTS idx_files_media_type ON files(media_type);
 CREATE INDEX IF NOT EXISTS idx_files_mtime      ON files(mtime);
-CREATE INDEX IF NOT EXISTS idx_files_present    ON files(present);
+-- Every Browse query begins the same way: the files this archive still has,
+-- minus the duplicates it hides ("f.present=1 AND f.hidden=0 AND f.root_id=?",
+-- _NOT_HIDDEN + _root_clause in services/_common.py), and then wants only the
+-- media type or the file id. Covering that prefix keeps those queries out of
+-- the files table entirely, which on a 97k-file archive is 27 MB of pages to
+-- pull off disk. Measured there, with the page cache cold — the state right
+-- after an archive is opened, which is also when the pipeline is competing for
+-- the same disk — the filter bar's queries go from 2.4s to 0.2s and the grid's
+-- first page from 0.74s to 0.35s. The column order is the predicate's: three
+-- equality terms, then media_type so `SELECT DISTINCT media_type` is answered
+-- from the index too.
+--
+-- This replaces idx_files_present(present): leading on the same column, it
+-- serves everything that one served (see _drop_covered_files_index).
+CREATE INDEX IF NOT EXISTS idx_files_browse ON files(present, hidden, root_id, media_type);
 
 CREATE TABLE IF NOT EXISTS scan_runs (
     id             INTEGER PRIMARY KEY,

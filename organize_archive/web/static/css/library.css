@@ -319,6 +319,38 @@
   border-color: var(--line-strong)
 }
 
+/* A filter control before the archive's options have arrived. It borrows .fsel
+   so the toolbar has its settled height and rhythm from the very first paint,
+   and drops only the parts that would be a lie: no label, no dropdown arrow,
+   and a surface that reads as "still coming" rather than as an empty control.
+   Placed after .fsel deliberately -- same specificity, so order is what lets
+   it win. */
+.fsel-loading {
+  display: inline-block;
+  padding: 0;
+  background: var(--panel2);
+  border-color: transparent;
+  box-shadow: none;
+  animation: fsel-fade 1.4s ease-in-out infinite
+}
+
+.fsel-loading:hover {
+  border-color: transparent
+}
+
+@keyframes fsel-fade {
+  50% {
+    opacity: .45
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fsel-loading {
+    animation: none;
+    opacity: .7
+  }
+}
+
 .multi-filter {
   position: relative
 }

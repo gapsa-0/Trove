@@ -121,6 +121,28 @@ def _migrate_files_and_runs(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "scan_runs", "files_on_disk", "INTEGER")
 
 
+def _drop_covered_files_index(conn: sqlite3.Connection) -> None:
+    """Retire idx_files_present, now that idx_files_browse leads on the same
+    column (see schema.sql).
+
+    An index whose columns are a prefix of another's can never be the better
+    plan: every predicate it answers, the wider one answers from the same
+    entries. Keeping it would cost every file insert and every present/hidden
+    flip a second b-tree write, for a structure the planner has stopped
+    choosing, so this is a size and write-throughput win rather than a read one.
+
+    Checked before dropped because ``init_db`` runs at every job start: the
+    lookup is one read of an already-cached page, where an unconditional DROP
+    would open a write transaction each time and queue behind the pipeline's
+    writer.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_files_present'"
+    ).fetchone()
+    if exists:
+        conn.execute("DROP INDEX idx_files_present")
+
+
 def _migrate_places(conn: sqlite3.Connection) -> None:
     """Durable places: `source` distinguishes GPS-derived ('auto') members from
     ones the user attached by hand ('manual'), which are never wiped; `pinned`
@@ -234,6 +256,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Migrations for columns added to existing tables. Each is idempotent, so
     # the whole sequence is a no-op on a current database.
     _migrate_files_and_runs(conn)
+    _drop_covered_files_index(conn)
     _migrate_places(conn)
     _migrate_faces(conn)
     _migrate_scan_counters(conn)

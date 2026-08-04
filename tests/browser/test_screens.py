@@ -95,6 +95,74 @@ def test_the_library_grid_fills_with_the_archives_media(open_app):
         assert app.errors() == []
 
 
+# Holds /api/browse/filters -- and only it -- until the test lets it go, which
+# is what a cold page cache does to that request on a real archive: it is a
+# pass over every file, so it can take seconds while every other request is
+# quick. Patching fetch rather than the network layer keeps the delay to the
+# one URL, so nothing else about the screen is slowed down or changed.
+HOLD_FILTERS_JS = """
+(() => {
+  const realFetch = window.fetch.bind(window);
+  let held = null;
+  window.__holdFilters = () => { held = new Promise(r => { window.__releaseFilters = r; }); };
+  window.fetch = async (url, opts) => {
+    if (held && String(url).includes('/api/browse/filters')) await held;
+    return realFetch(url, opts);
+  };
+  window.__holdFilters();
+})()
+"""
+
+
+def test_browse_is_usable_while_its_filter_options_are_still_loading(open_app):
+    """The screen must not wait on the filter options for anything but the
+    filter bar.
+
+    They are the slowest thing Browse asks for and the only one it cannot draw
+    without, and awaiting them up front meant the whole screen sat empty for
+    the sum of both requests: no sort control, no media, and an unstyled gap
+    where the filters would go. So: the sort control is populated, the grid has
+    fetched and painted, and the filter bar stands in for itself at its settled
+    size -- all before the options have arrived at all.
+    """
+    with open_app("overview") as app:
+        app.tab.evaluate(HOLD_FILTERS_JS)
+        app.tab.evaluate("showSection('library')")
+
+        # The grid got its own request away rather than queueing behind the
+        # filters, which is the whole point.
+        app.wait_for("#grid .tile")
+        assert app.count("#f-sort option") > 0, "the sort control waited for the filter options"
+        assert app.count("#filterbar .fsel-loading") > 0, "the filter bar left an empty gap"
+        assert app.count("#filterbar select") == 0, "the real controls cannot exist yet"
+
+        app.tab.evaluate("window.__releaseFilters()")
+
+        app.wait_for("#f-clear")
+        assert app.count("#filterbar .fsel-loading") == 0, "the placeholders outlived the options"
+        assert app.errors() == []
+
+
+def test_returning_to_browse_keeps_the_filter_options_it_already_had(open_app):
+    """Which years, people and places an archive has does not change while the
+    user steps over to another screen and back, and re-deriving it costs a pass
+    over every file. So the second visit draws its bar from what the first one
+    fetched -- proven here by holding the request that would rebuild it and
+    finding the real controls on screen regardless.
+    """
+    with open_app("library") as app:
+        app.wait_for("#f-clear")
+        app.show_section("overview")
+        app.tab.evaluate(HOLD_FILTERS_JS)
+
+        app.tab.evaluate("showSection('library')")
+
+        app.wait_for("#f-place")
+        assert app.count("#filterbar .fsel-loading") == 0, "the bar was rebuilt from nothing"
+        app.tab.evaluate("window.__releaseFilters()")
+        assert app.errors() == []
+
+
 @needs_face_detection
 def test_the_people_screen_lists_the_named_people(open_app):
     with open_app("people") as app:

@@ -32,6 +32,17 @@ import {
 export const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
   "August", "September", "October", "November", "December"];
 const GRID_PAGE_SIZE = 120, GRID_MAX_PAGES = 4;
+// The filter bar is the one part of this screen that cannot be drawn without
+// the server: which years, which people, which places *this* archive has. That
+// answer is a pass over every file in it, so on a cold page cache -- exactly
+// the state just after an archive is opened, when the pipeline is competing
+// for the same disk -- it takes seconds. Standing in for the controls with
+// pills of their own size holds the toolbar in the shape it will settle into,
+// instead of leaving an empty row with the sort select adrift at its far end.
+// Replaced wholesale by buildFilterBar, so it needs no clearing of its own.
+const FILTER_SKELETON = [108, 120, 104, 98, 116]
+  .map(w => `<span class="fsel fsel-loading" style="width:${w}px" aria-hidden="true"></span>`)
+  .join("");
 export async function renderPhotos(m) {
   const gen = S.nav;
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
@@ -69,7 +80,7 @@ export async function renderPhotos(m) {
       <div class="active-query" id="active-query" aria-live="polite" hidden></div>
       <div class="search-reach" id="search-reach" aria-live="polite" hidden></div>` : ""}
       <div class="library-toolbar">
-        <div class="filterbar" id="filterbar"></div>
+        <div class="filterbar" id="filterbar" aria-busy="true">${FILTER_SKELETON}</div>
         <div class="chips">
           <select class="fsel sort-sel" id="f-sort" aria-label="Sort media" onchange="applySort()"></select>
           <span class="muted" id="gridcount"></span>
@@ -94,13 +105,19 @@ export async function renderPhotos(m) {
   // whether or not anyone had touched the box. The rest of the typing still
   // covers the load.
   composer?.addEventListener("input", warmLocalTranslator, { once: true });
-  await buildFilterBar();
-  if (gen !== S.nav) return;
+  // Everything that needs nothing from the server goes first, and the grid's
+  // own fetch is started here rather than after the filters land. The filter
+  // options are needed by the filter bar alone -- the grid asks for the pages
+  // the *stored* filters describe -- so awaiting them before loading the grid
+  // only added one slow request's time to the other, and left the whole screen
+  // blank for the sum. Both requests are now in flight together.
+  const filters = buildFilterBar();
   renderSearchReach();
   renderSortOptions(g);
   renderActiveQuery(g);
   if (restored) {
-    restoreLibraryControls(g);
+    // Only the composer: the rest of the controls do not exist yet.
+    restoreLibraryComposer(g);
     renderGridPages(g);
     const count = document.getElementById("gridcount");
     if (count && g.total != null) count.textContent = gridCountLabel(g);
@@ -113,6 +130,12 @@ export async function renderPhotos(m) {
         document.getElementById("main").scrollTop = g.savedScrollTop || 0;
     });
   } else loadGrid();
+  await filters;
+  if (gen !== S.nav || S.grid !== g) return;
+  // The bar has restored its own controls by now (drawFilterBar). This line is
+  // the other thing that needed the people options: it draws the names inside
+  // the search it is reporting as the person filters they became.
+  renderActiveQuery(g);
 }
 function setupGridInfiniteScroll(g) {
   const top = document.getElementById("grid-top-sentinel");
@@ -138,11 +161,27 @@ function gridSentinelIsNear(direction) {
   const sr = sentinel.getBoundingClientRect(), mr = main.getBoundingClientRect();
   return direction === "prepend" ? sr.bottom >= mr.top - 600 : sr.top <= mr.bottom + 600;
 }
+/* What the filter bar can offer is a property of the archive -- which years it
+   covers, who has been named in it, where its media was taken -- so it is
+   fetched once per archive and kept, rather than re-derived on every visit to
+   Browse. Deriving it is a pass over every file, seconds of it when the page
+   cache is cold, and this screen is left and returned to constantly.
+
+   The cached bar is drawn first and the request still goes out behind it, so a
+   year the pipeline has since dated, or a person just named, still appears --
+   the bar is only redrawn if the answer actually changed, since redrawing it
+   for an identical answer would close an open menu for nothing. */
 async function buildFilterBar() {
-  const gen = S.nav;
-  const f = await jget("/api/browse/filters?root=" + S.arch.id);
+  const gen = S.nav, rid = S.arch.id;
+  const cached = S.filterOptsRoot === rid ? S.filterOpts : null;
+  if (cached) drawFilterBar(cached);
+  const f = await jget("/api/browse/filters?root=" + rid);
   if (gen !== S.nav) return;
-  S.filterOpts = f;
+  const changed = !cached || JSON.stringify(f) !== JSON.stringify(cached);
+  S.filterOpts = f; S.filterOptsRoot = rid;
+  if (changed) drawFilterBar(f);
+}
+function drawFilterBar(f) {
   const bar = document.getElementById("filterbar"); if (!bar) return;
   const years = [...new Set((f.periods || []).map(p => p.slice(0, 4)))];
   const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
@@ -165,6 +204,13 @@ async function buildFilterBar() {
   // looking at. It lives on the search's own line instead (renderActiveQuery).
   parts.push(`<button class="linkbtn" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
   bar.innerHTML = parts.join("");
+  bar.removeAttribute("aria-busy");
+  // Every drawing of the bar puts the grid's own filters back onto it -- the
+  // first one, and any redraw after the options changed under it. The grid is
+  // what the screen is actually showing, so it is the authority on what the
+  // controls should read; on a fresh grid every value is empty and this is the
+  // no-op it looks like.
+  if (S.grid) restoreLibraryFilters(S.grid);
   renderSemanticComposer(false);
 }
 function setLibraryMonthOptions(y, selected = "") {
@@ -208,15 +254,27 @@ export function applySort() {
   resetGridResults(g);
   loadGrid();
 }
-function restoreLibraryControls(g) {
+/* Coming back to the Library puts the user's controls back the way they left
+   them, in two halves, because the two halves become available at different
+   times. The composer is in the shell markup, so a half-typed search is back
+   on screen immediately; the filter controls do not exist until the archive's
+   options have been fetched. Splitting them is what lets the composer be
+   restored without waiting for that fetch.
+
+   The composer's text is written once, here, and never rewritten afterwards:
+   by the time the filters land the user may have typed into it, and
+   `renderSemanticComposer` re-reads whatever the box now says. */
+function restoreLibraryComposer(g) {
+  const composer = document.getElementById("semantic-q");
+  if (composer) { composer.textContent = g.rawQuery || ""; renderSemanticComposer(true); }
+}
+function restoreLibraryFilters(g) {
   const year = document.getElementById("f-year"); if (year) year.value = g.year || "";
   setLibraryMonthOptions(g.year, (g.month || "").slice(5, 7));
   const type = document.getElementById("f-type"); if (type) type.value = g.type || "";
   const place = document.getElementById("f-place"); if (place) place.value = g.place || "";
   setPeopleChecks("f", g.people || []);
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
-  const composer = document.getElementById("semantic-q");
-  if (composer) { composer.textContent = g.rawQuery || ""; renderSemanticComposer(true); }
   updateClearBtn();
 }
 export function onYearChange() {

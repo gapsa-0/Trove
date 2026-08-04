@@ -64,6 +64,58 @@ def test_pre_12_database_clears_stale_video_embeddings_on_upgrade():
     assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
 
 
+def _files_indexes(conn) -> dict[str, str]:
+    return {
+        r["name"]: r["sql"] or ""
+        for r in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='files'"
+        )
+    }
+
+
+def test_fresh_database_has_the_browse_covering_index_and_not_the_one_it_replaces():
+    conn = db.connect(":memory:")
+    db.init_db(conn)
+
+    indexes = _files_indexes(conn)
+    assert "idx_files_present" not in indexes
+    assert "present, hidden, root_id, media_type" in indexes["idx_files_browse"]
+
+
+def test_upgrade_drops_the_index_the_browse_index_covers():
+    """idx_files_present's columns are a prefix of idx_files_browse's, so it can
+    never be the better plan -- it only costs every file insert and every
+    present/hidden flip a second b-tree write. An existing database must lose
+    it, not carry both."""
+    conn = db.connect(":memory:")
+    conn.executescript(db._SCHEMA_SQL.read_text())
+    conn.execute("CREATE INDEX idx_files_present ON files(present)")
+    conn.commit()
+
+    db.init_db(conn)
+
+    assert "idx_files_present" not in _files_indexes(conn)
+
+
+def test_browse_queries_are_answered_from_the_covering_index():
+    """The point of the index is that "which files does Browse show" never
+    touches the files table, which is the archive's largest by far."""
+    conn = db.connect(":memory:")
+    db.init_db(conn)
+    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/x', 'now')")
+    conn.commit()
+
+    plan = " ".join(
+        r["detail"]
+        for r in conn.execute(
+            """EXPLAIN QUERY PLAN
+               SELECT DISTINCT media_type FROM files f
+               WHERE f.present = 1 AND f.hidden = 0 AND f.root_id = 1"""
+        )
+    )
+    assert "COVERING INDEX idx_files_browse" in plan
+
+
 def test_already_current_database_never_reruns_the_video_cleanup():
     """Once a database is at schema version 12, init_db() must leave
     semantic_embeddings alone -- the whole point of gating the migration is

@@ -54,6 +54,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Browse opens on a finished-looking screen, and opens far faster.** It used
+  to wait for the filter bar's options — which years, which people, which
+  places this archive holds — before doing anything else, and that answer is a
+  pass over every file in the catalogue. So the screen you got first was a
+  heading, an empty toolbar row with a stray sort box adrift at its end, and no
+  media at all; on a large archive just after opening it, that sat there for
+  several seconds, because nothing it needed was in memory yet and the pipeline
+  was busy with the same disk. Now the media grid loads at the same time rather
+  than behind it, the sort control arrives filled in, and the filters stand in
+  for themselves at their settled size until they land — nothing on the screen
+  moves when they do. Coming back to Browse reuses the options it already
+  fetched, so the bar is simply there. The queries behind all of this were
+  narrowed too: on a 97,000-file archive with nothing cached, the filter
+  options went from 2.4s to 0.2s and the first page of media from 0.74s to
+  0.35s. Existing archives pick that up the next time they are opened.
+
 - **A paused scan no longer looks like it threw away its progress.** Resuming
   sent the bar back to 0 and raced it up to where it stopped, which read as the
   whole scan being redone. Nothing was: scanning restarts at the top of the
