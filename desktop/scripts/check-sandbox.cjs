@@ -1,6 +1,6 @@
 "use strict";
 
-// Say, at install time, what Electron will otherwise only say at first launch.
+// Say, before Electron does, what it otherwise only says by aborting.
 //
 // Chromium isolates its renderer in a sandbox built either on unprivileged user
 // namespaces or on a setuid helper binary. Ubuntu 23.10 and later restrict the
@@ -10,12 +10,17 @@
 // `npm run dev` aborts with a FATAL that names the file and mode it wants.
 //
 // That message is clear, but it arrives after a successful install, on a
-// different command, possibly days later. This prints the fix while the install
-// that caused it is still on screen. It only reports; changing the ownership
-// needs root, which an install script has no business asking for.
+// different command, possibly days later. So this runs at each of the three
+// points where it lands: `postinstall`, while the install that caused it is
+// still on screen; the end of `make setup`, where npm's own summary would
+// otherwise scroll it away; and `predev`, right above the FATAL itself, for the
+// install that happened ten minutes and one `cd` ago. It only reports; changing
+// the ownership needs root, which an install script has no business asking for.
 //
 // Deliberately never fails: a hint that can break `npm ci` is worse than the
-// papercut it describes.
+// papercut it describes. That also leaves `npm run dev -- --no-sandbox` working,
+// which is just as well, because npm passes those arguments to `dev` alone --
+// from `predev` there is no way to see that the note is already moot.
 
 const fs = require("fs");
 const path = require("path");
