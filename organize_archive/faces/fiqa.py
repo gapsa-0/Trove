@@ -42,6 +42,7 @@ never needs re-embedding, because `faces.fiqa_norm` keeps the raw value.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from ..config import Config
 from ..db import database as db
@@ -50,6 +51,26 @@ HIGH = "HIGH"
 BORDERLINE = "BORDERLINE"
 LOW_QUALITY = "LOW_QUALITY"
 TIERS = (HIGH, BORDERLINE, LOW_QUALITY)
+
+
+def _field(face: Any, name: str) -> float:
+    """One quality field, from either a live Face or a stored ``faces`` row.
+
+    Both shapes reach the scorers: ``backend.Face`` (attributes) when a face is
+    scored as it is detected, and a ``sqlite3.Row`` (subscript only -- it has no
+    attributes at all) when ``retier_all`` re-scores from stored columns.
+    ``getattr`` alone silently took the default for every row, so a face with no
+    norm scored 0.0 and was tiered LOW_QUALITY however good it actually was --
+    which is also why retier_all's SELECT aliases det_score/box_w/box_h to the
+    names read here.
+    """
+    value = getattr(face, name, None)
+    if value is None:
+        try:
+            value = face[name]
+        except (TypeError, IndexError, KeyError):
+            return 0.0
+    return float(value or 0.0)
 
 
 class QualityAssessor:
@@ -104,7 +125,7 @@ class AdaFaceNormFIQA(QualityAssessor):
         self.h = h if h > 0 else 0.33
 
     def score(self, face) -> float:
-        return self.score_norm(getattr(face, "fiqa_norm", 0.0) or 0.0)
+        return self.score_norm(_field(face, "fiqa_norm"))
 
     def score_norm(self, norm: float) -> float:
         spread = self.calibration.std * self.h
@@ -129,11 +150,11 @@ class CompositeFIQA(QualityAssessor):
     model = "composite-v1"
 
     def score(self, face) -> float:
-        det = float(getattr(face, "score", 0.0) or 0.0)
+        det = _field(face, "score")
         # quality_score is already focus x exposure, normalized 0..1.
-        local = float(getattr(face, "quality_score", 0.0) or 0.0)
-        clipped = float(getattr(face, "clipped_fraction", 0.0) or 0.0)
-        side = min(int(getattr(face, "w", 0) or 0), int(getattr(face, "h", 0) or 0))
+        local = _field(face, "quality_score")
+        clipped = _field(face, "clipped_fraction")
+        side = min(int(_field(face, "w")), int(_field(face, "h")))
         # Saturating size term: 50px (the base filter) is poor, 160px+ is plenty.
         size = max(0.0, min(1.0, (side - 50) / 110.0))
         raw = 0.40 * det + 0.35 * local + 0.25 * size

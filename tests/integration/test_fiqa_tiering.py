@@ -134,10 +134,49 @@ def test_faces_with_no_norm_fall_back_to_the_composite_scorer(tmp_path):
     )
     fiqa.retier_all(conn, cfg)
     row = conn.execute(
-        "SELECT fiqa_source, quality_tier FROM faces WHERE fiqa_norm IS NULL"
+        "SELECT fiqa_source, fiqa_score, quality_tier FROM faces WHERE fiqa_norm IS NULL"
     ).fetchone()
     assert row["fiqa_source"] == "composite-v1"
-    assert row["quality_tier"] in fiqa.TIERS
+    # A big, sharp, unclipped, confidently-detected face. `in TIERS` was the old
+    # assertion and it passes on a score of 0.0 too, which is exactly what the
+    # scorer used to produce here -- see the regression test below.
+    assert row["quality_tier"] == fiqa.HIGH
+    conn.close()
+
+
+def test_the_composite_scorer_reads_a_stored_row_not_just_a_live_face(tmp_path):
+    """retier_all scores sqlite3.Row objects, which have no attributes at all.
+
+    The scorer read its inputs with ``getattr``, so every stored row fell through
+    to the defaults and scored 0.0 -- tiering every pre-AdaFace face LOW_QUALITY
+    however good it was, and making retier_all's ``det_score AS score`` aliases
+    dead. A pristine face and a terrible one must not score the same.
+    """
+    conn = _conn(tmp_path)
+    scorer = fiqa.CompositeFIQA(high=0.55, low=0.30)
+    columns = (
+        "SELECT det_score AS score, quality_score, clipped_fraction, "
+        "box_w AS w, box_h AS h FROM faces WHERE id=?"
+    )
+
+    def _insert(det, quality, clipped, side):
+        cur = conn.execute(
+            """INSERT INTO faces(file_id,box_x,box_y,box_w,box_h,det_score,
+                                 quality_score,clipped_fraction,embedding,created_at)
+               VALUES(1,0,0,?,?,?,?,?,X'00','2026-01-01')""",
+            (side, side, det, quality, clipped),
+        )
+        return conn.execute(columns, (cur.lastrowid,)).fetchone()
+
+    good = _insert(0.99, 0.9, 0.0, 200)
+    poor = _insert(0.31, 0.05, 0.6, 52)
+
+    assert scorer.score(good) > scorer.score(poor)
+    assert scorer.tier(scorer.score(good)) == fiqa.HIGH
+    # And the same row read as an object must agree: both shapes reach here.
+    # zip, not `k in good`: iterating a sqlite3.Row yields its values.
+    as_object = SimpleNamespace(**dict(zip(good.keys(), good, strict=True)))
+    assert scorer.score(as_object) == scorer.score(good)
     conn.close()
 
 
