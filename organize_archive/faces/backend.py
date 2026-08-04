@@ -193,7 +193,17 @@ def ensure_models(cache_dir: str, log: Log | None = None) -> Path:
     fd, tmp_zip = tempfile.mkstemp(dir=str(d), suffix=".zip")
     os.close(fd)
     try:
-        urllib.request.urlretrieve(BUFFALO_URL, tmp_zip)
+        # Reported like every other weight this app fetches: the pack is ~275 MB,
+        # and a single line that never changes for four minutes is what makes a
+        # first run look hung. The manifest has no size for it (it is not a
+        # manifest entry), so the hook counts megabytes rather than percent --
+        # and, for the fetch job, is the one point inside urlretrieve where a
+        # cancellation can be noticed at all.
+        urllib.request.urlretrieve(
+            BUFFALO_URL,
+            tmp_zip,
+            reporthook=model_manifest.download_progress(log, "face models", 0),
+        )
         with zipfile.ZipFile(tmp_zip) as zf:
             for member in zf.namelist():
                 base = os.path.basename(member)

@@ -200,7 +200,14 @@ def ensure_model(cache_dir: str, log: Log | None = None) -> Path:
     fd, temporary = tempfile.mkstemp(dir=str(path.parent), suffix=".part")
     os.close(fd)
     try:
-        urllib.request.urlretrieve(MODEL_URL, temporary)
+        # Same reporting (and same cancellation point) as every other weight
+        # fetched here -- see faces.backend.ensure_models. MODEL_MIN_BYTES is a
+        # floor rather than the real size, so the hook counts megabytes.
+        urllib.request.urlretrieve(
+            MODEL_URL,
+            temporary,
+            reporthook=model_manifest.download_progress(log, f"pet detector {MODEL_NAME}", 0),
+        )
         size = os.path.getsize(temporary)
         if size < MODEL_MIN_BYTES:
             raise OSError(f"downloaded {MODEL_NAME} is too small ({size} bytes)")

@@ -54,6 +54,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Model weights are downloaded when you create the archive, not hours later.**
+  The setup screen quotes what a feature costs to download, and the download then
+  waited for the stage that needed it — which waits for scanning, dating and
+  duplicate-finding to finish first. On a large folder that meant choosing Search
+  by description in the morning and a 689 MB fetch quietly beginning in the
+  afternoon, long after anyone was watching for it. It now starts as soon as the
+  archive is created, runs alongside the first scan, and is usually finished
+  before the stage that needs it is reachable. The sidebar shows what is
+  downloading and how far along it is; features you did not choose are still
+  never fetched, and an archive whose models are already here from another
+  archive downloads nothing at all.
+
 - **Search by description returns more of what you asked for, and less of what you
   didn't.** Two things were wrong with how weak matches were hidden. The scores
   themselves were squeezed into a narrow band, because the model places pictures

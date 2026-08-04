@@ -80,12 +80,16 @@ def download_progress(
     and costs nothing. Repeated messages are suppressed too, so a stalled download
     stops repainting rather than looking like progress.
 
+    ``total`` is the size a caller already knows, and 0 for the two downloads
+    nobody records a size for (the buffalo_l pack, the YOLOX detector) -- there
+    the server's Content-Length answers, and its absence leaves a running
+    megabyte count, which is still the difference between moving and hung.
+
     Returns None when there is nobody to report to, which is exactly what
     ``urlretrieve(..., reporthook=None)`` wants, so callers need no branch.
     """
     if log is None:
         return None
-    megabytes = total / 1024 / 1024 if total > 0 else 0.0
     # `nonlocal` rather than the usual dict-as-mutable-cell: a dict holding a
     # float and a str infers as dict[str, object], which makes the subtraction
     # below a type error the moment anything checks this function's body.
@@ -94,12 +98,15 @@ def download_progress(
     def hook(blocks: int, block_size: int, size: int) -> None:
         nonlocal said_at, said
         # `size` is the server's Content-Length, or -1 when it declines to say.
-        # The manifest knows the answer either way, so prefer whichever is real.
+        # The manifest knows the answer either way, so prefer whichever is real
+        # -- including for the figure quoted, or a caller that passed no size
+        # would announce a percentage "of 0 MB".
         expected = size if size > 0 else total
         done = blocks * block_size
         if expected > 0:
             # The last block is short, and a stray over-100% reads as a bug.
             done = min(done, expected)
+            megabytes = expected / 1024 / 1024
             message = f"downloading {label} — {done * 100 // expected}% of {megabytes:.0f} MB"
         else:
             message = f"downloading {label} — {done / 1024 / 1024:.0f} MB"

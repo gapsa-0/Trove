@@ -1,12 +1,15 @@
 """Choosing an archive's features, and the gate that choice operates.
 
 The promise this file protects is the one the setup screen makes: a feature you
-did not ask for is not merely hidden, it never runs — which is also what stops
-its model weights being downloaded, since a stage is what downloads them.
+did not ask for is not merely hidden, it never runs.
 
 The gate is one thing in one place: ``stage_states`` leaves a disabled stage out
 of the list, and the scheduler starts what that list says is queued. So testing
 the list is testing the gate.
+
+The other half of that promise — that a feature you did not ask for never
+downloads its models either — is held by ``test_model_fetch.py``, since the
+weights are fetched ahead of the stage that needs them and no longer by it.
 """
 
 from __future__ import annotations

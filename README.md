@@ -117,7 +117,8 @@ leaves a fully offline plot.
 Search by description works by embedding your media and your query with
 [SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-256) (Apache-2.0),
 which runs on this machine like every other model here. The model downloads
-itself once, about 690 MB, the first time an archive is indexed; after that
+itself once, about 690 MB, as soon as you create an archive that asks for it —
+alongside that archive's first scan, rather than at the end of it; after that
 nothing is fetched. Photos are embedded through the same cached thumbnails the
 app already displays, videos through a few sampled frames. Audio and documents
 are recorded as skipped — the model has no audio tower. Indexing is resumable,
@@ -141,7 +142,7 @@ too — nothing about a search leaves the machine.
 
 Each download bundles its own Python runtime and FFmpeg — nothing is fetched from
 a package manager at install time. The model weights are not in there: they are
-downloaded once, on the first run of the feature that needs them.
+downloaded once, when you create an archive that asks for the feature needing them.
 
 > The sizes above are the published 0.1.2 files, which still carried the model
 > weights inside the installer. The next release drops them, along with a
@@ -207,9 +208,9 @@ the automatic pipeline. You can add additional folders from the archive picker. 
 archive whose drive is disconnected remains registered and is shown as unavailable;
 mount it again to continue.
 
-The first time People and Pets detection runs, Trove downloads their model weights
-(about 550 MB) once. After that it works offline; all media processing is local from
-the start.
+Creating an archive with People or Pets switched on downloads their model weights
+(about 550 MB) once, while that archive's first scan runs. After that it works
+offline; all media processing is local from the start.
 
 Removing an archive from Trove removes its catalogue records and derived cache for
 that archive after background work has stopped. It does not remove the selected source

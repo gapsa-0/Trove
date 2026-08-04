@@ -16,6 +16,7 @@ from .. import features as feature_catalog
 from ..config import Config
 from ..db import database as db
 from ..paths import archive_dir as archive_dir_path
+from . import models
 from ._common import _NOT_HIDDEN, _VISIBLE
 
 logger = logging.getLogger(__name__)
@@ -85,42 +86,21 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
     return out
 
 
-def _probes(cfg: Config) -> dict[str, tuple[Any, Any]]:
-    """Per-feature "can this run" and "are its weights already here" probes.
-
-    Imported inside the function, like every other model-backed probe in this
-    package: asking whether People is available must not drag onnxruntime into
-    a process that only wanted to list archives.
-
-    A feature with no entry needs nothing and is always both.
-    """
-    from ..embeddings import backend as embed_backend
-    from ..faces import backend as face_backend
-    from ..pets import backend as pet_backend
-
-    cache = cfg.cache_dir
-    return {
-        "people": (face_backend.available, lambda: face_backend.models_ready(cache)),
-        "pets": (pet_backend.available, lambda: pet_backend.models_ready(cache)),
-        "semantic": (embed_backend.available, lambda: embed_backend.models_ready(cache)),
-    }
-
-
 def features(cfg: Config) -> list[dict[str, Any]]:
     """The feature catalogue as the setup panel needs it.
 
     The static half comes from ``organize_archive/features.py``; the two facts
-    only a running installation knows are added here. ``available`` is whether
-    the optional dependency imports at all, and ``ready`` is whether the weights
-    are already on this machine — they are shared between archives, so the
-    second archive that wants People pays nothing, and a panel that still quoted
-    275 MB would be talking about a download that is not going to happen.
+    only a running installation knows come from ``services/models.py``, which is
+    also what the fetch job downloads through, so the panel cannot quote one
+    thing and the download turn out to be another. ``available`` is whether the
+    optional dependency imports at all, and ``ready`` is whether the weights are
+    already on this machine — they are shared between archives, so the second
+    archive that wants People pays nothing, and a panel that still quoted 275 MB
+    would be talking about a download that is not going to happen.
     """
-    probes = _probes(cfg)
     out: list[dict[str, Any]] = []
     for feature in feature_catalog.FEATURES:
-        probe = probes.get(feature.id)
-        available = bool(probe[0]()) if probe else True
+        available = models.available(cfg, feature.id)
         out.append(
             {
                 "id": feature.id,
@@ -132,7 +112,10 @@ def features(cfg: Config) -> list[dict[str, Any]]:
                 "pairs_with": feature.pairs_with,
                 "sections": list(feature.sections),
                 "available": available,
-                "ready": bool(probe[1]()) if probe and available else not feature.download_mb,
+                # An unavailable feature is not "ready": nothing can be fetched
+                # that would make it run, and only a feature with no download at
+                # all is honestly nothing-to-wait-for.
+                "ready": models.ready(cfg, feature.id) if available else not feature.download_mb,
             }
         )
     return out

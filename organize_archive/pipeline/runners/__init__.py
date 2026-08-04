@@ -11,13 +11,15 @@ here on purpose: ``stages._pending()`` already computes the backlog for every
 stage in one place, and both the scheduler and ``/api/pipeline`` read it
 through ``stages.stage_states()``. A second count living next to each runner is
 how the sidebar and the scheduler start disagreeing, and that class of bug is
-miserable to reproduce.
+miserable to reproduce. ``models`` -- the one runner here that is not a stage --
+keeps to the same rule: what is left to download is ``services/models.missing``,
+which the scheduler reads to decide whether to start it at all.
 """
 
 from __future__ import annotations
 
 from ..job import Runner
-from . import dedup, detect, enrich, face_cluster, pet_cluster, places, scan, semantic
+from . import dedup, detect, enrich, face_cluster, models, pet_cluster, places, scan, semantic
 
 RUNNERS: dict[str, Runner] = {
     scan.RUNNER.kind: scan.RUNNER,
@@ -28,6 +30,7 @@ RUNNERS: dict[str, Runner] = {
     pet_cluster.RUNNER.kind: pet_cluster.RUNNER,
     detect.RUNNER.kind: detect.RUNNER,
     semantic.RUNNER.kind: semantic.RUNNER,
+    models.RUNNER.kind: models.RUNNER,
 }
 
 __all__ = ["RUNNERS", "Runner"]

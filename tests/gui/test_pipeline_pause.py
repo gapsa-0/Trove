@@ -20,6 +20,7 @@ from organize_archive.pipeline import manager as jobs_mod
 from organize_archive.pipeline import stages as stages_mod
 from organize_archive.pipeline import status as status_mod
 from organize_archive.services import archives as archives_mod
+from organize_archive.services import models as models_mod
 
 
 def _job_manager(tmp_path, monkeypatch, cfg=None):
@@ -28,6 +29,12 @@ def _job_manager(tmp_path, monkeypatch, cfg=None):
     # which must never be touched by a test.
     monkeypatch.setattr(Config, "archive_db_path", lambda self, aid: str(tmp_path / "archive.db"))
     monkeypatch.setattr(Config, "archive_cache_dir", lambda self, aid: str(tmp_path / "cache"))
+    # The archives here are fakes that were never configured, so they run every
+    # feature -- including the three with weights to download, which a tick
+    # would otherwise start fetching before any stage. That job is
+    # test_model_fetch.py's subject; here it would only add a "models" entry to
+    # every assertion about what a pause did or did not start.
+    monkeypatch.setattr(models_mod, "missing", lambda cfg, enabled: ())
     jm = jobs_mod.JobManager(cfg if cfg is not None else Config())
     # These tests drive scheduler.tick() by hand. Park the scheduler thread so
     # it cannot also fire on its own timer after the test has torn its stubs down.

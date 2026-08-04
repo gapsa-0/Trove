@@ -10,9 +10,12 @@ is created and changeable afterwards.
 Every consumer reads this one table:
 
 * ``pipeline/stages.py`` resolves it to the stage kinds an archive may run, and
-  a stage nobody enabled is never scheduled -- which is also what stops its
-  weights being downloaded, since a stage is what downloads them (see the
-  availability note in that module).
+  a stage nobody enabled is never scheduled (see the availability note in that
+  module).
+* ``services/models.py`` resolves it to the weights an archive owes, which is
+  what stops a feature nobody chose downloading anything: both the fetch job
+  that gets them when the archive is created and the stage that would otherwise
+  get them on first use read this same enabled set.
 * ``config/archives.py`` stores the chosen ids on the archive's registry entry.
 * ``services/archives.py`` adds what only a running installation knows -- is the
   dependency importable, are the weights already on disk -- and serves the

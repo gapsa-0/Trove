@@ -24,16 +24,35 @@ if TYPE_CHECKING:
     from .manager import JobManager
 
 
-# Jobs the scheduler never queues on its own: a user action kicks them (a
-# non-human review correction, undoing a merge). They aren't STAGES -- they have
-# no backlog to count and no place in the dependency order -- but they DO take
-# the single writer lock, so a user watching an unexplained pause deserves to
-# see them. Reported separately from the cards so the Overview's stage grid
-# keeps its fixed five-card shape.
+# Jobs the scheduler never queues from the stage list. Two are kicked by a user
+# action (a non-human review correction, undoing a merge); the third is the
+# model download an archive owes when it is created. None of them is a STAGE --
+# no backlog to count, no place in the dependency order -- but each is a reason
+# the app is busy, so a user watching an unexplained pause deserves to see them.
+# Reported separately from the cards so the Overview's stage grid keeps its
+# fixed five-card shape.
 _EXTRA_JOB_LABEL = {
     "face_cluster": "Updating people",
     "pet_cluster": "Updating pets",
+    "models": "Downloading models",
 }
+
+
+def _extra_label(job: dict[str, Any]) -> str:
+    """What to call one non-stage job while it runs.
+
+    The model fetch answers with the download's own line ("downloading search
+    model — 45% of 355 MB") whenever it has one. It reports no total, so the
+    sidebar draws it the indeterminate bar it draws for any work with no
+    percentage, and a fixed "Downloading models" over that bar is exactly the
+    thing someone reads as hung after the first quiet minute of 689 MB.
+    """
+    kind = str(job["kind"])
+    fixed = _EXTRA_JOB_LABEL.get(kind, kind)
+    line = str(job.get("current") or "").strip()
+    if kind != "models" or not line:
+        return fixed
+    return line[0].upper() + line[1:]
 
 
 def _extra_jobs(jobs: JobManager, root_id: int) -> list[dict[str, Any]]:
@@ -45,10 +64,11 @@ def _extra_jobs(jobs: JobManager, root_id: int) -> list[dict[str, Any]]:
         if j["status"] != "running" or is_stage_kind(kind) or kind in seen:
             continue
         seen.add(kind)
+        label = _extra_label(j)
         out.append(
             {
                 "id": kind,
-                "label": _EXTRA_JOB_LABEL.get(kind, kind),
+                "label": label,
                 "state": "running",
                 "pending": None,
                 "counted": False,
@@ -56,7 +76,7 @@ def _extra_jobs(jobs: JobManager, root_id: int) -> list[dict[str, Any]]:
                 "next": False,
                 "pausing": False,
                 "waiting_on": None,
-                "message": f"{_EXTRA_JOB_LABEL.get(kind, kind)}…",
+                "message": f"{label}…",
                 "paused": False,
                 "stalled": False,
             }

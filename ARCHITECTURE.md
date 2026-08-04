@@ -20,8 +20,8 @@ Two constraints explain almost every design choice in the codebase:
   semantic search all run locally. There is one bounded exception: the map's
   street-map tile layer, a user-facing toggle (default on), which sends photo
   *coordinates* to a public tile server — never a photo. Local models
-  (detection, embedding, search) download their weights once on first use and
-  run offline after that.
+  (detection, embedding, search) download their weights once, as soon as an
+  archive that asked for them is created, and run offline after that.
 
 ## Data flow
 
@@ -93,6 +93,7 @@ grandfathered.
 | what the Library grid shows | `organize_archive/services/browse.py` + `organize_archive/web/static/js/library.js` |
 | when a pipeline stage runs | `organize_archive/pipeline/stages.py` |
 | what an archive can be asked to do, and the words describing it | `organize_archive/features.py` (see ADR 0015) |
+| which model weights a feature needs, and when they are downloaded | `organize_archive/services/models.py` + `organize_archive/pipeline/runners/models.py` |
 | how the archive setup screen looks and behaves | `organize_archive/web/static/js/setup.js` + `web/static/css/setup.css` |
 | what a status card *says* (its wording, its bar, the pause overlay) | `organize_archive/pipeline/status.py` |
 | how a job does its work | `organize_archive/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
@@ -195,8 +196,9 @@ own previous `user_version` so it cannot fire twice.
 - **An archive runs only the features it was set up with, and the gate is one
   omission** (ADR 0015): `stage_states` leaves a disabled stage out of the list
   it returns, so the scheduler never starts it, its weights are never fetched
-  (a stage is what downloads them), and `cards()` builds no card for it. There
-  is no "disabled" state to render anywhere. An archive registered before this
+  (both the stage and the fetch job that gets them ahead of it read the same
+  enabled feature set), and `cards()` builds no card for it. There is no
+  "disabled" state to render anywhere. An archive registered before this
   existed has no `features` key and gets the full set, so an upgrade never
   switches off work already in progress.
 - A stage may only depend on a stage owned by a *required* feature. Otherwise a

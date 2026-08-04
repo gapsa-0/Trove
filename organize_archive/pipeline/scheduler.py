@@ -63,6 +63,13 @@ class Scheduler:
     # After a job of some kind errors, wait this long before auto-restarting the
     # same kind, so a persistent failure backs off instead of spinning.
     ERROR_COOLDOWN = 120.0
+    # The model fetch backs off much further than a stage does. A stage that
+    # fails has a card saying so and a user watching it; a failed fetch is
+    # invisible by design (the stage will still fetch its own weights), and a
+    # retry restarts a download from zero rather than resuming it -- so retrying
+    # every two minutes on a flaky connection would spend bandwidth all day with
+    # nothing to show for it.
+    FETCH_COOLDOWN = 900.0
 
     def __init__(self, manager: JobManager):
         self._manager = manager
@@ -168,10 +175,16 @@ class Scheduler:
         lock_running = any(
             s["kind"] in stages.LOCK_KINDS and s["state"] == "running" for s in states
         )
+        awaiting = self._awaiting_weights(open_root_id)
         acted = False
         started_lock = False
         for s in states:
             kind = s["kind"]
+            # Its weights are being fetched right now. Starting would fetch them
+            # a second time, in parallel: the stage runs its own ensure_models
+            # and neither call knows about the other.
+            if kind in awaiting:
+                continue
             if not self._may_start(s, open_root_id, lock_running, started_lock):
                 continue
             # Scanning or enriching may change the file set, so a fresh duplicate
@@ -186,6 +199,52 @@ class Scheduler:
                     started_lock = True
         return acted
 
+    def _awaiting_weights(self, open_root_id: int) -> frozenset[str]:
+        """Stage kinds the running fetch has not delivered the weights for yet.
+
+        Per feature rather than "anything that downloads something": detect and
+        semantic fetch disjoint files, so holding detection back for the whole of
+        a 689 MB SigLIP download would be an invented dependency -- and a stalled
+        download would then stall a stage it has nothing to do with. As each
+        feature's weights land, the stages that were waiting on those weights
+        stop waiting, without anything having to be told.
+
+        Empty whenever no fetch is running, which is the overwhelmingly common
+        case and the reason this asks the filesystem nothing then.
+        """
+        from .. import features
+        from ..services import models as model_service
+        from .runners import models
+
+        if not self._manager.active_kind(models.KIND):
+            return frozenset()
+        cfg = self._manager.cfg
+        owed = model_service.missing(cfg, cfg.archive_features(open_root_id))
+        return features.stage_kinds(owed)
+
+    def _start_fetch(self, open_root_id: int) -> bool:
+        """Start the model download this archive still owes, if it owes one.
+
+        Runs before the stages are considered, and that order is the point: an
+        archive whose scan finished long ago has its detect stage queued this
+        very tick, and letting it start first would put the download inside the
+        stage again -- which is the whole thing this job exists to move.
+
+        Cheap to ask (a handful of stats, no network) and false the moment the
+        weights are here, which for most archives on most ticks is immediately.
+        """
+        from ..services import models as model_service
+        from .runners import models
+
+        if self._manager.active_kind(models.KIND):
+            return False
+        if not self._error_ready(open_root_id, models.KIND, self.FETCH_COOLDOWN):
+            return False
+        enabled = self._manager.cfg.archive_features(open_root_id)
+        if not model_service.missing(self._manager.cfg, enabled):
+            return False
+        return "error" not in self._manager.start(models.KIND, open_root_id)
+
     def tick(self) -> bool:
         """One scheduling decision, driven entirely by the same pipeline snapshot
         the GUI renders. Starts every stage that is ready to run and returns True
@@ -197,28 +256,35 @@ class Scheduler:
         should start now. Parallel kinds (scan ∥ enrich ∥ semantic) start
         together; the DB-writer stages (dedup → places → detect) start one at
         a time, matching the single write lock.
+
+        The one job started here that is not a stage is the model fetch, which
+        belongs to no card and reads its own outstanding work (see
+        ``_start_fetch``).
         """
         from . import stages
+        from .runners import models
 
         opened = self._open_archive()
         if opened is None:
             return False
         archive, open_root_id = opened
 
+        fetching = self._start_fetch(open_root_id)
         # The manager, not self: stage_states reads disk_count() and
         # dedup_needed() off it.
         states = stages.stage_states(
             self._manager.cfg, self._manager, open_root_id, archive["path"], allow_walk=True
         )
         stalled = self._stalled_kinds(states)
-        acted = self._start_ready(states, open_root_id, archive)
+        acted = self._start_ready(states, open_root_id, archive) or fetching
 
         # Keep polling promptly while anything is running or waiting to run.
         # Work held back by a per-stage pause does not count -- neither the
         # paused stage nor anything queued behind it can start until the user
         # says so, and counting it would pin the scheduler (and its disk walk)
-        # to the fast interval indefinitely.
-        outstanding = any(
+        # to the fast interval indefinitely. A download in flight does count:
+        # the stages waiting on it are the ones to start the moment it lands.
+        outstanding = self._manager.active_kind(models.KIND) or any(
             s["state"] in ("running", "queued", "blocked", "error") and not stalled[s["kind"]]
             for s in states
         )
@@ -255,7 +321,7 @@ class Scheduler:
             )
         return stalled
 
-    def _error_ready(self, root_id: int, kind: str) -> bool:
+    def _error_ready(self, root_id: int, kind: str, cooldown: float | None = None) -> bool:
         """True once a kind's post-error cooldown has elapsed (or none is set)."""
         at = self._manager._error_at.get((root_id, kind))
-        return at is None or (time.monotonic() - at) >= self.ERROR_COOLDOWN
+        return at is None or (time.monotonic() - at) >= (cooldown or self.ERROR_COOLDOWN)

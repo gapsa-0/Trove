@@ -104,9 +104,11 @@ def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
     from ..services import semantic
 
     # Both of these ask "are the dependencies importable", never "are the model
-    # weights on disk": an unavailable stage is never queued, and it is the
-    # stage itself that downloads its weights, so gating on the files would be
-    # a deadlock.
+    # weights on disk": an unavailable stage is never queued, and a stage still
+    # downloads its own weights when it finds them absent, so gating on the
+    # files would be a deadlock. The fetch job normally gets there first
+    # (``runners/models.py``), but it is a shortcut that may have failed or been
+    # cancelled -- nothing here may depend on it having run.
     #
     # Detection is asked about the detectors this archive actually wants: an
     # importable face backend does not make the stage available to an archive
