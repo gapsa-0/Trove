@@ -10,15 +10,21 @@ import os
 import sqlite3
 from typing import Any
 
-from ._common import _root_clause, reading
+from ._common import _NOT_HIDDEN, _VISIBLE, _root_clause, reading
 
 
 @reading
 def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
-    """The Duplicates panel's summary tile: group/duplicate/reclaimable-bytes
-    totals, plus the redundant copies broken down by match type (identical vs
-    visual) and by media type."""
+    """The Duplicates panel's summary tile: unique/group/duplicate/reclaimable
+    -bytes totals, how much is still waiting to be compared, plus the redundant
+    copies broken down by match type (identical vs visual) and by media type."""
     rc, rp = _root_clause(root_id)
+    # The archive as the rest of the app counts it: every file, with each
+    # duplicate group contributing only its canonical. `hidden` is dedup's own
+    # column (nothing else writes it), so this is the same population People,
+    # Pets and Browse work over -- and it stays honest before dedup has ever
+    # run, when nothing is hidden and every file is still its own unique one.
+    unique = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}{rc}", rp).fetchone()[0]
     row = conn.execute(
         f"""SELECT COUNT(*) groups,
                    COALESCE(SUM(g.member_count-1),0) dups,
@@ -77,12 +83,35 @@ def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[st
         return items
 
     return {
+        "unique": unique,
+        "pending": _pending(conn, root_id),
         "groups": row["groups"],
         "duplicates": row["dups"],
         "reclaimable": row["bytes"],
         "by_match": _ranked(by_match, ["identical", "visual"]),
         "by_media": _ranked(by_media),
     }
+
+
+def _pending(conn: sqlite3.Connection, root_id: int | None) -> int:
+    """Files this root's last successful grouping run has not accounted for.
+
+    The Duplicates screen says "still to compare" the same way People and Pets
+    say "still to scan", and the honest source for it is the marker the dedup
+    runner writes (`dedup_runs.covered_files`, see db/database.py): every
+    present file beyond what that run covered is either newly scanned or not
+    hashed yet, and either way no group has looked at it. No marker at all --
+    never run, or invalidated because scan/enrich moved something the
+    canonical pick reads -- means a full regroup is owed, which is exactly
+    what a pending count equal to the whole archive says.
+    """
+    rc, rp = _root_clause(root_id)
+    present = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {_VISIBLE}{rc}", rp).fetchone()[0]
+    where, params = ("", []) if root_id is None else (" WHERE root_id=?", [root_id])
+    covered = conn.execute(
+        f"SELECT COALESCE(SUM(covered_files),0) FROM dedup_runs{where}", params
+    ).fetchone()[0]
+    return max(0, present - covered)
 
 
 @reading

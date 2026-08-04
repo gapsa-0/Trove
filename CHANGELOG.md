@@ -44,6 +44,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Duplicates page breaks the redundant-copies total down by what the copies
   actually are: byte-identical versus only visually the same, and photos versus
   videos.
+- The Duplicates page leads with how many unique files the archive holds — every
+  file, with each set of copies counted once — and says how much of it is still
+  waiting to be compared, the same way People and Pets report their own progress.
+  An archive with nothing grouped yet keeps those numbers on screen instead of
+  replacing the page with an empty-state box.
 - `oa logs` prints the application log, or `oa logs --path` its location, so a
   bug report can carry the evidence needed to act on it.
 

@@ -24,7 +24,7 @@ build if this file has drifted from the route tables.
 | `/api/summary` | Counts, size, media types and date range for one archive. | `organize_archive/web/routes/overview.py::summary` |
 | `/api/timeline` | Counts of matching, non-hidden media bucketed by month or year, for the timeline chart. | `organize_archive/web/routes/overview.py::timeline` |
 | `/api/dates/sources` | How many files' dates came from Takeout JSON vs EXIF vs filename vs mtime vs none. | `organize_archive/web/routes/overview.py::date_sources` |
-| `/api/dups/summary` | Duplicate-group counts and reclaimable bytes, broken down by match type and media type. | `organize_archive/web/routes/dups.py::summary` |
+| `/api/dups/summary` | Unique-file, duplicate-group, pending and reclaimable-byte counts, broken down by match type and media type. | `organize_archive/web/routes/dups.py::summary` |
 | `/api/dups` | Duplicate groups, largest reclaimable bytes first, with each member's role. | `organize_archive/web/routes/dups.py::groups` |
 | `/api/media` | The media grid: filtered, sorted and paginated files for the archive. | `organize_archive/web/routes/browse.py::media` |
 | `/api/browse/filters` | The distinct filter values (years, types, folders...) the Browse UI offers. | `organize_archive/web/routes/browse.py::filters` |

@@ -15,27 +15,29 @@ import {
 } from "./state.js";
 
 const DUP_PAGE_SIZE = 40;
+// What an archive with nothing grouped yet gets in place of the list: the
+// same head, stats and status row as a full one, so the screen keeps its
+// shape (People and Pets do the same) rather than swapping itself out for a
+// centred emoji the moment there is nothing to show.
+const DUP_EMPTY = `<div class="muted">No duplicate groups yet.</div>
+  <div class="muted" style="margin-top:6px">Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</div>`;
 export async function renderDedup(m) {
   const gen = S.nav, root = S.arch.id;
   const ds = await jget("/api/dups/summary?root=" + root);
   if (gen !== S.nav) return;
-  if (!ds.groups) {
-    m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
-      <div class="soonbox"><div class="big">🧹</div>
-      <p>No duplicates found yet.</p>
-      <p class="muted">This runs automatically once files are scanned and dated. See the Overview tab for progress. Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</p></div>`;
-    return;
-  }
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div></div>
     <div class="statrow">
+      <div class="stat"><div class="k">Unique files</div><div class="v">${(ds.unique || 0).toLocaleString()}</div></div>
       <div class="stat"><div class="k">Duplicate groups</div><div class="v">${ds.groups.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
       <div class="stat"><div class="k">Reclaimable</div><div class="v">${fmtBytes(ds.reclaimable)}</div></div>
     </div>
+    <div class="panel">${dedupStatusRow(ds)}</div>
     ${dupBreakdownPanel(ds)}
-    <div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>
-    <div id="dupgroups"></div>
+    ${ds.groups ? `<div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>` : ""}
+    <div id="dupgroups">${ds.groups ? "" : DUP_EMPTY}</div>
     <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
+  if (!ds.groups) return;
   startInfiniteList("dupList", {
     sentinelId: "dup-sentinel", pageSize: DUP_PAGE_SIZE,
     fetchPage: async offset => {
@@ -48,6 +50,20 @@ export async function renderDedup(m) {
       groups.forEach(g => wrap.appendChild(dupGroupRow(g)));
     },
   });
+}
+// One-line status, the same shape People and Pets get from detectStatusRow:
+// no progress bar, no emoji, exactly one row so the panel never reserves
+// empty space. Dedup is started by the scheduler alone -- there is nothing
+// to press here -- so this only reports how much of the archive the last
+// successful grouping run has already accounted for. "Unique files" is the
+// same population the tile above counts: a group's copies are compared once,
+// as one file, not once each.
+function dedupStatusRow(ds) {
+  const pending = ds.pending || 0;
+  if (pending > 0) {
+    return `<div class="d pending"><span class="dot pending"></span>${pending.toLocaleString()} unique file${pending === 1 ? "" : "s"} pending; duplicate detection runs automatically.</div>`;
+  }
+  return `<div class="d ok"><span class="dot ok"></span>All unique files compared.</div>`;
 }
 // What the redundant copies actually ARE. "27,318
 // duplicates" hides two things worth knowing: how many are byte-identical
