@@ -44,6 +44,27 @@ exempt: naming it is what makes it intentional.
 Photos in a below-floor place show as having no location. That is deliberate,
 not a gap.
 
+## What you can do on the map
+
+**Name a place.** A new place is a pin and a photo count. Click it and type
+what it is. Naming a place also exempts it from the reporting floor below, so a
+place you have named never disappears for being small.
+
+**Merge two places.** Drag one pin onto another. Trove asks first, and if the
+two are further apart than 20 km it says so, because that is well past the
+distance a genuine "one place got split in two" merge covers. Nothing is
+refused, and a merge can be undone.
+
+**Create a place by hand,** and add photos to it that carry no coordinates of
+their own. This is how scanned photos and anything that came through a
+messaging app get onto the map at all.
+
+**Turn the street map on or off.** Off, the map is your photos plotted on an
+empty ground and nothing leaves the machine. On, it fetches map tiles from a
+public server, which tells that server which area you are looking at. Never
+your photos, and it is the only outbound call in the app that depends on your
+own data.
+
 ## The numbers
 
 | Setting | Default | What it does |

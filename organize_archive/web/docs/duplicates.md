@@ -62,6 +62,25 @@ Perceptual hashing only runs on images. Videos, audio and documents are grouped
 by exact content only, so two re-encodes of the same clip are two files as far
 as Trove is concerned.
 
+## What you see on the Duplicates screen
+
+Four numbers across the top: how many **unique files** the archive holds, how
+many **duplicate groups** were found, how many **redundant copies** those groups
+contain, and how much space you would get back by removing them.
+
+Below that, a breakdown of what the copies actually are, split two ways: by
+match, separating byte-identical copies from visual matches, and by media kind.
+The distinction matters. An identical copy is safe and boring. A visual match
+is a judgement, and it is the one worth glancing at.
+
+Then one row per group, biggest saving first. Each row shows every copy with
+the folder it lives in, and the one Trove keeps is tagged with a green check.
+Click any copy to open it.
+
+**Trove will not delete them for you.** There is no delete button, here or
+anywhere else. The screen exists to tell you what is redundant and where it
+lives, so you can act on it with your file manager if you want to.
+
 ## Which copy is kept
 
 One member of each group is the **canonical** copy: the one that stays visible

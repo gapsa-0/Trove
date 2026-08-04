@@ -301,6 +301,19 @@
   margin-top: 0;
 }
 
+/* A question is not a section label. On the FAQ every h2 is a whole sentence
+   ending in a question mark, and the mono-uppercase treatment above turns each
+   one into a line of shouting that is slower to scan than the answers under
+   it. Same rhythm and same rule above it; sentence case and a readable size. */
+.doc-article[data-doc="faq"] .doc-body h2 {
+  font-family: inherit;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+  text-transform: none;
+  margin-bottom: 12px;
+}
+
 .doc-body h3 {
   margin: 34px 0 10px;
   font-size: 19px;

@@ -78,6 +78,27 @@ and "calle" outright. Worse, the Spanish score populations overlap, so no
 threshold works for untranslated Spanish at all. A 26 MB Spanish-to-English
 translator therefore runs in the browser, before the query reaches the model.
 
+## Using it
+
+The search box sits at the top of Browse. Describe what is in the picture the
+way you would describe it to someone who has not seen it: "a dog on the beach",
+"birthday cake", "someone holding a newspaper", "snow on a mountain".
+
+Some things that help:
+
+- **Describe the scene, not the person.** "My mother at the beach" will match on
+  "beach" and ignore the rest. Who is in a photo is what [People](people.md) is
+  for, and the two can be combined with Browse's own filters.
+- **Nouns and scenes beat relationships.** "Three people on the left" is asking
+  for counting and spatial reasoning, which is where the model is weakest.
+- **A short phrase is enough.** There is no query syntax, no quoting, and no
+  operators to learn.
+- **Spanish works.** It is translated to English on this machine before it
+  reaches the model, for reasons the last section of this page explains.
+
+An empty result usually means the archive holds nothing like what you typed,
+which is deliberate rather than a failure.
+
 ## The numbers
 
 | Setting | Default | What it does |

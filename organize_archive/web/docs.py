@@ -35,8 +35,9 @@ from .markdown import Page, render
 DOCS_DIR = Path(__file__).with_name("docs")
 
 # Every page, in reading order. The feature-bearing ones are in pipeline order;
-# the two that are not stages bracket them -- an introduction at the top, and
-# the promise the whole design is built around at the bottom.
+# the three that are not stages bracket them -- the guide someone reads before
+# adding a folder, then the promise the whole design rests on and the questions
+# that come up once it is running.
 ORDER: tuple[str, ...] = (
     "index",
     "indexing",
@@ -46,6 +47,7 @@ ORDER: tuple[str, ...] = (
     "places",
     "search",
     "privacy",
+    "faq",
 )
 
 _SLUG_OK = re.compile(r"\A[a-z0-9-]+\Z")

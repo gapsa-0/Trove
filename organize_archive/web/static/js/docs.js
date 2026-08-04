@@ -203,7 +203,11 @@ function article(page) {
       ${nextTitle ? `<button type="button" onclick="showDoc('${page.next}')">
         <span class="dir">Next</span><span class="to">${esc(nextTitle)}</span></button>` : ""}
     </div>` : "";
-  return `<article class="doc-article">
+  // The slug is on the article so a page whose headings are a different KIND of
+  // thing can say so in CSS. The FAQ is the case: its h2s are questions, and
+  // the small mono-uppercase label that suits "How it works" reads as shouting
+  // when it is a whole sentence ending in a question mark.
+  return `<article class="doc-article" data-doc="${esc(page.slug)}">
       ${eyebrow}
       <h1>${esc(page.title)}</h1>
       ${page.summary ? `<p class="doc-lede">${esc(page.summary)}</p>` : ""}

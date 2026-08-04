@@ -72,6 +72,19 @@ standing person in a sideways one; the difference is that the sideways
 portrait's subject covers most of the frame while the person lying down is a
 detail of a scene.
 
+## What you can do on the Pets screen
+
+**Name a pet,** the same way you name a person, and the name survives
+re-clustering.
+
+**Merge two pets** by dragging one card onto another, for when the same animal
+has ended up with two pages. This is the common correction, because the
+thresholds prefer splitting to merging.
+
+**Review non-human faces.** The face pipeline drops any face that sits mostly
+inside an animal box, and this screen lists what it dropped. If it took a face
+that really was a person, you can say so.
+
 ## The numbers
 
 | Setting | Default | What it does |

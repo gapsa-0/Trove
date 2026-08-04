@@ -124,6 +124,25 @@ Enabling [Pets](pets.md) alongside People costs almost nothing extra: the two
 share a single image decode, and the animal detector is what lets an animal
 face be recognised as one.
 
+## What you can do on the People screen
+
+**Name someone.** Click the name under their photo and type. That name is what
+survives every later re-clustering.
+
+**Merge two people.** Drag one card onto another when the same person has ended
+up with two pages. Trove asks first, and the merge can be undone.
+
+**Answer "Same person?"** At the top of the screen Trove offers pairs it is
+unsure about, with how similar it thinks they are. Answering either way is
+remembered as a rule, not just applied once: a "no" stops those two being
+merged by any future run.
+
+**Move one face.** Open a photo and reassign a face that was put with the wrong
+person, or tag someone the detector missed entirely.
+
+**Hide someone.** Strangers in the background of holiday photos get pages too.
+Hiding one takes it off the screen without deleting anything.
+
 ## What your corrections do
 
 Clustering is rebuilt from scratch on every run, which would normally throw
