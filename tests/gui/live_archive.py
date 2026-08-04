@@ -45,6 +45,21 @@ def _get(base_url: str, path: str) -> tuple[int, str, bytes]:
         return exc.code, exc.headers.get("Content-Type", ""), exc.read()
 
 
+def _get_ranged(base_url: str, path: str, byte_range: str) -> tuple[int, dict[str, str], bytes]:
+    """GET with a ``Range`` header, returning (status, headers, body).
+
+    Separate from ``_get`` rather than an extra argument on it: range tests are
+    the only ones that need the response *headers* back, and widening ``_get``
+    to return them would change the shape every other call site unpacks.
+    """
+    req = Request(f"{base_url}{path}", headers={"Range": byte_range})
+    try:
+        with urlopen(req, timeout=5) as resp:
+            return resp.status, dict(resp.headers), resp.read()
+    except HTTPError as exc:
+        return exc.code, dict(exc.headers), exc.read()
+
+
 def _post(
     base_url: str, path: str, payload: dict, headers: dict | None = None
 ) -> tuple[int, bytes]:

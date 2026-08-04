@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 import pytest
-from live_archive import _get, _post
+from live_archive import _get, _get_ranged, _post
 
 from organize_archive.errors import ModelUnavailableError
 from organize_archive.web import server
@@ -94,6 +94,60 @@ def test_get_file_serves_the_original_bytes(live_server):
     assert status == 200, body
     assert content_type.startswith("image/")
     assert body
+
+
+# ---------------------------------------------------------------------------
+# GET -- range requests
+#
+# /file/<id> is what backs <video> and <audio> (static/js/item.js), so these
+# are the requests a player makes: seeking issues a range, and some players
+# probe the tail first to find an MP4's trailing `moov` atom. The parsing is
+# pinned exhaustively in tests/unit/test_range_requests.py; what these three
+# add is that the *response* is built from it correctly, which is where both
+# of the bugs below actually showed.
+# ---------------------------------------------------------------------------
+
+
+def test_a_range_request_gets_that_slice_of_the_file(live_server):
+    fid = live_server.ids["plain"]
+    _status, _ctype, whole = _get(live_server.base_url, f"/file/{fid}")
+    status, headers, body = _get_ranged(live_server.base_url, f"/file/{fid}", "bytes=0-9")
+    assert status == 206, body
+    assert headers["Content-Range"] == f"bytes 0-9/{len(whole)}"
+    assert headers["Content-Length"] == "10"
+    assert body == whole[:10]
+
+
+def test_a_range_starting_past_the_end_is_refused_with_416(live_server):
+    """It used to answer 206 with ``Content-Length: -4900`` and no body.
+
+    A negative length is not a response a strict client has to tolerate, and
+    416 is the answer that tells the player how long the file really is, so it
+    can ask again for a range that exists.
+    """
+    fid = live_server.ids["plain"]
+    _status, _ctype, whole = _get(live_server.base_url, f"/file/{fid}")
+    status, headers, body = _get_ranged(live_server.base_url, f"/file/{fid}", "bytes=999999-")
+    assert status == 416, body
+    assert headers["Content-Range"] == f"bytes */{len(whole)}"
+    assert int(headers["Content-Length"]) >= 0
+
+
+def test_a_suffix_range_serves_the_tail_and_not_the_head(live_server):
+    """``bytes=-20`` means the LAST 20 bytes.
+
+    It used to be parsed as ``0-20`` and answered with the *first* 21, under a
+    ``Content-Range`` that claimed exactly that -- so nothing about the reply
+    looked wrong except the bytes in it. The assertion that matters is the
+    last one; the header alone would have passed before the fix too.
+    """
+    fid = live_server.ids["plain"]
+    _status, _ctype, whole = _get(live_server.base_url, f"/file/{fid}")
+    status, headers, body = _get_ranged(live_server.base_url, f"/file/{fid}", "bytes=-20")
+    assert status == 206, body
+    assert headers["Content-Range"] == f"bytes {len(whole) - 20}-{len(whole) - 1}/{len(whole)}"
+    assert body == whole[-20:]
+    assert body != whole[:20]
 
 
 def test_get_root_scoped_route_without_root_param_answers_400(live_server):

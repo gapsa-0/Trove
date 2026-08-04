@@ -24,6 +24,49 @@ logger = logging.getLogger(__name__)
 
 _CHUNK = 256 * 1024
 
+# Anchored, and one range only. Unanchored, ``bytes=0-1,5-6`` matched as
+# ``0-1``: the server answered 206 for a multi-range request while sending a
+# single range, which is a different response from the one that was asked for.
+# A list is legal to refuse, so it is refused rather than half-answered.
+_RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)\Z")
+
+
+def _parse_range(header: str, size: int) -> tuple[int, int] | None:
+    """Resolve one ``bytes=`` range against a known size, as an inclusive pair.
+
+    ``None`` means "not a single byte range this server will honour" -- another
+    unit, a list of ranges, a backwards pair, or unparseable. RFC 9110 lets a
+    server ignore a Range it does not understand and send the whole body, which
+    is what the caller does with it.
+
+    A *suffix* range (``bytes=-500``, meaning the LAST 500 bytes) resolves here
+    too. It used to be read as ``0-500``: the reply was a 206 claiming
+    ``Content-Range: bytes 0-500`` and carrying the head of the file instead of
+    its tail. An MP4 with a trailing ``moov`` atom is exactly the file a player
+    probes that way, so the wrong bytes arrived silently.
+
+    The pair may still be *unsatisfiable* -- a start at or past the end of the
+    file, which includes every range against an empty one. That is a 416 for
+    the caller to send rather than a parse failure, so it is deliberately not
+    folded into ``None``: ``start >= size`` is the one test that catches it,
+    for suffix and explicit ranges alike.
+    """
+    m = _RANGE_RE.match(header.strip())
+    if m is None:
+        return None
+    first, last = m.group(1), m.group(2)
+    if not first and not last:
+        return None  # "bytes=-" names nothing
+    if not first:
+        # The last N bytes. N=0 puts start on size, i.e. unsatisfiable, which
+        # is what RFC 9110 asks for and what the caller's one test reports.
+        return max(0, size - int(last)), size - 1
+    if not last:
+        return int(first), size - 1
+    if int(last) < int(first):
+        return None  # backwards: the whole header is invalid, so ignore it
+    return int(first), min(int(last), size - 1)
+
 
 class Handler(BaseHTTPRequestHandler):
     cfg: Config = None
@@ -54,19 +97,31 @@ class Handler(BaseHTTPRequestHandler):
             # there is nobody left to send an error to.
             pass
 
+    def _range_not_satisfiable(self, size: int) -> None:
+        """416 for a range starting at or past the end of the file.
+
+        The ``Content-Range`` is the whole point of the reply: it tells the
+        client how long the file actually is, so it can ask again for a range
+        that exists. Answering 206 here instead sent a negative
+        ``Content-Length`` and no body -- a malformed response a strict client
+        is entitled to fail on.
+        """
+        self.send_response(416)
+        self.send_header("Content-Range", f"bytes */{size}")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _send_file(self, path: Path, content_type=None, cache_control=None):
         ctype = content_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
         size = path.stat().st_size
-        rng = self.headers.get("Range")
+        header = self.headers.get("Range")
+        rng = _parse_range(header, size) if header else None
         start, end, status = 0, size - 1, 200
-        if rng:
-            m = re.match(r"bytes=(\d*)-(\d*)", rng)
-            if m:
-                if m.group(1):
-                    start = int(m.group(1))
-                if m.group(2):
-                    end = min(int(m.group(2)), size - 1)
-                status = 206
+        if rng is not None:
+            start, end = rng
+            if start >= size:
+                return self._range_not_satisfiable(size)
+            status = 206
         length = end - start + 1
         self.send_response(status)
         self.send_header("Content-Type", ctype)

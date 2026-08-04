@@ -56,6 +56,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Seeking in a video or audio file is reliable. The server mishandled two of the
+  requests a player makes: asking for a position past the end of the file produced
+  a malformed reply instead of a "that range does not exist" answer, and asking for
+  the *last* few bytes — how a player finds the index in an MP4 that stores it at
+  the end — returned bytes from the *start* of the file while labelling them as the
+  end. Depending on the player, that showed up as a clip that would not scrub, or
+  one that refused to open at all.
+
 - People & pets detection no longer stops with "neither the face nor the pet models
   could be loaded" when the app is run from a source checkout. Two of its four model
   files had no way to be downloaded outside a packaged build, so the stage fetched
