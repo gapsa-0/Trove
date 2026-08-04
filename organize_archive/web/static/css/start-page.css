@@ -329,6 +329,24 @@
   background: color-mix(in srgb, var(--bad) 10%, transparent)
 }
 
+/* Reopens the same setup screen the archive was created with, which is where a
+   feature is added months later. Sits beside Remove, in the app's own accent
+   rather than the destructive red. */
+.p-configure {
+  float: right;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  padding: 4px 7px;
+  font-size: 11px;
+  cursor: pointer
+}
+
+.p-configure:hover {
+  background: var(--accent-soft)
+}
+
 .p-card.add {
   display: flex;
   flex-direction: column;

@@ -71,7 +71,7 @@ from .frame import detect_on, load_bgr
 from .geometry import rotate_image
 from .orientation import resolve_rotation
 from .persist import rewrite_file_detections, write_scan_markers
-from .results import DetectStats, FileResult, Found
+from .results import BOTH_DETECTORS, FACE, PET, DetectStats, FileResult, Found
 from .video import detect_video
 
 if TYPE_CHECKING:
@@ -92,13 +92,28 @@ def _media_types(cfg: Config) -> str:
     return "('image','video')" if cfg.detect_video_frames > 0 else "('image')"
 
 
-def _pending_where(cfg: Config) -> str:
+def _pending_where(cfg: Config, want: frozenset[str] = BOTH_DETECTORS) -> str:
+    """The backlog condition: media a wanted detector still owes work on.
+
+    Only the wanted detectors are asked about. An archive with People but not
+    Pets must reach "up to date" on the face marker alone -- consulting the pet
+    marker there would leave every file pending for ever and the scheduler
+    relaunching the stage the instant it finished.
+    """
+    owed = []
+    if FACE in want:
+        owed.append("fs.file_id IS NULL")
+    if PET in want:
+        owed.append(
+            "ps.file_id IS NULL OR ps.source_sha256 IS NOT f.sha256 "
+            "OR ps.model_source IS NOT :pet_src"
+        )
+    # No detector wanted means no backlog, not "everything": the stage is not
+    # scheduled at all in that case, and a WHERE that matched every row would
+    # make a hand-called extract() walk the archive to do nothing.
     return f"""
         f.present=1 AND f.media_type IN {_media_types(cfg)} AND f.hidden=0
-        AND (fs.file_id IS NULL
-             OR ps.file_id IS NULL
-             OR ps.source_sha256 IS NOT f.sha256
-             OR ps.model_source IS NOT :pet_src)
+        AND ({" OR ".join(owed) if owed else "0"})
     """
 
 
@@ -123,8 +138,13 @@ def image_count(
     return n
 
 
-def pending_count(conn: sqlite3.Connection, cfg: Config, root_id: int | None = None) -> int:
-    """Present canonical media missing a current face OR pet scan."""
+def pending_count(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    root_id: int | None = None,
+    want: frozenset[str] = BOTH_DETECTORS,
+) -> int:
+    """Present canonical media a wanted detector still owes a scan."""
     rc = " AND f.root_id=:root" if root_id is not None else ""
     p: dict[str, Any] = {"pet_src": pet_scan_source(cfg)}
     if root_id is not None:
@@ -133,13 +153,18 @@ def pending_count(conn: sqlite3.Connection, cfg: Config, root_id: int | None = N
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
-            WHERE {_pending_where(cfg)}{rc}""",
+            WHERE {_pending_where(cfg, want)}{rc}""",
         p,
     ).fetchone()[0]
     return n
 
 
-def _pending(conn: sqlite3.Connection, cfg: Config, batch_size: int) -> list[sqlite3.Row]:
+def _pending(
+    conn: sqlite3.Connection,
+    cfg: Config,
+    batch_size: int,
+    want: frozenset[str] = BOTH_DETECTORS,
+) -> list[sqlite3.Row]:
     return conn.execute(
         f"""SELECT f.id, f.rel_path, f.sha256, f.media_type, r.path AS root_path,
                    mm.duration_s, (fs.file_id IS NULL) AS need_face
@@ -147,16 +172,21 @@ def _pending(conn: sqlite3.Connection, cfg: Config, batch_size: int) -> list[sql
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
             LEFT JOIN media_meta mm ON mm.file_id=f.id
-            WHERE {_pending_where(cfg)}
+            WHERE {_pending_where(cfg, want)}
             ORDER BY f.id
             LIMIT :lim""",
         {"pet_src": pet_scan_source(cfg), "lim": batch_size},
     ).fetchall()
 
 
-def available() -> bool:
-    """True if at least one detector can run (faces and/or pets)."""
-    return face_backend.available() or pet_backend.available()
+def available(want: frozenset[str] = BOTH_DETECTORS) -> bool:
+    """True if at least one *wanted* detector can run.
+
+    An archive that asked only for Pets is not served by the face backend being
+    importable, so the answer has to be scoped to what it asked for -- otherwise
+    the stage reports itself available and then fails on its first run.
+    """
+    return (FACE in want and face_backend.available()) or (PET in want and pet_backend.available())
 
 
 @dataclass(frozen=True)
@@ -193,18 +223,24 @@ def _unavailable(kind: str, exc: Exception, log: Log | None, problems: list[str]
     logger.warning("%s detection unavailable", kind, exc_info=True)
 
 
-def make_backends(cfg: Config, log: Log | None = None) -> Backends:
+def make_backends(
+    cfg: Config, log: Log | None = None, want: frozenset[str] = BOTH_DETECTORS
+) -> Backends:
     """Build whichever detectors are available (loads the ONNX models once).
 
     Either backend may be None when its optional deps or models are missing, so
     the stage degrades gracefully (faces-only or pets-only) instead of failing
     the whole pass.
+
+    ``want`` is the archive's choice rather than the machine's capability: a
+    detector left out here is never constructed and its weights are never
+    fetched, which is the whole point of not enabling the feature.
     """
     problems: list[str] = []
     face_be: FaceBackend | None = None
     pet_be: PetBackend | None = None
-    want_face = face_backend.available()
-    want_pet = pet_backend.available()
+    want_face = FACE in want and face_backend.available()
+    want_pet = PET in want and pet_backend.available()
     # Both preflights run BEFORE either constructor, and neither touches the
     # network: buffalo_l and YOLOX are ~310 MB together, and downloading them
     # only to discover that one detector's embedder can never be obtained is
@@ -310,12 +346,15 @@ def _prepare_backends(
     limit: int | None,
     face_be: FaceBackend | None,
     pet_be: PetBackend | None,
+    want: frozenset[str] = BOTH_DETECTORS,
 ) -> tuple[FaceBackend | None, PetBackend | None]:
     """Load whichever detectors weren't already provided, and size the run."""
     if not available():
         raise ModelUnavailableError("detect backend unavailable (needs faces and/or pets)")
     if face_be is None and pet_be is None:
-        loaded = make_backends(cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None)
+        loaded = make_backends(
+            cfg, log=(lambda m: progress.update(0, 0, m)) if progress else None, want=want
+        )
         # The per-detector reasons travel with the error, because the status card
         # that shows it is all the user has.
         loaded.require()
@@ -326,7 +365,7 @@ def _prepare_backends(
     if face_be is not None:
         face_be.assessor = fiqa.make_assessor(conn, cfg)
 
-    total = pending_count(conn, cfg)
+    total = pending_count(conn, cfg, want=want)
     if limit is not None:
         total = min(total, limit)
     if progress is not None:
@@ -413,6 +452,9 @@ class _Run:
     commit_if_due: Callable[..., None]
     now: str
     pet_src: str
+    # The detectors this archive asked for, which is what decides whose rows may
+    # be rewritten and whose scan markers are written (see persist.py).
+    want: frozenset[str] = BOTH_DETECTORS
 
 
 def _detect_one(run: _Run, row: sqlite3.Row, path: Path) -> FileResult:
@@ -439,7 +481,9 @@ def _process_file(
     try:
         result = _detect_one(run, row, path)
         fiqa_model = getattr(getattr(run.face_be, "assessor", None), "model", None)
-        rewrite_file_detections(conn, fid, run.now, result, run.pet_src, fiqa_model, row["sha256"])
+        rewrite_file_detections(
+            conn, fid, run.now, result, run.pet_src, fiqa_model, row["sha256"], run.want
+        )
     except Exception as e:  # bad/corrupt file, unreadable, etc.
         run.stats.errors += 1
         if len(run.stats.error_samples) < 5:
@@ -452,7 +496,7 @@ def _process_file(
         # a file whose rows only partly landed would claim faces the catalog
         # does not have. See write_scan_markers.
         result = FileResult()
-    write_scan_markers(conn, fid, result, row["sha256"], run.pet_src, run.now)
+    write_scan_markers(conn, fid, result, row["sha256"], run.pet_src, run.now, run.want)
     _finish_row(run.stats, progress, result, path)
 
 
@@ -466,6 +510,7 @@ def extract(
     face_be: FaceBackend | None = None,
     pet_be: PetBackend | None = None,
     cache_dir: str | None = None,
+    want: frozenset[str] = BOTH_DETECTORS,
 ) -> DetectStats:
     """Detect people + animals for pending images/videos in one decode each.
 
@@ -473,6 +518,11 @@ def extract(
     Pass already-loaded backends to reuse them across chunks. Either backend may be
     None (feature unavailable): the pass then does only the other, and with no pet
     backend there is simply no animal cross-check.
+
+    ``want`` is the archive's chosen detectors, which is a different question
+    from which backends loaded: an unwanted detector is not asked about when
+    sizing the backlog, gets no scan marker, and keeps whatever rows it wrote
+    before it was switched off.
 
     ``cache_dir`` is where sampled video keyframes are extracted to and cached
     (see ``thumbnails.detect_frame_for``); it defaults to ``cfg.cache_dir`` for
@@ -482,7 +532,7 @@ def extract(
     default.
     """
     stats = DetectStats()
-    face_be, pet_be = _prepare_backends(conn, cfg, progress, limit, face_be, pet_be)
+    face_be, pet_be = _prepare_backends(conn, cfg, progress, limit, face_be, pet_be, want)
     run = _Run(
         cfg=cfg,
         cache_dir=cache_dir if cache_dir is not None else cfg.cache_dir,
@@ -492,13 +542,16 @@ def extract(
         commit_if_due=_make_committer(conn),
         now=db.now_iso(),
         pet_src=pet_scan_source(cfg),
+        want=want,
     )
 
     while True:
         remaining = None if limit is None else max(0, limit - stats.processed)
         if remaining == 0:
             break
-        rows = _pending(conn, cfg, batch_size if remaining is None else min(batch_size, remaining))
+        rows = _pending(
+            conn, cfg, batch_size if remaining is None else min(batch_size, remaining), want
+        )
         if not rows:
             break
         for row in rows:

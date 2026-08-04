@@ -13,8 +13,20 @@ import {
   fmtBytes, toast,
 } from "./dom.js";
 import {
-  ICONS, S, TYPE_COL, typeLabel,
+  ICONS, S, TYPE_COL, archiveSections, typeLabel,
 } from "./state.js";
+
+// One headline stat, and the screen it opens. Every tile in this row is a
+// doorway, so a tile whose screen this archive does not run is not rendered at
+// all — leaving it would be a button that silently does nothing, which is the
+// exact failure the app goes to some length elsewhere to prevent.
+function statTile(section, colour, label, id, value) {
+  if (!archiveSections(S.arch).some(s => s.id === section)) return "";
+  return `<button class="stat" onclick="showSection('${section}')">
+      <span class="metric-icon ${colour}">${ICONS[section]}</span>
+      <div><div class="k">${label}</div>
+      <div class="v" id="${id}">${(value || 0).toLocaleString()}</div></div></button>`;
+}
 
 export async function renderOverview(m) {
   const gen = S.nav, root = S.arch.id;
@@ -34,13 +46,13 @@ export async function renderOverview(m) {
       <p>Everything important about this archive, at a glance.</p></div>
     </div>
     <div class="statrow">
-      <button class="stat" onclick="showSection('library')"><span class="metric-icon blue">${ICONS.library}</span><div><div class="k">All files</div><div class="v" id="ov-total">${s.total.toLocaleString()}</div></div></button>
-      <button class="stat" onclick="showSection('timeline')"><span class="metric-icon violet">${ICONS.timeline}</span><div><div class="k">With a date</div><div class="v" id="ov-enriched">${s.enriched.toLocaleString()}</div></div></button>
-      <button class="stat" onclick="showSection('places')"><span class="metric-icon green">${ICONS.places}</span><div><div class="k">With a location</div><div class="v" id="ov-gps">${s.with_gps.toLocaleString()}</div></div></button>
-      <button class="stat" onclick="showSection('dups')"><span class="metric-icon orange">${ICONS.dups}</span><div><div class="k">Duplicate copies</div><div class="v" id="ov-dups">${ds.duplicates.toLocaleString()}</div></div></button>
+      ${statTile("library", "blue", "All files", "ov-total", s.total)}
+      ${statTile("timeline", "violet", "With a date", "ov-enriched", s.enriched)}
+      ${statTile("places", "green", "With a location", "ov-gps", s.with_gps)}
+      ${statTile("dups", "orange", "Duplicate copies", "ov-dups", ds.duplicates)}
     </div>
     <div class="overview-grid">
-      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Scanning, metadata, faces, and duplicate analysis</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>
+      <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Progress on everything this archive runs</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>
         <p class="pause-note" id="pause-note" style="display:none">Paused — background processing is stopped.</p>
         <div id="syncstatus"></div><div id="jobarea"></div>
       </div>

@@ -45,6 +45,9 @@ import {
 import {
   setStorageMetric, togglePipelinePause, toggleStagePause,
 } from "./overview.js";
+import {
+  closeArchiveSetup, flipFeature, removeFeature, submitArchiveSetup, toggleFeature,
+} from "./setup.js";
 
 import {
   S,
@@ -105,13 +108,14 @@ loadPicker().then(applyHash);
 // This list is the frontend's public surface; keep it alphabetical.
 // `tools/dev/check_handlers.py` fails the build if the two ever disagree.
 Object.assign(window, {
-  addArchiveFromForm, addPersonPicker, addPetPicker, answerSuggest, applyFilters, applySort,
-  applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters, closeModal,
-  closePick, closePlaceCluster, closeSettings, editClusterName, editDate, editPersonName,
-  editPlace, hidePerson, mergeAskCancel, newPlace, onAddPerson, onAddPet,
-  onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput, onSemanticComposerKeydown,
-  onSemanticComposerPaste, onTimelineYearChange, onYearChange, openItem, openSettings,
-  reassignFace, removeManualPerson, removeManualPet, renamePet, renderInfo, saveDate,
-  saveNewPlace, semanticSubmit, setMapView, setStorageMetric, showSection, toPicker,
-  toggleNav, togglePipelinePause, toggleStagePause, toggleTheme, undoMerge,
+  addArchiveFromForm, addPersonPicker, addPetPicker, answerSuggest, applyFilters,
+  applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
+  closeArchiveSetup, closeModal, closePick, closePlaceCluster, closeSettings, editClusterName,
+  editDate, editPersonName, editPlace, flipFeature, hidePerson, mergeAskCancel, newPlace, onAddPerson,
+  onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
+  onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
+  openItem, openSettings, reassignFace, removeFeature, removeManualPerson, removeManualPet,
+  renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setMapView, setStorageMetric,
+  showSection, submitArchiveSetup, toPicker, toggleFeature, toggleNav, togglePipelinePause,
+  toggleStagePause, toggleTheme, undoMerge,
 });

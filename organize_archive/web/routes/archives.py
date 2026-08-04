@@ -11,9 +11,49 @@ def archive_list(req: Request) -> dict:
     return {"archives": archives.archives(req.cfg)}
 
 
+def feature_list(req: Request) -> dict:
+    """Every feature an archive can be given, for the setup panel."""
+    return {"features": archives.features(req.cfg)}
+
+
+def _chosen(body: dict) -> list[str] | None:
+    """The feature ids in a request body, or None when it names none.
+
+    None and ``[]`` mean different things and both arrive as JSON: no key at all
+    is "leave this alone" (or, on creation, "give it everything"), while an
+    empty list is a deliberate choice of only the required features.
+    """
+    value = body.get("features")
+    return [str(v) for v in value] if isinstance(value, list) else None
+
+
 def add(req: Request) -> Json:
     """Register a new archive by folder path, preparing its private database."""
-    return ok_or_error(archives.add_archive(req.cfg, req.body.get("path", "")))
+    name = req.body.get("name")
+    return ok_or_error(
+        archives.add_archive(
+            req.cfg,
+            req.body.get("path", ""),
+            str(name) if isinstance(name, str) else None,
+            _chosen(req.body),
+        )
+    )
+
+
+def configure(req: Request) -> Json:
+    """Rename an archive, or change which features it runs."""
+    root_id = req.body.get("root_id")
+    if not isinstance(root_id, int):
+        return Json({"error": "root_id is required"}, 400)
+    name = req.body.get("name")
+    return ok_or_error(
+        archives.configure_archive(
+            req.cfg,
+            root_id,
+            str(name) if isinstance(name, str) else None,
+            _chosen(req.body),
+        )
+    )
 
 
 def open_archive(req: Request) -> dict | Json:

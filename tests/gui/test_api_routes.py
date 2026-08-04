@@ -40,12 +40,13 @@ from helpers import needs_embedding
 from live_archive import _get, _post
 
 # ---------------------------------------------------------------------------
-# GET -- /api routes (28: 24 exact + 4 prefix)
+# GET -- /api routes (29: 25 exact + 4 prefix)
 # ---------------------------------------------------------------------------
 
 API_GET_CASES = [
     pytest.param("/api/health", {"ok", "version", "commit"}, id="GET /api/health"),
     pytest.param("/api/archives", {"archives"}, id="GET /api/archives"),
+    pytest.param("/api/features", {"features"}, id="GET /api/features"),
     pytest.param(
         "/api/summary?root={root_id}",
         {"total", "size", "types", "with_gps", "enriched", "date_min", "date_max"},
@@ -203,7 +204,7 @@ def test_get_settings_returns_the_constant_empty_object(live_server):
 
 
 # ---------------------------------------------------------------------------
-# POST -- /api routes (19 single-shot cases; 8 more as dedicated tests below
+# POST -- /api routes (20 single-shot cases; 8 more as dedicated tests below
 # for routes that mutate destructively or need a multi-request sequence)
 # ---------------------------------------------------------------------------
 
@@ -211,8 +212,14 @@ API_POST_CASES = [
     pytest.param(
         "/api/archives",
         lambda ids: {"path": ids["extra_archive_path"]},
-        {"id", "path"},
+        {"id", "path", "name", "features"},
         id="POST /api/archives",
+    ),
+    pytest.param(
+        "/api/archive/configure",
+        lambda ids: {"root_id": ids["root_id"], "name": "Configured"},
+        {"ok", "name", "features"},
+        id="POST /api/archive/configure",
     ),
     pytest.param(
         "/api/archive/open",

@@ -8,11 +8,11 @@ that is, and what it means for add/remove, is the comment block below.
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 from pathlib import Path
 from typing import Any
 
+from .. import features as feature_catalog
 from ..config import Config
 from ..db import database as db
 from ..paths import archive_dir as archive_dir_path
@@ -40,7 +40,8 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
         row: dict[str, Any] = {
             "id": rid,
             "path": path,
-            "name": os.path.basename(path.rstrip("/")) or path,
+            "name": cfg.archive_name(rid),
+            "features": list(cfg.archive_features(rid)),
             "added_at": entry["added_at"],
             "files": 0,
             "size": 0,
@@ -84,7 +85,84 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
     return out
 
 
-def add_archive(cfg: Config, path: str) -> dict[str, Any]:
+def _probes(cfg: Config) -> dict[str, tuple[Any, Any]]:
+    """Per-feature "can this run" and "are its weights already here" probes.
+
+    Imported inside the function, like every other model-backed probe in this
+    package: asking whether People is available must not drag onnxruntime into
+    a process that only wanted to list archives.
+
+    A feature with no entry needs nothing and is always both.
+    """
+    from ..embeddings import backend as embed_backend
+    from ..faces import backend as face_backend
+    from ..pets import backend as pet_backend
+
+    cache = cfg.cache_dir
+    return {
+        "people": (face_backend.available, lambda: face_backend.models_ready(cache)),
+        "pets": (pet_backend.available, lambda: pet_backend.models_ready(cache)),
+        "semantic": (embed_backend.available, lambda: embed_backend.models_ready(cache)),
+    }
+
+
+def features(cfg: Config) -> list[dict[str, Any]]:
+    """The feature catalogue as the setup panel needs it.
+
+    The static half comes from ``organize_archive/features.py``; the two facts
+    only a running installation knows are added here. ``available`` is whether
+    the optional dependency imports at all, and ``ready`` is whether the weights
+    are already on this machine — they are shared between archives, so the
+    second archive that wants People pays nothing, and a panel that still quoted
+    275 MB would be talking about a download that is not going to happen.
+    """
+    probes = _probes(cfg)
+    out: list[dict[str, Any]] = []
+    for feature in feature_catalog.FEATURES:
+        probe = probes.get(feature.id)
+        available = bool(probe[0]()) if probe else True
+        out.append(
+            {
+                "id": feature.id,
+                "label": feature.label,
+                "tagline": feature.tagline,
+                "detail": feature.detail,
+                "required": feature.required,
+                "download_mb": feature.download_mb,
+                "pairs_with": feature.pairs_with,
+                "sections": list(feature.sections),
+                "available": available,
+                "ready": bool(probe[1]()) if probe and available else not feature.download_mb,
+            }
+        )
+    return out
+
+
+def configure_archive(
+    cfg: Config, root_id: int, name: str | None = None, chosen: list[str] | None = None
+) -> dict[str, Any]:
+    """Rename an archive and/or change which features it runs.
+
+    Switching a feature off never deletes what it already found: its stage stops
+    being scheduled and its section disappears, and switching it back on later
+    picks up from the catalogue rather than starting again. That is why this is
+    a registry write and nothing else.
+    """
+    if cfg.archive_path(root_id) is None:
+        return {"error": "archive not found"}
+    if name is not None:
+        cfg.set_archive_name(root_id, name)
+    enabled = (
+        cfg.set_archive_features(root_id, chosen)
+        if chosen is not None
+        else cfg.archive_features(root_id)
+    )
+    return {"ok": True, "name": cfg.archive_name(root_id), "features": list(enabled)}
+
+
+def add_archive(
+    cfg: Config, path: str, name: str | None = None, chosen: list[str] | None = None
+) -> dict[str, Any]:
     """Register a new archive rooted at ``path``, building its private database
     first. Returns ``{"id": ..., "path": ...}`` on success; an ``{"error":
     ...}`` dict if the path isn't a directory, is already registered, or the
@@ -118,8 +196,13 @@ def add_archive(cfg: Config, path: str) -> dict[str, Any]:
         logger.warning("could not prepare catalog for %s", resolved, exc_info=True)
         shutil.rmtree(archive_dir_path(aid), ignore_errors=True)
         return {"error": f"Could not prepare a catalog for that folder: {exc}"}
-    entry = cfg.register_archive(aid, resolved)
-    return {"id": entry["id"], "path": resolved}
+    entry = cfg.register_archive(aid, resolved, name, chosen)
+    return {
+        "id": entry["id"],
+        "path": resolved,
+        "name": cfg.archive_name(aid),
+        "features": list(cfg.archive_features(aid)),
+    }
 
 
 def remove_archive(cfg: Config, root_id: int) -> dict[str, Any]:

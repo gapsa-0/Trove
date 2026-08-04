@@ -28,6 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from .. import features
 from ..config import Config
 from ..db import database as db
 
@@ -98,7 +99,7 @@ _UNAVAILABLE_TEXT = {
 }
 
 
-def _availability(cfg: Config) -> dict[str, bool]:
+def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
     from ..detect import extract as dx
     from ..services import semantic
 
@@ -106,12 +107,16 @@ def _availability(cfg: Config) -> dict[str, bool]:
     # weights on disk": an unavailable stage is never queued, and it is the
     # stage itself that downloads its weights, so gating on the files would be
     # a deadlock.
+    #
+    # Detection is asked about the detectors this archive actually wants: an
+    # importable face backend does not make the stage available to an archive
+    # that only asked for Pets.
     return {
         SCAN: True,
         ENRICH: True,
         DEDUP: True,
         PLACES: True,
-        DETECT: dx.available(),
+        DETECT: dx.available(features.detectors(enabled)),
         SEMANTIC: semantic.available(),
     }
 
@@ -123,6 +128,7 @@ def _pending(
     root_path: str,
     avail: dict[str, bool],
     allow_walk: bool,
+    enabled: tuple[str, ...],
 ) -> dict[str, int]:
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
@@ -182,7 +188,13 @@ def _pending(
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
         DETECT: (
-            detect_pending(db_path, root_id, pet_scan_source(cfg), cfg.detect_video_frames)
+            detect_pending(
+                db_path,
+                root_id,
+                pet_scan_source(cfg),
+                cfg.detect_video_frames,
+                features.detectors(enabled),
+            )
             if avail[DETECT]
             else 0
         ),
@@ -201,9 +213,17 @@ def stage_states(
     ``allow_walk`` is for the scheduler, which runs on its own thread and can
     afford to wait for a fresh disk count; the polled API path must not (see
     JobManager.disk_count).
+
+    Stages belonging to a feature this archive did not ask for are absent from
+    the result entirely -- not reported as some "off" state. That absence is the
+    whole gate: the scheduler starts what this list says is queued, so a stage
+    that is not here is never started, never downloads its weights, and has no
+    card for ``cards()`` to render.
     """
-    avail = _availability(cfg)
-    pending = _pending(cfg, jobs, root_id, root_path, avail, allow_walk)
+    enabled = cfg.archive_features(root_id)
+    wanted = features.stage_kinds(enabled)
+    avail = _availability(cfg, enabled)
+    pending = _pending(cfg, jobs, root_id, root_path, avail, allow_walk, enabled)
 
     running: dict[str, dict] = {}
     last: dict[str, dict] = {}
@@ -214,7 +234,7 @@ def stage_states(
 
     resolved: dict[str, str] = {}
     out: list[dict] = []
-    for sd in STAGES:
+    for sd in (sd for sd in STAGES if sd.kind in wanted):
         k = sd.kind
         job = running.get(k)
         if not avail[k]:
@@ -352,7 +372,12 @@ def _preparing_message(progress: dict) -> str:
     return f"Preparing… · {detail}" if detail else "Preparing…"
 
 
-def _card(card_id: str, members: list[dict], blocker_card: dict[str, str | None]) -> dict:
+def _card(
+    card_id: str,
+    members: list[dict],
+    blocker_card: dict[str, str | None],
+    enabled: tuple[str, ...],
+) -> dict:
     """Roll one card's member stages into the dict the GUI renders."""
     lead = max(members, key=lambda s: _STATE_RANK[s["state"]])
     state = lead["state"]
@@ -377,7 +402,7 @@ def _card(card_id: str, members: list[dict], blocker_card: dict[str, str | None]
     bc_id = blocker_card[card_id]
     return {
         "id": card_id,
-        "label": CARD_LABEL[card_id],
+        "label": features.card_label(card_id, enabled, CARD_LABEL[card_id]),
         "state": state,
         "pending": pending,
         "counted": counted,
@@ -430,7 +455,11 @@ def _mark_stalled(
         stalled[c["id"]] = c["stalled"]
 
 
-def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozenset()) -> list[dict]:
+def cards(
+    states: list[dict],
+    paused_stages: frozenset[str] | set[str] = frozenset(),
+    enabled: tuple[str, ...] = (),
+) -> list[dict]:
     """Roll per-stage states up into the display cards the GUI renders verbatim.
 
     ``paused_stages`` holds the card ids the user paused individually. A card
@@ -439,6 +468,14 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
     or everything it waits on is). Only ``stalled`` may be used to decide that
     no work is coming, since a card blocked behind a paused stage is just as
     stopped as the paused one itself.
+
+    A card with no member stages is simply not built, which is how a feature the
+    archive does not run disappears from the Overview: ``stage_states`` already
+    left its stages out.
+
+    ``enabled`` is only used to name a card whose owning features are partly
+    switched on ("People" rather than "People & pets"); the default keeps the
+    catalogue's own wording.
     """
     by_card: dict[str, list[dict]] = {}
     for s in states:
@@ -446,7 +483,7 @@ def cards(states: list[dict], paused_stages: frozenset[str] | set[str] = frozens
 
     blocker_card: dict[str, str | None] = {}
     result = [
-        _card(card_id, by_card[card_id], blocker_card)
+        _card(card_id, by_card[card_id], blocker_card, enabled)
         for card_id in CARD_ORDER
         if by_card.get(card_id)
     ]

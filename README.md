@@ -24,6 +24,13 @@ library.*
 ## What it does
 
 - Adds one or more archive folders and keeps a separate catalogue for each one.
+- Asks each archive what it should do with the folder. Indexing and duplicates
+  always run — everything else reads what they produce — and the rest are
+  chosen on a setup screen: People, Pets, Places, Search by description. A
+  feature you leave off never runs and never downloads its models, which is the
+  difference between an archive that starts working immediately and one that
+  fetches 689 MB first. The choice can be changed at any time, and switching a
+  feature off keeps whatever it already found.
 - Scans incrementally and resumably. Unchanged files are skipped on later runs;
   interrupted work can continue safely.
 - Reads Google Takeout sidecars, embedded metadata, filenames, and file timestamps.

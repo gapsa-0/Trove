@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**67 routes**: 28 GET (exact) + 12 GET (prefix) + 27 POST.
+**69 routes**: 29 GET (exact) + 12 GET (prefix) + 28 POST.
 
 ## GET -- exact path
 
@@ -18,6 +18,7 @@ build if this file has drifted from the route tables.
 | --- | --- | --- |
 | `/api/health` | Liveness plus the build this process is running, which is what the desktop shell polls for before showing a window. | `organize_archive/web/routes/static.py::health` |
 | `/api/archives` | Every registered archive, for the picker. | `organize_archive/web/routes/archives.py::archive_list` |
+| `/api/features` | Every feature an archive can be given, for the setup panel. | `organize_archive/web/routes/archives.py::feature_list` |
 | `/api/settings` | No user-configurable settings exist yet; always answers with an empty object. | `organize_archive/web/routes/static.py::settings` |
 | `/api/pipeline` | The resolved status of every pipeline stage for one archive. | `organize_archive/web/routes/pipeline.py::snapshot` |
 | `/api/summary` | Counts, size, media types and date range for one archive. | `organize_archive/web/routes/overview.py::summary` |
@@ -71,6 +72,7 @@ see the module docstring in `routes/__init__.py`.
 | Path | Description | Handler |
 | --- | --- | --- |
 | `/api/archives` | Register a new archive by folder path, preparing its private database. | `organize_archive/web/routes/archives.py::add` |
+| `/api/archive/configure` | Rename an archive, or change which features it runs. | `organize_archive/web/routes/archives.py::configure` |
 | `/api/archive/open` | Open one registered archive so the GUI starts serving its content. | `organize_archive/web/routes/archives.py::open_archive` |
 | `/api/archive/close` | Close the currently open archive, stopping its background jobs. | `organize_archive/web/routes/archives.py::close` |
 | `/api/archive/remove` | Forget an archive: delete its private database and cache wholesale. | `organize_archive/web/routes/archives.py::remove` |

@@ -5,11 +5,19 @@ deciding what is in a photo, and recording it -- and only the second one needs
 to know the shape of five tables. It also gave the file the room to fix the
 bug documented under ``_save_suppressed`` below.
 
-**A rewrite is wholesale.** Re-detecting a file deletes its faces, animals,
-suppressed candidates and orientation, then writes what this pass found. That
-is what makes a detector or config change take full effect rather than
-layering new rows on stale ones. The one thing that must survive it is a
-*human's* decision -- see ``_carry_reviews``.
+**A rewrite is wholesale, for the detectors that ran.** Re-detecting a file
+deletes its faces, animals, suppressed candidates and orientation, then writes
+what this pass found. That is what makes a detector or config change take full
+effect rather than layering new rows on stale ones. The one thing that must
+survive it is a *human's* decision -- see ``_carry_reviews``.
+
+"For the detectors that ran" is the whole of ``want``, and it is load-bearing.
+An archive with People but not Pets runs a pass that knows nothing about
+animals; if that pass deleted ``animal_detections`` the way a fused one does,
+turning Pets off would silently destroy every animal an archive had already
+found, and turning it back on would mean re-detecting the lot. Each detector
+owns its own tables and its own scan marker, and a pass touches neither for a
+detector it was not asked to run.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ import sqlite3
 from typing import cast
 
 from ..faces.backend import Face
-from .results import FileResult
+from .results import BOTH_DETECTORS, FACE, PET, FileResult
 
 
 def write_scan_markers(
@@ -28,16 +36,33 @@ def write_scan_markers(
     sha256: str | None,
     pet_src: str,
     now: str,
+    want: frozenset[str] = BOTH_DETECTORS,
 ) -> None:
-    """Mark this file scanned by BOTH detectors, with what each one found.
+    """Mark this file scanned by every detector this pass was asked for.
 
-    Always written together, and written whether or not detection succeeded:
-    the pair is what ``pending`` tests, so writing one without the other would
-    leave the file to be reprocessed for one detector while the other's row is
-    stale, and writing neither would retry a permanently unreadable file for
+    Written whether or not detection succeeded: a marker is what ``pending``
+    tests, so leaving one out would retry a permanently unreadable file for
     ever. A file whose rewrite failed arrives here with a blank ``result``, so
     the counts say zero rather than claiming rows the catalog does not have.
+
+    A detector that was not asked for gets no marker, and the pending query
+    does not ask for one either. That pairing is what lets Pets be switched on
+    later and pick up the whole archive, instead of finding every file already
+    marked "scanned, no animals" by a pass that never looked.
     """
+    if FACE in want:
+        _write_face_marker(conn, fid, result, now)
+    if PET in want:
+        conn.execute(
+            """INSERT OR REPLACE INTO pet_scan
+               (file_id, n_animals, source_sha256, model_source, scanned_at)
+               VALUES (?,?,?,?,?)""",
+            (fid, len(result.animal_hits), sha256, pet_src, now),
+        )
+
+
+def _write_face_marker(conn: sqlite3.Connection, fid: int, result: FileResult, now: str) -> None:
+    """This file's face-scan row: how many faces, and why the rest were dropped."""
     face_report = result.report
     conn.execute(
         """INSERT OR REPLACE INTO face_scan
@@ -58,12 +83,6 @@ def write_scan_markers(
             now,
         ),
     )
-    conn.execute(
-        """INSERT OR REPLACE INTO pet_scan
-           (file_id, n_animals, source_sha256, model_source, scanned_at)
-           VALUES (?,?,?,?,?)""",
-        (fid, len(result.animal_hits), sha256, pet_src, now),
-    )
 
 
 def rewrite_file_detections(
@@ -74,12 +93,26 @@ def rewrite_file_detections(
     pet_src: str,
     fiqa_model: str | None,
     sha256: str | None,
+    want: frozenset[str] = BOTH_DETECTORS,
 ) -> None:
-    """Replace every detection row for one file with this pass's findings."""
-    carried = _carry_reviews(conn, fid)
-    conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
-    conn.execute("DELETE FROM animal_detections WHERE file_id=?", (fid,))
-    conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?", (fid,))
+    """Replace this file's rows, for the detectors that ran.
+
+    ``nonhuman_detections`` belongs to the face pass even though the animal
+    detector is what fills it: it holds faces the animal veto dropped, so a
+    face pass run without Pets legitimately clears them — with no animal boxes
+    there is no veto, and those faces are people again.
+
+    ``orientation`` belongs to neither and is rewritten whenever anything ran:
+    the turn is a property of the photo, resolved from whatever evidence this
+    pass had.
+    """
+    faces_ran, pets_ran = FACE in want, PET in want
+    carried = _carry_reviews(conn, fid) if faces_ran else {}
+    if faces_ran:
+        conn.execute("DELETE FROM faces WHERE file_id=?", (fid,))
+        conn.execute("DELETE FROM nonhuman_detections WHERE file_id=?", (fid,))
+    if pets_ran:
+        conn.execute("DELETE FROM animal_detections WHERE file_id=?", (fid,))
     conn.execute("DELETE FROM orientation WHERE file_id=?", (fid,))
     if result.rotate:
         conn.execute(
@@ -88,9 +121,10 @@ def rewrite_file_detections(
                VALUES (?,?,?,?,?)""",
             (fid, result.rotate, result.orient_source, result.confidence, now),
         )
-    animal_ids = _save_animals(conn, fid, now, result, pet_src)
-    _save_faces(conn, fid, now, result, fiqa_model)
-    _save_suppressed(conn, fid, now, result, animal_ids, carried, sha256)
+    animal_ids = _save_animals(conn, fid, now, result, pet_src) if pets_ran else []
+    if faces_ran:
+        _save_faces(conn, fid, now, result, fiqa_model)
+        _save_suppressed(conn, fid, now, result, animal_ids, carried, sha256)
 
 
 def _carry_reviews(conn: sqlite3.Connection, fid: int) -> dict[tuple[int, int, int, int], str]:

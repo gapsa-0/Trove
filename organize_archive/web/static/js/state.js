@@ -19,6 +19,11 @@ export const ICONS = {
   sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24"><path d="M20.5 15.3A9 9 0 0 1 8.7 3.5 9 9 0 1 0 20.5 15.3Z"/></svg>'
 };
+// Every section the app can show, in nav order. Which of them an archive
+// actually gets is decided by its feature set: the server sends the unlocked
+// section ids with each archive (organize_archive/features.py), and
+// `archiveSections` filters this list against them. An archive from before
+// features existed reports the full set, so nothing disappears on upgrade.
 export const SECTIONS = [
   { id: "overview", label: "Overview" },
   { id: "library", label: "Library" },
@@ -28,6 +33,17 @@ export const SECTIONS = [
   { id: "places", label: "Places" },
   { id: "dups", label: "Duplicates" },
 ];
+// Sections keyed by the feature that unlocks them. The Overview is unlisted
+// because it reports the pipeline itself and is never gated.
+const SECTION_FEATURE = {
+  library: "index", timeline: "index", dups: "duplicates",
+  people: "people", pets: "pets", places: "places",
+};
+export function archiveSections(archive) {
+  const on = new Set(archive?.features || []);
+  if (!on.size) return SECTIONS;
+  return SECTIONS.filter(s => !SECTION_FEATURE[s.id] || on.has(SECTION_FEATURE[s.id]));
+}
 export const S = {
   arch: null, section: "overview", grid: null,
   timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, poll: null,

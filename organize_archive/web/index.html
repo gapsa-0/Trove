@@ -27,6 +27,7 @@
   <link rel="stylesheet" href="/static/css/screens.css">
   <link rel="stylesheet" href="/static/css/viewer.css">
   <link rel="stylesheet" href="/static/css/start-page.css">
+  <link rel="stylesheet" href="/static/css/setup.css">
   <link rel="stylesheet" href="/static/css/merge.css">
   <script src="/vendor/leaflet.js"></script>
   <script>
@@ -100,6 +101,14 @@
         <span><em>3</em><b>Browse &amp; search</b>: timeline, people, map, or a description.</span>
       </div>
     </div>
+  </div>
+
+  <!-- ARCHIVE SETUP: which features this folder gets, and what it is called.
+       A screen rather than a modal because it is a decision with real cost
+       behind it (up to ~700 MB of model weights), and because the same screen
+       is reopened later to change the answer. -->
+  <div id="setup">
+    <div id="setup-body"></div>
   </div>
 
   <!-- APP SHELL -->

@@ -122,7 +122,8 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
     states = stages.stage_states(cfg, jobs, root_id, root_path)
     paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
     per_stage = frozenset(jobs.paused_stages()) if hasattr(jobs, "paused_stages") else frozenset()
-    card_list = cards(states, per_stage)
+    enabled = cfg.archive_features(root_id)
+    card_list = cards(states, per_stage, enabled)
     extra = _extra_jobs(jobs, root_id)
     _apply_pause(card_list, extra, paused)
     if extra or any(c["state"] == "running" for c in card_list):

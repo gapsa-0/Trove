@@ -1,0 +1,797 @@
+/* ============ Archive setup: the pipeline strip and the feature cards ======
+   Two things carry this screen. The strip at the top is the pipeline in
+   miniature -- the chain this archive will actually run, indexing and
+   duplicates included -- drawn small because it is a summary and not the thing
+   you operate. Below it the optional features are cards, and each cover shows
+   what that feature produces rather than describing it: faces gathered into
+   named groups, pins on a map, a typed sentence and what it pulls back.
+
+   The covers are drawn, never photographic. At setup time the folder has not
+   been read yet, so a preview built from real thumbnails would be a picture of
+   a promise.
+
+   Figures are set in the system mono stack with tabular numerals. They are
+   measurements -- megabytes to download -- and setting them as data rather than
+   as prose is the difference between a number you can compare down a column
+   and one you have to read.                                                  */
+
+#setup {
+  display: none;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--bg);
+  --set-figures: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* The brand mark's own blue (see #trove-mark in index.html), used on this
+     screen only for the pipeline's nodes. */
+  --set-node: #0062e0;
+  /* Stand-ins for photographs. Six of them, so a grid of covers does not fall
+     into stripes the way a repeating pair does. */
+  --set-ph-1: linear-gradient(150deg, #cfe4f7, #9dc4e8 55%, #d9c9a8);
+  --set-ph-2: linear-gradient(150deg, #f2d9c4, #d99f76 60%, #8a5f45);
+  --set-ph-3: linear-gradient(150deg, #d5e8d2, #86b184 60%, #4f7350);
+  --set-ph-4: linear-gradient(150deg, #e5dcf0, #a99ac9 55%, #6d6390);
+  --set-ph-5: linear-gradient(150deg, #fae0d8, #e39f8f 60%, #a86a5e);
+  --set-ph-6: linear-gradient(150deg, #d6dfe8, #93a5b8 55%, #5b6a7a);
+  --set-map: linear-gradient(160deg, #dbe7d9, #c8dbe4 70%, #b9cfe0);
+  --set-road: rgba(255, 255, 255, .62);
+}
+
+:root[data-theme="dark"] #setup {
+  --set-map: linear-gradient(160deg, #26332c, #1f3038 70%, #1b2a35);
+  --set-road: rgba(255, 255, 255, .17);
+}
+
+#setup-body {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(26px, 4vw, 52px) clamp(18px, 3vw, 40px) 40px;
+}
+
+/* ---- the head ---- */
+
+.set-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: clamp(20px, 3vw, 34px);
+  flex-wrap: wrap;
+}
+
+.set-eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+#setup h1 {
+  margin: 9px 0 0;
+  font-size: clamp(25px, 3vw, 34px);
+  line-height: 1.05;
+  font-weight: 750;
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+
+.set-sub {
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* The folder being set up, in the figure face: it is a path, not a sentence. */
+.set-path {
+  margin: 11px 0 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 12px/1.5 var(--set-figures);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-name {
+  flex: none;
+  display: block;
+  width: min(340px, 100%);
+}
+
+.set-name>span {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.set-name input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+/* ---- the pipeline strip ---- */
+
+/* The drop target as well as the summary, which is why the running figure sits
+   on it: the chain is the thing that costs. */
+.set-pipe {
+  margin: 24px 0 22px;
+  padding: 13px 15px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  transition: background .15s, border-color .15s;
+}
+
+.set-pipe.drop-open {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--accent-soft);
+}
+
+.set-pipe.drop-over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.set-pipe-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+
+.set-label {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 660;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.set-pipe-mb {
+  color: var(--text);
+  font: 12px/1 var(--set-figures);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A chain reads as a chain, so it scrolls sideways rather than wrapping. */
+.set-flow {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.set-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 620;
+  letter-spacing: -.012em;
+  white-space: nowrap;
+}
+
+.set-chip[draggable="true"] {
+  cursor: grab;
+}
+
+.set-chip.dragging {
+  opacity: .4;
+}
+
+/* The two that cannot be removed carry a solid node and no remove button, so
+   the difference is visible rather than only discovered by trying. */
+.set-chip.fixed {
+  background: var(--panel2);
+  color: var(--muted);
+}
+
+.set-chip .set-node {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 0 0 2px var(--set-node);
+}
+
+.set-chip.fixed .set-node {
+  background: var(--set-node);
+}
+
+.set-chip.landed {
+  animation: set-pop .5s ease;
+}
+
+@keyframes set-pop {
+  from {
+    box-shadow: 0 0 0 2px var(--accent);
+    transform: translateY(-3px);
+  }
+
+  to {
+    box-shadow: 0 0 0 2px transparent;
+    transform: none;
+  }
+}
+
+.set-chip-out {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0 -4px 0 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.set-chip-out svg {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+}
+
+.set-chip-out:hover {
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+  color: var(--bad);
+}
+
+.set-link {
+  flex: none;
+  width: 15px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.set-slot {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 99px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.set-pipe.drop-open .set-slot {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.set-pipe-note {
+  margin: 10px 0 0;
+  color: var(--faint);
+  font-size: 11.5px;
+}
+
+/* Half of a pair running without the other. Both halves name each other, and
+   accuracy is what is at stake, so this is a warning and not a hint. */
+.set-pair {
+  margin: 7px 0 0;
+  color: var(--warning);
+  font-size: 11.5px;
+}
+
+/* ---- the shelf ---- */
+
+/* Dragging a chip out of the chain and dropping it back here is the same
+   removal as pressing the chip's remove button. */
+.set-shelf {
+  margin: 0 -10px;
+  padding: 10px;
+  border-radius: var(--radius);
+  transition: background .15s, box-shadow .15s;
+}
+
+.set-shelf.drop-over {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.set-shelf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.set-shelf-head em {
+  color: var(--faint);
+  font-size: 11.5px;
+  font-style: normal;
+}
+
+.set-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 15px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Fixed height, so turning a card over to read what it does leaves the grid
+   exactly where it was. An expanding panel moves everything sharing its row. */
+.set-card {
+  display: flex;
+  flex-direction: column;
+  height: 286px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .16s, box-shadow .16s, border-color .16s;
+}
+
+.set-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .1);
+}
+
+.set-card.on {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
+}
+
+.set-card.on:hover {
+  box-shadow: 0 0 0 2px var(--accent), 0 12px 30px rgba(0, 0, 0, .1);
+}
+
+.set-card.dragging {
+  opacity: .4;
+}
+
+.set-card.off {
+  cursor: default;
+  opacity: .6;
+}
+
+/* Both faces fill the card, so whichever is up is exactly the same size. */
+.set-face {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.set-face[hidden] {
+  display: none;
+}
+
+.set-cover {
+  position: relative;
+  flex: none;
+  height: 106px;
+  border-bottom: 1px solid var(--line);
+}
+
+.set-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 13px 14px 14px;
+}
+
+.set-card-name {
+  font-size: 14.5px;
+  font-weight: 660;
+  letter-spacing: -.02em;
+}
+
+/* Two lines' worth, so the flip control sits at the same height on every card
+   even though the taglines run to different lengths. */
+.set-card-line {
+  margin: 3px 0 0;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.set-back {
+  padding: 14px 15px;
+}
+
+.set-back .set-card-name {
+  margin-bottom: 9px;
+}
+
+/* Scrolls rather than stretching: the card's height is the promise here. */
+.set-card-detail {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.set-flip {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.set-flip:hover {
+  text-decoration: underline;
+}
+
+.set-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.set-cost {
+  color: var(--faint);
+  font-size: 11.5px;
+}
+
+.set-cost.figure {
+  color: var(--text);
+  font: 12px/1 var(--set-figures);
+  font-variant-numeric: tabular-nums;
+}
+
+.set-card:not(.on) .set-cost.figure {
+  color: var(--muted);
+}
+
+.set-add {
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.set-card.on .set-add {
+  border-color: transparent;
+  background: var(--accent-soft);
+}
+
+.set-add svg {
+  width: 11px;
+  height: 11px;
+  margin-right: 5px;
+  vertical-align: -1px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.set-unavailable {
+  color: var(--faint);
+  font-size: 11.5px;
+}
+
+/* One quiet line covering every card at once, because it is true of all of
+   them and belongs to none in particular. Keeping it off the cards is what
+   lets a description say only what its feature does. */
+.set-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 20px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.set-privacy svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+/* ---- the foot ---- */
+
+.set-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.set-total {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.set-total b {
+  color: var(--text);
+  font: 620 15px/1 var(--set-figures);
+  font-variant-numeric: tabular-nums;
+}
+
+.set-count {
+  margin: 5px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.set-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ============ previews ====================================================
+   Built from phrasing content -- spans, never divs -- because a preview sits
+   inside a card that used to be a button, and because keeping them inline
+   means they never introduce a block box the cover has to fight.            */
+
+.set-pv {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  background: var(--panel2);
+}
+
+.set-pv-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  height: 100%;
+  padding: 10px;
+}
+
+.set-ph {
+  flex: none;
+  border-radius: 5px;
+  background: var(--set-ph-1);
+}
+
+.set-ph.p2 { background: var(--set-ph-2); }
+.set-ph.p3 { background: var(--set-ph-3); }
+.set-ph.p4 { background: var(--set-ph-4); }
+.set-ph.p5 { background: var(--set-ph-5); }
+
+/* people and pets: crops gathered into named groups */
+.set-face-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.set-face-chip i {
+  position: relative;
+  display: block;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--set-ph-1);
+}
+
+/* The subject sits *in* the crop, in a translucent dark, rather than being a
+   white glyph laid on top of it. A white head-and-shoulders icon is the
+   universal sign for "no picture here", which is the opposite of the point. */
+.set-face-chip i svg {
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 31px;
+  transform: translateX(-50%);
+  fill: rgba(24, 26, 32, .34);
+}
+
+.set-face-chip span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+/* "+34 more" is another crop with a scrim over it, not an empty dashed hole.
+   Written to outrank `.set-face-chip i`, which sets display:block and its own
+   background: without the extra weight the count is laid out as ordinary
+   inline text and sits at the top left of the circle rather than its middle. */
+.set-face-chip i.set-more {
+  display: grid;
+  place-items: center;
+  background: var(--set-ph-6);
+  box-shadow: inset 0 0 0 99px rgba(0, 0, 0, .46);
+  color: #fff;
+  font: 620 11px/1 var(--set-figures);
+}
+
+.set-face-chip .set-more+span {
+  color: var(--faint);
+}
+
+/* places: coordinates the photos already carry, plotted */
+.set-pv-map {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--set-map);
+}
+
+.set-pv-map .road {
+  position: absolute;
+  background: var(--set-road);
+}
+
+.set-pv-map .r1 { left: -10%; top: 55%; width: 120%; height: 4px; transform: rotate(-9deg); }
+.set-pv-map .r2 { left: 38%; top: -10%; width: 4px; height: 120%; transform: rotate(11deg); }
+.set-pv-map .r3 { left: -10%; top: 25%; width: 120%; height: 2px; transform: rotate(6deg); opacity: .7; }
+
+.set-pv-map .pin {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  margin: -13px 0 0 -6.5px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--bad);
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .3);
+}
+
+.set-pv-map .cluster {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .85);
+  background: var(--accent);
+  color: #fff;
+  font: 620 10px/1 var(--set-figures);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+
+/* search by description: a sentence, and what comes back */
+.set-pv-semantic {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  padding: 11px;
+}
+
+.set-pv-semantic .q {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.set-pv-semantic .q svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 2;
+}
+
+.set-pv-semantic .qt {
+  white-space: nowrap;
+}
+
+.set-pv-semantic .caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 12px;
+  background: var(--accent);
+  animation: set-blink 1.1s steps(1) infinite;
+}
+
+@keyframes set-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.set-pv-semantic .hits {
+  display: flex;
+  gap: 5px;
+}
+
+.set-pv-semantic .hits .set-ph {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+}
+
+/* ---- responsive ---- */
+
+@media (max-width: 1000px) {
+  .set-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .set-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .set-pipe-head {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .set-chip.landed {
+    animation: none;
+  }
+
+  .set-pv-semantic .caret {
+    animation: none;
+  }
+
+  .set-card,
+  .set-pipe,
+  .set-shelf {
+    transition: none;
+  }
+}

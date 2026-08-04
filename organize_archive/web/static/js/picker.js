@@ -9,7 +9,7 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
-  esc, fmtBytes, toast,
+  esc, fmtBytes,
 } from "./dom.js";
 import {
   S,
@@ -17,6 +17,9 @@ import {
 import {
   startGlobalStatus,
 } from "./status.js";
+import {
+  openArchiveSetup,
+} from "./setup.js";
 
 export let ARCHIVES = [];
 // Build one archive card's cover mosaic from a few real thumbnails (served by
@@ -55,10 +58,15 @@ export async function loadPicker() {
     c.innerHTML = pickerCover(a) +
       `<div class="p-meta">
              <button class="p-remove" type="button" aria-label="Remove archive">Remove</button>
+             <button class="p-configure" type="button" aria-label="Set up ${esc(a.name)}">Set up</button>
              <div class="nm">${esc(a.name)}</div>
              <div class="st">${a.files.toLocaleString()} files${warn}</div>
            </div>`;
     c.querySelector(".p-remove").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
+    // Adding a feature months later is the same screen as choosing one on day
+    // one, so it is the same code path — not a second, thinner settings pane
+    // that would drift from it.
+    c.querySelector(".p-configure").onclick = (event) => { event.stopPropagation(); openArchiveSetup(a, a.path, afterSetup); };
     el.appendChild(c);
   });
   const add = document.createElement("button");
@@ -75,15 +83,21 @@ async function startAddArchive() {
     p = picked.path || ""; field.value = p;
   }
   if (!p) { highlightAddArchiveField(); return false; }
-  const r = await jpost("/api/archives", { path: p });
-  // Re-read the list either way. A rejected add used to return early, so if
-  // the server had already recorded anything the start page kept showing the
-  // stale set until a full page reload made it look like the folder appeared
-  // out of nowhere.
-  field.value = ""; await loadPicker();
-  if (r.error) { toast(r.error, true); return false; }
-  const a = ARCHIVES.find(x => x.id === r.id) || { id: r.id, path: r.path, name: r.path.split("/").filter(Boolean).pop(), files: 0, size: 0, exists: true };
-  openArchive(a, "overview"); return false;
+  // The folder is not registered here any more: setup is where the archive is
+  // created, because the features chosen there decide what gets downloaded and
+  // an archive that existed first would already be scanning under the default.
+  field.value = "";
+  await openArchiveSetup(null, p, afterSetup);
+  return false;
+}
+// What happens once setup saves. Passed in rather than imported back, so the
+// dependency between these two modules stays one-way.
+async function afterSetup(created) {
+  await loadPicker();
+  if (!created) return;
+  const a = ARCHIVES.find(x => x.id === created.id)
+    || { ...created, files: 0, size: 0, exists: true, covers: [] };
+  openArchive(a, "overview");
 }
 function highlightAddArchiveField() {
   const field = document.getElementById("archive-path"); const wrap = field.closest(".p-add");

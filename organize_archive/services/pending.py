@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from ..detect.results import BOTH_DETECTORS, FACE, PET
 from ._common import _NOT_HIDDEN, _root_clause, reading
 
 # int() around the fetched value in each function below is a no-op at runtime:
@@ -24,27 +25,38 @@ def detect_pending(
     root_id: int | None = None,
     model_source: str | None = None,
     detect_video_frames: int = 0,
+    detectors: frozenset[str] = BOTH_DETECTORS,
 ) -> int:
-    """Present canonical media missing a current face OR pet scan — the fused
+    """Present canonical media a wanted detector still owes a scan — the fused
     detect stage's backlog (mirrors detect.extract.pending_count). One file is
-    'pending' if either detector still owes it work, so the scheduler keeps the
-    single detect stage running until both are drained.
+    'pending' if any wanted detector still owes it work, so the scheduler keeps
+    the single detect stage running until all of them are drained.
 
     ``detect_video_frames`` mirrors ``cfg.detect_video_frames``: videos only
     count toward the backlog when it is > 0, otherwise the stage would never
-    reach "up to date" while video detection is disabled."""
+    reach "up to date" while video detection is disabled.
+
+    ``detectors`` is the archive's People/Pets choice, translated to detector
+    names by the caller. Asking about a detector the archive does not run would
+    leave the stage permanently behind on work nobody wants done."""
     rc, rp = _root_clause(root_id)
     media_types = "('image','video')" if detect_video_frames > 0 else "('image')"
-    params = [model_source, *rp]
+    owed, params = [], []
+    if FACE in detectors:
+        owed.append("fs.file_id IS NULL")
+    if PET in detectors:
+        owed.append(
+            "ps.file_id IS NULL OR ps.source_sha256 IS NOT f.sha256 OR ps.model_source IS NOT ?"
+        )
+        params.append(model_source)
+    if not owed:
+        return 0
     row = conn.execute(
         f"""SELECT COUNT(*) FROM files f
             LEFT JOIN face_scan fs ON fs.file_id=f.id
             LEFT JOIN pet_scan ps ON ps.file_id=f.id
-            WHERE (fs.file_id IS NULL
-                   OR ps.file_id IS NULL
-                   OR ps.source_sha256 IS NOT f.sha256
-                   OR ps.model_source IS NOT ?)
+            WHERE ({" OR ".join(owed)})
               AND {_NOT_HIDDEN} AND f.media_type IN {media_types}{rc}""",
-        params,
+        [*params, *rp],
     ).fetchone()
     return int(row[0])

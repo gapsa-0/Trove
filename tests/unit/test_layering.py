@@ -51,6 +51,7 @@ LAYERS = {
     "paths": 0,
     "runtime": 0,
     "model_manifest": 0,
+    "features": 0,
     "progress": 0,
     "logging_setup": 0,
     "errors": 0,

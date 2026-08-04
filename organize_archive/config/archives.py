@@ -8,6 +8,7 @@ nothing here is used standalone.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sqlite3
 from collections.abc import Iterable
@@ -15,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .. import features as feature_catalog
 from ..paths import archive_cache_dir, archive_db_path, archive_dir, archives_dir
 
 logger = logging.getLogger(__name__)
@@ -93,12 +95,85 @@ class ArchiveRegistryMixin:
         archive_dir(aid).mkdir(parents=True, exist_ok=True)
         return aid
 
-    def register_archive(self, archive_id: int, path: str) -> dict:
-        """Record a fully prepared archive in the registry."""
-        entry = {"id": archive_id, "path": path, "added_at": _now_iso()}
+    def register_archive(
+        self,
+        archive_id: int,
+        path: str,
+        name: str | None = None,
+        features: Iterable[str] | None = None,
+    ) -> dict:
+        """Record a fully prepared archive in the registry.
+
+        ``features`` is what the setup screen collected. Passing ``None`` means
+        no choice was made -- the CLI, a test, an older caller -- and the archive
+        gets everything, which is the same answer `archive_features` gives an
+        entry written before archives could be configured at all.
+        """
+        entry: dict[str, Any] = {"id": archive_id, "path": path, "added_at": _now_iso()}
+        if name and name.strip():
+            entry["name"] = name.strip()
+        if features is not None:
+            entry["features"] = list(feature_catalog.resolve(features))
         self.archives.append(entry)
         self.save()
         return entry
+
+    def _entry(self, archive_id: int | None) -> dict[str, Any]:
+        """One archive's registry entry, or an empty dict for one that has none.
+
+        Every per-archive setting below reads through this, so "an archive that
+        was removed a moment ago" answers with the defaults rather than raising
+        at whichever caller happened to ask first.
+        """
+        return next((a for a in self.archives if a["id"] == archive_id), None) or {}
+
+    def archive_name(self, archive_id: int) -> str:
+        """What to call this archive: the name the user gave it, else its folder.
+
+        The fallback is not stored. An archive that was never renamed keeps
+        following its folder, so moving the registry to a differently-named copy
+        of the same collection does not leave a stale name behind.
+        """
+        entry = self._entry(archive_id)
+        name = str(entry.get("name") or "").strip()
+        path = str(entry.get("path") or "")
+        return name or os.path.basename(path.rstrip("/\\")) or path
+
+    def set_archive_name(self, archive_id: int, name: str) -> None:
+        """Name an archive, or clear the name so it follows its folder again."""
+        for entry in self.archives:
+            if entry["id"] == archive_id:
+                cleaned = name.strip()
+                if cleaned:
+                    entry["name"] = cleaned
+                else:
+                    entry.pop("name", None)
+                self.save()
+                return
+
+    def archive_features(self, archive_id: int | None) -> tuple[str, ...]:
+        """Which features this archive runs, in catalogue order.
+
+        An entry with no ``features`` key was never configured -- every archive
+        added before the setup screen existed -- and gets the full set, so an
+        upgrade cannot switch off work an archive has been doing all along.
+        """
+        return feature_catalog.resolve(self._entry(archive_id).get("features"))
+
+    def set_archive_features(self, archive_id: int, chosen: Iterable[str]) -> tuple[str, ...]:
+        """Record which features an archive runs, and answer with what it got.
+
+        The answer is not the input: `features.resolve` drops ids this version
+        does not know and adds back the required ones, and the caller needs the
+        resolved set to report what actually changed.
+        """
+        resolved = feature_catalog.resolve(chosen)
+        for entry in self.archives:
+            if entry["id"] == archive_id:
+                entry["features"] = list(resolved)
+                self.save()
+                break
+        return resolved
 
     def remove_archive_entry(self, archive_id: int) -> None:
         self.archives = [a for a in self.archives if a["id"] != archive_id]
@@ -121,7 +196,7 @@ class ArchiveRegistryMixin:
         ``None`` names no archive and so answers with those defaults, which is
         what the JobManager wants before the user has opened anything.
         """
-        entry = next((a for a in self.archives if a["id"] == archive_id), None) or {}
+        entry = self._entry(archive_id)
         paused = entry.get("paused", self.pipeline_paused)
         stages = entry.get("paused_stages", self.paused_stages)
         return bool(paused), list(stages or [])

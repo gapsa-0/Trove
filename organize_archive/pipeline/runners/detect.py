@@ -35,12 +35,15 @@ class _Totals:
 
 
 def _detect_backlog(
-    ctx: JobContext, root_id: int, already: int, face_be: Any, pet_be: Any
+    ctx: JobContext, root_id: int, already: int, face_be: Any, pet_be: Any, want: frozenset[str]
 ) -> _Totals:
     """Detect in chunks, re-clustering people and pets after each one.
 
     Clustering inside the loop rather than once at the end is what makes both
-    views fill in progressively during a run measured in hours.
+    views fill in progressively during a run measured in hours. Only the half
+    the archive asked for is re-clustered: rebuilding pets for an archive that
+    switched Pets off would destroy and recreate every pet id (and with it the
+    manual tags anchored to their names) to no purpose.
 
     The two backends are ``Any`` because their classes live in ``faces/`` and
     ``pets/``, which are still on mypy's not-reviewed list, so a real
@@ -48,6 +51,7 @@ def _detect_backlog(
     ``make_backends`` degrades to faces-only or pets-only.
     """
     from ...detect import extract as dx
+    from ...detect.results import FACE, PET
     from ...faces import cluster as fc
     from ...pets import cluster as pc
 
@@ -64,6 +68,7 @@ def _detect_backlog(
             face_be=face_be,
             pet_be=pet_be,
             cache_dir=ctx.cfg.archive_cache_dir(root_id),
+            want=want,
         )
         if st.processed == 0:
             return totals
@@ -73,12 +78,22 @@ def _detect_backlog(
         totals.suppressed += st.nonhuman_suppressed
         totals.human_pets += st.human_animals_dropped
         totals.turned += st.rotated
-        job.current = "grouping people & pets…"
-        fc.cluster_faces(conn, ctx.cfg)
-        pc.cluster_pets(conn, ctx.cfg, root_id=root_id)
+        job.current = "grouping " + _subjects(want)
+        if FACE in want:
+            fc.cluster_faces(conn, ctx.cfg)
+        if PET in want:
+            pc.cluster_pets(conn, ctx.cfg, root_id=root_id)
 
 
-def _reattach_identities(ctx: JobContext, totals: _Totals) -> None:
+def _subjects(want: frozenset[str]) -> str:
+    """What this pass is looking for, for the one line the card shows."""
+    from ...detect.results import FACE, PET
+
+    names = [n for n, d in (("people", FACE), ("pets", PET)) if d in want]
+    return " & ".join(names) + "…"
+
+
+def _reattach_identities(ctx: JobContext, totals: _Totals, want: frozenset[str]) -> None:
     """Give names, pins and review answers back after an embedder migration.
 
     The backlog is empty by the time this runs, so a migration staged earlier
@@ -87,28 +102,38 @@ def _reattach_identities(ctx: JobContext, totals: _Totals) -> None:
     not been detected yet. The re-cluster afterwards is what makes the restored
     pins actually take effect.
     """
+    from ...detect.results import FACE
     from ...faces import cluster as fc
     from ...faces import migrate_adaface
 
     conn = ctx.require_conn()
-    if not migrate_adaface.pending(conn):
+    if FACE not in want or not migrate_adaface.pending(conn):
         return
     ctx.job.current = "restoring names and corrections…"
     totals.restored = migrate_adaface.reattach(conn, ctx.cfg).faces_reattached
     fc.cluster_faces(conn, ctx.cfg)
 
 
-def _summarise(conn: sqlite3.Connection, totals: _Totals) -> str:
+def _summarise(conn: sqlite3.Connection, totals: _Totals, want: frozenset[str]) -> str:
     """The one line the finished stage card shows.
 
     Every clause after the first is conditional: a run that suppressed nothing
     and turned nothing says so by staying quiet, rather than reporting zeroes.
+    A detector the archive did not ask for reports nothing at all -- the pet
+    tables may still hold groups from before the feature was switched off, and
+    quoting them as this run's findings would be a lie.
     """
-    people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
-    groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
+    from ...detect.results import FACE, PET
+
+    parts = []
+    if FACE in want:
+        people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+        parts.append(f"{totals.faces} faces · {people} people")
+    if PET in want:
+        groups = conn.execute("SELECT COUNT(*) FROM pets").fetchone()[0]
+        parts.append(f"{totals.animals} animals · {groups} pet groups")
     return (
-        f"{totals.faces} faces · {people} people · {totals.animals} animals · "
-        f"{groups} pet groups"
+        " · ".join(parts)
         + (f" · {totals.suppressed} animal-face FPs dropped" if totals.suppressed else "")
         + (f" · {totals.human_pets} people misread as pets" if totals.human_pets else "")
         + (f" · {totals.turned} photos turned upright" if totals.turned else "")
@@ -122,12 +147,17 @@ def run(ctx: JobContext) -> None:
     # boxes cross-check the faces inline (a face inside an animal box is
     # dropped from People). Detect in chunks and re-cluster people + pets after
     # each so both views fill in progressively during a long run.
+    from ... import features
     from ...detect import extract as dx
 
     conn, job = ctx.require_conn(), ctx.job
     # detect is only ever started by the scheduler, always with the currently
     # open root's id -- see scan.py's comment for the same invariant.
     root_id = job.require_root()
+    # People and Pets are chosen separately but share this one pass, so the
+    # archive's feature set is what decides which detectors load, which files
+    # count as pending, and whose rows this pass may rewrite.
+    want = features.detectors(ctx.cfg.archive_features(root_id))
 
     # Everything up to the first chunk is setup, and on a first run it is the
     # longest wait in the app: ~310 MB of weights over whatever connection the
@@ -141,20 +171,20 @@ def run(ctx: JobContext) -> None:
         # restarts (no misleading per-run total). cfg is passed so the
         # population matches pending_count's (both honour detect_video_frames).
         total = dx.image_count(conn, ctx.cfg, root_id)
-        already = max(0, total - dx.pending_count(conn, ctx.cfg, root_id))
+        already = max(0, total - dx.pending_count(conn, ctx.cfg, root_id, want))
         job.total, job.done = total, already
-        # Load both detector model sets once and reuse across every chunk. This
-        # is the stage's un-cancellable window: two ONNX sessions, seconds of
-        # native code with nowhere to check the cancel event, so shutdown is
+        # Load the wanted detector model sets once and reuse across every chunk.
+        # This is the stage's un-cancellable window: two ONNX sessions, seconds
+        # of native code with nowhere to check the cancel event, so shutdown is
         # told not to wait on it (see JobContext.uninterruptible).
         with ctx.uninterruptible("loading detection models"):
-            loaded = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m))
+            loaded = dx.make_backends(ctx.cfg, log=lambda m: setattr(job, "current", m), want=want)
         # Fail here rather than inside the first chunk: extract() would
         # otherwise load the models a second time to reach the same conclusion.
         loaded.require()
-    totals = _detect_backlog(ctx, root_id, already, loaded.face, loaded.pet)
-    _reattach_identities(ctx, totals)
-    job.message = _summarise(conn, totals)
+    totals = _detect_backlog(ctx, root_id, already, loaded.face, loaded.pet, want)
+    _reattach_identities(ctx, totals, want)
+    job.message = _summarise(conn, totals, want)
 
 
 RUNNER = Runner(kind="detect", run=run)

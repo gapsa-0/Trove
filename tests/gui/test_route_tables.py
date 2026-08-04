@@ -29,10 +29,11 @@ from organize_archive.web import server
 # check, and once the chains are gone it is a plain read of the tables.
 # ---------------------------------------------------------------------------
 
-# GET, exact (28: 24 /api + 4 non-api).
+# GET, exact (29: 25 /api + 4 non-api).
 GET_EXACT = {
     "/api/health",
     "/api/archives",
+    "/api/features",
     "/api/settings",
     "/api/summary",
     "/api/timeline",
@@ -75,9 +76,10 @@ GET_PREFIX = {
     "/animalThumb/",
     "/file/",
 }
-# POST, exact (27, no prefixes).
+# POST, exact (28, no prefixes).
 POST_EXACT = {
     "/api/archives",
+    "/api/archive/configure",
     "/api/archive/open",
     "/api/archive/close",
     "/api/archive/remove",

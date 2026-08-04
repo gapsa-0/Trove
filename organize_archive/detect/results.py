@@ -7,6 +7,10 @@ totals them into ``DetectStats``. Kept in their own module with no logic and no
 sibling imports so that chain can be a straight line: without it, ``video.py``
 would need a shape defined in ``extract.py`` while ``extract.py`` calls into
 ``video.py``, which is a cycle.
+
+The two detector names live here for the same reason: ``persist.py`` decides
+what to write from them and ``extract.py`` decides what to run, and neither may
+import the other's constants without closing that same loop.
 """
 
 from __future__ import annotations
@@ -14,6 +18,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..faces import backend as face_backend
+
+# The two detectors a pass can be asked for. An archive may have People without
+# Pets or the other way round (organize_archive/features.py), and this set is
+# what says which. It is the *asked for* set, never the *loaded* set: a wanted
+# detector whose weights fail to load still marks the files it walked, or the
+# stage would find them pending again and relaunch itself for ever.
+FACE = "face"
+PET = "pet"
+BOTH_DETECTORS = frozenset({FACE, PET})
 
 
 @dataclass

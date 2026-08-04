@@ -59,6 +59,7 @@ Handler = Callable[[Request], object]
 GET_ROUTES: dict[str, Handler] = {
     "/api/health": static.health,
     "/api/archives": archives.archive_list,
+    "/api/features": archives.feature_list,
     "/api/settings": static.settings,
     "/api/pipeline": pipeline.snapshot,
     "/api/summary": overview.summary,
@@ -105,6 +106,7 @@ GET_PREFIX_ROUTES: tuple[tuple[str, Handler], ...] = (
 
 POST_ROUTES: dict[str, Handler] = {
     "/api/archives": archives.add,
+    "/api/archive/configure": archives.configure,
     "/api/archive/open": archives.open_archive,
     "/api/archive/close": archives.close,
     "/api/archive/remove": archives.remove,

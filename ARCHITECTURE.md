@@ -79,7 +79,7 @@ grandfathered.
 
 | Layer | Packages | Role |
 | --- | --- | --- |
-| L0 foundation | `config`, `paths`, `runtime`, `model_manifest`, `logging_setup`, `errors`, `progress`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, the shape a long pass reports progress through, and the SQLite connection/schema layer. |
+| L0 foundation | `config`, `paths`, `runtime`, `model_manifest`, `features`, `logging_setup`, `errors`, `progress`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, the catalogue of what an archive can be asked to do, the shape a long pass reports progress through, and the SQLite connection/schema layer. |
 | L1 domain | `scan`, `hashing`, `metadata`, `media`, `dedup`, `geo`, `detect`, `faces`, `pets`, `embeddings`, `thumbnails` | The archive's actual algorithms — one package per concern, each usable on its own against a connection it is handed. |
 | L2 application | `services`, `pipeline` | Orchestrates L1: `services/` holds the business rules a caller invokes (merges, renames, browse queries); `pipeline/` schedules and runs the stages above. |
 | L3 delivery | `web`, `cli`, `desktop`, `__main__` | Translates an external request (HTTP, command line, desktop shell) into one service call and serialises the result. Holds no business logic itself. |
@@ -92,6 +92,8 @@ grandfathered.
 | how Takeout sidecars are matched | `organize_archive/metadata/takeout.py` |
 | what the Library grid shows | `organize_archive/services/browse.py` + `organize_archive/web/static/js/library.js` |
 | when a pipeline stage runs | `organize_archive/pipeline/stages.py` |
+| what an archive can be asked to do, and the words describing it | `organize_archive/features.py` (see ADR 0015) |
+| how the archive setup screen looks and behaves | `organize_archive/web/static/js/setup.js` + `web/static/css/setup.css` |
 | what a status card *says* (its wording, its bar, the pause overlay) | `organize_archive/pipeline/status.py` |
 | how a job does its work | `organize_archive/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
 | a new API endpoint | `organize_archive/web/routes/<domain>.py`, then add it to the route tables in `organize_archive/web/routes/__init__.py` — see below |
@@ -190,6 +192,21 @@ own previous `user_version` so it cannot fire twice.
   under `archives/<id>/` in the app's data directory
   (`organize_archive/paths.py`); only downloaded model weights and the app
   icon are shared across archives.
+- **An archive runs only the features it was set up with, and the gate is one
+  omission** (ADR 0015): `stage_states` leaves a disabled stage out of the list
+  it returns, so the scheduler never starts it, its weights are never fetched
+  (a stage is what downloads them), and `cards()` builds no card for it. There
+  is no "disabled" state to render anywhere. An archive registered before this
+  existed has no `features` key and gets the full set, so an upgrade never
+  switches off work already in progress.
+- A stage may only depend on a stage owned by a *required* feature. Otherwise a
+  stage whose dependency was switched off would sit blocked on a state that can
+  never arrive — `tests/unit/test_features.py` enforces this rather than
+  leaving it to memory.
+- The fused detect pass is told which detectors it was asked for, and touches
+  nothing belonging to the other one: no scan marker (or the backlog would
+  never settle once that feature came back) and no row deletion (or switching
+  Pets off would destroy every animal already found). See `detect/persist.py`.
 - A `services/` function takes a `db_path` and opens its own SQLite
   connection per call, rather than being handed a shared one — stated as a
   contract in `organize_archive/services/__init__.py`'s module docstring.

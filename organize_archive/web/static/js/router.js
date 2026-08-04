@@ -40,7 +40,7 @@ import {
   renderSearchReach,
 } from "./search.js";
 import {
-  ICONS, S, SECTIONS,
+  ICONS, S, archiveSections,
 } from "./state.js";
 import {
   stopGlobalStatus,
@@ -63,7 +63,7 @@ export function toPicker() {
 }
 export function renderNav() {
   const el = document.getElementById("navitems"); el.innerHTML = "";
-  SECTIONS.forEach(s => {
+  archiveSections(S.arch).forEach(s => {
     const d = document.createElement("button"); d.type = "button";
     d.className = "navitem" + (s.id === S.section ? " active" : "");
     d.title = s.label; d.setAttribute("aria-current", s.id === S.section ? "page" : "false");
@@ -156,7 +156,10 @@ function resumeSection(id) {
   else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
 }
 export function showSection(id, reload = false) {
-  if (!RENDERERS[id]) id = "overview";
+  // A hash can name a section this archive does not run — a bookmark from
+  // before People was switched off, or a link between archives. Fall back to
+  // the Overview rather than rendering a screen whose data will never arrive.
+  if (!RENDERERS[id] || !archiveSections(S.arch).some(s => s.id === id)) id = "overview";
   if (ACTIVE_SECTION === id && !reload) return;
   S.nav++; const gen = S.nav;
   stopPoll();

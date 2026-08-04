@@ -15,6 +15,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Each archive now chooses what Trove does with it.** Adding a folder opens a
+  setup screen: name the archive, and build up what it runs by dragging features
+  onto it — People, Pets, Places, Search by description — or leave them off.
+  Indexing and duplicates always run, because everything else reads what they
+  produce. A feature you do not choose is not merely hidden: its stage never
+  runs, and its models are never downloaded, so an archive that only wants
+  duplicates found no longer waits on a 689 MB download for a search it will
+  never use. Each feature says up front what it does and what it costs, and
+  a feature whose models are already on this machine from another archive says
+  so rather than quoting a download that will not happen.
+- Features can be changed later from the same screen — "Set up" on any archive
+  on the start page. Adding one picks up from where the catalogue already is;
+  removing one deletes nothing, so putting it back does not start over.
+- People and Pets can now be chosen independently. They still share a single
+  pass over each photo, so having both costs barely more than having one.
+
 - Semantic (description) search now runs entirely on-device on SigLIP 2, replacing
   the Voyage cloud API. Search queries and photo contents no longer leave the
   machine at all; the API-key setup step and its "no key configured" state are

@@ -17,6 +17,13 @@ the weights are cached, everything works fully offline. The pet
 re-identification and face-embedding models are bundled with the installer and
 are never downloaded.
 
+**A feature you did not choose downloads nothing at all.** Each archive is set
+up with the features it should run (see the setup screen when adding a folder),
+and a feature that is off has no pipeline stage — and a stage is what fetches
+weights. An archive set up for indexing and duplicates only never touches the
+network. The weights are shared between archives, so the figures above are paid
+at most once per machine, not once per folder.
+
 The GUI map's optional "Street map" layer fetches map tiles from a public tile
 server, which reveals photo *coordinates* to that server. It is a toggle and can
 be turned off for a fully offline plot.

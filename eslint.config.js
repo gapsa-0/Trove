@@ -102,6 +102,7 @@ module.exports = [
         clearInterval: "readonly",
         clearTimeout: "readonly",
         requestAnimationFrame: "readonly",
+        requestIdleCallback: "readonly",
         getSelection: "readonly",
         Node: "readonly",
         alert: "readonly",
