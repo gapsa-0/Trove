@@ -194,10 +194,20 @@ via `factories.make_archive`). It also has an autouse fixture that points
 resolve to your real archive store by accident.
 
 Markers are `slow` (measured over roughly a second — re-check with
-`--durations` rather than guessing before adding one) and `models` (needs
-ONNX weights or a tokenizer checkpoint on disk). `pyproject.toml` sets
-`--strict-markers`, so a typo'd marker is a collection error, not a silent
-no-op.
+`--durations` rather than guessing before adding one), `models` (needs
+ONNX weights or a tokenizer checkpoint on disk), and `browser` (applied
+automatically to everything under `tests/browser/`, never by hand).
+`pyproject.toml` sets `--strict-markers`, so a typo'd marker is a collection
+error, not a silent no-op.
+
+Two shared skip marks live in `tests/helpers.py`, for the optional extras:
+`needs_scoring` (numpy, enough to *score* an already-embedded query) and
+`needs_embedding` (the whole SigLIP stack, needed to turn typed text into a
+vector). Both mirror the app's own probes, so a test skips for the same reason
+the feature would refuse. Prefer them on the individual test over a
+module-level guard — most modules that need one are mostly about something
+else, and skipping their neighbours hides tests that work fine without the
+extra.
 
 ## How to look at a GUI change
 

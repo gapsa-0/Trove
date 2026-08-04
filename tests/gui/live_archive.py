@@ -269,6 +269,12 @@ def live_server(tmp_path, monkeypatch):
     sqlite inserts and a thread start -- see the durations note in the report
     for what that actually costs.
     """
+    # Seeding writes real images, so the whole tier needs Pillow. Guarded in
+    # the fixture rather than at module scope because this module is imported
+    # by conftest.py, where a collection-time skip is an error rather than a
+    # skip -- and without the guard an install without the media extra reports
+    # ninety-odd errors instead of ninety-odd skips.
+    pytest.importorskip("PIL.Image")
     cfg = Config.load()
     source_dir = tmp_path / "source"
     source_dir.mkdir()

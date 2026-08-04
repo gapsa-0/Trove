@@ -38,6 +38,11 @@ from organize_archive.services import pets_edit
 
 np = pytest.importorskip("numpy")
 Image = pytest.importorskip("PIL.Image")
+# frame.load_bgr decodes through OpenCV, and extract() catches the resulting
+# ImportError per file and records it as a detection error -- so without cv2
+# these tests do not raise, they quietly assert against a run that detected
+# nothing. Skipping is the honest outcome.
+pytest.importorskip("cv2")
 
 # One animal box covering the frame, and one face well inside it: the face's
 # overlap with the animal is 1.0, so it clears any pets_face_overlap below that

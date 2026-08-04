@@ -6,11 +6,40 @@ plain function cannot request a fixture.
 
 from __future__ import annotations
 
+import importlib.util
 import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from unittest import mock
+
+import pytest
+
+# Applied per test, not per module, because the modules that need it are mostly
+# about something else: one description-search case sits among nine ordinary
+# Browse ones in test_media_indexed.py, and skipping its neighbours to spare it
+# would hide nine tests that work perfectly well without the extra.
+#
+# It mirrors ``services/search.scoring_available`` deliberately -- asking
+# ``find_spec`` rather than importing -- so the reason a test skips is the same
+# question the app asks before it refuses the feature.
+needs_scoring = pytest.mark.skipif(
+    importlib.util.find_spec("numpy") is None,
+    reason="description search needs numpy (the 'semantic' extra)",
+)
+
+# The *other* half of description search, and a strictly stronger requirement:
+# scoring an already-embedded query needs only numpy, but turning typed text
+# into a vector needs the whole SigLIP stack. Mirrors the four packages
+# ``embeddings.backend.available`` probes for -- that function is the source of
+# truth, so if it ever grows a fifth, this list is what has to follow it.
+needs_embedding = pytest.mark.skipif(
+    any(
+        importlib.util.find_spec(name) is None
+        for name in ("numpy", "onnxruntime", "tokenizers", "PIL")
+    ),
+    reason="description search needs the 'semantic' extra (onnxruntime, tokenizers, numpy, Pillow)",
+)
 
 
 @contextmanager

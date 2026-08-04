@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from helpers import needs_embedding
 from live_archive import _get, _post
 
 # ---------------------------------------------------------------------------
@@ -154,6 +155,10 @@ API_GET_CASES = [
     pytest.param(
         "/api/browse/semantic/search?root={root_id}&q=beach",
         {"items", "offset", "limit", "count", "total"},
+        # One route, not the file: this handler embeds the typed query, so it
+        # refuses with ModelUnavailableError unless the whole semantic stack is
+        # present -- while its forty-odd neighbours run fine without it.
+        marks=needs_embedding,
         id="GET /api/browse/semantic/search",
     ),
     pytest.param(

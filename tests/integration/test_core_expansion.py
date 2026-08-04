@@ -10,6 +10,10 @@ from organize_archive.faces import cluster as fc
 from organize_archive.faces import knn, passes
 
 np = pytest.importorskip("numpy")
+# The agglomerative merge stages inside passes.py import scikit-learn at call
+# time, so without it these fail from inside the code under test rather than
+# skipping. Declared here with numpy because both come from the same extra.
+pytest.importorskip("sklearn")
 
 
 def _unit(v):

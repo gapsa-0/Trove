@@ -1,5 +1,7 @@
 import struct
 
+from helpers import needs_scoring
+
 from organize_archive.db import database as db
 from organize_archive.services import browse, search
 
@@ -50,6 +52,7 @@ def test_media_sorts_newest_first_by_default_and_oldest_on_request(tmp_path):
     assert [item["id"] for item in oldest["items"]] == [2, 3, 1, 4]
 
 
+@needs_scoring
 def test_semantic_search_can_be_reordered_by_date(tmp_path):
     db_path = _dated_catalogue(tmp_path)
 
@@ -64,6 +67,7 @@ def test_semantic_search_can_be_reordered_by_date(tmp_path):
     assert [item["id"] for item in oldest["items"]] == [2, 3, 1, 4]
 
 
+@needs_scoring
 def test_semantic_date_sort_does_not_admit_weak_matches(tmp_path):
     """Sorting reorders the matched set; the similarity floor still applies."""
     db_path = _dated_catalogue(tmp_path)

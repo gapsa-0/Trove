@@ -210,9 +210,22 @@ def test_semantic_search_reports_the_missing_extra_instead_of_ModuleNotFoundErro
 
 def test_the_scoring_probe_asks_without_importing(monkeypatch):
     """``find_spec`` rather than a try/import: asking the question must not
-    pull a 40 MB package into a process that then does not need it."""
+    pull a 40 MB package into a process that then does not need it.
+
+    Driven in both directions rather than read off this interpreter. It used to
+    assert ``scoring_available() is True`` with the comment "this venv has
+    numpy", which made the test a statement about the machine running it: in a
+    checkout installed without the semantic extra it failed rather than
+    skipping, reporting a missing package as a broken probe. Forcing
+    ``find_spec`` each way asks the question the test is actually about --
+    does the probe follow ``find_spec``, or does it import? -- and gets the
+    same answer whatever is installed.
+    """
     from organize_archive.services import search
 
-    assert search.scoring_available() is True  # this venv has numpy
+    monkeypatch.setattr(search.importlib.util, "find_spec", lambda name: object())
+    assert search.scoring_available() is True
+    # The discriminating half: with numpy genuinely importable, a probe that
+    # imported instead of asking would still say True here.
     monkeypatch.setattr(search.importlib.util, "find_spec", lambda name: None)
     assert search.scoring_available() is False

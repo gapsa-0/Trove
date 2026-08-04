@@ -28,6 +28,7 @@ import threading
 
 import factories
 import pytest
+from helpers import needs_scoring
 
 from organize_archive.config import Config
 from organize_archive.db import database as db
@@ -133,6 +134,7 @@ def test_the_face_cluster_runner_reclusters_and_reports(archive):
     assert "people" in job.message and "faces clustered" in job.message
 
 
+@needs_scoring
 def test_the_pet_cluster_runner_reclusters_and_reports(archive):
     cfg, conn, _ = archive
     file_id = factories.add_file(conn, root_id=_ROOT)

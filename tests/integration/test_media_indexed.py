@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import struct
 
+from helpers import needs_scoring
+
 from organize_archive.db import database as db
 from organize_archive.services import browse, search, semantic
 
@@ -215,6 +217,7 @@ def test_the_box_offers_itself_once_anything_has_a_location(tmp_path):
     assert browse.browse_filters(db_path, 1)["located_any"] is True
 
 
+@needs_scoring
 def test_a_description_search_can_be_narrowed_by_location(tmp_path):
     """The one place the two boxes behave differently: this filter stays live
     during a search, because unlike "indexed" it can still change the answer."""
