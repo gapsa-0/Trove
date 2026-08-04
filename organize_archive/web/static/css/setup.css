@@ -736,18 +736,15 @@
   white-space: nowrap;
 }
 
+/* The cursor after the typed query: still, not blinking. Every other cover on
+ the shelf is a held still of what its feature produces, and one card twinkling
+ away in the corner of the eye was the only thing on the screen asking to be
+ looked at while someone was reading the others. */
 .set-pv-semantic .caret {
   display: inline-block;
   width: 1.5px;
   height: 12px;
   background: var(--accent);
-  animation: set-blink 1.1s steps(1) infinite;
-}
-
-@keyframes set-blink {
-  50% {
-    opacity: 0;
-  }
 }
 
 .set-pv-semantic .hits {
@@ -782,10 +779,6 @@
 @media (prefers-reduced-motion: reduce) {
 
   .set-chip.landed {
-    animation: none;
-  }
-
-  .set-pv-semantic .caret {
     animation: none;
   }
 

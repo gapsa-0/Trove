@@ -114,6 +114,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   read back off it. A name typed while adding a feature is no longer lost either,
   in either direction: half-typed names now survive the panel re-rendering, and
   renaming an existing archive survives it too instead of reverting.
+- The blinking cursor in the "Search by description" card on that screen is now
+  still, like every other card's picture.
 
 - Pausing responds immediately. A pause asks the running job to stop at its next
   batch checkpoint, which takes seconds, and the card went on reporting the work
