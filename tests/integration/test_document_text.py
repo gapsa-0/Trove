@@ -20,7 +20,7 @@ from trove.db import database as db
 from trove.pipeline.job import Job, JobContext
 from trove.pipeline.runners import text as text_runner
 from trove.services import archives as archive_service
-from trove.services import documents
+from trove.services import documents, text_search
 from trove.text.results import DOCUMENTS
 
 WANTED = frozenset({DOCUMENTS})
@@ -256,3 +256,113 @@ def test_the_index_never_outlives_the_chunks_it_addresses(archive):
         )
     finally:
         conn.close()
+
+
+# --- reading pictures, once Text in images is on ----------------------------
+
+needs_ocr = pytest.mark.skipif(
+    not __import__("trove.text.ocr", fromlist=["ocr"]).available(),
+    reason="the 'ocr' extra is not installed",
+)
+
+BOTH_HALVES = ["documents", "ocr"]
+
+
+@pytest.fixture
+def scanned_archive(tmp_path):
+    """An archive holding a born-digital PDF, a scan, and a photograph."""
+    source = tmp_path / "src"
+    source.mkdir()
+    fx.pdf(source / "contrato.pdf", ["Contrato de arrendamiento firmado en marzo"])
+    fx.scan_pdf(source / "escaneo.pdf", ["FACTURA 4471\nImporte 850,00 EUR"], dpi=200)
+    fx.photo(source / "paisaje.jpg")
+
+    cfg = Config(db_path=str(tmp_path / "legacy.db"), cache_dir=str(tmp_path / "cache"))
+    added = archive_service.add_archive(cfg, str(source))
+    aid = added["id"]
+    cfg.set_archive_features(aid, ["documents"])
+
+    db_path = cfg.archive_db_path(aid)
+    conn = db.connect(db_path)
+    db.init_db(conn)
+    db.reconcile_root(conn, aid, str(source))
+    for name, media in (
+        ("contrato.pdf", "document"),
+        ("escaneo.pdf", "document"),
+        ("paisaje.jpg", "image"),
+    ):
+        conn.execute(
+            """INSERT INTO files(root_id, rel_path, ext, size, mtime, media_type,
+                                 sha256, first_seen, last_seen)
+               VALUES(?, ?, ?, ?, 0, ?, ?, 'now', 'now')""",
+            (
+                aid,
+                name,
+                name.rsplit(".", 1)[1],
+                (source / name).stat().st_size,
+                media,
+                f"sha-{name}",
+            ),
+        )
+    conn.commit()
+    conn.close()
+    return cfg, aid, db_path
+
+
+@needs_ocr
+def test_documents_alone_leaves_the_scan_and_never_sees_the_photo(scanned_archive):
+    """Two different reasons for two different files: the scan is skipped with a
+    reason that invites the other half, and the photograph is not work at all."""
+    cfg, aid, db_path = scanned_archive
+    _run(cfg, aid)
+
+    rows = _rows(db_path)
+    assert rows["contrato.pdf"]["status"] == "extracted"
+    assert rows["escaneo.pdf"]["status"] == "skipped"
+    assert "pictures of text" in rows["escaneo.pdf"]["error"]
+    assert "paisaje.jpg" not in rows, "a picture is not work until Text in images is on"
+
+
+@needs_ocr
+def test_switching_text_in_images_on_reads_the_scan_and_the_photo(scanned_archive):
+    """The `wanted` leg doing its job end to end: files already recorded under
+    one half become work again under two."""
+    cfg, aid, db_path = scanned_archive
+    _run(cfg, aid)
+    cfg.set_archive_features(aid, BOTH_HALVES)
+
+    both = frozenset({"documents", "ocr"})
+    assert documents.text_pending(db_path, aid, both) == 3
+    _run(cfg, aid)
+
+    rows = _rows(db_path)
+    assert rows["escaneo.pdf"]["status"] == "extracted"
+    assert rows["escaneo.pdf"]["extractor"] == "pdf-ocr"
+    assert rows["escaneo.pdf"]["confidence"] is not None
+    # The photograph was looked at and holds no writing -- a skip, not an error.
+    assert rows["paisaje.jpg"]["status"] == "skipped"
+    assert "no writing" in rows["paisaje.jpg"]["error"]
+
+
+@needs_ocr
+def test_text_read_from_a_scan_is_searchable(scanned_archive):
+    """The whole point: a word that exists only as pixels becomes findable."""
+    cfg, aid, db_path = scanned_archive
+    cfg.set_archive_features(aid, BOTH_HALVES)
+    _run(cfg, aid)
+
+    page = text_search.text_search(db_path, "factura", root_id=aid)
+    assert [i["name"] for i in page["items"]] == ["escaneo.pdf"]
+
+
+@needs_ocr
+def test_a_born_digital_pdf_is_not_re_read_as_pictures(scanned_archive):
+    """Its pages carry text and no large image, so the expensive half never
+    touches it -- the false positive that would double a run."""
+    cfg, aid, db_path = scanned_archive
+    cfg.set_archive_features(aid, BOTH_HALVES)
+    _run(cfg, aid)
+
+    row = _rows(db_path)["contrato.pdf"]
+    assert row["extractor"] == "pdf-text", "read from its text layer, not rasterised"
+    assert row["confidence"] is None, "a parser is exact; only OCR carries a confidence"

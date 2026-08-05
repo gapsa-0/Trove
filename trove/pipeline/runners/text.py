@@ -73,6 +73,16 @@ def _text_pass(
         return (0, 0, 0, 0, 0)
 
     wanted = documents.wanted_key(extractors)
+    # Resolved once per pass rather than per file: trove/text is L1 and knows
+    # nothing about an archive's settings, so this layer hands them down.
+    limits = extract.Limits(
+        max_bytes=cfg.documents_max_bytes,
+        max_pages=cfg.ocr_max_pages_per_file,
+        render_dpi=cfg.ocr_render_dpi,
+        detect_side=cfg.ocr_detect_side,
+        min_chars_per_page=cfg.ocr_text_layer_chars_per_page,
+        min_image_cover=cfg.ocr_min_image_cover,
+    )
     read = written = skipped = failed = 0
     for offset, row in enumerate(rows):
         if cancel.is_set():
@@ -82,8 +92,9 @@ def _text_pass(
             extraction = extract.read(
                 Path(row["root_path"]) / row["rel_path"],
                 row["ext"],
+                row["media_type"],
                 extractors,
-                max_bytes=cfg.documents_max_bytes,
+                limits=limits,
             )
             chunks = chunk_blocks(
                 list(extraction.blocks),

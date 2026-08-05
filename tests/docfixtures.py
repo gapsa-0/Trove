@@ -154,3 +154,51 @@ def scanned_pdf(path: Path, pages: int = 1) -> Path:
     for these; Documents has to report that honestly rather than as a failure.
     """
     return pdf(path, [""] * pages)
+
+
+def scan_pdf(path: Path, pages: list[str], dpi: int = 150) -> Path:
+    """A PDF whose pages are *pictures* of text -- what a scanner produces.
+
+    Rendered with Pillow, which embeds each image full-page and writes no text
+    layer at all. That is the shape the arbitration has to recognise: almost no
+    extractable characters, and one image covering the sheet.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    size = (int(8.27 * dpi), int(11.69 * dpi))  # A4
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", dpi // 5)
+    except OSError:  # pragma: no cover - depends on the machine's fonts
+        font = ImageFont.load_default()
+
+    rendered = []
+    for body in pages:
+        img = Image.new("RGB", size, "white")
+        draw = ImageDraw.Draw(img)
+        y = dpi
+        for line in body.splitlines():
+            draw.text((dpi // 2, y), line, font=font, fill="black")
+            y += dpi // 3
+        rendered.append(img)
+    rendered[0].save(path, "PDF", save_all=True, append_images=rendered[1:], resolution=dpi)
+    return path
+
+
+def photo(path: Path, size: tuple[int, int] = (900, 700)) -> Path:
+    """A picture with no writing anywhere in it -- the overwhelmingly common case."""
+    import random
+
+    from PIL import Image
+
+    random.seed(11)
+    img = Image.new("RGB", size)
+    px = img.load()
+    for x in range(0, size[0], 6):
+        for y in range(0, size[1], 6):
+            colour = (random.randint(60, 200), random.randint(80, 210), random.randint(90, 220))
+            for a in range(6):
+                for b in range(6):
+                    if x + a < size[0] and y + b < size[1]:
+                        px[x + a, y + b] = colour
+    img.save(path)
+    return path

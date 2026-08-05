@@ -253,6 +253,32 @@ FEATURES: tuple[Feature, ...] = (
         extractor="documents",
     ),
     Feature(
+        id="ocr",
+        label="Text in images",
+        icon="ocr",
+        tagline="Read the writing in photos, screenshots and scans",
+        verb="Reading",
+        noun="text in images",
+        detail=(
+            "Finds writing in your pictures and reads it: a photographed receipt, a "
+            "screenshot, a scanned contract that is really just an image of a page. "
+            "It reads Spanish and English, accents included, and nothing is downloaded "
+            "\u2014 the models come with the app. This is the slow one, and worth "
+            "knowing before you switch it on: every picture has to be opened and looked "
+            "at, which is roughly half a second each, so an archive of a hundred "
+            "thousand photos is an overnight job rather than a coffee break. It stops "
+            "and resumes safely at any point."
+        ),
+        required=False,
+        stages=("text",),
+        card="text",
+        sections=(),
+        # Nothing to download: unusually for a model here, the weights ship
+        # inside the wheel (ADR 0019), so this is honest rather than optimistic.
+        download_mb=0,
+        extractor="ocr",
+    ),
+    Feature(
         id="meaning",
         label="Search documents by meaning",
         icon="meaning",

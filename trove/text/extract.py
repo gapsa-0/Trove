@@ -9,18 +9,22 @@ re-derived by each caller from a block count.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
-from . import office, pdf, plain
+from . import ocr, office, pdf, plain, raster
 from .results import (
     DOCUMENTS,
     NO_TEXT_LAYER,
+    OCR,
     OFFICE,
     OPENDOCUMENT,
+    PDF_OCR,
     PDF_TEXT,
     PLAIN,
     TOO_LARGE,
     UNSUPPORTED,
+    Block,
     Extraction,
 )
 
@@ -34,16 +38,55 @@ DOCUMENT_READABLE = frozenset({"pdf"}) | office.OFFICE_EXTS | plain.PLAIN_EXTS
 # legacy formats is visible where the file is, not only in the documentation.
 DOCUMENT_REFUSED = office.LEGACY_EXTS
 
+# Pictures the OCR half will open. Deliberately not every image extension the
+# catalogue knows: raw camera formats are photographs of the world by
+# definition, cost the most to decode, and are the least likely thing anyone
+# ever photographed a document with.
+IMAGE_READABLE = frozenset(
+    {"jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff", "heic", "heif", "jfif", "gif"}
+)
+
+
+@dataclass(frozen=True)
+class Limits:
+    """Every bound one file is read under, in one place.
+
+    Passed down rather than read from config here: ``trove/text`` is L1 and
+    knows nothing about an archive's settings, so the service layer resolves
+    these and hands them over.
+    """
+
+    max_bytes: int = 64 * 1024 * 1024
+    # Pages beyond this and the file is skipped rather than read. A 2,000-page
+    # scanned book is an hour of OCR on its own, and one file should never be
+    # able to hold the stage that long.
+    max_pages: int = 200
+    render_dpi: int = 200
+    detect_side: int = 736
+    # Below this many characters a page carries no useful text layer.
+    min_chars_per_page: int = 40
+    # ...and above this much image coverage it is a picture of a page rather
+    # than a page with a picture on it. Both are required -- see
+    # ``pdf.looks_scanned`` for why sparse text alone is not evidence.
+    min_image_cover: float = 0.5
+
 
 def available(extractors: frozenset[str]) -> bool:
-    """Whether this build can run the extractors it was asked for.
+    """Whether this build can run at least one of the halves it was asked for.
 
-    True for Documents on any build. Everything except PDF is standard library,
-    so a missing ``pypdfium2`` costs PDFs a per-file skip rather than costing the
-    whole feature -- which is the same shape as a missing ffmpeg making videos
-    unindexable without disabling search by description.
+    Documents is available on any build: everything except PDF is standard
+    library, so a missing ``pypdfium2`` costs PDFs a per-file skip rather than
+    the whole feature -- the shape a missing ffmpeg has for videos.
+
+    Text in images is different, because there is no partial state to degrade
+    to. Its models live inside its package, so the engine either imports with
+    everything it needs or is absent entirely.
+
+    Either half being runnable is enough for the stage, since they share it.
     """
-    return DOCUMENTS in extractors
+    if DOCUMENTS in extractors:
+        return True
+    return OCR in extractors and ocr.available()
 
 
 def readable_exts(wanted: frozenset[str]) -> frozenset[str]:
@@ -55,15 +98,22 @@ def readable_exts(wanted: frozenset[str]) -> frozenset[str]:
     document. Refused formats are included on purpose: they enter once, get a
     row saying why, and then stop counting.
     """
+    exts: frozenset[str] = frozenset()
     if DOCUMENTS in wanted:
-        return DOCUMENT_READABLE | DOCUMENT_REFUSED
-    return frozenset()
+        exts |= DOCUMENT_READABLE | DOCUMENT_REFUSED
+    if OCR in wanted:
+        # Every picture, plus PDFs -- a scan is a PDF whose pages are pictures,
+        # and which of its pages need reading that way is decided per page.
+        exts |= IMAGE_READABLE | {"pdf"}
+    return exts
 
 
 def eligible(ext: str, media_type: str, wanted: frozenset[str]) -> bool:
     """Whether this file is work for the text pass, given the halves switched on."""
-    if DOCUMENTS in wanted and media_type == "document":
-        return ext in readable_exts(wanted)
+    if media_type == "document":
+        return (DOCUMENTS in wanted or OCR in wanted) and ext in readable_exts(wanted)
+    if media_type == "image":
+        return OCR in wanted and ext in IMAGE_READABLE
     return False
 
 
@@ -78,22 +128,68 @@ def _document_extractor(ext: str) -> str:
     return PLAIN
 
 
-def _read_document(path: Path, ext: str) -> Extraction:
+def _read_pdf(path: Path, wanted: frozenset[str], limits: Limits) -> Extraction:
+    """One PDF, read by whichever halves are on and whichever each page needs.
+
+    **This is why the two features share a stage.** Whether a page needs reading
+    as pictures cannot be known until its text layer has been tried, so the file
+    is opened once and each page is routed on what that open found. A forty-page
+    contract with a scanned appendix gets both treatments, in page order, and
+    comes out as one document.
+    """
+    if not pdf.available():
+        raise ValueError(f"{UNSUPPORTED} pdf: no PDF reader is installed")
+    stats = pdf.page_stats(path)
+    if len(stats) > limits.max_pages:
+        raise ValueError(
+            f"{TOO_LARGE} the {limits.max_pages}-page limit for reading ({len(stats)} pages)"
+        )
+
+    layer = {block.page: block for block in pdf.read(path)[0]} if DOCUMENTS in wanted else {}
+    scanned = [
+        s for s in stats if pdf.looks_scanned(s, limits.min_chars_per_page, limits.min_image_cover)
+    ]
+    # Documents alone, and nothing came out of the text layer. If the pages look
+    # like pictures, say so specifically -- that reason is what explains the file
+    # to its owner and what makes switching Text in images on come back for it.
+    if not layer and OCR not in wanted:
+        if scanned:
+            raise ValueError(f"{NO_TEXT_LAYER}: this PDF is pictures of text, not text")
+        raise ValueError(f"{NO_TEXT_LAYER}: the file holds no readable text")
+
+    blocks: list[Block] = []
+    confidences: list[float] = []
+    read_pages = {s.number for s in scanned} if OCR in wanted else set()
+    for stat in stats:
+        if stat.number in layer:
+            blocks.append(layer[stat.number])
+        elif stat.number in read_pages:
+            lines, confidence = ocr.read_array(
+                raster.pdf_page(path, stat.number, limits.render_dpi),
+                detect_side=limits.detect_side,
+            )
+            if lines:
+                blocks.append(Block(stat.number, "\n".join(lines)))
+                if confidence is not None:
+                    confidences.append(confidence)
+    if not blocks:
+        raise ValueError(f"{NO_TEXT_LAYER}: nothing could be read from this PDF")
+
+    # `pdf-ocr` only where pixels actually contributed, so the extractor on the
+    # row says how the text was obtained rather than which halves were enabled.
+    extractor = PDF_OCR if confidences else PDF_TEXT
+    mean = sum(confidences) / len(confidences) if confidences else None
+    return Extraction(extractor, tuple(blocks), pages=len(stats), confidence=mean)
+
+
+def _read_document(path: Path, ext: str, wanted: frozenset[str], limits: Limits) -> Extraction:
     """One file that is expected to carry its own text."""
     if ext in DOCUMENT_REFUSED:
         raise ValueError(
             f"{UNSUPPORTED} legacy Office format (.{ext}): no pure-Python reader exists"
         )
     if ext == "pdf":
-        if not pdf.available():
-            raise ValueError(f"{UNSUPPORTED} pdf: no PDF reader is installed")
-        blocks, pages = pdf.read(path)
-        if not blocks:
-            # Not a failure, and specifically not permanent: this is what a scan
-            # looks like, and Text in images is the reader for it. Saying so in
-            # the reason is how the file explains itself on the Documents card.
-            raise ValueError(f"{NO_TEXT_LAYER}: this PDF is pictures of text, not text")
-        return Extraction(PDF_TEXT, tuple(blocks), pages=pages)
+        return _read_pdf(path, wanted, limits)
     reader = office.read if ext in office.OFFICE_EXTS else plain.read
     blocks = reader(path, ext)
     if not blocks:
@@ -101,16 +197,45 @@ def _read_document(path: Path, ext: str) -> Extraction:
     return Extraction(_document_extractor(ext), tuple(blocks))
 
 
-def read(path: Path, ext: str, wanted: frozenset[str], *, max_bytes: int) -> Extraction:
+def _read_picture(path: Path, limits: Limits) -> Extraction:
+    """One photograph or screenshot.
+
+    Most pictures hold no writing, and that is a skip rather than a failure --
+    the reason says so, the file stops being pending, and nothing suggests
+    anything went wrong.
+    """
+    found = ocr.read_image(path, detect_side=limits.detect_side)
+    if found is None:
+        raise ValueError(f"{NO_TEXT_LAYER}: no writing was found in this picture")
+    return found
+
+
+def read(
+    path: Path,
+    ext: str,
+    media_type: str,
+    wanted: frozenset[str],
+    *,
+    limits: Limits | None = None,
+) -> Extraction:
     """Read one file, or raise ``ValueError`` carrying the reason it was not.
 
-    ``max_bytes`` bounds a single file, because one pathological input should
-    cost a skip rather than the pass. It is checked here rather than by the
-    caller so that every reader inherits it.
+    Every bound lives on ``limits`` rather than being checked by the caller, so
+    that one pathological input costs a skip and not the pass, whichever reader
+    it reaches.
     """
+    bounds = limits or Limits()
     size = path.stat().st_size
-    if size > max_bytes:
-        raise ValueError(f"{TOO_LARGE} the {max_bytes:,}-byte limit for reading ({size:,} bytes)")
-    if DOCUMENTS in wanted and (ext in DOCUMENT_READABLE or ext in DOCUMENT_REFUSED):
-        return _read_document(path, ext)
+    if size > bounds.max_bytes:
+        raise ValueError(
+            f"{TOO_LARGE} the {bounds.max_bytes:,}-byte limit for reading ({size:,} bytes)"
+        )
+    if media_type == "image":
+        if OCR not in wanted or ext not in IMAGE_READABLE:
+            raise ValueError(f"{UNSUPPORTED} .{ext}: nothing switched on reads pictures")
+        return _read_picture(path, bounds)
+    if ext in DOCUMENT_READABLE or ext in DOCUMENT_REFUSED:
+        if DOCUMENTS not in wanted and not (ext == "pdf" and OCR in wanted):
+            raise ValueError(f"{UNSUPPORTED} .{ext}: nothing switched on can read this")
+        return _read_document(path, ext, wanted, bounds)
     raise ValueError(f"{UNSUPPORTED} .{ext}: nothing switched on can read this")

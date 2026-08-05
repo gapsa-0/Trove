@@ -199,6 +199,33 @@ class Config(ArchiveRegistryMixin):
     documents_chunk_chars: int = 1200
     documents_chunk_overlap: int = 200
 
+    # Reading text out of pictures.
+    #
+    # Detection and recognition deliberately run at different resolutions.
+    # Detection is the half that runs on *every* image, and its cost is set by
+    # input size -- measured on 4 cores: 1600px 1.51s, 1200px 0.87s, 960px
+    # 0.62s, 736px 0.57s, and 512px no faster while missing boxes. So detection
+    # sees a downscaled copy and recognition sees crops of the original, which
+    # keeps small text readable: on a 2480x3508 scan the two-resolution path
+    # returns byte-identical text to reading the whole thing at full size, and a
+    # picture with no writing in it costs 0.59s instead of 1.51s.
+    ocr_detect_side: int = 736
+    # What a PDF page is rendered at before it is read. 200 puts 10pt body text
+    # at about 28px tall, comfortably above what recognition needs, and costs a
+    # quarter the memory of 300.
+    ocr_render_dpi: int = 200
+    # A page needs reading as pictures when it has almost no text layer AND is
+    # mostly covered by one image. Both, because sparse text alone is not
+    # evidence -- a title page, a section divider or a page holding one table
+    # has almost no characters and nothing OCR could add, and on a long document
+    # those are common enough that treating them as scans would be most of a
+    # wasted run.
+    ocr_text_layer_chars_per_page: int = 40
+    ocr_min_image_cover: float = 0.5
+    # One file may not hold the stage indefinitely: a 2,000-page scanned book is
+    # an hour of OCR on its own. Beyond this it is skipped, with that reason.
+    ocr_max_pages_per_file: int = 200
+
     # Searching documents. Two rankings are fused: exact words (FTS5's BM25) and
     # meaning (the e5 vectors). Reciprocal Rank Fusion combines their *positions*
     # rather than their scores, which is what lets two incomparable scales be

@@ -28,11 +28,12 @@ from trove.text.results import (
 )
 
 WANTED = frozenset({DOCUMENTS})
-BIG = 64 * 1024 * 1024
 
 
-def _read(path, ext):
-    return extract.read(path, ext, WANTED, max_bytes=BIG)
+def _read(path, ext, media_type="document", wanted=WANTED, **limits):
+    return extract.read(
+        path, ext, media_type, wanted, limits=extract.Limits(**limits) if limits else None
+    )
 
 
 def _text(path, ext) -> str:
@@ -186,7 +187,7 @@ def test_a_file_over_the_size_limit_is_skipped_before_it_is_opened(tmp_path):
     path = tmp_path / "a.txt"
     path.write_text("x" * 5000, encoding="utf-8")
     with pytest.raises(ValueError, match="media exceeds"):
-        extract.read(path, "txt", WANTED, max_bytes=1000)
+        _read(path, "txt", max_bytes=1000)
 
 
 def test_an_empty_document_is_a_skip_rather_than_an_empty_index_entry(tmp_path):
