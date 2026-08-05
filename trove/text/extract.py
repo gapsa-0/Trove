@@ -46,10 +46,24 @@ def available(extractors: frozenset[str]) -> bool:
     return DOCUMENTS in extractors
 
 
+def readable_exts(wanted: frozenset[str]) -> frozenset[str]:
+    """Every extension the switched-on halves consider work.
+
+    The backlog query is built from this rather than from ``media_type``, so a
+    file the pass would only skip never enters it at all -- a .zip is not
+    counted as queued work and never gets a row explaining that it is not a
+    document. Refused formats are included on purpose: they enter once, get a
+    row saying why, and then stop counting.
+    """
+    if DOCUMENTS in wanted:
+        return DOCUMENT_READABLE | DOCUMENT_REFUSED
+    return frozenset()
+
+
 def eligible(ext: str, media_type: str, wanted: frozenset[str]) -> bool:
     """Whether this file is work for the text pass, given the halves switched on."""
     if DOCUMENTS in wanted and media_type == "document":
-        return ext in DOCUMENT_READABLE or ext in DOCUMENT_REFUSED
+        return ext in readable_exts(wanted)
     return False
 
 

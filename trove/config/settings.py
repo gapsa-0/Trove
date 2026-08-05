@@ -183,6 +183,22 @@ class Config(ArchiveRegistryMixin):
     # leaves a bar far too high, and search will look broken.
     semantic_search_center_embeddings: bool = True
 
+    # Reading the text inside documents.
+    #
+    # The size limit bounds ONE file, so a pathological input costs a skip
+    # rather than the pass -- a 400 MB PDF of scanned plans should not hold the
+    # stage while it is parsed. 64 MB comfortably clears real paperwork.
+    documents_max_bytes: int = 67_108_864
+    # How a document is cut into indexable passages. Characters, not tokens: a
+    # .txt should not need a 17 MB tokenizer loaded to be read. The number is
+    # sized against the *dense* end of the measured range rather than the
+    # average, because dense is what a paperwork archive is full of -- see
+    # trove/text/chunk.py, which carries the measurements. It is not a knob to
+    # turn casually: changing either value changes every chunk boundary, which
+    # means bumping TEXT_VERSION and re-reading the archive.
+    documents_chunk_chars: int = 1200
+    documents_chunk_overlap: int = 200
+
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter
 
