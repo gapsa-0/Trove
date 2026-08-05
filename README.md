@@ -84,6 +84,12 @@ library.*
   no text in the file at all, so this finds nothing in it (that is what the
   planned Text in images feature is for), and pre-2007 `.doc`, `.xls` and `.ppt`
   files cannot be read.
+- Searches those documents by meaning as well as by word, when the optional
+  Search by meaning feature is enabled. "How much is the rent" finds the clause
+  saying *importe del alquiler mensual* without those words appearing in the
+  search, and an English question finds a Spanish document. The two rankings are
+  shown as one list, ordered so that a document both of them found comes first —
+  they miss different things, which is why both are kept.
 - Shows photos the right way up. EXIF orientation is always honoured, and a photo
   whose pixels are stored turned while its EXIF says otherwise (common among
   re-exports of the same shot) is recognised by the detectors and displayed
@@ -102,7 +108,8 @@ scan ┐
      ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
 metadata ┘                   ├─→ places
                              ├─→ semantic indexing (optional)
-                             └─→ reading documents (optional)
+                             ├─→ reading documents (optional)
+                             └─→ document meaning (optional)
 ```
 
 Long stages commit progress in batches. Closing or switching archives asks current
@@ -117,8 +124,8 @@ something else. The sidebar lists every stage currently running, not just one.
 
 Everything is local. Scanning, hashing, metadata extraction, duplicates,
 thumbnails, place clustering, face detection and clustering, search by
-description, reading the text inside documents, and the SQLite catalogue all
-stay on the machine. Trove has no telemetry, no accounts, no API keys, and does
+description, reading the text inside documents and searching them by meaning,
+and the SQLite catalogue all stay on the machine. Trove has no telemetry, no accounts, no API keys, and does
 not modify source media.
 
 **The map's street-map layer is the only outbound network call in the app.**

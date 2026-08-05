@@ -45,9 +45,13 @@ real dependency graph, from `trove/pipeline/stages.py`:
                               ├──▶ semantic ──────────▶ embeddings
                               │    (optional, SigLIP 2)
                               │
-                              └──▶ text ──────────────▶ doc_text / doc_chunks
-                                   (optional; documents + OCR,
-                                    one open per file)
+                              ├──▶ text ──────────────▶ doc_text / doc_chunks
+                              │    (optional; documents + OCR,
+                              │     one open per file)
+                              │
+                              └──▶ meaning ───────────▶ doc_chunk_embeddings
+                                   (optional, multilingual-e5;
+                                    no dep on text -- see ADR 0018)
 
                    one archive.db per open archive (SQLite)
                                     ▲ read / write
@@ -115,6 +119,8 @@ grandfathered.
 | how a document is cut into searchable passages | `trove/text/chunk.py` (its docstring carries the token measurements the sizes came from) |
 | when the text stage re-reads a file | `trove/services/documents.py`'s four-legged pending predicate, and `TEXT_VERSION` beside it |
 | how text search ranks, and what a hit shows | `trove/services/text_search.py` + the text group in `trove/web/static/js/library.js` |
+| how the two document rankings are fused, and where each is cut | `trove/services/text_search.py`'s `_rrf` / `_vector_ranked`, with the thresholds in `trove/config/settings.py` (ADR 0018) |
+| the text embedder's recipe, and why there are two embedders | `trove/embeddings/text_backend.py` |
 | how a screen looks | `trove/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
 | the SQLite schema | `trove/db/schema.sql`, plus the migration in `init_db` (`trove/db/database.py`) |
 | settings and their defaults | `trove/config/settings.py` |
@@ -132,7 +138,7 @@ follow automatically.
 
 ## The schema, summarised
 
-`trove/db/schema.sql` currently defines 33 tables, grouped by what
+`trove/db/schema.sql` currently defines 34 tables, grouped by what
 they describe:
 
 | Group | Tables |
@@ -143,7 +149,7 @@ they describe:
 | People | `persons`, `faces`, `face_links`, `person_merges`, `person_files`, `fiqa_calibration` |
 | Pets | `pets`, `animal_detections`, `pet_links`, `pet_merges`, `pet_files`, `nonhuman_detections` |
 | Semantic | `semantic_embeddings` |
-| Document text | `doc_text`, `doc_chunks` (+ `doc_chunk_fts`, see below) |
+| Document text | `doc_text`, `doc_chunks`, `doc_chunk_embeddings` (+ `doc_chunk_fts`, see below) |
 | Bookkeeping | `app_state`, `scan_runs`, `face_scan`, `pet_scan` |
 
 `orientation` is grouped with the catalogue rather than with people or pets:

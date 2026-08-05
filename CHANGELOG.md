@@ -15,6 +15,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Documents can be found by what they are about, not just by the words they
+  use.** Switch on *Search documents by meaning* alongside Documents, and asking
+  "how much is the rent" finds the clause that says *importe del alquiler
+  mensual* — not one of those words has to appear in what you typed. It works
+  across languages too: an English question finds a Spanish document, with
+  nothing translated on the way.
+
+  It sits beside the exact-word search rather than replacing it, and the results
+  come back as one list ordered so that a document both ways found comes first.
+  That is deliberate: exact words are unbeatable for an account number or a
+  surname and useless when you cannot remember the wording, and meaning is the
+  other way round. Keeping both is what covers each one's blind spot.
+
+  It needs Documents switched on, since what it indexes is what that reads, and
+  it downloads a 129 MB model once. Like every other model in Trove it runs on
+  this machine — the passages and the question both stay here.
 - **Trove can read what is inside your documents.** Switch on *Documents* when
   you set up an archive, and the search box also looks inside the files rather
   than only at their names: type a phrase from a contract and the contract comes

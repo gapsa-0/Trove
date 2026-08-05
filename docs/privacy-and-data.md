@@ -17,10 +17,17 @@ SQLite catalogue as everything else, and searching it is a SQLite query. No part
 of a document, and no phrase you search for, is sent anywhere or written outside
 that catalogue.
 
+**Searching documents by meaning does need a model, and it still runs here.**
+It downloads once (~129 MB) and then works offline like every other model in
+Trove. What it produces is a list of numbers per passage, stored in the same
+per-archive catalogue; the passage itself never leaves the machine, and neither
+does the question you type.
+
 **The only time Archive uses the network on its own** is downloading model
-weights: ~550 MB for People and Pets detection on their first run, and ~690 MB
-for the search-by-description model on an archive's first indexing pass, both
-fetched from GitHub or Hugging Face. Only those downloads happen — no photo,
+weights: ~550 MB for People and Pets detection on their first run, ~690 MB for
+the search-by-description model on an archive's first indexing pass, and ~129 MB
+for the search-documents-by-meaning model, all fetched from GitHub or Hugging
+Face. Only those downloads happen — no photo,
 thumbnail, filename, search query, or catalogue record is sent anywhere. Once
 the weights are cached, everything works fully offline. The pet
 re-identification and face-embedding models are bundled with the installer and

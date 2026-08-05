@@ -41,6 +41,13 @@ Do not publish a release while any entry is incomplete.
   repository above) — Gemma Terms of Use —
   https://ai.google.dev/gemma/terms — used only to turn a typed search query
   into token ids for the SigLIP 2 text tower.
+- multilingual-e5-small text embedding model — MIT — downloaded at first use, not
+  bundled. Weights and the ONNX export are both upstream's, at a pinned revision:
+  https://huggingface.co/intfloat/multilingual-e5-small
+  Used to turn document passages and typed searches into vectors for searching
+  documents by meaning. Unlike buffalo_l and AdaFace this carries no
+  non-commercial clause, and unlike the Gemma tokenizer above it is a standard
+  OSI licence.
 - pypdfium2 / PDFium — Apache-2.0 or BSD-3-Clause (pypdfium2's own code) over a
   prebuilt PDFium, BSD-3-Clause — https://github.com/pypdfium2-team/pypdfium2
   Bundled in the installer, not downloaded: the wheel carries the PDFium shared
