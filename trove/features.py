@@ -227,47 +227,44 @@ FEATURES: tuple[Feature, ...] = (
         id="documents",
         label="Documents",
         icon="documents",
-        tagline="Read what your PDFs and documents actually say",
+        tagline="Find a document by a phrase inside it",
         verb="Reading",
         noun="documents",
         detail=(
-            "Reads the text out of PDFs that carry a text layer, Word, Excel and "
-            "PowerPoint files, OpenDocument files, plain text, Markdown, CSV, web pages "
-            "and notebooks, so you can find a contract by a phrase inside it rather than "
-            "by remembering what the file was called. Nothing is downloaded and nothing "
-            "leaves this machine — the readers are the Python standard library and one "
-            "PDF library. A PDF that is only pictures of text needs Text in images "
-            "instead, and older .doc, .xls and .ppt files cannot be read at all."
+            "Reads the text a file already carries: Word, Excel and PowerPoint, "
+            "OpenDocument, plain text, Markdown, CSV, web pages, notebooks, and PDFs "
+            "that store their characters rather than a picture of them. A PDF that is "
+            "only pictures of a page holds nothing for this to read — that one is "
+            "Pictures of text."
         ),
         required=False,
         stages=("text",),
         card="text",
         sections=(),
-        # Deliberately no ``pairs_with``. Documents and Text in images share a
+        # Deliberately no ``pairs_with``. Documents and Pictures of text share a
         # stage, but they are not a pair in this field's sense: People and Pets
         # check each other's work and each is more accurate for the other being
         # on, which is what the panel's note about a lonely half actually says.
-        # These two read *different files* -- one the text layer, one the pixels
-        # -- and neither improves the other. The detail above says which is
-        # which, where a note claiming they verify each other would be wrong.
+        # These two read *different text* -- one the characters a file stores,
+        # one the pixels -- and neither improves the other. The detail above says
+        # which is which, where a note claiming they verify each other would be
+        # wrong.
         extractor="documents",
     ),
     Feature(
         id="ocr",
-        label="Text in images",
+        label="Pictures of text",
         icon="ocr",
-        tagline="Read the writing in photos, screenshots and scans",
+        tagline="Read the writing in screenshots, photos and scanned PDFs",
         verb="Reading",
-        noun="text in images",
+        noun="pictures of text",
         detail=(
-            "Finds writing in your pictures and reads it: a photographed receipt, a "
-            "screenshot, a scanned contract that is really just an image of a page. "
-            "It reads Spanish and English, accents included, and nothing is downloaded "
-            "\u2014 the models come with the app. This is the slow one, and worth "
-            "knowing before you switch it on: every picture has to be opened and looked "
-            "at, which is roughly half a second each, so an archive of a hundred "
-            "thousand photos is an overnight job rather than a coffee break. It stops "
-            "and resumes safely at any point."
+            "Reads writing off the pixels: a photographed receipt, a screenshot, and "
+            "above all a PDF from a scanner, where the page is an image and the file "
+            "holds no text to find. Spanish and English, accents included. This is the "
+            "slow one \u2014 about half a second per picture, so a hundred thousand of "
+            "them is an overnight job rather than a coffee break. It stops and resumes "
+            "safely at any point."
         ),
         required=False,
         stages=("text",),
@@ -277,33 +274,6 @@ FEATURES: tuple[Feature, ...] = (
         # inside the wheel (ADR 0019), so this is honest rather than optimistic.
         download_mb=0,
         extractor="ocr",
-    ),
-    Feature(
-        id="meaning",
-        label="Search documents by meaning",
-        icon="meaning",
-        tagline="Find a document by what it is about, not the words it uses",
-        verb="Indexing",
-        noun="documents for meaning",
-        detail=(
-            "Reads the text Documents found and turns each passage into a fingerprint of "
-            "what it means, so “how much is the rent” finds the clause that says “importe "
-            "del alquiler mensual” without any of those words appearing in your search. It "
-            "works across languages — an English question finds a Spanish document — and it "
-            "runs beside the exact-word search rather than replacing it, because the two "
-            "miss different things. Needs Documents switched on, since what it indexes is "
-            "what that one reads."
-        ),
-        required=False,
-        stages=("meaning",),
-        card="meaning",
-        sections=(),
-        download_mb=129,
-        # Named the other way round from People/Pets, and correctly so: this
-        # feature really is less useful without Documents, because Documents is
-        # what produces the text it indexes. Documents does not name this one
-        # back — it is complete on its own.
-        pairs_with="documents",
     ),
 )
 
@@ -464,11 +434,11 @@ class SearchWay:
     """One way a typed query can be answered, as Browse presents it.
 
     A *way* is not a feature and there are fewer of them than there are
-    features. Five readers fill indexes -- a file's name, a photo, a document's
-    text layer, writing read off pixels, a passage's meaning -- but only three
-    rankings can answer a query, because Documents, Text in images and Search by
-    meaning all feed one of them (ADR 0020). So this composes the three, and
-    ``readers`` is what says which features got you each one.
+    features. Four readers fill indexes -- a file's name, a photo, a document's
+    text layer, writing read off pixels -- but only three rankings can answer a
+    query, because Documents and Pictures of text both feed one of them (ADR
+    0020). So this composes the three, and ``readers`` is what says which
+    features got you each one.
 
     It lives here for the same reason ``card_label`` does. Browse is the fourth
     surface to name this work, after the setup panel, the Overview card and the
@@ -524,16 +494,11 @@ def _text_matches(on: set[str]) -> str:
     reads = (
         "the words inside your documents, and the writing in your pictures"
         if {"documents", "ocr"} <= on
-        else "the writing in your photos, screenshots and scans"
+        else "the writing in your screenshots, photos and scanned PDFs"
         if "ocr" in on
         else "the words written inside your documents"
     )
-    meaning = (
-        " A passage can match what you meant without your words appearing in it."
-        if "meaning" in on
-        else ""
-    )
-    return f"Matches {reads}.{meaning}"
+    return f"Matches {reads}."
 
 
 def search_ways(enabled: Iterable[str]) -> tuple[SearchWay, ...]:
@@ -546,14 +511,13 @@ def search_ways(enabled: Iterable[str]) -> tuple[SearchWay, ...]:
     """
     on = set(enabled)
     ways = [_NAME_WAY]
-    # Documents and Text in images share the `text` card, so its label and mark
+    # Documents and Pictures of text share the `text` card, so its label and mark
     # already compose the way either one alone -- or both -- should be called.
-    # Search by meaning is a reader of the same way rather than a way of its
-    # own: it re-ranks those same passages and is fused into the one result, so
-    # it earns a link and a clause, not a heading.
+    # They are one way rather than two because they write into the *same*
+    # passages and the same index: a hit's reader is a property of the file's
+    # ``doc_text`` row, not of a separate search (ADR 0020).
     text_readers = tuple(f.id for f in owners("text") if f.id in on)
     if text_readers:
-        meaning = ("meaning",) if "meaning" in on else ()
         ways.append(
             SearchWay(
                 id="text",
@@ -561,7 +525,7 @@ def search_ways(enabled: Iterable[str]) -> tuple[SearchWay, ...]:
                 icon=card_icon("text", on),
                 matches=_text_matches(on),
                 always=False,
-                readers=text_readers + meaning,
+                readers=text_readers,
             )
         )
     if "semantic" in on:

@@ -12,14 +12,13 @@ counted PDFs as pending semantic work, embedded nothing for them, and recorded a
 permanent skip. An archive of family paperwork was searchable by filename and
 nothing else.
 
-Making the contents searchable is not one capability but three, and they cost
-wildly different amounts: parsing files that carry their own text (minutes, no
-model), reading text out of pixels (hours, ~13 MB of weights), and finding a
-document by meaning rather than by word (minutes, ~118 MB). ADR 0015 built the
+Making the contents searchable is two capabilities, and they cost wildly
+different amounts: parsing files that carry their own text (minutes, no model)
+and reading text out of pixels (hours, ~13 MB of weights). ADR 0015 built the
 feature system for exactly this, and named this work in its closing paragraph.
 
-This ADR records the decisions behind the first of the three, **Documents**, and
-the two that shape what comes after it.
+This ADR records the decisions behind the first of the two, **Documents**, and
+the ones that shape what comes after it.
 
 ## Decision
 
@@ -92,35 +91,30 @@ Rejected, and why:
   panel's claim about them is checkable where the files actually are. A
   strings-style scrape would produce text that looks like a successful read.
 
-### Chunk sizes are measured, and cannot guarantee the token window
+### A passage is sized for a reader, not for a model
 
-A document is cut into overlapping passages, sized in characters. Tokenising to
-decide where to cut would mean loading a 17 MB tokenizer to read a `.txt`.
+A document is cut into overlapping passages of about 1200 characters, on a
+sentence or paragraph boundary where one is near.
 
-The sizes came out of measurement against the real multilingual-e5-small
-tokenizer, on chunks the chunker actually produced:
+Nothing downstream requires a particular size — FTS5 indexes a passage of any
+length — so the number is chosen for the person reading the result. A chunk is
+what a hit *is*: "page 12, this paragraph" is an answer where "this PDF
+contains your words somewhere" is a place to start looking, and the snippet and
+the page range both come off the same row. Too small and a match loses the
+sentence that made it make sense; too large and the page range stops being a
+location.
 
-| | chars | tokens |
-| --- | --- | --- |
-| Spanish prose | 1193 | 262 |
-| English prose | 1127 | 284 |
-| Invoice lines | 1196 | 479 |
-| CSV rows | 1195 | **628** |
-
-Digits, punctuation and delimiters tokenise near-individually, so the densest
-text in a paperwork archive costs well over twice per character what prose does —
-and a `.csv` is a `document` here. An earlier draft targeted 1600 characters and
-searched backwards from the cap for a boundary, which landed every chunk within a
-few characters of the ceiling; the dense cases were then 637 tokens against a
-512-token window, **where a tokenizer truncates in silence and the tail of the
-passage is simply unsearchable**.
-
-So the cut aims at the target rather than at the cap, and the target is 1200.
-But the honest conclusion is that **no character count can bound tokens** — the
-ratio has no floor, and sizing for the CSV case would spend half a window on
-every prose chunk and double the vector count. Bounding tokens belongs to the
-stage that knows what a token is: the embedding work must measure each chunk and
-sub-split what does not fit, rather than handing it over to be truncated.
+**This is the one number here that a future feature could invalidate**, and it
+is worth knowing why before changing it. Any model that embeds these passages
+has a token window, and characters do not convert to tokens at a fixed rate:
+measured against a real multilingual tokenizer, on chunks this chunker actually
+produced, 1193 characters of Spanish prose is 262 tokens while 1195 characters
+of CSV rows is 628. Digits, punctuation and delimiters tokenise near-
+individually, and a `.csv` is a `document` here. So the ratio has no floor, no
+character count can bound tokens, and anything that needs a token bound has to
+measure each passage itself and sub-split what does not fit — rather than
+handing it to a tokenizer, which truncates in silence and leaves the tail of
+exactly the dense numeric passages a paperwork archive is full of unsearchable.
 
 ### The full-text index is contentful, and created by a migration
 
@@ -156,6 +150,22 @@ not.
 
 Two endpoints also means each degrades alone. An install without numpy loses
 description search and keeps text search, which needs nothing but SQLite.
+
+**And the obvious way to add meaning to the text half does not work**, which is
+worth stating here because everything about it type-checks, runs, and returns
+results. Embedding a document's passages with the embedder already in the
+repository looks like one line of work: same model, same table, one search
+covering both. Two reasons it is not. SigLIP's text tower is configured in the
+checkpoint with `MAX_TOKENS = 64`, for captions — a passage of a contract is
+300–500 tokens, and the tokenizer discards the rest without raising. And it is
+not a text encoder at all: it is one half of a contrastive image–text pair,
+trained so a caption lands near *the photograph it describes*, with no training
+signal anywhere in it for "these two paragraphs mean similar things". Asked to
+place a page of prose it answers with roughly where a photo of a page of prose
+would sit, so a tax letter, a lease and a warranty all land close together. No
+error, no empty result, and a plausible-looking list of documents in roughly
+arbitrary order. Meaning search over text needs its own model and its own
+vector space, or it needs not to exist.
 
 ## Consequences
 
@@ -195,6 +205,5 @@ description search and keeps text search, which needs nothing but SQLite.
   (`pipeline/cards.py`, `db/migrations.py`), and `Runner.takes_write_lock` is now
   bound to `stages.LOCK_KINDS` by a test — they had always been the same fact
   stated twice in two files, with nothing checking they agreed.
-- The two features still to come each get their own ADR: the second embedding
-  space that Search by meaning needs, and the arbitration rules for Text in
-  images.
+- The other half of this work gets its own ADR: the arbitration rules for Text
+  in images (ADR 0019).

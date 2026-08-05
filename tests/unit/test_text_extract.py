@@ -203,7 +203,7 @@ def test_an_empty_document_is_a_skip_rather_than_an_empty_index_entry(tmp_path):
 def test_only_documents_are_eligible_while_only_documents_is_on(tmp_path):
     assert extract.eligible("pdf", "document", WANTED) is True
     assert extract.eligible("docx", "document", WANTED) is True
-    # An image is work for Text in images, which is not switched on here.
+    # An image is work for Pictures of text, which is not switched on here.
     assert extract.eligible("jpg", "image", WANTED) is False
     # Nothing is work when neither half is on.
     assert extract.eligible("pdf", "document", frozenset()) is False

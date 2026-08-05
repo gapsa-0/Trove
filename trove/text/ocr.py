@@ -65,7 +65,7 @@ def available() -> bool:
     except Exception:  # pragma: no cover - optional dep
         # Broad on purpose, as elsewhere: a half-installed native dependency
         # (shapely, pyclipper) fails in more ways than ImportError.
-        logger.debug("rapidocr unavailable; reading text in images disabled", exc_info=True)
+        logger.debug("rapidocr unavailable; reading pictures of text disabled", exc_info=True)
         return False
 
 

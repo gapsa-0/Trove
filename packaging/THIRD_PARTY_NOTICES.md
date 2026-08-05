@@ -49,18 +49,11 @@ Do not publish a release while any entry is incomplete.
   These are the only model weights the installer carries rather than fetching at
   first use, so the obligation travels with the package rather than with a
   download. No non-commercial clause on either part.
-- multilingual-e5-small text embedding model — MIT — downloaded at first use, not
-  bundled. Weights and the ONNX export are both upstream's, at a pinned revision:
-  https://huggingface.co/intfloat/multilingual-e5-small
-  Used to turn document passages and typed searches into vectors for searching
-  documents by meaning. Unlike buffalo_l and AdaFace this carries no
-  non-commercial clause, and unlike the Gemma tokenizer above it is a standard
-  OSI licence.
 - pypdfium2 / PDFium — Apache-2.0 or BSD-3-Clause (pypdfium2's own code) over a
   prebuilt PDFium, BSD-3-Clause — https://github.com/pypdfium2-team/pypdfium2
   Bundled in the installer, not downloaded: the wheel carries the PDFium shared
   library with it, which is why the desktop build needs no compiler for it. Used
-  to read a PDF's text layer, and later to rasterise pages for Text in images.
+  to read a PDF's text layer, and later to rasterise pages for Pictures of text.
   Note this is a *binary* redistribution of PDFium — the BSD-3-Clause notice
   belongs in any release that ships it, not only the Python-side licence.
 - Bundled Python packages — [generated package/version/licence inventory from

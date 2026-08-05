@@ -1,6 +1,6 @@
 ---
-title: Text in images
-summary: Reading the writing in photos, screenshots and scanned pages.
+title: Pictures of text
+summary: Reading the writing in screenshots, photos and scanned PDFs.
 feature: ocr
 ---
 

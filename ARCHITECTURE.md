@@ -45,14 +45,10 @@ real dependency graph, from `trove/pipeline/stages.py`:
                               ├──▶ semantic ──────────▶ embeddings
                               │    (optional, SigLIP 2)
                               │
-                              ├──▶ text ──────────────▶ doc_text / doc_chunks
-                              │    (optional; documents + text in
-                              │     images, one open per file, and
-                              │     a PDF routed per page)
-                              │
-                              └──▶ meaning ───────────▶ doc_chunk_embeddings
-                                   (optional, multilingual-e5;
-                                    no dep on text -- see ADR 0018)
+                              └──▶ text ──────────────▶ doc_text / doc_chunks
+                                   (optional; documents + text in
+                                    images, one open per file, and
+                                    a PDF routed per page)
 
                    one archive.db per open archive (SQLite)
                                     ▲ read / write
@@ -152,7 +148,7 @@ they describe:
 | People | `persons`, `faces`, `face_links`, `person_merges`, `person_files`, `fiqa_calibration` |
 | Pets | `pets`, `animal_detections`, `pet_links`, `pet_merges`, `pet_files`, `nonhuman_detections` |
 | Semantic | `semantic_embeddings` |
-| Document text | `doc_text`, `doc_chunks`, `doc_chunk_embeddings` (+ `doc_chunk_fts`, see below) |
+| Document text | `doc_text`, `doc_chunks` (+ `doc_chunk_fts`, see below) |
 | Bookkeeping | `app_state`, `scan_runs`, `face_scan`, `pet_scan` |
 
 `orientation` is grouped with the catalogue rather than with people or pets:

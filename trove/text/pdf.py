@@ -2,7 +2,7 @@
 
 `pypdfium2` -- BSD-3-Clause/Apache-2.0, a prebuilt PDFium in the wheel, no
 compiler and no system library. Chosen over `pypdf` because it also rasterises,
-which is what lets Text in images read a scanned page without a second PDF
+which is what lets Pictures of text read a scanned page without a second PDF
 dependency, and over PyMuPDF because that is AGPL-3.0 and this repository is
 MIT.
 
@@ -10,7 +10,7 @@ MIT.
 failure.** A scan carries pixels and no text layer, and the file is not broken --
 it simply needs a different reader. That distinction is the caller's to make
 (``extract.py``), and it matters: the reason recorded for such a file must not
-read as permanent, or switching Text in images on later would never revisit it.
+read as permanent, or switching Pictures of text on later would never revisit it.
 """
 
 from __future__ import annotations

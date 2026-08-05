@@ -3,7 +3,7 @@
 Everything above this module -- the service that stores an outcome, the runner
 that schedules the pass -- goes through ``read``. That is deliberate: whether a
 PDF's text layer was worth anything, and therefore whether the file still needs
-Text in images, is one decision, and it belongs in one place rather than being
+Pictures of text, is one decision, and it belongs in one place rather than being
 re-derived by each caller from a block count.
 """
 
@@ -78,7 +78,7 @@ def available(extractors: frozenset[str]) -> bool:
     library, so a missing ``pypdfium2`` costs PDFs a per-file skip rather than
     the whole feature -- the shape a missing ffmpeg has for videos.
 
-    Text in images is different, because there is no partial state to degrade
+    Pictures of text is different, because there is no partial state to degrade
     to. Its models live inside its package, so the engine either imports with
     everything it needs or is absent entirely.
 
@@ -151,7 +151,7 @@ def _read_pdf(path: Path, wanted: frozenset[str], limits: Limits) -> Extraction:
     ]
     # Documents alone, and nothing came out of the text layer. If the pages look
     # like pictures, say so specifically -- that reason is what explains the file
-    # to its owner and what makes switching Text in images on come back for it.
+    # to its owner and what makes switching Pictures of text on come back for it.
     if not layer and OCR not in wanted:
         if scanned:
             raise ValueError(f"{NO_TEXT_LAYER}: this PDF is pictures of text, not text")

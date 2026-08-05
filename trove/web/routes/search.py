@@ -158,7 +158,7 @@ def text_status(req: Request) -> dict:
     FTS5 -- which is a property of the build rather than of the choice.
 
     ``readers`` is the third fact, and the new one: *which* halves are on.
-    Documents and Text in images write into one index, so a count of what has
+    Documents and Pictures of text write into one index, so a count of what has
     been read means nothing without saying what was being read.
     """
     from ... import features
@@ -167,7 +167,7 @@ def text_status(req: Request) -> dict:
     rid = req.root_id
     # Which readers this archive switched on, which is both what the summary
     # counts against and what decides the feature is live at all. Documents and
-    # Text in images are chosen separately and either one alone fills the same
+    # Pictures of text are chosen separately and either one alone fills the same
     # index, so asking only about Documents told an OCR-only archive its text
     # search did not exist while the pass was filling it.
     extractors = features.extractors(req.cfg.archive_features(rid))
@@ -179,36 +179,16 @@ def text_status(req: Request) -> dict:
 
 
 def text_search_route(req: Request) -> MediaPage | Json:
-    """Search the text read out of documents, by word and by meaning together."""
+    """Search the text read out of documents and off the writing in pictures."""
     query = (req.one("q") or "").strip()
     if not query:
         return Json({"error": "A search query is required"}, 400)
     rid = req.root_id
     sort_q = req.one("sort")
 
-    from ...services import meaning
-
-    # The meaning half is added only where this archive asked for it and this
-    # build can do it. Its absence changes nothing about the response: the words
-    # half answers alone, which is the whole reason the two are fused by rank
-    # rather than blended into one score.
-    query_vector = None
-    if "meaning" in req.cfg.archive_features(rid) and meaning.available():
-        try:
-            query_vector = meaning.embed_queries(req.cfg, [query])[0]
-        except Exception:
-            # A model that will not load must not take the text search down with
-            # it -- BM25 needs nothing but SQLite, and answering with half the
-            # ranking beats answering with none.
-            logger.warning("could not embed the query for meaning search", exc_info=True)
-
     return text_search.text_search(
         req.db(rid),
         query,
-        query_vector=query_vector,
-        min_similarity=float(req.cfg.text_search_min_similarity),
-        fuse_depth=int(req.cfg.text_search_fuse_depth),
-        rrf_k=int(req.cfg.text_search_rrf_k),
         root_id=rid,
         year=req.one("year"),
         month=req.one("month"),

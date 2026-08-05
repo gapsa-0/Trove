@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from .manager import JobManager
 
 # Stage kinds (also the job ``kind`` values the worker dispatches on).
-SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC, TEXT, MEANING = (
+SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC, TEXT = (
     "scan",
     "enrich",
     "dedup",
@@ -51,7 +51,6 @@ SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC, TEXT, MEANING = (
     "detect",
     "semantic",
     "text",
-    "meaning",
 )
 
 # Stages that take the single DB-writer lock run one at a time; the rest use
@@ -61,7 +60,7 @@ SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC, TEXT, MEANING = (
 # rather than by decision, which ``tests/unit/test_stage_declarations.py``
 # refuses to allow.
 LOCK_KINDS = frozenset({DEDUP, PLACES, DETECT})
-PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC, TEXT, MEANING})
+PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC, TEXT})
 
 # Stages where one pass serves two features an archive chooses separately.
 # Fusing is a decision about the *work* -- detect opens an image once and lets
@@ -90,16 +89,12 @@ STAGES: tuple[StageDef, ...] = (
     StageDef(DETECT, (DEDUP,), "detect", True),  # people + pets, one decode
     StageDef(SEMANTIC, (DEDUP,), "semantic", True),
     StageDef(TEXT, (DEDUP,), "text", True),  # documents + OCR, one open per file
-    # Depends on dedup, not on text: a stage may not depend on one an archive
-    # can switch off, and it does not need to -- its backlog is simply zero
-    # until passages exist, and the drain loop picks them up as they arrive.
-    StageDef(MEANING, (DEDUP,), "meaning", True),
 )
 
 # Display cards, in the order the Overview renders them. Dependency-ordered,
 # which _mark_stalled's single forward walk relies on, and the same order the
 # setup panel draws its chain in (``tests/unit/test_features.py``).
-CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic", "text", "meaning")
+CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic", "text")
 # What each card is *called*, what it says while it runs and which mark it
 # carries all come from ``features.py``, composed per card from the features
 # the archive actually enabled -- there is deliberately no table of card names
@@ -111,7 +106,7 @@ CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic", "text", "meaning"
 
 def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
     from ..detect import extract as dx
-    from ..services import documents, meaning, semantic
+    from ..services import documents, semantic
 
     # Both of these ask "are the dependencies importable", never "are the model
     # weights on disk": an unavailable stage is never queued, and a stage still
@@ -135,7 +130,6 @@ def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
         # come into it -- everything but PDF is standard library, so that is a
         # per-file skip rather than a stage that cannot run.
         TEXT: documents.available(features.extractors(enabled)),
-        MEANING: meaning.available(),
     }
 
 
@@ -160,7 +154,6 @@ def _optional_pending(
     # ``pending`` is a name this module uses for a local dict, which a
     # `from ..services import pending` import would shadow.
     from ..services.documents import text_pending
-    from ..services.meaning import meaning_pending
     from ..services.pending import detect_pending
     from ..services.search import semantic_pending
 
@@ -178,7 +171,6 @@ def _optional_pending(
         ),
         SEMANTIC: (semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
         TEXT: (text_pending(db_path, root_id, features.extractors(enabled)) if avail[TEXT] else 0),
-        MEANING: (meaning_pending(db_path, root_id) if avail[MEANING] else 0),
     }
 
 

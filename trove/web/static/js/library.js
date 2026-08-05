@@ -51,15 +51,14 @@ const FILTER_SKELETON = [108, 120, 104, 98, 116]
    only which elements a grid draws into and which endpoint answers it, so that
    is what lives on the grid object.
 
-   Three, not five, and the difference is worth stating because the screen used
-   to imply otherwise. There are five *readers* filling indexes -- the name,
-   the picture, a document's text layer, writing read off pixels, a passage's
-   meaning -- but only three *rankings* that can answer a query. Words and
-   meaning are fused by reciprocal rank inside one request (services/
-   text_search.py), and a document both halves found outranks one only a single
-   half did; splitting them into groups here would throw that away. So the
-   readers are what a result is labelled with, and the rankings are what gets a
-   group. */
+   Three, not four, and the difference is worth stating because the screen used
+   to imply otherwise. There are four *readers* filling indexes -- the name,
+   the picture, a document's text layer, writing read off pixels -- but only
+   three *rankings* that can answer a query. The last two write into the same
+   passages and the same FTS5 index, so which of them found a hit is a property
+   of the file rather than of a separate search; splitting them into groups here
+   would draw two grids over one ranking. So the readers are what a result is
+   labelled with, and the rankings are what gets a group. */
 const GRID_IDS = {
   name: { grid: "grid-name", top: "grid-name-top", bottom: "grid-name-sentinel", count: "gridcount-name" },
   media: { grid: "grid", top: "grid-top-sentinel", bottom: "grid-sentinel", count: "gridcount-media" },
@@ -383,7 +382,7 @@ export function renderSortOptions(g) {
    for the plain listing.
 
    The text group used to count "documents", which stopped being true the day
-   Text in images was added: a hit there can be a photographed receipt. Counting
+   Pictures of text was added: a hit there can be a photographed receipt. Counting
    matches says the same thing about the search without claiming anything about
    what was matched. */
 function gridCountLabel(g) {
@@ -541,7 +540,7 @@ function renderGroupLabels() {
     glyph.setAttribute("aria-hidden", "true");
     glyph.innerHTML = ICONS[r.icon];
     // Not lowercased. These are the names the features were chosen under, and
-    // "documents & text in images" is a different string from the one on the
+    // "documents & pictures of text" is a different string from the one on the
     // setup panel, the Overview card and the page documenting it.
     item.append(glyph, document.createTextNode(r.label));
     line.append(item);
@@ -598,8 +597,7 @@ function renderGridPages(g, anchor = null) {
   // them on, a badge saying so on every tile repeats the heading above it and
   // spends the caption -- which is the file's name -- to say nothing.
   const textWay = g.kind === "text" ? rankingFor("text") : null;
-  const mixedReaders = !!textWay &&
-    textWay.readers.filter(reader => reader.id !== "meaning").length > 1;
+  const mixedReaders = !!textWay && textWay.readers.length > 1;
   const tokens = g.kind === "name" ? nameTokens(g.query) : [];
   g.pages.forEach(page => page.items.forEach((item, itemOffset) => {
     // Month headings belong to the listing and nothing else. A group of results
@@ -808,14 +806,10 @@ function ph(icon) { const s = document.createElement("div"); s.className = "ph";
    is what keeps the highlight from being an injection point. */
 export function textTile(it, mixedReaders = false) {
   const d = tile(it, null, "name");
-  // How this one was found, where that is not already answered by the heading.
-  // Two independent facts: which reader produced the text -- only worth saying
-  // when both are on and a hit could be either -- and whether the words were
-  // actually in it. A passage the vectors alone matched comes back with no
-  // marks in it, and without this that reads as a word match whose highlight
-  // happens to be out of view.
+  // Which reader produced the text, where that is not already answered by the
+  // heading -- only worth saying when both are on and a hit could be either.
+  // A file's own words and a best guess read off pixels are not the same claim.
   if (mixedReaders && it.reader) d.appendChild(foundBadge(READER_BADGE[it.reader]));
-  if (it.found_by === "meaning") d.appendChild(foundBadge(MEANING_BADGE));
   if (!it.snippet) return d;
   const box = document.createElement("div");
   box.className = "tile-snippet";
@@ -837,10 +831,6 @@ export function textTile(it, mixedReaders = false) {
 const READER_BADGE = {
   documents: { icon: "documents", text: "document text", hint: "Read from this file's own text" },
   ocr: { icon: "ocr", text: "text in pictures", hint: "Read from the writing in this picture" },
-};
-const MEANING_BADGE = {
-  icon: "meaning", text: "by meaning",
-  hint: "Matched what this passage is about — none of your words appear in it",
 };
 function foundBadge({ icon, text, hint }) {
   const b = document.createElement("span");

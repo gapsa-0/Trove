@@ -22,16 +22,15 @@ somewhere in the file's own name, in any order, so "beach 2019" finds
 one way every archive has, whatever else it runs, and the part of the name that
 matched is marked on the result.
 
-**Documents** and **Text in images** share one way, headed with whichever of
-them you have on — or *Documents & text in images* when both are. Documents
-reads PDFs, Word, Excel, PowerPoint, OpenDocument, plain text, CSV, web pages
-and notebooks; [Text in images](ocr.md) reads the writing off photos,
-screenshots and scans. They write into the same passages, so either one alone
-gives you this group, and a result says which of the two found it.
-[Search by meaning](meaning.md) joins the same way rather than adding another:
-it puts a second ranking over those same passages and fuses it with the first,
-so a clause about the rent can match "how much is the rent" without sharing a
-word with it — and a result found that way says so.
+**Documents** and **Pictures of text** share one way, headed with whichever of
+them you have on — or *Documents & pictures of text* when both are. Documents
+reads the characters a file already stores — Word, Excel, PowerPoint,
+OpenDocument, plain text, CSV, web pages, notebooks and PDFs with a text layer;
+[Pictures of text](ocr.md) reads the writing off screenshots, photos and
+scanned PDFs. They write into the same passages, so either one alone
+gives you this group, and a result says which of the two found it. What it
+matches is the words themselves: every word you type has to appear in the
+passage, so typing more narrows it.
 
 **Search by description** ranks photos and videos by how close the picture is
 to your words, with nothing having been tagged. See
@@ -45,8 +44,8 @@ Browse can show you, a passage with your word in it is next, and a picture that
 merely looks like what you described is last.
 
 **Every way links to what documents it.** The panel draws one mark per feature
-feeding a way; pressing it opens that feature's page. The shared way has two or
-three, which is why they are marks rather than a row of link text.
+feeding a way; pressing it opens that feature's page. The shared way has two,
+which is why they are marks rather than a row of link text.
 
 **A way that found nothing still reports.** It collapses into one line at the
 foot — "Nothing found in what your photos show" — rather than a heading over an
@@ -54,10 +53,10 @@ empty row. That line is there because "the documents were searched and none
 matched" is an answer, and its absence used to leave people wondering whether a
 feature had run at all.
 
-**Only the text group carries badges**, and only for the facts that vary inside
-it: which reader produced the text, when both are on, and whether a passage
-matched what you meant rather than what you typed. Everywhere else the heading
-above the results has already said how they were found.
+**Only the text group carries a badge**, and only for the one fact that varies
+inside it: which reader produced the text, when both are on. A file's own words
+and a best guess read off a photograph are not the same claim. Everywhere else
+the heading above the results has already said how they were found.
 
 ## What the panel says before you type
 

@@ -150,7 +150,7 @@ def pdf(path: Path, pages: list[str]) -> Path:
 def scanned_pdf(path: Path, pages: int = 1) -> Path:
     """A PDF carrying no text layer at all -- what a scan actually looks like.
 
-    Pages with a content stream that draws nothing. Text in images is the reader
+    Pages with a content stream that draws nothing. Pictures of text is the reader
     for these; Documents has to report that honestly rather than as a failure.
     """
     return pdf(path, [""] * pages)

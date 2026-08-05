@@ -192,13 +192,12 @@ async function searchWaysTick(gen) {
 }
 /* A way's link to what documents it, one per feature feeding it.
 
-   The mark rather than the word, because the text way has two or three of them
-   and a row of "How Documents works · How Text in images works · How Search by
-   meaning works" is longer than everything else on the row put together. The
-   marks are already the vocabulary this screen labels results with, so making
-   them the way in costs no new furniture -- and the name each one carries is on
-   its tooltip and its accessible label, where a reader who needs the words gets
-   them. */
+   The mark rather than the word, because the text way has two of them and a row
+   of "How Documents works · How Pictures of text works" is longer than everything
+   else on the row put together. The marks are already the vocabulary this
+   screen labels results with, so making them the way in costs no new furniture
+   -- and the name each one carries is on its tooltip and its accessible label,
+   where a reader who needs the words gets them. */
 function readerLink(reader) {
   if (!reader.docs) return "";
   const how = `How ${reader.label} works`;

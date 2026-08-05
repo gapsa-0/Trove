@@ -1,19 +1,19 @@
-"""Cutting a reading into the passages that get indexed and embedded.
+"""Cutting a reading into the passages that get indexed.
 
-Two things force chunking, and they want the same thing. The text embedder has a
-512-token window, so a 40-page contract cannot be one vector. And a search result
-is only useful as a passage: "page 12, this paragraph" is an answer, where "this
-PDF contains your words somewhere" is a place to start looking. So a chunk is
-sized for the embedder and carries the page range it came from, and both the
-snippet and the page number in a result fall out of the same row.
+One thing forces chunking: a search result is only useful as a passage. "Page
+12, this paragraph" is an answer, where "this PDF contains your words somewhere"
+is a place to start looking. So a chunk carries the page range it came from, and
+both the snippet and the page number in a result fall out of the same row.
 
-The sizes are characters rather than tokens on purpose. Tokenising to decide
-where to cut would mean loading a 17 MB tokenizer to read a .txt file, tying the
-Documents feature to a model it does not otherwise need.
+**Nothing downstream requires a particular size.** FTS5 indexes a passage of any
+length, so 1200 characters is chosen for the person reading the result: small
+enough that a page range is a location, large enough that a match keeps the
+sentence which made it make sense.
 
-**The rate is not constant, and no character count can bound it.** Measured
-against the multilingual-e5-small tokenizer that Search by meaning uses, on
-chunks this module actually produced:
+**A model would change that, and characters could not answer it.** Anything that
+embeds these passages has a token window, and the character-to-token rate is not
+constant -- measured against a real multilingual tokenizer, on chunks this module
+actually produced:
 
     Spanish prose       1193 chars -> 262 tokens    4.6 chars/token
     Spanish, accented   1143 ->  260                4.4
@@ -26,17 +26,11 @@ text in a paperwork archive costs well over twice per character what prose does
 -- and paperwork is what this feature exists for. A .csv is a `document` here,
 and a spreadsheet exported to one is the worst case above.
 
-So 1200 is not a size that guarantees the window; it is the size that keeps
-prose chunks worth reading (a snippet is shown to a human) while putting the
-common dense case just inside it. There is no number that would guarantee it:
-the ratio has no floor, and chasing the worst case would make a prose chunk 250
-tokens of a 512-token window, doubling the vector count to protect against a
-CSV.
-
-**Bounding tokens is therefore the embedding stage's job, not this one's.** It
-must measure each chunk against the real tokenizer and sub-split what does not
-fit, rather than handing it over to be truncated in silence -- which is what a
-tokenizer does with a long input, with no error anywhere and the tail of the
+The ratio has no floor, so **no character count can bound tokens** and this is
+not the place to try. Bounding them belongs to whatever knows what a token is:
+it must measure each chunk against the real tokenizer and sub-split what does
+not fit, rather than handing it over to be truncated in silence -- which is what
+a tokenizer does with a long input, with no error anywhere and the tail of the
 passage simply unsearchable.
 """
 

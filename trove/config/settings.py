@@ -226,33 +226,10 @@ class Config(ArchiveRegistryMixin):
     # an hour of OCR on its own. Beyond this it is skipped, with that reason.
     ocr_max_pages_per_file: int = 200
 
-    # Searching documents. Two rankings are fused: exact words (FTS5's BM25) and
-    # meaning (the e5 vectors). Reciprocal Rank Fusion combines their *positions*
-    # rather than their scores, which is what lets two incomparable scales be
-    # merged at all -- so there is no threshold on the fused number, and there
-    # could not be: it is in reciprocal-rank units and means nothing on its own.
-    #
-    # The cut therefore has to happen before the fusion, and only on the vector
-    # side. BM25 needs none: FTS5's MATCH *is* the cut, since a document either
-    # contains the terms or is absent.
-    #
-    # 0.82 comes from measurement, not from a guess, but from a small one: five
-    # hand-written Spanish query/document pairs against the shipped weights,
-    # where every should-match scored 0.826-0.875 and every should-not-match
-    # 0.779-0.814. It separates those cleanly and deserves calibrating against a
-    # real archive before it is trusted further. e5's cosines sit in a narrow,
-    # high band -- unrelated text scores ~0.75, not ~0.0 -- so this number is
-    # nothing like semantic_search_min_similarity and must not be reasoned about
-    # by analogy with it.
-    text_search_min_similarity: float = 0.82
-    # How deep each ranking is taken before fusing. Deeper costs a longer scan
-    # for results nobody pages to; shallower loses documents that one side
-    # ranked modestly and the other ranked well, which is the case fusion exists
-    # to catch.
-    text_search_fuse_depth: int = 500
-    # RRF's smoothing constant, at its standard value. Larger flattens the
-    # contribution of rank, smaller lets the very top of each list dominate.
-    text_search_rrf_k: int = 60
+    # Searching documents has no tuning of its own. Its ranking is FTS5's BM25,
+    # and MATCH is its own cut -- a document either contains the terms or is
+    # absent -- so there is no relevance floor here to answer
+    # ``semantic_search_min_similarity``.
 
     # Hashing
     fast_hash_sample_bytes: int = 65536  # head+tail sample for the cheap prefilter

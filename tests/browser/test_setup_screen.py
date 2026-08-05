@@ -353,8 +353,8 @@ def test_browse_searches_file_names_when_it_has_no_index_to_search(open_app, arc
 
 
 def test_an_archive_that_only_reads_pictures_can_still_search_what_it_read(open_app, archive):
-    """Text in images filled the same index as Documents and had no way to reach
-    it: the group that searches it was built only for archives that chose
+    """Pictures of text filled the same index as Documents and had no way to
+    reach it: the group that searches it was built only for archives that chose
     Documents, so an archive reading its pictures indexed them and was never
     shown anywhere to look. Both readers are halves of one feature's index, so
     either one alone has to bring the group with it."""
@@ -366,11 +366,11 @@ def test_an_archive_that_only_reads_pictures_can_still_search_what_it_read(open_
         )
         # Named after the half that is actually on -- not "Documents", and not a
         # wording of Browse's own.
-        assert ways == ["Search by filenamealways", "Text in images"]
+        assert ways == ["Search by filenamealways", "Pictures of text"]
         # ...and it carries that half's mark, where it used to draw the document
         # page over a group full of photographs.
         said = app.text(".way:nth-child(2)")
-        assert "photos, screenshots and scans" in said
+        assert "screenshots, photos and scanned PDFs" in said
         assert "documents" not in said, "this archive was never promised its documents"
 
         _search_for(app, "lease")

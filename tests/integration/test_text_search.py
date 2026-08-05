@@ -226,64 +226,7 @@ def test_an_archive_that_only_reads_pictures_still_reports_its_backlog(indexed_w
     assert summary["pending"] == 1, "the photograph; both PDFs already have a row"
 
 
-# --- fusing the two rankings ------------------------------------------------
-
-
-def _rrf(*rankings, k=60):
-    from trove.services.text_search import _rrf as fuse
-
-    return fuse([list(r) for r in rankings], k)
-
-
-def test_fusing_ranks_rather_than_scores():
-    """The arithmetic, on its own. BM25 and a cosine have no common scale and no
-    normalisation of them means anything -- but "third" and "third" do."""
-    words = [(10, 1), (20, 2), (30, 3)]
-    meaning = [(30, 7), (10, 8), (40, 9)]
-    fused = _rrf(words, meaning)
-    order = [file_id for file_id, _chunk in fused]
-    # 10 is first in one list and second in the other; 30 is third and first.
-    # Both beat 20 and 40, which each appear once.
-    assert order[:2] == [10, 30]
-    assert set(order) == {10, 20, 30, 40}
-
-
-def test_a_document_both_halves_found_beats_one_only_half_did():
-    """The property that justifies fusing at all."""
-    words = [(1, 1), (2, 2)]
-    meaning = [(2, 3), (3, 4)]
-    order = [f for f, _ in _rrf(words, meaning)]
-    assert order[0] == 2
-
-
-def test_the_chunk_shown_comes_from_the_earliest_list_that_offered_it():
-    """A document found by words shows the passage containing them; one found
-    only by meaning shows its closest passage."""
-    fused = dict(_rrf([(1, 111)], [(1, 999), (2, 222)]))
-    assert fused[1] == 111, "the words half ran first, so its passage wins"
-    assert fused[2] == 222
-
-
-def test_ties_are_broken_deterministically():
-    """RRF ties constantly -- any two files at the same rank in one list and
-    absent from the other. Without a fixed order a page boundary would move
-    between identical requests."""
-    a = _rrf([(5, 1), (3, 2), (9, 3)])
-    b = _rrf([(5, 1), (3, 2), (9, 3)])
-    assert a == b
-
-
-def test_an_empty_ranking_contributes_nothing():
-    assert _rrf([], [(1, 1)]) == [(1, 1)]
-    assert _rrf([], []) == []
-
-
 # --- what a hit says about how it was found ---------------------------------
-
-
-def test_a_word_hit_says_it_was_found_by_its_words(indexed):
-    item = _hits(indexed, "arrendamiento")["items"][0]
-    assert item["found_by"] == "words"
 
 
 def test_a_hit_says_which_reader_produced_its_text(indexed):
@@ -315,20 +258,3 @@ def test_a_row_written_before_readers_were_recorded_reads_as_documents(indexed):
     conn.commit()
     conn.close()
     assert _hits(indexed, "arrendamiento")["items"][0]["reader"] == "documents"
-
-
-def test_found_by_separates_the_two_halves_of_the_ranking():
-    from trove.services.text_search import _found_by
-
-    assert _found_by(1, {1}, set()) == "words"
-    assert _found_by(1, set(), {1}) == "meaning"
-    assert _found_by(1, {1}, {1}) == "both"
-
-
-def test_search_without_a_vector_is_exactly_the_bm25_ranking(indexed):
-    """An archive without Search by meaning, or an install without numpy, gets
-    the words half and nothing about the result shape changes."""
-    page = _hits(indexed, "arrendamiento")
-    assert page["total"] == 1
-    assert page["items"][0]["name"] == "contrato.pdf"
-    assert MARK_OPEN in page["items"][0]["snippet"]

@@ -733,9 +733,8 @@ input[type="checkbox"] {
 }
 
 /* How one result was found, where the heading above it does not already say.
-   Only the text group draws these, and only for the facts that vary inside it:
-   which reader produced the text when both are on, and a passage matched by
-   meaning rather than by the words in it. */
+   Only the text group draws this, and only for the one fact that varies inside
+   it: which reader produced the text, when both of them are on. */
 .found-by {
   position: absolute;
   top: 6px;
@@ -753,13 +752,6 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
-/* A second badge sits under the first rather than beside it: a tile is 260px
-   wide and two of these plus a passage is a cell that says more about itself
-   than about the document. */
-.found-by ~ .found-by {
-  top: 30px;
-}
-
 .found-by .ranking-mark {
   width: 14px;
   height: 14px;
@@ -775,8 +767,11 @@ input[type="checkbox"] {
 }
 
 /* A passage is the content of a text result, not a caption on a picture, so
-   these cells are wider than a thumbnail's and as tall as the text needs --
-   where the media grid's square tiles would clip it to nothing. */
+   these cells are wider than a thumbnail's and have room under the picture for
+   the words -- where the media grid's square tiles would clip them to nothing.
+   That extra width is the only way this group differs from the other two: the
+   difference is the passage, and nothing else about a result changes with which
+   way found it. */
 #grid-text {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 }
@@ -788,14 +783,63 @@ input[type="checkbox"] {
   align-items: stretch;
   justify-content: flex-start;
   gap: 6px;
-  /* Room at the foot for the caption, which stays pinned to the bottom. */
-  padding: 10px 12px 24px;
+  padding: 10px 12px;
   text-align: left;
 }
 
-#grid-text .tile .ph {
-  font-size: 22px;
-  text-align: left;
+/* The caption is a line of the card here, not a label over a photograph.
+
+   Everywhere else it is laid over the thumbnail and needs the dark gradient to
+   stay readable on whatever is underneath. In this group it sits on the panel,
+   where that gradient is a grey smear across the foot of the cell -- obvious in
+   the light theme, and lit text on a light ground. So it joins the flow and
+   takes the panel's own colours.
+
+   Which also puts it where it belongs: above the passage rather than under it.
+   A result made of a name and an extract from inside it reads title-then-
+   extract, the way every list of search results anyone has used does. */
+#grid-text .tile .cap {
+  position: static;
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+#grid-text .tile .cap-label mark {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Every result in this group gets the same picture of itself, whatever kind of
+   file it is.
+
+   It did not, and the bug was invisible until Text in images put a *photo* in
+   here. A tile's thumbnail is `height: 100%` (grid.css), which is bounded by the
+   square tile everywhere else and bounded by nothing in this column: the image
+   grew to 315px, the grid row stretched every sibling to match, and two
+   documents holding one line of text each got 371px cells to hold it in.
+
+   So the media is a box of its own with a height of its own, and a document's
+   glyph fills the same box a photograph does. */
+#grid-text .tile>img,
+#grid-text .tile>.ph {
+  flex: none;
+  width: 100%;
+  height: 84px;
+  border-radius: 6px;
+}
+
+#grid-text .tile>img {
+  object-fit: cover;
+}
+
+#grid-text .tile>.ph {
+  display: grid;
+  place-items: center;
+  background: var(--panel2);
+  font-size: 24px;
 }
 
 .tile-snippet {

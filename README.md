@@ -82,9 +82,9 @@ library.*
   reader is the Python standard library or the PDF library the app already
   bundles. Two limits are worth knowing: a scanned PDF is pictures of a page with
   no text in the file at all, so this finds nothing in it (that is what the
-  Text in images feature below is for), and pre-2007 `.doc`, `.xls` and `.ppt`
+  Pictures of text feature below is for), and pre-2007 `.doc`, `.xls` and `.ppt`
   files cannot be read.
-- Reads the writing in pictures, when the optional Text in images feature is
+- Reads the writing in pictures, when the optional Pictures of text feature is
   enabled: photographed receipts, screenshots, and PDFs that are scans rather
   than documents. A PDF is decided page by page, so a contract with a scanned
   appendix is read both ways and comes back as one document. Spanish and English,
@@ -92,12 +92,6 @@ library.*
   that ship with the application. It is the slowest stage in the pipeline, at
   roughly half a second per picture, so an archive of a hundred thousand photos
   is an overnight run rather than a coffee break; it pauses and resumes safely.
-- Searches those documents by meaning as well as by word, when the optional
-  Search by meaning feature is enabled. "How much is the rent" finds the clause
-  saying *importe del alquiler mensual* without those words appearing in the
-  search, and an English question finds a Spanish document. The two rankings are
-  shown as one list, ordered so that a document both of them found comes first —
-  they miss different things, which is why both are kept.
 - Shows photos the right way up. EXIF orientation is always honoured, and a photo
   whose pixels are stored turned while its EXIF says otherwise (common among
   re-exports of the same shot) is recognised by the detectors and displayed
@@ -116,8 +110,7 @@ scan ┐
      ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
 metadata ┘                   ├─→ places
                              ├─→ semantic indexing (optional)
-                             ├─→ reading documents + text in images (optional)
-                             └─→ document meaning (optional)
+                             └─→ reading documents + text in images (optional)
 ```
 
 Long stages commit progress in batches. Closing or switching archives asks current
@@ -132,9 +125,9 @@ something else. The sidebar lists every stage currently running, not just one.
 
 Everything is local. Scanning, hashing, metadata extraction, duplicates,
 thumbnails, place clustering, face detection and clustering, search by
-description, reading the text inside documents and pictures, searching them by
-meaning, and the SQLite catalogue all stay on the machine. Trove has no telemetry, no accounts, no API keys, and does
-not modify source media.
+description, reading the text inside documents and pictures, and the SQLite
+catalogue all stay on the machine. Trove has no telemetry, no accounts, no API
+keys, and does not modify source media.
 
 **The map's street-map layer is the only outbound network call in the app.**
 Turning it on fetches public map tiles, which discloses the coordinates you are

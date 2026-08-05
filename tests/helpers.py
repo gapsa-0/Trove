@@ -57,11 +57,10 @@ def serve_in_thread(cfg):
       (``pipeline/manager.py``) which is free to pick up a registered archive and start
       really scanning, hashing and detecting it. Pausing first means a test that
       never thought about the pipeline still cannot start real background work.
-    * ``serve()`` starts threads loading the ~283 MB SigLIP text tower and the
-      ~118 MB text encoder, through ``semantic.warm_text_model`` and
-      ``meaning.warm_model``, and a developer machine has those weights, so it
-      would really load them. Both are documented best-effort warmups with no
-      observable behaviour of their own, so stubbing them changes nothing a test
+    * ``serve()`` starts a thread loading the ~283 MB SigLIP text tower through
+      ``semantic.warm_text_model``, and a developer machine has those weights,
+      so it would really load them. It is a documented best-effort warmup with
+      no observable behaviour of its own, so stubbing it changes nothing a test
       could assert on.
 
     Lives here, in a uniquely-named module, rather than in ``tests/gui/conftest``:
@@ -72,14 +71,11 @@ def serve_in_thread(cfg):
     """
     # Imported inside the function so the unit tier can use wait_until without
     # pulling in the HTTP server and its dependencies.
-    from trove.services import meaning, semantic
+    from trove.services import semantic
     from trove.web.server import serve
 
     cfg.pipeline_paused = True
-    with (
-        mock.patch.object(semantic, "warm_text_model", lambda cfg: None),
-        mock.patch.object(meaning, "warm_model", lambda cfg: None),
-    ):
+    with mock.patch.object(semantic, "warm_text_model", lambda cfg: None):
         httpd = serve(cfg, port=0)
     # serve_forever's default poll_interval is 0.5s and shutdown() blocks until
     # the loop notices the flag on its next poll, so every test would otherwise

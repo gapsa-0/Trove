@@ -234,7 +234,7 @@ def test_a_way_takes_the_mark_of_a_reader_that_is_actually_on():
     only_pictures = features.search_ways(["index", "ocr"])
     text = next(w for w in only_pictures if w.id == "text")
     assert text.icon == features.by_id("ocr").icon
-    assert text.label == "Text in images"
+    assert text.label == "Pictures of text"
 
 
 def test_file_names_are_a_way_no_feature_owns():
@@ -247,30 +247,23 @@ def test_file_names_are_a_way_no_feature_owns():
     assert ways[0].readers == ()
 
 
-def test_the_two_readers_share_one_way_and_meaning_joins_it():
-    """Three features, one ranking: they fill the same passages, and splitting
-    them would discard the agreement reciprocal-rank fusion exists to reward."""
-    ways = features.search_ways(["index", "documents", "ocr", "meaning"])
+def test_the_two_readers_share_one_way():
+    """Two features, one ranking: they write into the same passages and the same
+    index, so which of them found a hit is a property of the file rather than of
+    a separate search."""
+    ways = features.search_ways(["index", "documents", "ocr"])
     assert [w.id for w in ways] == ["name", "text"]
     text = ways[1]
-    assert text.readers == ("documents", "ocr", "meaning")
-    # Meaning earns a link and a clause, not a heading: it re-ranks what the
-    # other two read rather than reading anything itself.
-    assert "meaning" not in text.label.lower()
-    assert "without your words appearing in it" in text.matches
-
-
-def test_search_by_meaning_alone_is_not_a_way():
-    """It indexes what the other two read, so with neither of them on there is
-    nothing to rank."""
-    assert [w.id for w in features.search_ways(["index", "meaning"])] == ["name"]
+    assert text.readers == ("documents", "ocr")
+    # One way, named for both halves rather than for whichever was listed first.
+    assert text.label == "Documents & pictures of text"
 
 
 def test_a_way_never_promises_files_its_readers_cannot_open():
     documents = next(w for w in features.search_ways(["documents"]) if w.id == "text")
     pictures = next(w for w in features.search_ways(["ocr"]) if w.id == "text")
     assert "documents" in documents.matches and "pictures" not in documents.matches
-    assert "photos, screenshots and scans" in pictures.matches
+    assert "screenshots, photos and scanned PDFs" in pictures.matches
     assert "documents" not in pictures.matches
 
 

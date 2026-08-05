@@ -32,7 +32,7 @@ is exactly the sort of thing you go looking for in a folder of paperwork.
 **A scan is not a document.** A PDF produced by a scanner or a phone camera has
 no text layer at all: it is a picture of a page, and there is nothing in the
 file for a reader to read. Those show as skipped, with that reason, and they are
-what **Text in images** is for. If your archive is mostly scanned paperwork,
+what **Pictures of text** is for. If your archive is mostly scanned paperwork,
 this feature alone will find very little in it — that is not a fault, it is the
 wrong half. Switching the other one on later re-reads every file this one
 had to pass over.
@@ -76,7 +76,7 @@ Only when something has actually changed:
 
 - the file's contents changed on disk;
 - Trove's readers changed in a way that would produce different text;
-- you switched **Text in images** on or off, which changes what can be got out
+- you switched **Pictures of text** on or off, which changes what can be got out
   of the files this one skipped.
 
 Switching Documents off does not delete anything. The text already read stays in

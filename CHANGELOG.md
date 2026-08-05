@@ -15,7 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Trove can read the writing in your pictures.** Switch on *Text in images*
+- **Trove can read the writing in your pictures.** Switch on *Pictures of text*
   and photographed receipts, screenshots and scanned paperwork become as
   searchable as anything else. A PDF is decided page by page, so a contract with
   a scanned appendix is read both ways and comes back as one document, with the
@@ -32,22 +32,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   browsing, and stops and resumes safely, so leaving it overnight is the
   intended way to use it. A result read from a picture is marked as such,
   because unlike a document's own text it is a best guess.
-- **Documents can be found by what they are about, not just by the words they
-  use.** Switch on *Search documents by meaning* alongside Documents, and asking
-  "how much is the rent" finds the clause that says *importe del alquiler
-  mensual* — not one of those words has to appear in what you typed. It works
-  across languages too: an English question finds a Spanish document, with
-  nothing translated on the way.
-
-  It sits beside the exact-word search rather than replacing it, and the results
-  come back as one list ordered so that a document both ways found comes first.
-  That is deliberate: exact words are unbeatable for an account number or a
-  surname and useless when you cannot remember the wording, and meaning is the
-  other way round. Keeping both is what covers each one's blind spot.
-
-  It needs Documents switched on, since what it indexes is what that reads, and
-  it downloads a 129 MB model once. Like every other model in Trove it runs on
-  this machine — the passages and the question both stay here.
 - **Trove can read what is inside your documents.** Switch on *Documents* when
   you set up an archive, and the search box also looks inside the files rather
   than only at their names: type a phrase from a contract and the contract comes
@@ -62,13 +46,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   document is parsing rather than recognition, so there is no model involved. On
   a few thousand files it is minutes, and it runs alongside everything else.
 
-  Two limits, both stated on the feature's card before you switch it on. A
-  scanned PDF is a picture of a page with no text in the file at all, so this
-  finds nothing in one — that is what *Text in images* will be for, and switching
-  it on later re-reads every file this feature had to pass over. And pre-2007
-  `.doc`, `.xls` and `.ppt` files cannot be read at all; they are listed and
-  dated like any other file and reported as an unsupported format, rather than
-  half-read into something misleading.
+  Two limits. A scanned PDF is a picture of a page with no text in the file at
+  all, so this finds nothing in one — the feature's card says so before you
+  switch it on, that is what *Pictures of text* is for, and switching it on
+  later re-reads every file this feature had to pass over. And pre-2007 `.doc`,
+  `.xls` and `.ppt` files cannot be read at all; they are listed and dated like
+  any other file and reported as an unsupported format, rather than half-read
+  into something misleading.
 - **Browse says what it can search, before you ask it to.** With the box empty
   there is now a panel under it listing every way this archive can answer a
   query, what each one matches in plain words, and how much of the archive it
@@ -103,9 +87,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A search result says how it was found.** Where a group could have found
   something two ways, each result now carries it: text read from a file's own
   words is told apart from text read off the pixels of a scan or a screenshot,
-  and a passage matched by meaning rather than by the words you typed says so —
-  previously that came back looking like an ordinary word match whose highlight
-  had scrolled out of view.
+  because the second is a best guess where the first is what the file says.
 - **Browse captions each thumbnail with the file's name** rather than its date.
   The grid is already broken into dated sections, so the date under every tile
   was repeating the heading above it, while the name is the one thing that says
@@ -150,8 +132,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A photograph found by its writing no longer swallows the results beside
+  it.** Text-search results hold two kinds of file — documents read from their
+  own text, and pictures read off the pixels — and a picture's thumbnail had
+  nothing bounding its height there. It grew to fill the column, stretched the
+  whole row to match, and left every document next to it in a cell four times
+  the height of the single line of text inside it. Every result in that group
+  now shows itself at the same size, whichever kind of file it is, and its name
+  sits above the passage rather than under a shadow meant for laying text over a
+  photo.
 - **An archive that only reads the writing in pictures can now search it.**
-  Switching on *Text in images* without *Documents* filled the index exactly as
+  Switching on *Pictures of text* without *Documents* filled the index exactly as
   it should, and Browse never showed the group that searches it — so the work
   was done, the passages were there, and there was nowhere to look. The same
   archive was also told it had nothing to read and nothing queued, because
@@ -160,9 +151,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the count with it.
 - **Browse's "How this works" opened the page about scanning folders**, which
   answered a question nobody pressing it had. It now opens a page about
-  searching — and Documents, Text in images and Search by meaning have one to
-  link to from the setup screen, which they did not before, so choosing them was
-  the one decision made with no way to read what it does first.
+  searching — and Documents and Pictures of text have one to link to from the
+  setup screen, which they did not before, so choosing them was the one decision
+  made with no way to read what it does first.
 - **Browse opens on a finished-looking screen, and opens far faster.** It used
   to wait for the filter bar's options — which years, which people, which
   places this archive holds — before doing anything else, and that answer is a

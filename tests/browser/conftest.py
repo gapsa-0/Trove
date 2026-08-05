@@ -175,9 +175,16 @@ def _write_jpeg(path: Path, color: tuple[int, int, int] = (120, 140, 160)) -> No
     Image.new("RGB", (32, 32), color).save(path, "JPEG")
 
 
-def _seed_documents(conn, root_id: int, source_dir: Path) -> int:
-    """Two documents with their text already read, so Browse has a second
-    result group to draw. Returns the first one's id.
+def _seed_documents(conn, root_id: int, source_dir: Path, photo_id: int) -> int:
+    """Text already read out of two documents *and* one photograph, so Browse
+    has a second result group and that group holds more than one kind of file.
+    Returns the first document's id.
+
+    The photograph is not decoration. Documents and Pictures of text write into
+    the same passages, so this group is mixed on any archive running both -- and
+    while the fixture held documents alone, a thumbnail with nothing bounding its
+    height went unseen here: it grew to fill the column and stretched every
+    document beside it into a cell four times the size of its own text.
 
     Written straight into the tables rather than run through the stage: what
     this tier checks is the screen, and a real extraction pass would put PDF
@@ -216,6 +223,30 @@ def _seed_documents(conn, root_id: int, source_dir: Path) -> int:
         )
         conn.execute("INSERT INTO doc_chunk_fts(rowid, text) VALUES(?, ?)", (cur.lastrowid, body))
         first = first or fid
+
+    # ...and the writing read off a photograph. It shares "receipt" with the
+    # text file above, so one search can return both kinds of file and the group
+    # can be asserted on for holding them at the same size; it deliberately
+    # shares nothing with "lease", which is what the searches that count only
+    # documents look for.
+    photo_text = "RECEIPT / RECIBO DE COMPRA -- TOTAL 43,50 EUR"
+    # The seeded photographs carry no hash, and `doc_text.source_sha256` is the
+    # anchor saying the text matches the bytes it was read from, so give this
+    # one the hash a real scan would have written.
+    digest = f"sha-ocr-{photo_id}"
+    conn.execute("UPDATE files SET sha256=? WHERE id=?", (digest, photo_id))
+    conn.execute(
+        """INSERT INTO doc_text(file_id, source_sha256, wanted, extractor, status,
+                                chars, n_chunks, text_version, extracted_at)
+           VALUES(?, ?, 'ocr', 'ocr', 'extracted', ?, 1, 'doctext-v1', ?)""",
+        (photo_id, digest, len(photo_text), factories.FIXED_TIME),
+    )
+    cur = conn.execute(
+        "INSERT INTO doc_chunks(file_id, ordinal, page_first, page_last, chars) "
+        "VALUES(?, 0, NULL, NULL, ?)",
+        (photo_id, len(photo_text)),
+    )
+    conn.execute("INSERT INTO doc_chunk_fts(rowid, text) VALUES(?, ?)", (cur.lastrowid, photo_text))
 
     return first
 
@@ -275,7 +306,10 @@ def _seed(conn, root_id: int, source_dir: Path) -> dict:
             (ids["dup_group"], fid, role),
         )
 
-    ids["document"] = _seed_documents(conn, root_id, source_dir)
+    # A photograph none of the other fixtures has claimed: not the one the item
+    # panel opens, not a person's, not a pet's, not half of the duplicate pair.
+    ids["ocr_photo"] = file_ids[20]
+    ids["document"] = _seed_documents(conn, root_id, source_dir, ids["ocr_photo"])
 
     # Without this, opening the archive treats every person seeded above as
     # stale identity data from a retired embedder and wipes them -- see the
@@ -312,12 +346,9 @@ def archive(tmp_path, cdp_port):
     registered = archives.add_archive(cfg, str(source_dir))
     assert "id" in registered, registered
     root_id = registered["id"]
-    # Everything except Search by meaning. This archive has passages but no
-    # vectors, so that half could only ever return nothing -- and leaving it on
-    # would make every text search in this tier load a 118 MB encoder first, to
-    # embed a query with nothing to compare it against. What this tier checks is
-    # the screen.
-    cfg.set_archive_features(root_id, [f for f in features.ids() if f != "meaning"])
+    # Every feature: what this tier checks is the screen, and a screen drawn
+    # from a partial feature set would not be the one a full archive shows.
+    cfg.set_archive_features(root_id, list(features.ids()))
 
     conn = db.connect(cfg.archive_db_path(root_id))
     try:

@@ -12,7 +12,7 @@ archive when the algorithm changes.
 in images share a pass, so a file's row records which halves were switched on
 when it was read (``doc_text.wanted``). Without that, a scan read once with only
 Documents on carries a current hash and a current version, is therefore never
-pending, and switching Text in images on afterwards would never bring it back --
+pending, and switching Pictures of text on afterwards would never bring it back --
 the file would simply never be read, silently, forever.
 """
 
@@ -60,7 +60,7 @@ def _pending_clause(wanted: str) -> tuple[str, list[Any]]:
 
     Never read; read at different bytes; read by an older version of this
     algorithm; or read while a different set of halves was switched on. The
-    fourth is what makes enabling Text in images actually revisit the scans that
+    fourth is what makes enabling Pictures of text actually revisit the scans that
     Documents could not read.
     """
     return (

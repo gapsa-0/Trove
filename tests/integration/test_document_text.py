@@ -167,7 +167,7 @@ def test_switching_the_other_half_on_brings_the_scans_back(archive):
     _run(cfg, aid)
     assert documents.text_pending(db_path, aid, WANTED) == 0
 
-    # Text in images switched on: every file was read under a different set of
+    # Pictures of text switched on: every file was read under a different set of
     # halves, so every file is owed another look.
     assert documents.text_pending(db_path, aid, BOTH) == 4
 
@@ -258,7 +258,7 @@ def test_the_index_never_outlives_the_chunks_it_addresses(archive):
         conn.close()
 
 
-# --- reading pictures, once Text in images is on ----------------------------
+# --- reading pictures, once Pictures of text is on ----------------------------
 
 needs_ocr = pytest.mark.skipif(
     not __import__("trove.text.ocr", fromlist=["ocr"]).available(),
@@ -320,7 +320,7 @@ def test_documents_alone_leaves_the_scan_and_never_sees_the_photo(scanned_archiv
     assert rows["contrato.pdf"]["status"] == "extracted"
     assert rows["escaneo.pdf"]["status"] == "skipped"
     assert "pictures of text" in rows["escaneo.pdf"]["error"]
-    assert "paisaje.jpg" not in rows, "a picture is not work until Text in images is on"
+    assert "paisaje.jpg" not in rows, "a picture is not work until Pictures of text is on"
 
 
 @needs_ocr

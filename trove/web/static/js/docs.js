@@ -37,13 +37,13 @@ const DOC_FOR_SECTION = {
 // is a place in the app, a feature is a piece of work, and the Timeline and
 // Browse share one feature between two sections.
 //
-// Every feature is listed. The three that arrived with document text were not,
+// Every feature is listed. The two that arrived with document text were not,
 // so choosing them on the setup panel was the one decision made with no way to
 // read what it does first.
 const DOC_FOR_FEATURE = {
   index: "indexing", duplicates: "duplicates", people: "people",
   pets: "pets", places: "places", semantic: "search",
-  documents: "documents", ocr: "ocr", meaning: "meaning",
+  documents: "documents", ocr: "ocr",
 };
 const DOCS = {
   pages: [],

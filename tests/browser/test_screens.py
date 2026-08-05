@@ -14,6 +14,7 @@ here, because the screen it was supposed to fill stays empty.
 from __future__ import annotations
 
 import importlib.util
+import urllib.request
 
 import pytest
 
@@ -302,22 +303,21 @@ def test_browse_says_what_it_can_search_before_anything_is_typed(open_app):
         # Against the catalogue rather than against strings typed here: Browse is
         # the fourth screen to name this work, and the whole point of composing
         # these server-side is that it cannot call it something else.
-        on = [f for f in features.ids() if f != "meaning"]  # the fixture's feature set
-        expected = [w.label for w in features.search_ways(on)]
+        expected = [w.label for w in features.search_ways(features.ids())]
         assert [w.removesuffix("always") for w in shown] == expected
         assert shown[0].endswith("always"), "file names is not a feature anyone chose"
         assert app.errors() == []
 
 
 def test_a_way_links_to_the_page_that_documents_it(open_app):
-    """Every feature feeding a way gets its own way in. The text way has two or
-    three, which is why they are marks rather than a row of link text."""
+    """Every feature feeding a way gets its own way in. The text way has two,
+    which is why they are marks rather than a row of link text."""
     with open_app("library", wait_for=".way") as app:
         links = app.tab.evaluate(
             "[...document.querySelectorAll('.way .way-doc')].map(e => e.title)"
         )
         assert "How Documents works" in links
-        assert "How Text in images works" in links
+        assert "How Pictures of text works" in links
         assert "How Search by description works" in links
         assert app.errors() == []
 
@@ -346,4 +346,67 @@ def test_a_search_finds_a_word_inside_a_document(open_app):
         assert "lease" in body.lower()
         assert "p. 2" in body, "a hit says which page its passage came from"
         assert app.count("#grid-text mark") > 0, "the matched word is marked"
+        assert app.errors() == []
+
+
+def test_a_photograph_and_a_document_are_the_same_size_in_the_text_group(open_app, archive):
+    """Documents and Pictures of text write into the same passages, so this group
+    holds both kinds of file -- and a result should look like a result whichever
+    it is.
+
+    It did not. A thumbnail is `height: 100%`, which the square tile bounds
+    everywhere else and this column bounded nowhere: the photograph grew to fill
+    it, the grid row stretched to match, and a document holding one line of text
+    got a cell four times the height of its own content. The assertion is on the
+    picture each result shows of itself, since that is the part that varied.
+    """
+    # Generate the thumbnail before the page asks for it. A tile's `<img>`
+    # removes itself on error, so a slow first generation does not leave this
+    # waiting -- it leaves the element gone and the bug unreproducible, which
+    # would pass silently rather than fail.
+    #
+    # By the route that names its archive, not `/thumb/<id>`: that one resolves
+    # against whichever archive is *open*, and nothing is open until the app
+    # below starts. Both write the same cache entry, so the page's own request
+    # finds it already there.
+    urllib.request.urlopen(
+        f"{archive.base_url}/archivethumb/{archive.root_id}/{archive.ids['ocr_photo']}"
+    ).read()
+
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(
+            "(() => { const c = document.getElementById('semantic-q');"
+            " c.textContent = 'receipt';"
+            " c.closest('form').dispatchEvent("
+            "new Event('submit', {cancelable: true, bubbles: true})); })()"
+        )
+        app.wait_for("#grid-text .tile")
+        app.wait_for("#grid-text img")
+
+        media = app.tab.evaluate(
+            "[...document.querySelectorAll('#grid-text .tile')].map(t => Math.round("
+            "(t.querySelector(':scope > img') || t.querySelector(':scope > .ph'))"
+            ".getBoundingClientRect().height))"
+        )
+        assert len(media) == 2, "this search has to return a photograph and a document"
+        assert len(set(media)) == 1, f"the media boxes disagree: {media}"
+        assert max(media) < 140, f"a thumbnail grew to fill the column: {media}"
+        # A photograph's own thumbnail is the most recognisable thing about it,
+        # so the picture is what it shows -- not the generic glyph.
+        assert app.count("#grid-text img") == 1
+        assert app.errors() == []
+
+
+def test_a_photograph_found_by_its_writing_says_so(open_app):
+    """The badge that tells a scanned receipt from a PDF's own text layer, drawn
+    only where both readers are on and a hit could be either."""
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(
+            "(() => { const c = document.getElementById('semantic-q');"
+            " c.textContent = 'recibo';"
+            " c.closest('form').dispatchEvent("
+            "new Event('submit', {cancelable: true, bubbles: true})); })()"
+        )
+        app.wait_for("#grid-text .found-by")
+        assert "text in pictures" in app.text("#grid-text .found-by")
         assert app.errors() == []
