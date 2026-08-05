@@ -35,6 +35,7 @@ import factories
 import pytest
 from helpers import serve_in_thread
 
+from trove import features
 from trove.config import Config
 from trove.db import database as db
 from trove.services import archives
@@ -311,6 +312,12 @@ def archive(tmp_path, cdp_port):
     registered = archives.add_archive(cfg, str(source_dir))
     assert "id" in registered, registered
     root_id = registered["id"]
+    # Everything except Search by meaning. This archive has passages but no
+    # vectors, so that half could only ever return nothing -- and leaving it on
+    # would make every text search in this tier load a 118 MB encoder first, to
+    # embed a query with nothing to compare it against. What this tier checks is
+    # the screen.
+    cfg.set_archive_features(root_id, [f for f in features.ids() if f != "meaning"])
 
     conn = db.connect(cfg.archive_db_path(root_id))
     try:

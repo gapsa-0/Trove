@@ -41,7 +41,10 @@ PASSAGES = {
         "El importe del alquiler mensual asciende a 850 euros.",
         "El contrato finaliza el 31 de diciembre de 2026.",
     ],
-    "garantia.pdf": ["La garantia del televisor cubre dos anos desde la compra."],
+    "garantia.pdf": [
+        "La garantia del televisor cubre dos anos desde la compra. "
+        "Referencia XB-99231 del fabricante."
+    ],
     "recetas.txt": ["Bata los huevos con el azucar y anada la harina tamizada."],
 }
 
@@ -212,3 +215,80 @@ def test_the_vectors_actually_separate_meaning(archive):
     query = np.array(meaning.embed_queries(cfg, ["cuanto pago de alquiler"])[0], dtype="<f4")
     assert query @ stored["contrato.pdf"] > query @ stored["recetas.txt"]
     assert query @ stored["contrato.pdf"] > query @ stored["garantia.pdf"]
+
+
+# --- what fusing the two rankings buys --------------------------------------
+
+
+def test_meaning_finds_a_document_whose_words_do_not_match(archive):
+    """The half that words cannot do. Not one token of this question appears in
+    the document it should find -- which is the ordinary case for paperwork
+    filed years ago, when you remember what a thing was about and not how it was
+    worded."""
+    from trove.services import text_search
+
+    cfg, aid, db_path = archive
+    _run(cfg, aid)
+
+    query = "cuanto cuesta vivir aqui cada mes"
+    assert text_search.text_search(db_path, query, root_id=aid)["total"] == 0
+
+    vector = meaning.embed_queries(cfg, [query])[0]
+    fused = text_search.text_search(
+        db_path, query, query_vector=vector, root_id=aid, min_similarity=0.70
+    )
+    assert "contrato.pdf" in [i["name"] for i in fused["items"]]
+
+
+def test_words_find_a_reference_the_embedder_blurs(archive):
+    """The half that meaning cannot do, and the reason both are kept. A model
+    that puts "XB-99231" near every other reference number is behaving exactly
+    as designed; an index that matches the string is what you want here."""
+    from trove.services import text_search
+
+    cfg, aid, db_path = archive
+    _run(cfg, aid)
+
+    query = "XB-99231"
+    words_only = text_search.text_search(db_path, query, root_id=aid)
+    assert [i["name"] for i in words_only["items"]] == ["garantia.pdf"]
+
+    # And fusing must not lose it: it is still first once the vectors join in.
+    vector = meaning.embed_queries(cfg, [query])[0]
+    fused = text_search.text_search(
+        db_path, query, query_vector=vector, root_id=aid, min_similarity=0.70
+    )
+    assert fused["items"][0]["name"] == "garantia.pdf"
+
+
+def test_a_document_found_only_by_meaning_still_shows_a_passage(archive):
+    """There is no literal match to highlight, so it gets a plain excerpt rather
+    than an empty box -- and no marks, because nothing matched literally."""
+    from trove.services.text_search import MARK_OPEN, text_search
+
+    cfg, aid, db_path = archive
+    _run(cfg, aid)
+
+    vector = meaning.embed_queries(cfg, ["cuanto cuesta vivir aqui"])[0]
+    page = text_search(db_path, "", query_vector=vector, root_id=aid, min_similarity=0.70)
+
+    assert page["items"], "the meaning half answers on its own"
+    shown = page["items"][0]
+    assert shown["snippet"].strip()
+    assert MARK_OPEN not in shown["snippet"]
+
+
+def test_the_meaning_half_alone_answers_when_there_are_no_words_to_match(archive):
+    """A query whose every token is punctuation still has a vector, so an
+    archive with Search by meaning is not left with nothing."""
+    from trove.services.text_search import text_search
+
+    cfg, aid, db_path = archive
+    _run(cfg, aid)
+
+    vector = meaning.embed_queries(cfg, ["alquiler"])[0]
+    assert text_search(db_path, "!!!", root_id=aid)["total"] == 0
+    assert (
+        text_search(db_path, "!!!", query_vector=vector, root_id=aid, min_similarity=0.70)["total"]
+        > 0
+    )

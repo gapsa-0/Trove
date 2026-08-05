@@ -27,7 +27,7 @@ from helpers import serve_in_thread
 
 from trove.config import Config
 from trove.db import database as db
-from trove.services import archives, semantic
+from trove.services import archives, meaning, semantic
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
@@ -309,6 +309,12 @@ def live_server(tmp_path, monkeypatch):
     monkeypatch.setattr(
         semantic, "embed_queries", lambda cfg, qs: [[1.0] + [0.0] * 767 for _ in qs]
     )
+    # And the same for the other search, for the same reason:
+    # /api/browse/text/search embeds the typed query through the 118 MB text
+    # encoder, which this XDG-isolated cache has never seen. The BM25 half of
+    # that route -- which is the half with no model behind it -- still runs
+    # for real against whatever is in the index.
+    monkeypatch.setattr(meaning, "embed_queries", lambda cfg, qs: [[1.0] + [0.0] * 383 for _ in qs])
 
     with serve_in_thread(cfg) as httpd:
         host, port = httpd.server_address

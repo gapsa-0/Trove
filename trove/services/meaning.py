@@ -16,6 +16,7 @@ one call each.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import struct
 import threading
@@ -29,6 +30,8 @@ from ._common import _NOT_HIDDEN, reading
 # Identity of the vector space ``doc_chunk_embeddings`` holds. Tied to the
 # embedder's own version rather than restated, so there is one place to change.
 MEANING_VERSION = etb.EMBEDDER_VERSION
+
+logger = logging.getLogger(__name__)
 
 _backend: etb.E5Backend | None = None
 _backend_lock = threading.Lock()
@@ -55,6 +58,27 @@ def backend(cfg: Config) -> etb.E5Backend:
         if _backend is None:
             _backend = etb.E5Backend(cfg.cache_dir)
         return _backend
+
+
+def warm_model(cfg: Config) -> None:
+    """Load the encoder now, so the first search does not wait for it.
+
+    A warm-up, never a download — the same rule ``semantic.warm_text_model``
+    follows, for the same reason. If the weights are not on disk this returns
+    at once and the first search fetches them inside a request, which is
+    somewhere a 129 MB download can be reported and can fail visibly. A
+    background thread at start-up has neither, and quietly spending someone's
+    connection is not the start-up behaviour to ship.
+
+    Best-effort otherwise: a failure here has to stay invisible, because the
+    next search simply loads the model again or reports the real error.
+    """
+    if not models_ready(cfg):
+        return
+    try:
+        backend(cfg).load()
+    except Exception:
+        logger.debug("meaning model warmup failed", exc_info=True)
 
 
 def embed_queries(cfg: Config, queries: list[str]) -> list[list[float]]:

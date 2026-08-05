@@ -168,15 +168,36 @@ def text_status(req: Request) -> dict:
 
 
 def text_search_route(req: Request) -> MediaPage | Json:
-    """Full-text search over the text read out of documents, ranked by BM25."""
+    """Search the text read out of documents, by word and by meaning together."""
     query = (req.one("q") or "").strip()
     if not query:
         return Json({"error": "A search query is required"}, 400)
     rid = req.root_id
     sort_q = req.one("sort")
+
+    from ...services import meaning
+
+    # The meaning half is added only where this archive asked for it and this
+    # build can do it. Its absence changes nothing about the response: the words
+    # half answers alone, which is the whole reason the two are fused by rank
+    # rather than blended into one score.
+    query_vector = None
+    if "meaning" in req.cfg.archive_features(rid) and meaning.available():
+        try:
+            query_vector = meaning.embed_queries(req.cfg, [query])[0]
+        except Exception:
+            # A model that will not load must not take the text search down with
+            # it -- BM25 needs nothing but SQLite, and answering with half the
+            # ranking beats answering with none.
+            logger.warning("could not embed the query for meaning search", exc_info=True)
+
     return text_search.text_search(
         req.db(rid),
         query,
+        query_vector=query_vector,
+        min_similarity=float(req.cfg.text_search_min_similarity),
+        fuse_depth=int(req.cfg.text_search_fuse_depth),
+        rrf_k=int(req.cfg.text_search_rrf_k),
         root_id=rid,
         year=req.one("year"),
         month=req.one("month"),

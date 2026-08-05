@@ -286,13 +286,19 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8756) -> ThreadingHT
     cfg.ensure_dirs()
     cfg.migrate_legacy_archive()
     discard_superseded_secrets()
-    from ..services import semantic
+    from ..services import meaning, semantic
 
     # Loading the 283 MB text tower takes a second or two. Do it off the serving
     # thread now so the user's first search doesn't wait for it; a search that
     # arrives sooner simply blocks on the same lock and gets the warmed session.
     threading.Thread(
         target=semantic.warm_text_model, args=(cfg,), name="semantic-warm", daemon=True
+    ).start()
+    # And the text encoder, for the same reason: a search that arrives sooner
+    # blocks on the same lock and gets the warmed session rather than paying
+    # for the load inside the request.
+    threading.Thread(
+        target=meaning.warm_model, args=(cfg,), name="meaning-warm", daemon=True
     ).start()
     jm = JobManager(cfg)
     handler = type("BoundHandler", (Handler,), {"cfg": cfg, "jobs": jm})
