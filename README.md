@@ -82,8 +82,16 @@ library.*
   reader is the Python standard library or the PDF library the app already
   bundles. Two limits are worth knowing: a scanned PDF is pictures of a page with
   no text in the file at all, so this finds nothing in it (that is what the
-  planned Text in images feature is for), and pre-2007 `.doc`, `.xls` and `.ppt`
+  Text in images feature below is for), and pre-2007 `.doc`, `.xls` and `.ppt`
   files cannot be read.
+- Reads the writing in pictures, when the optional Text in images feature is
+  enabled: photographed receipts, screenshots, and PDFs that are scans rather
+  than documents. A PDF is decided page by page, so a contract with a scanned
+  appendix is read both ways and comes back as one document. Spanish and English,
+  accents included, with nothing to download — these are the only model weights
+  that ship with the application. It is the slowest stage in the pipeline, at
+  roughly half a second per picture, so an archive of a hundred thousand photos
+  is an overnight run rather than a coffee break; it pauses and resumes safely.
 - Searches those documents by meaning as well as by word, when the optional
   Search by meaning feature is enabled. "How much is the rent" finds the clause
   saying *importe del alquiler mensual* without those words appearing in the
@@ -108,7 +116,7 @@ scan ┐
      ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
 metadata ┘                   ├─→ places
                              ├─→ semantic indexing (optional)
-                             ├─→ reading documents (optional)
+                             ├─→ reading documents + text in images (optional)
                              └─→ document meaning (optional)
 ```
 
@@ -124,8 +132,8 @@ something else. The sidebar lists every stage currently running, not just one.
 
 Everything is local. Scanning, hashing, metadata extraction, duplicates,
 thumbnails, place clustering, face detection and clustering, search by
-description, reading the text inside documents and searching them by meaning,
-and the SQLite catalogue all stay on the machine. Trove has no telemetry, no accounts, no API keys, and does
+description, reading the text inside documents and pictures, searching them by
+meaning, and the SQLite catalogue all stay on the machine. Trove has no telemetry, no accounts, no API keys, and does
 not modify source media.
 
 **The map's street-map layer is the only outbound network call in the app.**

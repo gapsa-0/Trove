@@ -23,6 +23,13 @@ Trove. What it produces is a list of numbers per passage, stored in the same
 per-archive catalogue; the passage itself never leaves the machine, and neither
 does the question you type.
 
+**Reading the writing in pictures downloads nothing at all.** Text in images is
+the one feature whose model weights ship inside the application, so it starts
+work immediately with no connection and never fetches anything. It opens your
+original files rather than the thumbnails — writing is unreadable at thumbnail
+size — and what it produces goes into the same per-archive catalogue as
+everything else.
+
 **The only time Archive uses the network on its own** is downloading model
 weights: ~550 MB for People and Pets detection on their first run, ~690 MB for
 the search-by-description model on an archive's first indexing pass, and ~129 MB

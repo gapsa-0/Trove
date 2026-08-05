@@ -41,6 +41,14 @@ Do not publish a release while any entry is incomplete.
   repository above) — Gemma Terms of Use —
   https://ai.google.dev/gemma/terms — used only to turn a typed search query
   into token ids for the SigLIP 2 text tower.
+- RapidOCR — Apache-2.0 — https://github.com/RapidAI/RapidOCR
+  Bundled, together with the PP-OCRv6 detection and recognition models and the
+  PP-OCR angle classifier that ship inside its wheel. The engineering code is
+  RapidAI's; the model weights are Baidu's, released under Apache-2.0 as part of
+  PaddleOCR — https://github.com/PaddlePaddle/PaddleOCR
+  These are the only model weights the installer carries rather than fetching at
+  first use, so the obligation travels with the package rather than with a
+  download. No non-commercial clause on either part.
 - multilingual-e5-small text embedding model — MIT — downloaded at first use, not
   bundled. Weights and the ONNX export are both upstream's, at a pinned revision:
   https://huggingface.co/intfloat/multilingual-e5-small

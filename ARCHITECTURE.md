@@ -46,8 +46,9 @@ real dependency graph, from `trove/pipeline/stages.py`:
                               │    (optional, SigLIP 2)
                               │
                               ├──▶ text ──────────────▶ doc_text / doc_chunks
-                              │    (optional; documents + OCR,
-                              │     one open per file)
+                              │    (optional; documents + text in
+                              │     images, one open per file, and
+                              │     a PDF routed per page)
                               │
                               └──▶ meaning ───────────▶ doc_chunk_embeddings
                                    (optional, multilingual-e5;
@@ -115,7 +116,9 @@ grandfathered.
 | what a face re-cluster destroys, and what survives it | `trove/faces/cluster.py` |
 | pet clustering behaviour | `trove/pets/cluster.py` |
 | which semantic matches are shown (the two cuts, and the modality-gap centering they are tuned for) | `trove/services/search.py`, with the thresholds and their reasoning in `trove/config/settings.py` |
-| how a file's text is read, and what a format contributes | `trove/text/extract.py`, then the reader for that family (`pdf.py`, `office.py`, `plain.py`) |
+| how a file's text is read, and what a format contributes | `trove/text/extract.py`, then the reader for that family (`pdf.py`, `office.py`, `plain.py`, `ocr.py`) |
+| whether a PDF page is read as text or as pixels | `trove/text/pdf.py`'s `page_stats` / `looks_scanned`, thresholds in `trove/config/settings.py` (ADR 0019) |
+| what OCR costs, and why it reads at two resolutions | `trove/text/ocr.py` (its docstring carries the measurements) |
 | how a document is cut into searchable passages | `trove/text/chunk.py` (its docstring carries the token measurements the sizes came from) |
 | when the text stage re-reads a file | `trove/services/documents.py`'s four-legged pending predicate, and `TEXT_VERSION` beside it |
 | how text search ranks, and what a hit shows | `trove/services/text_search.py` + the text group in `trove/web/static/js/library.js` |

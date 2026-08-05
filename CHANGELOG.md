@@ -15,6 +15,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Trove can read the writing in your pictures.** Switch on *Text in images*
+  and photographed receipts, screenshots and scanned paperwork become as
+  searchable as anything else. A PDF is decided page by page, so a contract with
+  a scanned appendix is read both ways and comes back as one document, with the
+  page each passage came from. Spanish and English, accents included.
+
+  Nothing downloads: this is the only model that ships inside the application,
+  so it starts work straight away even with no connection.
+
+  **It is the slow one, and worth deciding about rather than switching on by
+  reflex.** Every picture has to be opened and looked at — it cannot use the
+  small thumbnails, because writing disappears at that size — which is roughly
+  half a second each. Five thousand pictures is under an hour; a hundred
+  thousand is an overnight run. It runs alongside everything else, never blocks
+  browsing, and stops and resumes safely, so leaving it overnight is the
+  intended way to use it. A result read from a picture is marked as such,
+  because unlike a document's own text it is a best guess.
 - **Documents can be found by what they are about, not just by the words they
   use.** Switch on *Search documents by meaning* alongside Documents, and asking
   "how much is the rent" finds the clause that says *importe del alquiler
