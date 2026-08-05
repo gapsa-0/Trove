@@ -68,6 +68,7 @@ LAYERS = {
     "faces": 1,
     "pets": 1,
     "embeddings": 1,
+    "text": 1,
     "thumbnails": 1,
     # L2 application -- orchestrates L1. Populated by later work; the layer
     # exists here so the rule is in place before the code arrives.
