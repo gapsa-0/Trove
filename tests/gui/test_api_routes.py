@@ -163,6 +163,18 @@ API_GET_CASES = [
         id="GET /api/browse/semantic/search",
     ),
     pytest.param(
+        "/api/browse/text/status?root={root_id}",
+        {"total", "read", "skipped", "errors", "pending", "passages", "configured", "enabled"},
+        id="GET /api/browse/text/status",
+    ),
+    pytest.param(
+        "/api/browse/text/search?root={root_id}&q=contrato",
+        {"items", "offset", "limit", "count", "total"},
+        # No mark: searching text needs SQLite and nothing else, which is the
+        # difference between this half of Browse and the one above it.
+        id="GET /api/browse/text/search",
+    ),
+    pytest.param(
         "/api/item/{plain}",
         {
             "id",

@@ -29,7 +29,7 @@ from trove.web import server
 # check, and once the chains are gone it is a plain read of the tables.
 # ---------------------------------------------------------------------------
 
-# GET, exact (31: 27 /api + 4 non-api).
+# GET, exact (33: 29 /api + 4 non-api).
 GET_EXACT = {
     "/api/health",
     "/api/archives",
@@ -57,6 +57,8 @@ GET_EXACT = {
     "/api/folders",
     "/api/browse/semantic/status",
     "/api/browse/semantic/search",
+    "/api/browse/text/status",
+    "/api/browse/text/search",
     "/api/pipeline",
     "/",
     "/index.html",

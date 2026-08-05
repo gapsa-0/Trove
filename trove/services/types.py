@@ -47,6 +47,13 @@ class MediaItem(_MediaItemBase, total=False):
     face_id: int | None
     detection_id: int
     score: float
+    # Text-search hits only. ``snippet`` is the matching passage with the match
+    # marked; the two page fields are the range the passage covers, and are both
+    # absent for a format that has no pages (a .txt, a spreadsheet) rather than
+    # claiming page 1.
+    snippet: str
+    page: int | None
+    page_last: int | None
 
 
 class MediaPage(TypedDict):

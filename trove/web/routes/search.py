@@ -1,4 +1,12 @@
-"""Semantic (SigLIP) search: index status and the search endpoint itself."""
+"""The two searches Browse offers: by description, and by what a file says.
+
+They are kept apart all the way out to the client. A SigLIP cosine and a BM25
+rank are different scales measuring different things, so there is no merged
+ranking and no shared endpoint -- Browse asks for whichever groups the archive
+has enabled and labels them separately. That also means each degrades on its
+own: an install without numpy loses description search and keeps text search,
+which needs nothing but SQLite.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +14,7 @@ import logging
 import threading
 
 from ...errors import ModelUnavailableError
-from ...services import search
+from ...services import search, text_search
 from ...services.types import MediaPage
 from ._request import Json, Request
 
@@ -135,4 +143,46 @@ def semantic_search(req: Request) -> MediaPage | Json:
         located={"yes": True, "no": False}.get(located_q) if located_q is not None else None,
         alternate_vectors=[(vector, search.ALTERNATE_VECTOR_PENALTY) for vector in vectors[1:]],
         center=center,
+    )
+
+
+def text_status(req: Request) -> dict:
+    """Document-text index state, and whether this archive can search inside documents.
+
+    The same ``configured``/``enabled`` split ``semantic_status`` draws, for the
+    same reason: an archive that declined Documents must not be shown a box that
+    searches an index nothing will ever write. Here ``configured`` also covers
+    the one dependency that can genuinely be missing -- a SQLite without FTS5 --
+    which is a property of the build rather than of the choice.
+    """
+    from ...services import documents
+
+    rid = req.root_id
+    status = text_search.text_summary(req.db(rid), rid)
+    # Spelled out rather than imported, the way the catalogue spells out stage
+    # kinds; tests/unit/test_features.py checks the id still exists.
+    enabled = "documents" in req.cfg.archive_features(rid)
+    status["enabled"] = enabled
+    status["configured"] = enabled and documents.available(frozenset({"documents"}))
+    return status
+
+
+def text_search_route(req: Request) -> MediaPage | Json:
+    """Full-text search over the text read out of documents, ranked by BM25."""
+    query = (req.one("q") or "").strip()
+    if not query:
+        return Json({"error": "A search query is required"}, 400)
+    rid = req.root_id
+    sort_q = req.one("sort")
+    return text_search.text_search(
+        req.db(rid),
+        query,
+        root_id=rid,
+        year=req.one("year"),
+        month=req.one("month"),
+        person_ids=req.many("person"),
+        cluster_id=req.one("place", int),
+        sort=(sort_q if sort_q in ("newest", "oldest") else "relevance"),
+        limit=req.limit(120, 500),
+        offset=req.offset(),
     )

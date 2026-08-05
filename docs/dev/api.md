@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**71 routes**: 31 GET (exact) + 12 GET (prefix) + 28 POST.
+**73 routes**: 33 GET (exact) + 12 GET (prefix) + 28 POST.
 
 ## GET -- exact path
 
@@ -33,6 +33,8 @@ build if this file has drifted from the route tables.
 | `/api/folders` | The folder tree with per-folder file counts. | `trove/web/routes/browse.py::folders` |
 | `/api/browse/semantic/status` | Semantic index state, and whether this archive can search by description. | `trove/web/routes/search.py::semantic_status` |
 | `/api/browse/semantic/search` | Free-text semantic search over the archive's media, ranked by embedding similarity. | `trove/web/routes/search.py::semantic_search` |
+| `/api/browse/text/status` | Document-text index state, and whether this archive can search inside documents. | `trove/web/routes/search.py::text_status` |
+| `/api/browse/text/search` | Full-text search over the text read out of documents, ranked by BM25. | `trove/web/routes/search.py::text_search_route` |
 | `/api/map/clusters` | Place clusters (grouped geotagged files) with at least the configured minimum media. | `trove/web/routes/places.py::clusters` |
 | `/api/map/points` | Every geotagged file as a single un-clustered map point. | `trove/web/routes/places.py::points` |
 | `/api/map/cluster/merge-preview` | How spread out a prospective cluster merge would be, so the GUI can warn before it's confirmed. | `trove/web/routes/places.py::merge_preview` |
