@@ -71,16 +71,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   half-read into something misleading.
 - **Browse says what it can search, before you ask it to.** With the box empty
   there is now a panel under it listing every way this archive can answer a
-  query — file names, what your files say, what your photos show — what each one
-  matches in plain words, and how much of the archive it currently covers, so
-  you can see that 300 documents have been read and 6,000 photos are still
-  queued. An archive with no search features switched on gets the panel too,
-  saying it has one way.
+  query, what each one matches in plain words, and how much of the archive it
+  currently covers — so you can see that 300 documents have been read and 6,000
+  photos are still queued. Each way links to the page documenting it, and the
+  one fed by two or three features links to each of them. An archive with no
+  search features switched on gets the panel too, saying it has one way.
 
-  When you do search, those same rows become the headings over their own
-  results, so what the screen promised and what it labels are the same list. A
-  way that found nothing says so on one quiet line at the foot rather than
-  leaving you to wonder whether it ran.
+  Every way is named after the feature you switched on to get it, so a group of
+  results is headed with the same words as the card you chose it from, the card
+  reporting its progress and the page explaining it — *Documents & text in
+  images*, *Search by description*. Only file names are named for what they do,
+  because no feature produces them and nobody chose them.
+
+  When you search, those same rows become the headings over their own results,
+  so what the screen promised and what it labels are the same list. A way that
+  found nothing says so on one quiet line at the foot rather than leaving you to
+  wonder whether it ran.
 - **Every archive can be searched by file name, and now it always is.** Matching
   what you type against the names of the files themselves needs no model, no
   download and no indexing, so it runs on every search whatever else is switched

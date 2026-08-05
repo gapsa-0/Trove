@@ -290,9 +290,12 @@ def test_browse_only_offers_description_search_to_an_archive_that_runs_it(open_a
     scheduler will never start."""
     with open_app("library", wait_for=".way") as app:
         assert app.count(".semantic-composer") == 1
-        assert "what your photos show" in app.tab.evaluate(
-            "document.getElementById('semantic-q').dataset.placeholder"
+        ways = app.tab.evaluate(
+            "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
         )
+        # The catalogue's own name for it, which is what the setup panel it was
+        # chosen on, the Overview card and its documentation page all use.
+        assert "Search by description" in ways
         assert app.count("#group-media") == 1
         assert app.errors() == []
 
@@ -361,8 +364,11 @@ def test_an_archive_that_only_reads_pictures_can_still_search_what_it_read(open_
         ways = app.tab.evaluate(
             "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
         )
-        assert any("what your files say" in w.lower() for w in ways)
-        # The sentence names the reader that is actually on, not the other one.
+        # Named after the half that is actually on -- not "Documents", and not a
+        # wording of Browse's own.
+        assert ways == ["File namesalways", "Text in images"]
+        # ...and it carries that half's mark, where it used to draw the document
+        # page over a group full of photographs.
         said = app.text(".way:nth-child(2)")
         assert "photos, screenshots and scans" in said
         assert "documents" not in said, "this archive was never promised its documents"

@@ -293,13 +293,32 @@ def test_browse_says_what_it_can_search_before_anything_is_typed(open_app):
     """The panel that replaced a one-line blurb. Every way this archive can
     answer a query gets a row saying what it matches, so the screen states what
     it can do rather than waiting to be asked."""
+    from trove import features
+
     with open_app("library", wait_for=".way") as app:
-        ways = app.tab.evaluate(
+        shown = app.tab.evaluate(
             "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
         )
-        assert any("File names" in w for w in ways)
-        assert any("what your files say".lower() in w.lower() for w in ways)
-        assert "always" in " ".join(ways).lower(), "file names is not a feature anyone chose"
+        # Against the catalogue rather than against strings typed here: Browse is
+        # the fourth screen to name this work, and the whole point of composing
+        # these server-side is that it cannot call it something else.
+        on = [f for f in features.ids() if f != "meaning"]  # the fixture's feature set
+        expected = [w.label for w in features.search_ways(on)]
+        assert [w.removesuffix("always") for w in shown] == expected
+        assert shown[0].endswith("always"), "file names is not a feature anyone chose"
+        assert app.errors() == []
+
+
+def test_a_way_links_to_the_page_that_documents_it(open_app):
+    """Every feature feeding a way gets its own way in. The text way has two or
+    three, which is why they are marks rather than a row of link text."""
+    with open_app("library", wait_for=".way") as app:
+        links = app.tab.evaluate(
+            "[...document.querySelectorAll('.way .way-doc')].map(e => e.title)"
+        )
+        assert "How Documents works" in links
+        assert "How Text in images works" in links
+        assert "How Search by description works" in links
         assert app.errors() == []
 
 

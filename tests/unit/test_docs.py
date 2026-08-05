@@ -169,3 +169,17 @@ def test_a_feature_page_carries_the_catalogues_own_name_and_mark():
     assert page["feature_label"] == semantic.label
     assert page["icon"] == semantic.icon
     assert page["download_mb"] == semantic.download_mb
+
+
+def test_every_feature_has_a_page_that_documents_it():
+    """The frontend used to keep its own feature-to-page table, and it was
+    missing the three that arrived with document text -- so choosing them on the
+    setup panel was the one decision made with no way to read what it does
+    first. Derived from the pages' own frontmatter now, so a feature added
+    without a page fails here rather than losing its link quietly."""
+    for feature_id in features.ids():
+        assert docs.slug_for_feature(feature_id), f"{feature_id} has no page"
+
+
+def test_a_feature_nothing_documents_reports_no_page():
+    assert docs.slug_for_feature("not-a-feature") == ""

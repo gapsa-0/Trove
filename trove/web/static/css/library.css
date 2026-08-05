@@ -293,7 +293,7 @@
 
 .way {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
   gap: 14px;
   align-items: center;
   padding: 13px 0;
@@ -346,6 +346,50 @@
   font-variant-numeric: tabular-nums
 }
 
+/* The way in to what documents a way: one mark per feature feeding it, so the
+   text row gets two or three without a line of link text. Quiet until hovered
+   — it is an offer, not something the row wants you to press. */
+.way-links {
+  display: inline-flex;
+  gap: 4px
+}
+
+.way-doc {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s
+}
+
+.way-doc:hover {
+  border-color: var(--line);
+  background: var(--panel2);
+  color: var(--accent)
+}
+
+.way-doc svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .way-doc {
+    transition: none
+  }
+}
+
 /* The mark a way carries, shared with the result headings and the badges so a
    glyph means the same thing wherever it appears. Media type owns hue in this
    app (TYPE_COL), so a search route is told apart by its shape and never by a
@@ -377,9 +421,15 @@
     row-gap: 4px
   }
 
-  .way-cov {
+  .way-cov,
+  .way-links {
     grid-column: 2;
+    justify-self: start;
     text-align: left
+  }
+
+  .way-doc {
+    margin-left: -4px
   }
 }
 

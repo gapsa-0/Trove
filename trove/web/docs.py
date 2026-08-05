@@ -142,6 +142,24 @@ def catalogue() -> list[Entry]:
     return entries
 
 
+def slug_for_feature(feature_id: str) -> str:
+    """The page documenting one feature, or "" if none claims it.
+
+    Derived from the pages' own ``feature:`` frontmatter rather than from a
+    second table mapping the other way. The frontend used to keep that second
+    table, and it was missing the three features that arrived with document
+    text -- so choosing them on the setup panel was the one decision made with
+    no way to read what it does first.
+
+    Reads every page, which is a few kilobytes off a local disk and is what
+    ``catalogue`` already does per request.
+    """
+    for entry in catalogue():
+        if entry.feature and entry.feature == feature_id:
+            return entry.slug
+    return ""
+
+
 def page(slug: str) -> dict | None:
     """One rendered page as the reader needs it, or ``None`` if it doesn't exist."""
     doc = _read(slug)

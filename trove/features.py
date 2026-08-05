@@ -454,3 +454,121 @@ def card_icon(card: str, enabled: Iterable[str]) -> str:
     different features.
     """
     return _live(card, enabled)[0].icon
+
+
+# --- What Browse's one search box can be asked --------------------------------
+
+
+@dataclass(frozen=True)
+class SearchWay:
+    """One way a typed query can be answered, as Browse presents it.
+
+    A *way* is not a feature and there are fewer of them than there are
+    features. Five readers fill indexes -- a file's name, a photo, a document's
+    text layer, writing read off pixels, a passage's meaning -- but only three
+    rankings can answer a query, because Documents, Text in images and Search by
+    meaning all feed one of them (ADR 0020). So this composes the three, and
+    ``readers`` is what says which features got you each one.
+
+    It lives here for the same reason ``card_label`` does. Browse is the fourth
+    surface to name this work, after the setup panel, the Overview card and the
+    sidebar chip, and it briefly grew a wording of its own -- "What your photos
+    show" for the thing every other screen calls Search by description. That is
+    the drift this module exists to prevent, so the words come from the same
+    table as the rest.
+    """
+
+    id: str
+    # What the group of results is headed with, and the row in the panel that
+    # promises it. The feature's own label wherever one feature owns the way.
+    label: str
+    icon: str
+    # One line under the label, in the reader's terms rather than the
+    # catalogue's: the label says what you switched on, this says what it does
+    # to what you type.
+    matches: str
+    # File names are not a feature and nobody chose them, so the panel marks
+    # this one as always present rather than leaving it looking declinable.
+    always: bool
+    # The features feeding this way, in catalogue order. What the panel draws a
+    # documentation link per, and empty for the way no feature owns.
+    readers: tuple[str, ...]
+
+
+# The way that belongs to no feature. Indexing records every file's name, but
+# heading a group of results "Indexing" would name the stage rather than the
+# answer -- and unlike the other two there is nothing here anybody chose, so
+# there is no feature label to keep faith with.
+_NAME_WAY = SearchWay(
+    id="name",
+    label="File names",
+    icon="filename",
+    matches="Matches the words in a file's own name, in any order.",
+    always=True,
+    readers=(),
+)
+
+
+def _text_matches(on: set[str]) -> str:
+    """What the text way promises, from the readers actually switched on.
+
+    Composed rather than stored because "the words inside your files" means a
+    different set of files depending on which halves are running, and an archive
+    that reads only pictures must not be promised its documents.
+    """
+    reads = (
+        "the words inside your documents, and the writing in your pictures"
+        if {"documents", "ocr"} <= on
+        else "the writing in your photos, screenshots and scans"
+        if "ocr" in on
+        else "the words written inside your documents"
+    )
+    meaning = (
+        " A passage can match what you meant without your words appearing in it."
+        if "meaning" in on
+        else ""
+    )
+    return f"Matches {reads}.{meaning}"
+
+
+def search_ways(enabled: Iterable[str]) -> tuple[SearchWay, ...]:
+    """The ways this feature set can answer a typed query, in the order shown.
+
+    Ordered by how explainable an answer is, which is the rule the results
+    already followed for putting text above the photo grid: a name match is the
+    most literal thing Browse can show you, a passage carrying your word is
+    next, and a picture that merely looks like what you described is last.
+    """
+    on = set(enabled)
+    ways = [_NAME_WAY]
+    # Documents and Text in images share the `text` card, so its label and mark
+    # already compose the way either one alone -- or both -- should be called.
+    # Search by meaning is a reader of the same way rather than a way of its
+    # own: it re-ranks those same passages and is fused into the one result, so
+    # it earns a link and a clause, not a heading.
+    text_readers = tuple(f.id for f in owners("text") if f.id in on)
+    if text_readers:
+        meaning = ("meaning",) if "meaning" in on else ()
+        ways.append(
+            SearchWay(
+                id="text",
+                label=card_label("text", on),
+                icon=card_icon("text", on),
+                matches=_text_matches(on),
+                always=False,
+                readers=text_readers + meaning,
+            )
+        )
+    if "semantic" in on:
+        semantic = _BY_ID["semantic"]
+        ways.append(
+            SearchWay(
+                id="media",
+                label=semantic.label,
+                icon=semantic.icon,
+                matches="Matches what is in the frame, without anything having been tagged.",
+                always=False,
+                readers=("semantic",),
+            )
+        )
+    return tuple(ways)

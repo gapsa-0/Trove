@@ -213,3 +213,68 @@ def test_the_panel_copy_is_actually_there():
         assert f.verb and f.noun and f.icon, f.id
         assert " " not in f.verb, f.id
         assert f.noun[:1].islower(), f.id
+
+
+# --- the ways Browse can answer a query -------------------------------------
+
+
+def test_a_way_is_named_after_the_feature_it_came_from():
+    """Browse is the fourth surface to name this work, after the setup panel, the
+    Overview card and the sidebar chip. It briefly grew a wording of its own --
+    "What your photos show" for Search by description -- which is the drift the
+    naming helpers in this module exist to prevent."""
+    ways = {w.id: w for w in features.search_ways(features.ids())}
+    assert ways["media"].label == features.by_id("semantic").label
+    assert ways["text"].label == features.card_label("text", features.ids())
+
+
+def test_a_way_takes_the_mark_of_a_reader_that_is_actually_on():
+    """An archive reading only pictures showed a document-page mark over a group
+    full of photographs, because the mark was hardcoded rather than composed."""
+    only_pictures = features.search_ways(["index", "ocr"])
+    text = next(w for w in only_pictures if w.id == "text")
+    assert text.icon == features.by_id("ocr").icon
+    assert text.label == "Text in images"
+
+
+def test_file_names_are_a_way_no_feature_owns():
+    """Indexing records them, but heading a group of results "Indexing" would
+    name the stage rather than the answer -- and there is nothing here anybody
+    chose, so there is no feature label to keep faith with."""
+    ways = features.search_ways([])
+    assert [w.id for w in ways] == ["name"]
+    assert ways[0].always is True
+    assert ways[0].readers == ()
+
+
+def test_the_two_readers_share_one_way_and_meaning_joins_it():
+    """Three features, one ranking: they fill the same passages, and splitting
+    them would discard the agreement reciprocal-rank fusion exists to reward."""
+    ways = features.search_ways(["index", "documents", "ocr", "meaning"])
+    assert [w.id for w in ways] == ["name", "text"]
+    text = ways[1]
+    assert text.readers == ("documents", "ocr", "meaning")
+    # Meaning earns a link and a clause, not a heading: it re-ranks what the
+    # other two read rather than reading anything itself.
+    assert "meaning" not in text.label.lower()
+    assert "without your words appearing in it" in text.matches
+
+
+def test_search_by_meaning_alone_is_not_a_way():
+    """It indexes what the other two read, so with neither of them on there is
+    nothing to rank."""
+    assert [w.id for w in features.search_ways(["index", "meaning"])] == ["name"]
+
+
+def test_a_way_never_promises_files_its_readers_cannot_open():
+    documents = next(w for w in features.search_ways(["documents"]) if w.id == "text")
+    pictures = next(w for w in features.search_ways(["ocr"]) if w.id == "text")
+    assert "documents" in documents.matches and "pictures" not in documents.matches
+    assert "photos, screenshots and scans" in pictures.matches
+    assert "documents" not in pictures.matches
+
+
+def test_every_way_says_what_it_matches_as_a_sentence():
+    for way in features.search_ways(features.ids()):
+        assert way.matches.startswith("Matches ")
+        assert way.matches.endswith(".")

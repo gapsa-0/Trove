@@ -1,11 +1,11 @@
 // Library search: the contenteditable composer that turns typed names into
 // person chips, the local English translation that runs before a description
-// search, and the "reach" line that reports how much of the archive a search
-// could actually see.
+// search, and the panel that says which ways this archive can be searched and
+// how much of it each one currently reaches.
 
 import {
-  checkedPeople, liveRankings, mediaRanksQueries, rankingMatches, reloadGrids,
-  renderSortOptions, updateClearBtn, updatePeopleFilterLabel,
+  checkedPeople, liveRankings, mediaRanksQueries, reloadGrids, renderSortOptions,
+  updateClearBtn, updatePeopleFilterLabel,
 } from "./library.js";
 import {
   jget,
@@ -121,6 +121,15 @@ function nameCoverage() {
   const total = S.grid && S.grid.query ? null : (S.grid && S.grid.total);
   return total == null ? "" : `${total.toLocaleString()} files, all searchable`;
 }
+/* How many files there are is the one coverage figure that comes from the grid
+   rather than from a status endpoint, and the grid's first page can land either
+   side of the panel being drawn. So the panel fills it in whenever the number
+   changes instead of only when it is built -- otherwise whichever of the two
+   arrived second decided whether the row said anything at all. */
+export function updateWaysCoverage() {
+  const cell = document.getElementById("way-cov-name");
+  if (cell) cell.textContent = nameCoverage();
+}
 function textCoverage(s) {
   if (!s) return "";
   if (!s.configured) return "Not available in this installation";
@@ -153,7 +162,7 @@ async function searchWaysTick(gen) {
   // Only while browsing: once a search runs, the result headings are this same
   // list saying what each way actually found.
   if (S.grid && S.grid.query) { panel.hidden = true; return; }
-  const wants = kind => ways.some(w => w.kind === kind);
+  const wants = kind => ways.some(w => w.id === kind);
   const [text, photo] = await Promise.all([
     wants("text") ? jget("/api/browse/text/status?root=" + S.arch.id).catch(() => null) : null,
     wants("media") ? jget("/api/browse/semantic/status?root=" + S.arch.id).catch(() => null) : null,
@@ -169,18 +178,33 @@ async function searchWaysTick(gen) {
      </h3>
      <div class="ways-list">${ways.map(w => `
        <div class="way">
-         <span class="ranking-mark" aria-hidden="true">${ICONS[WAY_ICON[w.kind]]}</span>
+         <span class="ranking-mark" aria-hidden="true">${ICONS[w.icon]}</span>
          <div class="way-text">
            <b>${esc(w.label)}${w.always ? `<span class="way-always">always</span>` : ""}</b>
-           <span>${esc(rankingMatches(w))}</span>
+           <span>${esc(w.matches)}</span>
          </div>
-         <span class="way-cov">${esc(coverage[w.kind] || "")}</span>
+         <span class="way-links">${w.readers.map(readerLink).join("")}</span>
+         <span class="way-cov" id="way-cov-${w.id}">${esc(coverage[w.id] || "")}</span>
        </div>`).join("")}</div>`;
   // Indexing runs on its own; keep the counts live until both drain.
   const busy = (text && text.pending) || (photo && photo.pending);
   if (busy) setTimeout(() => searchWaysTick(gen), 2500);
 }
-const WAY_ICON = { name: "filename", text: "documents", media: "semantic" };
+/* A way's link to what documents it, one per feature feeding it.
+
+   The mark rather than the word, because the text way has two or three of them
+   and a row of "How Documents works · How Text in images works · How Search by
+   meaning works" is longer than everything else on the row put together. The
+   marks are already the vocabulary this screen labels results with, so making
+   them the way in costs no new furniture -- and the name each one carries is on
+   its tooltip and its accessible label, where a reader who needs the words gets
+   them. */
+function readerLink(reader) {
+  if (!reader.docs) return "";
+  const how = `How ${reader.label} works`;
+  return `<button type="button" class="way-doc" onclick="openDocs('${esc(reader.docs)}')"
+      title="${esc(how)}" aria-label="${esc(how)}">${ICONS[reader.icon]}</button>`;
+}
 function normalizedWords(value) {
   return (value || "").normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase()
     .replace(/[’']/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();

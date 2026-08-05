@@ -10,25 +10,31 @@ share no scale.
 
 ## The three ways
 
+Each one is named after the feature you switched on to get it, so the heading
+over a group of results is the same words as the card on the setup screen, the
+card on the Overview and the page documenting it. The only exception is the
+first, which is not a feature and which nobody chose.
+
 **File names** are always searched. Every word you type has to appear somewhere
 in the file's own name, in any order, so "beach 2019" finds
 `2019_beach_trip.jpg`. This needs no index, no model and no feature: it is the
 one way every archive has, whatever else it runs, and the part of the name that
 matched is marked on the result.
 
-**What your files say** searches the text read out of your files. Turning on
-[Documents](documents.md) reads PDFs, Word, Excel, PowerPoint, OpenDocument,
-plain text, CSV, web pages and notebooks; turning on
-[Text in images](ocr.md) reads the writing off photos, screenshots and scans.
-Both write into the same passages, so either one alone gives you this group, and
-a result says which of the two found it. Adding
-[Search by meaning](meaning.md) puts a second ranking over those same passages
-and fuses it with the first, so a clause about the rent can match "how much is
-the rent" without sharing a word with it — a result found that way says so.
+**Documents** and **Text in images** share one way, headed with whichever of
+them you have on — or *Documents & text in images* when both are. Documents
+reads PDFs, Word, Excel, PowerPoint, OpenDocument, plain text, CSV, web pages
+and notebooks; [Text in images](ocr.md) reads the writing off photos,
+screenshots and scans. They write into the same passages, so either one alone
+gives you this group, and a result says which of the two found it.
+[Search by meaning](meaning.md) joins the same way rather than adding another:
+it puts a second ranking over those same passages and fuses it with the first,
+so a clause about the rent can match "how much is the rent" without sharing a
+word with it — and a result found that way says so.
 
-**What your photos show** needs [Search by description](search.md). It ranks
-photos and videos by how close the picture is to your words, with nothing
-having been tagged.
+**Search by description** ranks photos and videos by how close the picture is
+to your words, with nothing having been tagged. See
+[Search by description](search.md).
 
 ## Reading the results
 
@@ -36,6 +42,10 @@ Each group is headed by the way that found it and how many it found. They are
 ordered by how explainable they are: a name match is the most literal thing
 Browse can show you, a passage with your word in it is next, and a picture that
 merely looks like what you described is last.
+
+**Every way links to what documents it.** The panel draws one mark per feature
+feeding a way; pressing it opens that feature's page. The shared way has two or
+three, which is why they are marks rather than a row of link text.
 
 **A way that found nothing still reports.** It collapses into one line at the
 foot — "Nothing found in what your photos show" — rather than a heading over an

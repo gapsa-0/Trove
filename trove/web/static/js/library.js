@@ -20,7 +20,7 @@ import {
 } from "./item.js";
 import {
   onSemanticComposerInput, renderActiveQuery, renderSearchWays, renderSemanticComposer,
-  setPeopleChecks, warmLocalTranslator,
+  setPeopleChecks, updateWaysCoverage, warmLocalTranslator,
 } from "./search.js";
 import {
   ICONS, S, TYPE_ICON, archiveHasFeature, typeLabel,
@@ -106,68 +106,22 @@ export function reloadGrids() {
   shareQueryState();
   activeGrids().forEach(g => { resetGridResults(g); loadGrid("append", g); });
 }
-/* The three rankings a typed query can take, and the words the whole screen
-   uses for them.
+/* The ways this archive can answer a typed query.
 
-   Held here rather than spelled out in the markup because the same three facts
-   are needed in three places -- the panel that says what can be searched, the
-   heading over each group of results, and the line naming the ones that found
-   nothing -- and three copies of a sentence is how the old blurb drifted out of
-   step with the features in the first place.
+   Every string in one -- its heading, its mark, the line under it, and which
+   pages document it -- is composed by the server from the feature catalogue and
+   the pages' own frontmatter (`features.search_ways`, `routes/archives.py`).
+   None of it is written here, and that is the point: Browse is the fourth
+   screen to name this work, after the setup panel, the Overview card and the
+   sidebar chip, and it briefly grew a wording of its own -- "What your photos
+   show" for what every other screen calls Search by description.
 
-   `readers` is which feature ids fill this ranking's index. That is what makes
-   the text ranking one row rather than three: Documents and Text in images
-   write into the same passages, and Search by meaning ranks those passages
-   again and is fused into the same result. */
-const RANKINGS = [
-  {
-    kind: "name", label: "File names", always: true, readers: [],
-    short: "by name",
-    matches: () => "Matches the words in a file's own name, in any order.",
-    empty: "No file name contains all of those words.",
-  },
-  {
-    kind: "text", label: "What your files say", readers: ["documents", "ocr", "meaning"],
-    short: "by what your files say",
-    // Composed from the readers switched on, because "the words inside your
-    // files" means a different set of files depending on which are. An archive
-    // that reads only pictures should not be promised its documents.
-    matches: live => {
-      const reads = live.includes("documents") && live.includes("ocr")
-        ? "the words inside your documents, and the writing in your pictures"
-        : live.includes("ocr")
-          ? "the writing in your photos, screenshots and scans"
-          : "the words written inside your documents";
-      return `Matches ${reads}.` + (live.includes("meaning")
-        ? " A passage can match what you meant without your words appearing in it." : "");
-    },
-    empty: "None of your files say that.",
-  },
-  {
-    kind: "media", label: "What your photos show", readers: ["semantic"],
-    short: "by what your photos show",
-    matches: () => "Matches what is in the frame, without anything having been tagged.",
-    empty: "No photo in this archive looks like that.",
-  },
-];
-// The sentence one way puts under its name, for this archive's readers.
-export function rankingMatches(r) {
-  return r.matches(liveReaders(r));
-}
-/* Which of a ranking's readers this archive actually switched on.
-
-   Search by meaning is the one that cannot stand alone: it indexes what the
-   other two read, so an archive with it and neither of them has nothing to
-   rank and the ranking is not live. The catalogue says the same thing with
-   `pairs_with`; this is that rule where it is used. */
-function liveReaders(r) {
-  return r.readers.filter(id => archiveHasFeature(S.arch, id) &&
-    (id !== "meaning" || r.readers.some(o => o !== "meaning" && archiveHasFeature(S.arch, o))));
-}
+   They ride on the archive the picker already handed us, so they are on screen
+   at the first paint rather than fetched and filled in afterwards. */
 export function liveRankings() {
-  return RANKINGS.filter(r => r.always || liveReaders(r).length > 0);
+  return (S.arch && S.arch.ways) || [];
 }
-const rankingFor = kind => RANKINGS.find(r => r.kind === kind);
+const rankingFor = kind => liveRankings().find(r => r.id === kind);
 /* One group of results, with the heading that says which ranking produced it.
 
    The heading is markup rather than a string set later because it holds the
@@ -180,22 +134,24 @@ function resultsGroup(kind) {
   // the first page landed put the whole grid inside a `display:none` container
   // while its thumbnails were being requested, which cost some of them.
   const start = kind === "media" ? ' class="results-group plain"' : ' class="results-group" hidden';
-  return `<section${start} id="group-${kind}">
-      <h3 class="results-label">
-        <span class="ranking-mark" aria-hidden="true">${ICONS[RANKING_ICON[kind]]}</span>
+  // ...and it is the listing even on an archive that cannot rank a query at
+  // all, which is the one case where the media grid has no *way* behind it. It
+  // gets no heading then, because there is no ranking for one to name and the
+  // listing never shows one anyway.
+  const heading = r
+    ? `<h3 class="results-label">
+        <span class="ranking-mark" aria-hidden="true">${ICONS[r.icon]}</span>
         <span class="ranking-name">${esc(r.label)}</span>
         <span class="muted" id="${ids.count}"></span>
-      </h3>
+      </h3>`
+    : `<h3 class="results-label"><span class="muted" id="${ids.count}"></span></h3>`;
+  return `<section${start} id="group-${kind}">
+      ${heading}
       <div class="infinite-status top" id="${ids.top}" aria-hidden="true"></div>
       <div class="grid" id="${ids.grid}"></div>
       <div class="infinite-status" id="${ids.bottom}" aria-live="polite"></div>
     </section>`;
 }
-// The mark each ranking carries, keyed into the frontend's ICONS. The text
-// ranking takes the Documents page: it is the mark of the reader that fills
-// most of it, and the badges on the results themselves are what say which
-// reader found any particular one.
-const RANKING_ICON = { name: "filename", text: "documents", media: "semantic" };
 
 export async function renderPhotos(m) {
   const gen = S.nav;
@@ -212,20 +168,23 @@ export async function renderPhotos(m) {
      *fallback*, reached only when there was no description index, which meant
      switching Search by description on quietly took it away. */
   const live = liveRankings();
-  const runs = kind => live.some(r => r.kind === kind);
+  const runs = kind => live.some(r => r.id === kind);
   S.nameGrid = restored && S.nameGrid ? S.nameGrid : newGrid("name");
   S.textGrid = runs("text") ? (restored && S.textGrid ? S.textGrid : newGrid("text")) : null;
   refreshGallery();
-  // Built from the live rankings rather than picked from a table of hand-written
-  // combinations: there are five features feeding this box, and a sentence per
-  // combination is a sentence that stops being true when a feature is added.
-  //
-  // Short forms, because the panel below is where a way is described in full. A
-  // placeholder that spells all three out is a line of prose inside a text box.
-  const ways = live.map(r => r.short);
+  /* The placeholder is an invitation, not a label, which is why it is the one
+     line here that does not take the features' own names: "Search by
+     Documents, or by Search by description" is not a sentence anyone would
+     write. Enumerating the ways in answer-shaped language instead would put a
+     line of prose inside a text box, and the panel directly below already lists
+     them properly -- so the box says the short true thing and leaves the
+     naming to the rows.
+
+     The one-way archive is the exception, since there the placeholder is the
+     only thing on the screen that can say what the box will do. */
   const placeholder = live.length === 1
     ? "Search your library by file name"
-    : "Search " + ways.slice(0, -1).join(", ") + ", or " + ways[ways.length - 1];
+    : "Search your library";
   const blurb = "Everything in this archive. Narrow it with the filters, or type and Trove will " +
     (live.length === 1 ? "match it against your file names." : "look in every place it can.");
   m.innerHTML = `<div class="pagehead">
@@ -548,7 +507,11 @@ function renderGroupLabels() {
     const listing = g.kind === "media" && !searching;
     group.hidden = !listing && !hits;
     group.classList.toggle("plain", listing);
-    if (searching && !hits && gridAnswers(g)) empty.push(rankingFor(g.kind));
+    // `rankingFor` can be empty for the media grid on an archive with no
+    // description index -- but so is `gridAnswers` there, so a way that was
+    // never consulted is never reported as having found nothing.
+    const way = rankingFor(g.kind);
+    if (searching && !hits && gridAnswers(g) && way) empty.push(way);
   });
   // The toolbar's count is the whole answer, not one group's: with results in
   // three places, a number sitting beside the sort control has to be the total
@@ -561,6 +524,7 @@ function renderGroupLabels() {
       : searching ? `${n.toLocaleString()} result${n === 1 ? "" : "s"}`
         : `${n.toLocaleString()} files`;
   }
+  updateWaysCoverage();
   const line = document.getElementById("nothing-line");
   if (!line) return;
   line.hidden = !empty.length;
@@ -575,8 +539,11 @@ function renderGroupLabels() {
     const glyph = document.createElement("span");
     glyph.className = "ranking-mark";
     glyph.setAttribute("aria-hidden", "true");
-    glyph.innerHTML = ICONS[RANKING_ICON[r.kind]];
-    item.append(glyph, document.createTextNode(r.label.toLowerCase()));
+    glyph.innerHTML = ICONS[r.icon];
+    // Not lowercased. These are the names the features were chosen under, and
+    // "documents & text in images" is a different string from the one on the
+    // setup panel, the Overview card and the page documenting it.
+    item.append(glyph, document.createTextNode(r.label));
     line.append(item);
   });
 }
@@ -630,8 +597,9 @@ function renderGridPages(g, anchor = null) {
   // Which readers can produce a hit in the text group here. With only one of
   // them on, a badge saying so on every tile repeats the heading above it and
   // spends the caption -- which is the file's name -- to say nothing.
-  const mixedReaders = g.kind === "text" && liveReaders(rankingFor("text"))
-    .filter(id => id !== "meaning").length > 1;
+  const textWay = g.kind === "text" ? rankingFor("text") : null;
+  const mixedReaders = !!textWay &&
+    textWay.readers.filter(reader => reader.id !== "meaning").length > 1;
   const tokens = g.kind === "name" ? nameTokens(g.query) : [];
   g.pages.forEach(page => page.items.forEach((item, itemOffset) => {
     // Month headings belong to the listing and nothing else. A group of results

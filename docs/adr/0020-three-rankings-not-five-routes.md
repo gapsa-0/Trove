@@ -29,13 +29,28 @@ same list, and the screen says so:
 | Group | Endpoint | Fed by |
 | --- | --- | --- |
 | File names | `/api/media?name=` | the name Indexing recorded |
-| What your files say | `/api/browse/text/search` | Documents, Text in images, Search by meaning |
-| What your photos show | `/api/browse/semantic/search` | Search by description |
+| Documents & text in images | `/api/browse/text/search` | Documents, Text in images, Search by meaning |
+| Search by description | `/api/browse/semantic/search` | Search by description |
 
-`RANKINGS` in `trove/web/static/js/library.js` is that table. Which readers are
-live for a group is derived from the archive's features, and it is what the
-group's sentence is composed from — an archive that reads only pictures is never
-promised its documents.
+`features.search_ways` is that table, and the labels in it are not new strings:
+a way takes the label and mark of the feature that produced it, through the same
+`card_label` / `card_icon` the Overview already uses. Browse is the *fourth*
+surface to name this work, and it briefly grew a wording of its own — "What your
+photos show" for what the setup panel, the Overview card, the sidebar chip and
+the documentation all call Search by description. That is precisely the drift
+`features.py` documents itself as existing to stop, so the naming lives there
+and the screen renders what it is given.
+
+Only file names are named for what they do, because no feature produces them:
+Indexing records them, and heading a group of results "Indexing" would name the
+stage rather than the answer.
+
+The composition happens server-side (`routes/archives.py:_ways`) and rides on
+the archive payload the picker already hands the client, so Browse draws its
+headings on the first paint without an extra request. A JS copy of either table
+— the labels or the feature-to-page map — is how the four surfaces start
+disagreeing again, and the frontend previously kept the second one and had it
+missing three features.
 
 ### Why the text group cannot be split
 
@@ -80,8 +95,12 @@ that did land is worse than the missing label it replaced.
 
 ## Consequences
 
-- Adding a reader to an existing index is a change to one `readers` list and the
-  sentence composed from it — not a new group, and not a fourth grid.
+- Adding a reader to an existing index is a change to `search_ways` and the
+  sentence composed from it — not a new group, and not a fourth grid. Its label,
+  mark and documentation link all follow from the catalogue entry.
+- A feature added without a documentation page fails `test_docs.py` rather than
+  quietly losing its link, because `docs.slug_for_feature` derives the mapping
+  from the pages' own frontmatter instead of a second table.
 - Adding a genuinely new *ranking* means a new grid, and `GRID_IDS` plus
   `activeGrids()` is where that cost is paid. The paging, sentinels and
   generation guard are already shared.
