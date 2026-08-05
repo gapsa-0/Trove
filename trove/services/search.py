@@ -403,6 +403,26 @@ def _rank_and_paginate(
     }
 
 
+def _prepared_and_center(
+    query_vector: list[float],
+    alternate_vectors: list[tuple[list[float], float]] | None,
+    center: tuple[list[float], list[float]] | None,
+) -> tuple[list[tuple[tuple[float, ...], float, float]], list[float] | None]:
+    """The query vectors to score with, and the image mean to shift candidates by.
+
+    A centre of the wrong width came from a different vector space; ignoring it
+    degrades to uncentered scoring rather than raising, matching how a
+    stale-width embedding blob is skipped in ``_score_candidates``. The two
+    halves are dropped together on purpose: centering one modality and not the
+    other would leave exactly the offset the correction exists to remove.
+    """
+    image_center, text_center = center if center else (None, None)
+    if image_center is not None and len(image_center) != len(query_vector):
+        image_center = text_center = None
+    prepared = _prepare_query_vectors(query_vector, alternate_vectors, text_center)
+    return prepared, image_center
+
+
 @reading
 def semantic_search(
     conn: sqlite3.Connection,
@@ -467,13 +487,7 @@ def semantic_search(
     sql, params = _search_where_clause(
         root_id, year, month, mtype, person_id, person_ids, cluster_id, located
     )
-    image_center, text_center = center if center else (None, None)
-    # A centre of the wrong width came from a different vector space; ignoring
-    # it degrades to uncentered scoring rather than raising, matching how a
-    # stale-width embedding blob is skipped below.
-    if image_center is not None and len(image_center) != len(query_vector):
-        image_center = text_center = None
-    prepared = _prepare_query_vectors(query_vector, alternate_vectors, text_center)
+    prepared, image_center = _prepared_and_center(query_vector, alternate_vectors, center)
     if not prepared:
         return {"items": [], "offset": offset, "limit": limit, "count": 0, "total": 0}
     scores, meta = _score_candidates(
