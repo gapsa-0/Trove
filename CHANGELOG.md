@@ -69,6 +69,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.doc`, `.xls` and `.ppt` files cannot be read at all; they are listed and
   dated like any other file and reported as an unsupported format, rather than
   half-read into something misleading.
+- **Browse captions each thumbnail with the file's name** rather than its date.
+  The grid is already broken into dated sections, so the date under every tile
+  was repeating the heading above it, while the name is the one thing that says
+  which file you are looking at. The grids that have no such headings — a
+  person's photos, a pet's, a place's — still caption with the date.
 - **Each archive now chooses what Trove does with it.** Adding a folder opens a
   setup screen: name the archive, and build up what it runs by dragging features
   onto it — People, Pets, Places, Search by description — or leave them off.

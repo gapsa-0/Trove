@@ -95,6 +95,21 @@ def test_the_library_grid_fills_with_the_archives_media(open_app):
         assert app.errors() == []
 
 
+def test_a_browse_tile_is_captioned_with_the_file_it_shows(open_app):
+    """The name, not the date: Browse already breaks the grid into dated
+    sections, so a date under every tile repeats the heading above it, while
+    the name is the one thing on screen that says which file this is."""
+    with open_app("library", wait_for=".tile") as app:
+        caption = app.tab.evaluate("document.querySelector('#grid .tile .cap-label').textContent")
+        title = app.tab.evaluate("document.querySelector('#grid .tile .cap-label').title")
+
+        assert caption.endswith(".jpg")
+        # Truncation is CSS, so the whole name has to survive somewhere a
+        # reader can get at it.
+        assert title == caption
+        assert app.errors() == []
+
+
 # Holds /api/browse/filters -- and only it -- until the test lets it go, which
 # is what a cold page cache does to that request on a real archive: it is a
 # pass over every file, so it can take seconds while every other request is

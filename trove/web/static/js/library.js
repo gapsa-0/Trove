@@ -472,7 +472,7 @@ function renderGridPages(g, anchor = null) {
       }
     }
     grid.appendChild(g.kind === "text"
-      ? textTile(item) : tile(item, page.offset + itemOffset));
+      ? textTile(item) : tile(item, page.offset + itemOffset, "name"));
   }));
   refreshGallery();
   g.loaded = g.pages.reduce((n, page) => n + page.items.length, 0);
@@ -584,7 +584,13 @@ export async function loadGrid(direction = "append", g = S.grid) {
     }
   }
 }
-export function tile(it, resultIndex = null) {
+/* One thumbnail. `caption` says what the strip along its bottom reads: the
+   file's own name in Browse, where the grid is already broken into dated
+   sections and repeating the date under every tile says nothing the heading
+   above it did not -- and the date on the grids that have no such headings
+   (a person's photos, a pet's, a place's), where it is the only thing placing
+   the shot in time. */
+export function tile(it, resultIndex = null, caption = "date") {
   const d = document.createElement("button"); d.type = "button"; d.className = "tile";
   d.dataset.name = (it.name || "").toLowerCase(); d.dataset.fileId = it.id;
   if (resultIndex != null) d.dataset.resultIndex = resultIndex;
@@ -600,10 +606,16 @@ export function tile(it, resultIndex = null) {
   }
   else d.appendChild(ph(TYPE_ICON[it.type] || "📦"));
   const cap = document.createElement("div"); cap.className = "cap";
+  // A name is arbitrary user data and long enough to need cutting off, so it is
+  // escaped, truncated by CSS, and given a title carrying the whole of it.
+  const name = it.name || "";
+  const label = caption === "name"
+    ? `<span class="cap-label" title="${esc(name)}">${esc(name)}</span>`
+    : `<span class="cap-label">${(it.date || "").slice(0, 10)}</span>`;
   // `indexed` is absent on description-search results -- every hit there is
   // indexed by definition, so the pip would mark all of them and say
   // nothing. Undefined simply renders no pip, which is the wanted result.
-  cap.innerHTML = `<span>${(it.date || "").slice(0, 10)}</span><span class="cap-marks">` +
+  cap.innerHTML = label + `<span class="cap-marks">` +
     (it.indexed ? `<span class="indexed" title="Indexed for description search"></span>` : "") +
     (it.type === "video" ? "<span>▶</span>" : "") + `</span>`;
   d.appendChild(cap);
@@ -630,7 +642,7 @@ function ph(icon) { const s = document.createElement("div"); s.className = "ph";
    "<script>" could put it into the page. Escaping first and substituting after
    is what keeps the highlight from being an injection point. */
 export function textTile(it) {
-  const d = tile(it);
+  const d = tile(it, null, "name");
   if (!it.snippet) return d;
   const box = document.createElement("div");
   box.className = "tile-snippet";

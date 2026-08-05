@@ -44,6 +44,19 @@
   background: linear-gradient(transparent, #000a);
   display: flex;
   justify-content: space-between;
+  gap: 6px;
+}
+
+/* What the strip says: a date, or a file name. A name is as long as whoever
+   saved the file made it, so it takes whatever width the marks beside it leave
+   and ends in an ellipsis rather than wrapping the caption into a second line
+   or pushing the marks off the tile. `min-width: 0` is what lets a flex item
+   shrink below its own content at all. */
+.tile .cap-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .tile .badge {
@@ -58,6 +71,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  flex: none;
 }
 
 /* Description-search coverage. In the caption strip rather than the badge
