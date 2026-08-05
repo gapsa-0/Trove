@@ -1,9 +1,9 @@
 """The `/api/pipeline` payload: what the GUI polls about once a second.
 
-``stages.py`` answers "what state is every stage in, and how do those roll up
-into the five display cards" -- a question the scheduler asks too, which is why
-the two can never disagree. This module answers the one question only the GUI
-asks: what should the user be told *right now*. That is the resolved cards,
+``stages.py`` answers "what state is every stage in" and ``cards.py`` rolls
+those up into the display cards -- questions the scheduler asks too, which is
+why the two can never disagree. This module answers the one question only the
+GUI asks: what should the user be told *right now*. That is the resolved cards,
 plus three things the scheduler has no use for -- the running jobs that belong
 to no card, the pause overlay (including the seconds where a pause has been
 asked for but not yet reached), and one overall verdict for the sidebar chip.
@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING, Any
 
 from ..config import Config
 from . import stages
-from .stages import cards, is_stage_kind, job_progress
+from .cards import cards
+from .stages import is_stage_kind, job_progress
 
 if TYPE_CHECKING:
     from .manager import JobManager

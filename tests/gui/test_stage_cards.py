@@ -11,13 +11,14 @@ Both ends of a stage's life used to be reported as if it were mid-loop:
   the card went on saying "Scanning files…" for seconds and then stopped dead;
   and once it had stopped, the bar vanished, losing how far in it got.
 
-These drive ``stages.cards``/``status.snapshot`` directly with crafted stage
+These drive ``cards.cards``/``status.snapshot`` directly with crafted stage
 states, which is the same input the scheduler and the GUI both resolve through.
 """
 
 from __future__ import annotations
 
 from trove.config import Config
+from trove.pipeline import cards as cards_mod
 from trove.pipeline import stages as stages_mod
 from trove.pipeline import status as status_mod
 
@@ -45,7 +46,7 @@ def _stage(kind="detect", card="detect", state="running", **over):
 
 
 def _card(*states, card_id=None):
-    cards = {c["id"]: c for c in stages_mod.cards(list(states))}
+    cards = {c["id"]: c for c in cards_mod.cards(list(states))}
     return cards[card_id or states[0]["card"]]
 
 
