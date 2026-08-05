@@ -521,6 +521,13 @@ input[type="checkbox"] {
   color: var(--text);
 }
 
+/* `display` here beats the browser's own rule for the `hidden` attribute, so
+   without this the heading renderGroupLabels hid stayed on screen -- over an
+   unlabelled grid, announcing a match to a search nobody had made. */
+.results-label[hidden] {
+  display: none;
+}
+
 .results-label .muted {
   font-weight: 400;
   font-size: 12px;
