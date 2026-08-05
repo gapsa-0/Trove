@@ -498,3 +498,83 @@ input[type="checkbox"] {
   min-height: 1px;
   margin: 0
 }
+
+/* ---- Two result groups ---------------------------------------------------
+
+   Browse shows what a search matched in two labelled groups, because the two
+   answer different questions -- which file *says* this, and which photo *looks
+   like* this -- and their scores are not on a shared scale. Text goes first
+   when it has hits: an exact word match is explainable in a way a cosine is
+   not, so it is the one a reader can trust at a glance.
+
+   Neither heading is drawn while browsing without a query, or when only one
+   group has anything: a label telling you which of one thing you are looking
+   at is noise. */
+.results-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 18px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--text);
+}
+
+.results-label .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* A passage is the content of a text result, not a caption on a picture, so
+   these cells are wider than a thumbnail's and as tall as the text needs --
+   where the media grid's square tiles would clip it to nothing. */
+#grid-text {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+#grid-text .tile {
+  aspect-ratio: auto;
+  min-height: 120px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  /* Room at the foot for the caption, which stays pinned to the bottom. */
+  padding: 10px 12px 24px;
+  text-align: left;
+}
+
+#grid-text .tile .ph {
+  font-size: 22px;
+  text-align: left;
+}
+
+.tile-snippet {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  /* The passage is an excerpt already; four lines is enough to recognise the
+     document without the cell growing to the length of a paragraph. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tile-snippet mark {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+/* Which page the passage came from, where the file has pages at all. Set in
+   the flow before the text rather than floated, so it reads as a citation. */
+.tile-page {
+  display: inline-block;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--faint);
+}

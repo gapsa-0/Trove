@@ -174,6 +174,51 @@ def _write_jpeg(path: Path, color: tuple[int, int, int] = (120, 140, 160)) -> No
     Image.new("RGB", (32, 32), color).save(path, "JPEG")
 
 
+def _seed_documents(conn, root_id: int, source_dir: Path) -> int:
+    """Two documents with their text already read, so Browse has a second
+    result group to draw. Returns the first one's id.
+
+    Written straight into the tables rather than run through the stage: what
+    this tier checks is the screen, and a real extraction pass would put PDF
+    parsing in front of every browser test.
+    """
+    first = 0
+    for name, page, body in (
+        # English on purpose: a Spanish query sends the composer through the
+        # local translator, which downloads 23 MB on first use. What this tier
+        # checks is the screen, not the model behind the other group.
+        ("lease.pdf", 2, "The lease agreement was signed in Bariloche"),
+        ("receipt.txt", None, "Receipt for the lease, paid in March"),
+    ):
+        # An explicit hash: doc_text.source_sha256 is NOT NULL, and it is the
+        # anchor that says the text matches the bytes it was read from.
+        digest = f"sha-{name}"
+        fid = factories.add_file(
+            conn,
+            root_id=root_id,
+            rel_path=name,
+            media_type="document",
+            ext=name.rsplit(".", 1)[1],
+            sha256=digest,
+        )
+        (source_dir / name).write_text(body, encoding="utf-8")
+        conn.execute(
+            """INSERT INTO doc_text(file_id, source_sha256, wanted, extractor, status,
+                                    chars, n_chunks, text_version, extracted_at)
+               VALUES(?, ?, 'documents', 'pdf-text', 'extracted', ?, 1, 'doctext-v1', ?)""",
+            (fid, digest, len(body), factories.FIXED_TIME),
+        )
+        cur = conn.execute(
+            "INSERT INTO doc_chunks(file_id, ordinal, page_first, page_last, chars) "
+            "VALUES(?, 0, ?, ?, ?)",
+            (fid, page, page, len(body)),
+        )
+        conn.execute("INSERT INTO doc_chunk_fts(rowid, text) VALUES(?, ?)", (cur.lastrowid, body))
+        first = first or fid
+
+    return first
+
+
 def _seed(conn, root_id: int, source_dir: Path) -> dict:
     """A small archive with something on every screen.
 
@@ -228,6 +273,8 @@ def _seed(conn, root_id: int, source_dir: Path) -> dict:
             "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, ?)",
             (ids["dup_group"], fid, role),
         )
+
+    ids["document"] = _seed_documents(conn, root_id, source_dir)
 
     # Without this, opening the archive treats every person seeded above as
     # stale identity data from a retired embedder and wipes them -- see the

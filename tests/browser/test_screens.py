@@ -258,3 +258,39 @@ def test_choosing_all_results_widens_the_search_it_is_attached_to(open_app):
             == "All results"
         )
         assert app.count(".aq-scope button[aria-pressed='true']") == 1
+
+
+def test_browse_shows_no_group_headings_until_there_is_a_search(open_app):
+    """A label telling you which of one thing you are looking at is noise. The
+    headings earn their space only when there are two groups to tell apart."""
+    with open_app("library", wait_for=".tile") as app:
+        assert app.count("#group-text[hidden]") == 1
+        assert app.count("#label-media[hidden]") == 1
+        assert app.errors() == []
+
+
+def test_a_search_finds_a_word_inside_a_document(open_app):
+    """The second group, driven the way a person drives it: type into the box,
+    submit the form, read what comes back.
+
+    The word searched for is in no filename -- only inside the documents -- so a
+    hit proves the text was read, indexed, matched and rendered end to end. The
+    group goes above the media one because an exact word match is explainable in
+    a way a cosine is not.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(
+            "(() => { const c = document.getElementById('semantic-q');"
+            " c.textContent = 'lease';"
+            " c.closest('form').dispatchEvent("
+            "new Event('submit', {cancelable: true, bubbles: true})); })()"
+        )
+        app.wait_for("#grid-text .tile")
+
+        assert app.count("#group-text[hidden]") == 0
+        assert app.count("#grid-text .tile") == 2
+        body = app.text("#grid-text")
+        assert "lease" in body.lower()
+        assert "p. 2" in body, "a hit says which page its passage came from"
+        assert app.count("#grid-text mark") > 0, "the matched word is marked"
+        assert app.errors() == []

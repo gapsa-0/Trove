@@ -4,14 +4,14 @@
 // could actually see.
 
 import {
-  checkedPeople, loadGrid, renderSortOptions, resetGridResults, updateClearBtn,
+  checkedPeople, reloadGrids, renderSortOptions, updateClearBtn,
   updatePeopleFilterLabel,
 } from "./library.js";
 import {
   jget,
 } from "./api.js";
 import {
-  S, TYPE_COL,
+  S, TYPE_COL, archiveHasFeature,
 } from "./state.js";
 
 let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
@@ -334,14 +334,18 @@ export async function semanticSubmit(ev) {
   renderSortOptions(g);
   renderActiveQuery(g);
   if (submit) { submit.disabled = true; submit.textContent = "Searching…"; }
-  const expandedQuery = await localEnglishTranslation(g.query);
+  // Translation exists to help the *image* model, which was trained
+  // overwhelmingly on English. The text index holds whatever language the
+  // documents are in and matches it directly, so an archive that only reads
+  // its documents must not be made to download 23 MB to search them.
+  const expandedQuery = archiveHasFeature(S.arch, "semantic")
+    ? await localEnglishTranslation(g.query) : "";
   if (submission !== SEARCH_SUBMISSION || S.grid !== g) return false;
   g.expandedQuery = expandedQuery;
   renderActiveQuery(g);
   if (submit) { submit.disabled = false; submit.textContent = oldLabel; }
-  resetGridResults(g);
   updateClearBtn();
-  loadGrid();
+  reloadGrids();
   return false;
 }
 /* The line under the search box states which search the grid below is
@@ -382,7 +386,10 @@ export function renderActiveQuery(g) {
   clear.textContent = "Clear search";
   clear.onclick = clearSearch;
   const parts = [label, phrase];
-  if (g.query) parts.push(resultScopeControl(g));
+  // Only where there is a ranking to widen. A text match is a match, with no
+  // cut to relax, so on a documents-only archive this would name a choice
+  // that changes nothing.
+  if (g.query && archiveHasFeature(S.arch, "semantic")) parts.push(resultScopeControl(g));
   el.replaceChildren(...parts, clear);
 }
 /* How much of the ranking is on screen -- two views of one result set, not a
@@ -417,8 +424,10 @@ function setResultScope(trimmed) {
   if (g.topMatchesOnly === trimmed) return;
   g.topMatchesOnly = trimmed;
   renderActiveQuery(g);
-  resetGridResults(g);
-  loadGrid();
+  // The scope control only widens the description ranking -- a text match is a
+  // match, with no cut to relax -- but both groups reload so their totals stay
+  // answers to the same request.
+  reloadGrids();
 }
 function clearSearch() {
   const composer = document.getElementById("semantic-q");

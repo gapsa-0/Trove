@@ -43,36 +43,94 @@ const GRID_PAGE_SIZE = 120, GRID_MAX_PAGES = 4;
 const FILTER_SKELETON = [108, 120, 104, 98, 116]
   .map(w => `<span class="fsel fsel-loading" style="width:${w}px" aria-hidden="true"></span>`)
   .join("");
-export async function renderPhotos(m) {
-  const gen = S.nav;
-  const restored = !!(S.grid && Array.isArray(S.grid.pages));
-  const g = restored ? S.grid : {
+/* Which elements a grid owns, and what it asks for.
+
+   Browse shows up to two result groups, and they page identically -- same
+   bidirectional window, same sentinel margins, same generation guard -- so they
+   run through one implementation rather than two that drift. What differs is
+   only which elements a grid draws into and which endpoint answers it, so that
+   is what lives on the grid object. */
+const GRID_IDS = {
+  media: { grid: "grid", top: "grid-top-sentinel", bottom: "grid-sentinel", count: "gridcount" },
+  text: { grid: "grid-text", top: "grid-text-top", bottom: "grid-text-sentinel", count: "gridcount-text" },
+};
+// The filter and query state both groups search under. Held once, on the media
+// grid, and copied across before a reload rather than edited in two places --
+// two grids narrowing by different years is a bug with no symptom until someone
+// notices the totals disagree.
+const SHARED_QUERY_FIELDS = ["year", "month", "type", "people", "inferredPeople", "place",
+  "rawQuery", "searchedQuery", "query", "expandedQuery", "sort", "topMatchesOnly"];
+function newGrid(kind) {
+  return {
+    kind, ids: GRID_IDS[kind],
     offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
     place: "", rawQuery: "", searchedQuery: "", query: "",
     expandedQuery: "", sort: "", error: "", topMatchesOnly: true,
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
     anchor: null, savedScrollTop: 0,
   };
+}
+// Every grid currently on screen. The text one only exists for an archive that
+// reads its documents, and only says anything while a search is active.
+export function activeGrids() {
+  return S.textGrid ? [S.textGrid, S.grid] : [S.grid];
+}
+function shareQueryState() {
+  if (!S.textGrid) return;
+  SHARED_QUERY_FIELDS.forEach(f => {
+    S.textGrid[f] = Array.isArray(S.grid[f]) ? S.grid[f].slice() : S.grid[f];
+  });
+}
+// Reset and reload every group at once. Filters, sort and the search itself all
+// apply to both, so each of them goes through here rather than reloading the
+// grid it happens to be holding.
+export function reloadGrids() {
+  shareQueryState();
+  activeGrids().forEach(g => { resetGridResults(g); loadGrid("append", g); });
+}
+export async function renderPhotos(m) {
+  const gen = S.nav;
+  const restored = !!(S.grid && Array.isArray(S.grid.pages));
+  const g = restored ? S.grid : newGrid("media");
   S.grid = g;
-  S.gallery = g.pages.flatMap(page => page.items.map(item => item.id));
-  // Search by description is a feature of this screen, not a screen of its
-  // own, so it is the one feature that cannot be switched off by dropping a
-  // nav section. Without this the composer rendered on every archive, and an
-  // archive that declined the feature was invited to search an index whose
-  // stage the scheduler will never start -- then told "no files searchable by
-  // description yet", promising work that was never coming.
+  // Documents unlocks no nav section either, so like Search by description it
+  // is gated where it is used. An archive that declined it must not be shown a
+  // group searching an index whose stage the scheduler will never start.
+  const readsText = archiveHasFeature(S.arch, "documents");
+  S.textGrid = readsText ? (restored && S.textGrid ? S.textGrid : newGrid("text")) : null;
+  refreshGallery();
+  /* Neither search feature unlocks a nav section -- both are this one box --
+     so both are gated here rather than by dropping a section. Without that an
+     archive that declined a feature is invited to search an index whose stage
+     the scheduler will never start, and then told it found nothing.
+
+     The box appears for *either*, and says what it can actually do. Gating it
+     on Search by description alone was wrong once Documents existed: an
+     archive that reads its paperwork but declined the 689 MB image model would
+     have had no way to type anything at all. */
   const searchable = archiveHasFeature(S.arch, "semantic");
+  const canSearch = searchable || readsText;
+  const placeholder = searchable
+    ? (readsText
+      ? "Search your library — describe a photo, or quote a document"
+      : "Search your library, describe anything")
+    : "Search inside your documents";
+  const blurb = searchable
+    ? (readsText
+      ? "Look through every item, by filter, by description, or by what it says."
+      : "Look through every item, by filter or by description.")
+    : (readsText
+      ? "Look through every item, by filter or by what your documents say."
+      : "Look through every item, with filters that work together.");
   m.innerHTML = `<div class="pagehead">
       <div><h2 class="sec">Browse</h2>
-      <p>${searchable
-    ? "Look through every item, by filter or by description."
-    : "Look through every item, with filters that work together."}</p></div>
+      <p>${blurb}</p></div>
       ${docsButton("library")}
     </div>
     <div class="library-controls">
-      ${searchable ? `<form class="library-search" onsubmit="return semanticSubmit(event)">
+      ${canSearch ? `<form class="library-search" onsubmit="return semanticSubmit(event)">
         <div class="semantic-composer" id="semantic-q" contenteditable="true" role="textbox"
-          aria-label="Search your library by description" data-placeholder="Search your library, describe anything"
+          aria-label="${esc(placeholder)}" data-placeholder="${esc(placeholder)}"
           spellcheck="true" oninput="onSemanticComposerInput()" onkeydown="onSemanticComposerKeydown(event)"
           onpaste="onSemanticComposerPaste(event)"></div>
         <button class="btn" type="submit">Search</button>
@@ -87,9 +145,18 @@ export async function renderPhotos(m) {
         </div>
       </div>
     </div>
-    <div class="infinite-status top" id="grid-top-sentinel" aria-hidden="true"></div>
-    <div class="grid" id="grid"></div>
-    <div class="infinite-status" id="grid-sentinel" aria-live="polite"></div>`;
+    ${readsText ? `<section class="results-group" id="group-text" hidden>
+      <h3 class="results-label">Matched in text<span class="muted" id="gridcount-text"></span></h3>
+      <div class="infinite-status top" id="grid-text-top" aria-hidden="true"></div>
+      <div class="grid" id="grid-text"></div>
+      <div class="infinite-status" id="grid-text-sentinel" aria-live="polite"></div>
+    </section>` : ""}
+    <section class="results-group" id="group-media">
+      <h3 class="results-label" id="label-media" hidden>Matched by description</h3>
+      <div class="infinite-status top" id="grid-top-sentinel" aria-hidden="true"></div>
+      <div class="grid" id="grid"></div>
+      <div class="infinite-status" id="grid-sentinel" aria-live="polite"></div>
+    </section>`;
   // Absent on an archive that does not run Search by description, where the
   // rest of this screen — grid, filters, sort, paging — is unaffected.
   const composer = document.getElementById("semantic-q");
@@ -118,18 +185,21 @@ export async function renderPhotos(m) {
   if (restored) {
     // Only the composer: the rest of the controls do not exist yet.
     restoreLibraryComposer(g);
-    renderGridPages(g);
-    const count = document.getElementById("gridcount");
-    if (count && g.total != null) count.textContent = gridCountLabel(g);
+    activeGrids().forEach(grid => {
+      renderGridPages(grid);
+      const count = document.getElementById(grid.ids.count);
+      if (count && grid.total != null) count.textContent = gridCountLabel(grid);
+    });
+    renderGroupLabels();
   }
-  setupGridInfiniteScroll(g);
+  activeGrids().forEach(setupGridInfiniteScroll);
   if (restored && g.pages.length) {
     requestAnimationFrame(() => {
       if (ACTIVE_SECTION !== "library" || S.grid !== g) return;
       if (!restoreLibraryAnchor(g.anchor))
         document.getElementById("main").scrollTop = g.savedScrollTop || 0;
     });
-  } else loadGrid();
+  } else activeGrids().forEach(grid => loadGrid("append", grid));
   await filters;
   if (gen !== S.nav || S.grid !== g) return;
   // The bar has restored its own controls by now (drawFilterBar). This line is
@@ -138,24 +208,23 @@ export async function renderPhotos(m) {
   renderActiveQuery(g);
 }
 function setupGridInfiniteScroll(g) {
-  const top = document.getElementById("grid-top-sentinel");
-  const bottom = document.getElementById("grid-sentinel");
+  const top = document.getElementById(g.ids.top);
+  const bottom = document.getElementById(g.ids.bottom);
   if (!top || !bottom) return;
   if (g.observer) g.observer.disconnect();
   g.observer = new IntersectionObserver(entries => {
-    if (S.grid !== g || ACTIVE_SECTION !== "library") return;
+    if (!activeGrids().includes(g) || ACTIVE_SECTION !== "library") return;
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
-      if (entry.target === top && !g.doneUp) loadGrid("prepend");
-      else if (entry.target === bottom && !g.doneDown) loadGrid("append");
+      if (entry.target === top && !g.doneUp) loadGrid("prepend", g);
+      else if (entry.target === bottom && !g.doneDown) loadGrid("append", g);
     });
   }, { root: document.getElementById("main"), rootMargin: "600px 0px" });
   g.observer.observe(top);
   g.observer.observe(bottom);
 }
-function gridSentinelIsNear(direction) {
-  const sentinel = document.getElementById(
-    direction === "prepend" ? "grid-top-sentinel" : "grid-sentinel");
+function gridSentinelIsNear(direction, g) {
+  const sentinel = document.getElementById(direction === "prepend" ? g.ids.top : g.ids.bottom);
   const main = document.getElementById("main");
   if (!sentinel || !main) return false;
   const sr = sentinel.getBoundingClientRect(), mr = main.getBoundingClientRect();
@@ -246,13 +315,12 @@ export function renderSortOptions(g) {
 }
 function gridCountLabel(g) {
   const n = (g.total || 0).toLocaleString();
+  if (g.kind === "text") return `${n} document${g.total === 1 ? "" : "s"}`;
   return g.query ? `${n} match${g.total === 1 ? "" : "es"}` : `${n} files`;
 }
 export function applySort() {
-  const g = S.grid;
-  g.sort = selVal("f-sort");
-  resetGridResults(g);
-  loadGrid();
+  S.grid.sort = selVal("f-sort");
+  reloadGrids();
 }
 /* Coming back to the Library puts the user's controls back the way they left
    them, in two halves, because the two halves become available at different
@@ -320,17 +388,41 @@ export function applyFilters() {
   g.people = checkedPeople("f");
   g.place = selVal("f-place");
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
-  resetGridResults(g);
   updateClearBtn();
-  loadGrid();
+  reloadGrids();
 }
 export function resetGridResults(g) {
   g.offset = 0; g.loaded = 0; g.total = null; g.error = ""; g.doneDown = false; g.doneUp = true; g.gen++;
   g.pages = []; g.anchor = null; g.savedScrollTop = 0;
-  S.gallery = [];
-  const grid = document.getElementById("grid"); if (grid) grid.replaceChildren();
-  const count = document.getElementById("gridcount"); if (count) count.textContent = "";
+  refreshGallery();
+  const grid = document.getElementById(g.ids.grid); if (grid) grid.replaceChildren();
+  const count = document.getElementById(g.ids.count); if (count) count.textContent = "";
   const main = document.getElementById("main"); if (main) main.scrollTop = 0;
+}
+/* The viewer walks whatever is on screen, in the order it is on screen -- so
+   with two groups showing it has to be both of them, text first, matching the
+   document order. Rebuilt from the grids rather than appended to, because a
+   group can reload independently of the other. */
+function refreshGallery() {
+  S.gallery = activeGrids().flatMap(g => g.pages.flatMap(p => p.items.map(i => i.id)));
+}
+/* The group headings only earn their space when there are two groups to tell
+   apart. Browsing with no query shows one grid and no labels at all; a search
+   with no text hits hides that group rather than leaving an empty heading over
+   a blank row. */
+function renderGroupLabels() {
+  const textGroup = document.getElementById("group-text");
+  const mediaGroup = document.getElementById("group-media");
+  const mediaLabel = document.getElementById("label-media");
+  const searching = !!S.grid.query;
+  const textHits = !!(S.textGrid && S.textGrid.total);
+  // With Search by description off, the media grid has no ranking to show for a
+  // query -- it would fall back to listing the whole library under a search
+  // that had nothing to do with it, which reads as "these also matched".
+  const mediaRanks = archiveHasFeature(S.arch, "semantic");
+  if (textGroup) textGroup.hidden = !(searching && textHits);
+  if (mediaGroup) mediaGroup.hidden = searching && !mediaRanks;
+  if (mediaLabel) mediaLabel.hidden = !(searching && textHits && mediaRanks);
 }
 export function clearFilters() {
   ["f-year", "f-type", "f-place"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
@@ -358,16 +450,20 @@ export function updateClearBtn() {
    still in flight. */
 function renderGridEmptyState(g, grid) {
   if (g.loaded || g.total == null) return;
+  // The text group is hidden outright when it has nothing, so this is only ever
+  // the media group's message.
+  if (g.kind === "text") return;
   grid.innerHTML = `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${
     g.error ? esc(g.error) : "No media matches these filters."}</div>`;
 }
 function renderGridPages(g, anchor = null) {
-  const grid = document.getElementById("grid"); if (!grid) return;
+  const grid = document.getElementById(g.ids.grid); if (!grid) return;
   grid.replaceChildren();
   let lastHeading = null;
   g.pages.forEach(page => page.items.forEach((item, itemOffset) => {
-    // Month headings only make sense while the grid is in date order.
-    if (!g.query || g.sort) {
+    // Month headings only make sense while the grid is in date order, which a
+    // text group ranked by relevance never is.
+    if (g.kind !== "text" && (!g.query || g.sort)) {
       const heading = item.date ? (item.date.slice(0, 7) || "Unknown date") : "Unknown date";
       if (lastHeading !== heading) {
         const h = document.createElement("div"); h.className = "date-heading";
@@ -375,17 +471,62 @@ function renderGridPages(g, anchor = null) {
         grid.appendChild(h); lastHeading = heading;
       }
     }
-    grid.appendChild(tile(item, page.offset + itemOffset));
+    grid.appendChild(g.kind === "text"
+      ? textTile(item) : tile(item, page.offset + itemOffset));
   }));
-  S.gallery = g.pages.flatMap(page => page.items.map(item => item.id));
-  g.loaded = S.gallery.length;
+  refreshGallery();
+  g.loaded = g.pages.reduce((n, page) => n + page.items.length, 0);
   renderGridEmptyState(g, grid);
   if (anchor) restoreLibraryAnchor(anchor);
 }
-export async function loadGrid(direction = "append") {
-  const g = S.grid, gen = g.gen, grid = document.getElementById("grid");
-  const sentinel = document.getElementById(
-    direction === "prepend" ? "grid-top-sentinel" : "grid-sentinel");
+/* Which endpoint answers this grid, and with what.
+
+   Three cases, one shape: a plain browse, a description search, and a text
+   search. Kept together so that a filter added to one is visibly absent from
+   the others rather than quietly missing. The text endpoint takes no `type`
+   (every hit is a document by construction) and no `top` (there are no
+   relevance cuts to widen -- MATCH is the cut). */
+function gridRequest(g, offset) {
+  const p = new URLSearchParams({ root: S.arch.id, offset, limit: GRID_PAGE_SIZE });
+  if (g.year) p.set("year", g.year);
+  if (g.month) p.set("month", g.month);
+  g.people.forEach(id => p.append("person", id));
+  if (g.place) p.set("place", g.place);
+  if (g.sort) p.set("sort", g.sort);
+  if (g.kind === "text") {
+    p.append("q", g.query);
+    return "/api/browse/text/search?" + p;
+  }
+  if (g.type) p.set("type", g.type);
+  // A query only reaches the description index when this archive has one. With
+  // Documents on and Search by description off there is still a search box --
+  // it just searches the other group -- and sending its words here would ask an
+  // endpoint whose stage never runs.
+  if (g.query && archiveHasFeature(S.arch, "semantic")) {
+    // When local translation succeeds it replaces, rather than supplements,
+    // the Spanish semantic query. This avoids admitting weak matches unique to
+    // the original-language vector. English and fallback searches use g.query.
+    // Sent verbatim: a query that arrived through the translator is embedded
+    // as exactly the English someone could have typed themselves, so the two
+    // routes to the same words cannot give different results.
+    p.append("q", g.expandedQuery || g.query);
+    // Only sent when the user widened the search: absence means the tuned
+    // relevance cuts apply, so the common URL stays the default one.
+    if (g.topMatchesOnly === false) p.set("top", "no");
+    return "/api/browse/semantic/search?" + p;
+  }
+  return "/api/media?" + p;
+}
+export async function loadGrid(direction = "append", g = S.grid) {
+  const gen = g.gen, grid = document.getElementById(g.ids.grid);
+  const sentinel = document.getElementById(direction === "prepend" ? g.ids.top : g.ids.bottom);
+  // A text group with nothing typed has nothing to search: it is a ranking, not
+  // a listing, so an empty query means an empty group rather than every file.
+  if (g.kind === "text" && !g.query) {
+    g.total = 0;
+    renderGroupLabels();
+    return;
+  }
   if (!grid || g.loadingGen === gen ||
     (direction === "append" && g.doneDown) || (direction === "prepend" && g.doneUp)) return;
   const first = g.pages[0], last = g.pages[g.pages.length - 1];
@@ -397,30 +538,10 @@ export async function loadGrid(direction = "append") {
   if (sentinel && direction === "append")
     sentinel.innerHTML = '<span class="spin"></span>Loading files…';
   try {
-    const p = new URLSearchParams({
-      root: S.arch.id, offset: requestedOffset, limit: GRID_PAGE_SIZE,
-    });
-    if (g.type) p.set("type", g.type); if (g.year) p.set("year", g.year);
-    if (g.month) p.set("month", g.month);
-    g.people.forEach(id => p.append("person", id)); if (g.place) p.set("place", g.place);
-    if (g.sort) p.set("sort", g.sort);
-    if (g.query) {
-      // When local translation succeeds it replaces, rather than supplements,
-      // the Spanish semantic query. This avoids admitting weak matches unique to
-      // the original-language vector. English and fallback searches use g.query.
-      // Sent verbatim: a query that arrived through the translator is embedded
-      // as exactly the English someone could have typed themselves, so the two
-      // routes to the same words cannot give different results.
-      p.append("q", g.expandedQuery || g.query);
-      // Only sent when the user widened the search: absence means the tuned
-      // relevance cuts apply, so the common URL stays the default one.
-      if (g.topMatchesOnly === false) p.set("top", "no");
-    }
-    const endpoint = g.query ? "/api/browse/semantic/search?" : "/api/media?";
-    const res = await jget(endpoint + p);
+    const res = await jget(gridRequest(g, requestedOffset));
     // Bail if a newer filter change (or a section switch) superseded this fetch
     // while it was in flight, so a slow response can't paint stale tiles.
-    if (S.grid !== g || g.gen !== gen) return;
+    if (!activeGrids().includes(g) || g.gen !== gen) return;
     const items = (res && res.items) || [];
     const count = (res && res.count) || 0;
     g.error = (res && res.error) || "";
@@ -439,13 +560,14 @@ export async function loadGrid(direction = "append") {
     g.doneDown = !!g.error || !windowLast ||
       windowLast.offset + windowLast.items.length >= g.total;
     renderGridPages(g, anchor);
-    const gc = document.getElementById("gridcount");
+    renderGroupLabels();
+    const gc = document.getElementById(g.ids.count);
     if (gc) gc.textContent = gridCountLabel(g);
-    const bottom = document.getElementById("grid-sentinel");
+    const bottom = document.getElementById(g.ids.bottom);
     if (bottom) bottom.textContent = g.doneDown ? "" : "Scroll to load more";
   } catch {
     failed = true;
-    if (S.grid === g && g.gen === gen && sentinel)
+    if (activeGrids().includes(g) && g.gen === gen && sentinel)
       sentinel.textContent = "Couldn’t load more files. Scroll away and back to retry.";
   } finally {
     if (g.loadingGen === gen) {
@@ -455,8 +577,9 @@ export async function loadGrid(direction = "append") {
       // scroll, without requiring an intersection state change.
       requestAnimationFrame(() => {
         const done = direction === "prepend" ? g.doneUp : g.doneDown;
-        if (!failed && S.grid === g && g.gen === gen && !done &&
-          ACTIVE_SECTION === "library" && gridSentinelIsNear(direction)) loadGrid(direction);
+        if (!failed && activeGrids().includes(g) && g.gen === gen && !done &&
+          ACTIVE_SECTION === "library" && gridSentinelIsNear(direction, g))
+          loadGrid(direction, g);
       });
     }
   }
@@ -496,6 +619,33 @@ export function tile(it, resultIndex = null) {
   return d;
 }
 function ph(icon) { const s = document.createElement("div"); s.className = "ph"; s.textContent = icon; return s; }
+/* A library tile plus the passage that matched -- for the text results group
+   ONLY. tile() itself is shared with four other grids and must never grow this,
+   so the snippet is attached afterwards, the way personTile attaches its own
+   control.
+
+   The snippet arrives with the match wrapped in two control characters rather
+   than in markup. FTS5 does not escape the document text around the match, so
+   returning `<mark>` from the server would mean a document containing the word
+   "<script>" could put it into the page. Escaping first and substituting after
+   is what keeps the highlight from being an injection point. */
+export function textTile(it) {
+  const d = tile(it);
+  if (!it.snippet) return d;
+  const box = document.createElement("div");
+  box.className = "tile-snippet";
+  box.innerHTML = esc(it.snippet)
+    .replaceAll("\u0002", "<mark>").replaceAll("\u0003", "</mark>");
+  if (it.page != null) {
+    const page = document.createElement("span");
+    page.className = "tile-page";
+    page.textContent = it.page_last && it.page_last !== it.page
+      ? `pp. ${it.page}–${it.page_last}` : `p. ${it.page}`;
+    box.prepend(page);
+  }
+  d.appendChild(box);
+  return d;
+}
 // A library tile plus a "not this person" control, for the person detail
 // page ONLY -- tile() itself is shared with the plain library grid, which
 // must never grow this button. Detach removes the tile optimistically

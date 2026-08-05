@@ -69,6 +69,9 @@ export function archiveHasFeature(archive, id) {
 }
 export const S = {
   arch: null, section: "overview", grid: null,
+  // The text-results group, present only for an archive that reads its
+  // documents. Null everywhere else, which is what activeGrids() reads.
+  textGrid: null,
   timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, poll: null,
   // Bumped on every user navigation (section switch / archive open). Async renders
   // capture it and bail if it changed while they were awaiting, so a slow fetch can
