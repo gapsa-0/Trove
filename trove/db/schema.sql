@@ -546,3 +546,23 @@ CREATE TABLE IF NOT EXISTS doc_chunks (
     UNIQUE (file_id, ordinal)
 );
 CREATE INDEX IF NOT EXISTS idx_doc_chunks_file ON doc_chunks(file_id);
+
+-- One vector per passage: 384-d float32, L2-normalised, from the text embedder
+-- (trove/embeddings/text_backend.py). Its own table rather than a column on
+-- doc_chunks for two reasons: Search by meaning is switchable independently of
+-- Documents, so an archive can hold passages and no vectors; and its version
+-- moves independently of text_version, since the readers and the embedder
+-- change for different reasons.
+--
+-- Re-reading a file deletes and reinserts its chunks, which cascades these away
+-- -- which is correct, because a moved chunk boundary means a different
+-- passage, and a vector for text that no longer exists is worse than none.
+CREATE TABLE IF NOT EXISTS doc_chunk_embeddings (
+    chunk_id         INTEGER PRIMARY KEY REFERENCES doc_chunks(id) ON DELETE CASCADE,
+    embedding        BLOB NOT NULL,
+    dimensions       INTEGER NOT NULL,
+    embedder_version TEXT NOT NULL,
+    embedded_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_chunk_embeddings_version
+    ON doc_chunk_embeddings(embedder_version);

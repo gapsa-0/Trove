@@ -252,6 +252,33 @@ FEATURES: tuple[Feature, ...] = (
         # which, where a note claiming they verify each other would be wrong.
         extractor="documents",
     ),
+    Feature(
+        id="meaning",
+        label="Search documents by meaning",
+        icon="meaning",
+        tagline="Find a document by what it is about, not the words it uses",
+        verb="Indexing",
+        noun="documents for meaning",
+        detail=(
+            "Reads the text Documents found and turns each passage into a fingerprint of "
+            "what it means, so “how much is the rent” finds the clause that says “importe "
+            "del alquiler mensual” without any of those words appearing in your search. It "
+            "works across languages — an English question finds a Spanish document — and it "
+            "runs beside the exact-word search rather than replacing it, because the two "
+            "miss different things. Needs Documents switched on, since what it indexes is "
+            "what that one reads."
+        ),
+        required=False,
+        stages=("meaning",),
+        card="meaning",
+        sections=(),
+        download_mb=129,
+        # Named the other way round from People/Pets, and correctly so: this
+        # feature really is less useful without Documents, because Documents is
+        # what produces the text it indexes. Documents does not name this one
+        # back — it is complete on its own.
+        pairs_with="documents",
+    ),
 )
 
 _BY_ID = {f.id: f for f in FEATURES}

@@ -47,6 +47,7 @@ ORDER: tuple[str, ...] = (
     "places",
     "search",
     "documents",
+    "meaning",
     "privacy",
     "faq",
 )

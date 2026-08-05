@@ -52,6 +52,7 @@ def _table(cfg: Config) -> dict[str, Weights]:
     """
     from .. import model_manifest
     from ..embeddings import backend as embed_backend
+    from ..embeddings import text_backend
     from ..faces import backend as face_backend
     from ..pets import backend as pet_backend
 
@@ -77,11 +78,22 @@ def _table(cfg: Config) -> dict[str, Weights]:
         # 317 MB download (see services/semantic.warm_text_model).
         embed_backend.ensure_models(cache, log=log)
 
+    def meaning(log: Log | None) -> None:
+        # The text embedder and its tokenizer. Unlike semantic there are no
+        # halves to fetch separately: one model answers both indexing and
+        # search, because a passage and a query go through the same encoder.
+        text_backend.ensure_models(cache, log=log)
+
     return {
         "people": Weights(face_backend.available, lambda: face_backend.models_ready(cache), people),
         "pets": Weights(pet_backend.available, lambda: pet_backend.models_ready(cache), pets),
         "semantic": Weights(
             embed_backend.available, lambda: embed_backend.models_ready(cache), semantic
+        ),
+        # Documents is deliberately absent: a feature with no entry here needs
+        # nothing downloaded, which is what makes its "no download" honest.
+        "meaning": Weights(
+            text_backend.available, lambda: text_backend.models_ready(cache), meaning
         ),
     }
 

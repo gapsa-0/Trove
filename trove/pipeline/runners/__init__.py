@@ -24,6 +24,7 @@ from . import (
     detect,
     enrich,
     face_cluster,
+    meaning,
     models,
     pet_cluster,
     places,
@@ -42,6 +43,7 @@ RUNNERS: dict[str, Runner] = {
     detect.RUNNER.kind: detect.RUNNER,
     semantic.RUNNER.kind: semantic.RUNNER,
     text.RUNNER.kind: text.RUNNER,
+    meaning.RUNNER.kind: meaning.RUNNER,
     models.RUNNER.kind: models.RUNNER,
 }
 
