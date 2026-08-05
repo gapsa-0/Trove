@@ -99,6 +99,23 @@ def _media_where(
     return clause, params, indexed_sql
 
 
+def _media_items(rows: list[sqlite3.Row]) -> list[MediaItem]:
+    """One grid tile per row of the query below. The name is the file's own,
+    cut off the stored relative path the way the grid captions it."""
+    return [
+        {
+            "id": r["id"],
+            "type": r["media_type"],
+            "name": os.path.basename(r["rel_path"]),
+            "date": r["dt"],
+            "date_source": r["dsrc"],
+            "has_gps": bool(r["has_gps"]),
+            "indexed": bool(r["indexed"]),
+        }
+        for r in rows
+    ]
+
+
 @reading
 def media(
     conn: sqlite3.Connection,
@@ -158,18 +175,7 @@ def media(
             LIMIT ? OFFSET ?""",
         (semantic.INDEXER_VERSION, *params, limit, offset),
     ).fetchall()
-    items: list[MediaItem] = [
-        {
-            "id": r["id"],
-            "type": r["media_type"],
-            "name": os.path.basename(r["rel_path"]),
-            "date": r["dt"],
-            "date_source": r["dsrc"],
-            "has_gps": bool(r["has_gps"]),
-            "indexed": bool(r["indexed"]),
-        }
-        for r in rows
-    ]
+    items = _media_items(rows)
     return {
         "items": items,
         "offset": offset,
