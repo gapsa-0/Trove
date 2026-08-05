@@ -32,7 +32,7 @@ hiddenimports = []
 # `pypdfium2` is here for the same reason: a bundled PDFium shared library,
 # imported lazily inside trove/text/pdf.py so PyInstaller never sees it.
 for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklearn",
-                "numpy", "tokenizers", "pypdfium2"):
+                "numpy", "tokenizers", "pypdfium2", "shapely", "pyclipper"):
     hiddenimports += collect_submodules(package)
     binaries += collect_dynamic_libs(package)
 # insightface supplies the buffalo_l model-zoo loader and the face_align helpers.
@@ -41,6 +41,11 @@ for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklear
 hiddenimports += collect_submodules("insightface.model_zoo")
 hiddenimports += collect_submodules("insightface.utils")
 datas += collect_data_files("insightface")
+# RapidOCR carries its ONNX weights and its YAML config as package data. Without
+# this the packaged app installs the code and none of the models, and Text in
+# images fails at the first image rather than at build time.
+datas += collect_data_files("rapidocr")
+hiddenimports += collect_submodules("rapidocr")
 
 # Dev-only weight: torch and transformers exist in a full developer environment
 # for tools/build/dinov2_pet_export.py, and sklearn/scipy reach for torch through their

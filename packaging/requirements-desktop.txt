@@ -30,6 +30,12 @@ tokenizers==0.23.1
 # PDF text extraction and page rasterising, for the Documents feature. Ships a
 # prebuilt PDFium; its wheels are py3-none-<platform>, so cp313 needs no build.
 pypdfium2==5.12.1
+# OCR: PP-OCRv6 detection and recognition, with the ONNX weights inside the
+# wheel. ~32 MB of the installer, and the reason Text in images downloads
+# nothing at runtime.
+rapidocr==3.9.2
+pyclipper==1.4.0
+shapely==2.1.2
 PyInstaller==6.21.0
 # ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
 # (packaging/tools/manifest.json). ML model weights are staged separately too

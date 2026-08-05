@@ -8,7 +8,7 @@
 #
 # Install with the pins applied:
 #
-#   pip install -e '.[dev,cli,media,faces,pets,semantic,documents]' -c constraints.txt
+#   pip install -e '.[dev,cli,media,faces,pets,semantic,documents,ocr]' -c constraints.txt
 #
 # or just `make setup`, which does exactly that. CI installs the same way, so a
 # green run here and a green run there mean the same thing. Every pin below that
@@ -60,6 +60,16 @@ tokenizers==0.23.1
 # Bundles its own PDFium build, so this pin fixes the PDF parser itself and not
 # just the binding. Text extraction results can shift between PDFium releases.
 pypdfium2==5.12.1
+
+# --- ocr extra ---
+# Pins the OCR models too, not only the code: the weights ship inside this
+# wheel, so the version fixes exactly which PP-OCRv6 export runs. Bumping it
+# can change extracted text, which means re-reading every image in an archive.
+rapidocr==3.9.2
+# Its native dependencies, pinned for the same reason every other native pin
+# here exists -- a geometry or clipping change moves detected box boundaries.
+pyclipper==1.4.0
+shapely==2.1.2
 
 # --- dev extra ---
 # Dev-only: the desktop build excludes faiss (trove.spec), but the

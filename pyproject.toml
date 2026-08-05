@@ -50,6 +50,22 @@ semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10"
 # PDFium build also rasterises -- which is what lets Text in images read a
 # scanned page later without a second PDF dependency.
 documents = ["pypdfium2>=5"]
+# Reading text out of pictures. RapidOCR drives PaddleOCR's PP-OCRv6 detection
+# and recognition models on the onnxruntime already here, and — unusually for a
+# model in this app — **ships the weights inside its own wheel**, so there is no
+# runtime download, no new download origin and no manifest entry; pip's own hash
+# check covers them. One recognition model carries 18,708 characters including
+# every Spanish accent, so there is no separate per-language weight either.
+#
+# It is the one framework dependency added for this work, and it brings seven
+# packages (pyclipper and shapely native, both with cp313 wheels for the two
+# release platforms; omegaconf, colorlog, six, antlr4-python3-runtime and PyYAML
+# pure Python). That was weighed against writing the DB post-processing here —
+# contour extraction, polygon unclipping, CTC decode — which is intricate enough
+# that getting it subtly wrong yields quietly worse text and no error at all.
+# Deliberately NOT rapidocr-onnxruntime, whose latest release declares
+# requires-python <3.13 and so cannot be installed at all (ADR 0007).
+ocr = ["rapidocr>=3.9"]
 # faiss-cpu is a dev dependency and not a runtime one: the desktop build excludes
 # it, but tests/integration/test_core_expansion.py asserts the FAISS and NumPy
 # search paths agree exactly, and those tests skip themselves when it is absent.
