@@ -14,6 +14,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, cast
 
+# Re-exported rather than merely used: every caller reaches the database layer
+# as ``db``, and moving the migrations into their own module is not a reason to
+# make them ask a second module whether this build has FTS5.
+from .migrations import fts5_supported, text_index_present
 from .migrations import run as _run_migrations
 
 __all__ = [
@@ -23,6 +27,7 @@ __all__ = [
     "dedup_invalidate",
     "dedup_mark_done",
     "dedup_needed",
+    "fts5_supported",
     "get_or_create_root",
     "init_db",
     "now_iso",
@@ -32,10 +37,11 @@ __all__ = [
     "scan_run_finish",
     "scan_run_start",
     "scan_settled",
+    "text_index_present",
     "write_with_retry",
 ]
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 
@@ -137,8 +143,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     previous_version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.executescript(_SCHEMA_SQL.read_text())
     # Everything schema.sql cannot express: columns on tables that already ship,
-    # an index retired, and the one version-gated data fix. Each is idempotent,
-    # so the whole sequence is a no-op on a current database.
+    # an index retired, the text index, and the one version-gated data fix. Each
+    # is idempotent, so the whole sequence is a no-op on a current database.
     _run_migrations(conn, previous_version)
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
@@ -160,6 +166,30 @@ def get_or_create_root(conn: sqlite3.Connection, path: str) -> int:
 # along. Deleting a root is different: only `files` needs clearing by hand,
 # since the other two cascade and everything else hangs off a file id.
 _ROOT_SCOPED_TABLES = ("files", "dedup_runs", "place_clusters")
+
+
+def _delete_root_files(conn: sqlite3.Connection, root_id: int) -> None:
+    """Delete one root's files, and the text-index rows left stranded by that.
+
+    Everything derived from a file cascades away with it -- except the one table
+    that cannot. ``doc_chunk_fts`` is a virtual table, so it can carry no foreign
+    key; nothing ties it to ``doc_chunks`` but the rowid its writer keeps equal.
+    And the cascade would not help even if it could: SQLite fires AFTER DELETE
+    triggers on a foreign-key cascade only under ``PRAGMA recursive_triggers``,
+    which is off (see ``_migrate_text_index``).
+
+    So the index is cleared here, before the delete that would strand it. This
+    and ``services/documents.py``'s chunk writes are the whole of that
+    obligation; there are no triggers anywhere to reason about.
+    """
+    if text_index_present(conn):
+        conn.execute(
+            """DELETE FROM doc_chunk_fts WHERE rowid IN
+                   (SELECT id FROM doc_chunks WHERE file_id IN
+                       (SELECT id FROM files WHERE root_id=?))""",
+            (root_id,),
+        )
+    conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
 
 
 def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
@@ -203,11 +233,11 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
         # 1. Roots for other folders (and their catalog rows) do not belong here.
         stale = [rid for rid in rows if rid not in keep]
         for rid in stale:
-            conn.execute("DELETE FROM files WHERE root_id=?", (rid,))
+            _delete_root_files(conn, rid)
             conn.execute("DELETE FROM roots WHERE id=?", (rid,))
         if owner is None:
             # A row may still be sitting on the target id under a stale path.
-            conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
+            _delete_root_files(conn, root_id)
             conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
             conn.execute(
                 "INSERT INTO roots(id, path, added_at) VALUES(?,?,?)", (root_id, path, now_iso())
@@ -218,7 +248,7 @@ def reconcile_root(conn: sqlite3.Connection, root_id: int, path: str) -> bool:
             # both rows exist, which is what lets the whole move happen without
             # ever leaving a file row pointing at a root that isn't there —
             # no deferred foreign keys needed.
-            conn.execute("DELETE FROM files WHERE root_id=?", (root_id,))
+            _delete_root_files(conn, root_id)
             conn.execute("DELETE FROM roots WHERE id=?", (root_id,))
             conn.execute("UPDATE roots SET path=? WHERE id=?", (placeholder, owner))
             conn.execute(

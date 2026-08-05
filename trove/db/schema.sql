@@ -501,3 +501,48 @@ CREATE TABLE IF NOT EXISTS semantic_embeddings (
 );
 CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_status
     ON semantic_embeddings(status);
+
+-- ---- Phase 8: text inside documents and pictures --------------------------
+
+-- One row per FILE: what reading it produced, and the anchor that makes the
+-- stage resumable. Skipped and failed files get a row too, carrying the sha256
+-- they were read at, so a file the readers cannot handle stops counting as
+-- pending instead of being re-derived on every pass (semantic_embeddings does
+-- the same thing for the same reason).
+--
+-- `wanted` records which halves of the fused pass were switched on when the row
+-- was written ('documents', 'documents+ocr', 'ocr'). Without it, a scanned PDF
+-- read once with only Documents on would carry a current sha256 and a current
+-- text_version, and enabling Text in images later would never make it pending
+-- again -- the file would simply never be read. It is the same job
+-- pet_scan.model_source does for the other fused pass.
+CREATE TABLE IF NOT EXISTS doc_text (
+    file_id       INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    source_sha256 TEXT NOT NULL,
+    wanted        TEXT NOT NULL,
+    extractor     TEXT,              -- pdf-text | office | opendocument | plain | ocr | pdf-ocr
+    status        TEXT NOT NULL,     -- extracted | skipped | error
+    confidence    REAL,              -- NULL where a parser was exact; mean score for OCR
+    chars         INTEGER NOT NULL DEFAULT 0,
+    pages         INTEGER,
+    n_chunks      INTEGER NOT NULL DEFAULT 0,
+    error         TEXT,
+    text_version  TEXT,
+    extracted_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_text_status ON doc_text(status);
+
+-- One row per CHUNK, metadata only. The text itself lives in doc_chunk_fts
+-- under the same rowid, so there is one copy of it rather than two -- see
+-- db/database.py:_migrate_text_index for why that index is not declared here.
+-- page_first/page_last are NULL for formats that have no pages.
+CREATE TABLE IF NOT EXISTS doc_chunks (
+    id          INTEGER PRIMARY KEY,
+    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    page_first  INTEGER,
+    page_last   INTEGER,
+    chars       INTEGER NOT NULL,
+    UNIQUE (file_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_doc_chunks_file ON doc_chunks(file_id);

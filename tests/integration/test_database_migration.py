@@ -133,3 +133,109 @@ def test_already_current_database_never_reruns_the_video_cleanup():
         "SELECT COUNT(*) FROM semantic_embeddings WHERE input_kind='video'"
     ).fetchone()[0]
     assert remaining == 1
+
+
+def _add_file(conn, file_id=1, root_id=1, rel_path="letter.pdf"):
+    conn.execute(
+        """INSERT INTO files(id, root_id, rel_path, ext, size, mtime, media_type,
+                             sha256, first_seen, last_seen)
+           VALUES(?, ?, ?, 'pdf', 10, 0, 'document', 'sha', 'now', 'now')""",
+        (file_id, root_id, rel_path),
+    )
+
+
+def _add_chunk(conn, file_id=1, chunk_id=1, text="petición de reembolso"):
+    conn.execute(
+        """INSERT INTO doc_chunks(id, file_id, ordinal, page_first, page_last, chars)
+           VALUES(?, ?, 0, 1, 1, ?)""",
+        (chunk_id, file_id, len(text)),
+    )
+    conn.execute("INSERT INTO doc_chunk_fts(rowid, text) VALUES(?, ?)", (chunk_id, text))
+
+
+def test_a_fresh_database_carries_the_document_text_tables_and_the_index():
+    conn = db.connect(":memory:")
+    db.init_db(conn)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"doc_text", "doc_chunks"} <= tables
+    # The index is created by a migration rather than by schema.sql, so this is
+    # the only one of the three whose presence is conditional.
+    assert db.text_index_present(conn) is db.fts5_supported()
+
+
+def test_an_older_database_gains_the_document_text_tables_on_upgrade():
+    """The tables arrive through executescript's CREATE ... IF NOT EXISTS and the
+    index through _migrate_text_index, so an archive built before either existed
+    picks both up the first time it is opened -- no re-scan, no data migration."""
+    conn = db.connect(":memory:")
+    conn.executescript(db._SCHEMA_SQL.read_text())
+    conn.execute("DROP TABLE doc_text")
+    conn.execute("DROP TABLE doc_chunks")
+    conn.execute("PRAGMA user_version=13")
+    conn.commit()
+
+    db.init_db(conn)
+
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"doc_text", "doc_chunks"} <= tables
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+
+
+def test_the_text_index_survives_the_job_start_that_reopens_an_archive():
+    """init_db runs at every job start, so creating the index must be a no-op
+    once it is there -- and must not lose the rows already written into it."""
+    conn = db.connect(":memory:")
+    db.init_db(conn)
+    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/x', 'now')")
+    _add_file(conn)
+    _add_chunk(conn)
+    conn.commit()
+
+    db.init_db(conn)
+    db.init_db(conn)
+
+    assert conn.execute("SELECT COUNT(*) FROM doc_chunk_fts").fetchone()[0] == 1
+
+
+def test_deleting_a_roots_files_takes_its_text_index_rows_with_them():
+    """The one sync obligation the schema cannot express.
+
+    doc_chunks cascades away with the file, but doc_chunk_fts is a virtual table
+    with no foreign key to cascade along -- and SQLite would not fire a delete
+    trigger on a cascade anyway, since recursive_triggers is off. reconcile_root
+    therefore clears the index by hand. Without that, the rows survive their
+    content and every later search reads rowids that address nothing.
+    """
+    conn = db.connect(":memory:")
+    db.init_db(conn)
+    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/gone', 'now')")
+    _add_file(conn)
+    _add_chunk(conn)
+    conn.commit()
+    assert conn.execute("SELECT COUNT(*) FROM doc_chunk_fts").fetchone()[0] == 1
+
+    # A root for a different folder: this database has no business holding it,
+    # so reconcile_root drops its files wholesale.
+    db.reconcile_root(conn, 2, "/elsewhere")
+
+    assert conn.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM doc_chunks").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM doc_chunk_fts").fetchone()[0] == 0
+
+
+def test_the_index_folds_accents_so_a_spanish_search_finds_a_spanish_word():
+    """`remove_diacritics 2` is why "peticion" finds "petición". Version 2 rather
+    than 1 because 1 leaves combining marks that stand as their own codepoint,
+    which covers most accented Spanish text."""
+    conn = db.connect(":memory:")
+    db.init_db(conn)
+    # Straight into the index: what is under test is the tokenizer, not the
+    # chunk row that would normally accompany it.
+    conn.execute("INSERT INTO doc_chunk_fts(rowid, text) VALUES(1, 'petición de reembolso')")
+    conn.commit()
+
+    for query in ("peticion", "petición", "REEMBOLSO"):
+        found = conn.execute(
+            "SELECT COUNT(*) FROM doc_chunk_fts WHERE doc_chunk_fts MATCH ?", (query,)
+        ).fetchone()[0]
+        assert found == 1, query

@@ -1,9 +1,9 @@
 """Bringing an existing archive database up to the current schema.
 
 ``schema.sql`` creates what is missing; this is everything that cannot be
-expressed that way -- columns added to tables that already ship, an index
-retired, and the one data fix gated on the version a database is arriving
-from.
+expressed that way -- columns added to tables that already ship, indexes
+retired, a virtual table whose statement is not safe to run unconditionally,
+and the one data fix gated on the version a database is arriving from.
 
 Every function here is idempotent, because ``init_db`` calls the lot at **every
 job start** (see ``pipeline/manager.py``). That is the constraint the file is
@@ -18,6 +18,33 @@ Imported by ``database.py``, never the other way round.
 from __future__ import annotations
 
 import sqlite3
+
+# Whether this interpreter's SQLite has FTS5, probed once (see fts5_supported).
+_FTS5_SUPPORTED: bool | None = None
+
+
+def fts5_supported() -> bool:
+    """Whether this interpreter's SQLite was built with FTS5.
+
+    Probed once per process against a throwaway in-memory database, because it
+    is a property of the library rather than of any connection. Verified present
+    on the SQLite this project runs on (3.50.2), so this is not expected to be
+    False anywhere -- but searching inside documents is the one feature that
+    rests entirely on it, and a feature reporting itself unavailable is a far
+    better failure than a migration that throws on every archive, including the
+    archives that never asked for it.
+    """
+    global _FTS5_SUPPORTED
+    if _FTS5_SUPPORTED is None:
+        probe = sqlite3.connect(":memory:")
+        try:
+            probe.execute("CREATE VIRTUAL TABLE _probe USING fts5(x)")
+            _FTS5_SUPPORTED = True
+        except sqlite3.Error:
+            _FTS5_SUPPORTED = False
+        finally:
+            probe.close()
+    return _FTS5_SUPPORTED
 
 
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
@@ -158,6 +185,58 @@ def _drop_legacy_video_embeddings(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM semantic_embeddings WHERE input_kind='video'")
 
 
+def text_index_present(conn: sqlite3.Connection) -> bool:
+    """Whether this database carries the document-text index.
+
+    False on a build without FTS5, and on any archive opened before the index
+    existed and not yet re-opened. Callers that write or clear chunks ask this
+    rather than assuming, since the index is the one table in the schema that
+    ``executescript`` does not guarantee.
+    """
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='doc_chunk_fts'"
+        ).fetchone()
+        is not None
+    )
+
+
+def _migrate_text_index(conn: sqlite3.Connection) -> None:
+    """The full-text index over document chunks, created only where FTS5 exists.
+
+    Deliberately not in ``schema.sql``. ``executescript`` runs that file at every
+    job start on every archive, and one unsupported statement fails the whole
+    script -- so a SQLite without FTS5 would break archives that never asked to
+    read a document. Here, such a build simply leaves the index absent and the
+    Documents feature reports itself unavailable, in the same words the setup
+    panel already uses for a missing dependency.
+
+    **Contentful, not external-content.** An external-content index has to be
+    kept in step with ``doc_chunks`` by delete triggers, and SQLite fires AFTER
+    DELETE triggers on a foreign-key cascade only when ``PRAGMA
+    recursive_triggers`` is on, which it is not. ``reconcile_root`` deletes files
+    wholesale, so the index would be left addressing content rows that no longer
+    exist -- which for an external-content table makes ``snippet()`` and
+    ``bm25()`` return garbage, rather than merely returning too much. Contentful
+    turns that same orphan into a stale rowid the search's join drops in
+    silence. With no prior FTS5 anywhere in this codebase, the form that fails
+    safely is worth more than the copy of the text it costs.
+
+    Checked before created for the reason ``_drop_covered_files_index`` gives:
+    this runs at every job start, and a lookup on an already-cached page beats
+    opening a write transaction behind the pipeline's writer.
+    """
+    if not fts5_supported() or text_index_present(conn):
+        return
+    # remove_diacritics 2 is what lets a search for "peticion" find "petición"
+    # -- and version 2 rather than 1 because 1 leaves diacritics that are their
+    # own codepoint in place, which is most of them in Spanish.
+    conn.execute(
+        "CREATE VIRTUAL TABLE doc_chunk_fts "
+        "USING fts5(text, tokenize='unicode61 remove_diacritics 2')"
+    )
+
+
 def run(conn: sqlite3.Connection, previous_version: int) -> None:
     """Apply every migration, in order, to an already-scripted database.
 
@@ -173,5 +252,6 @@ def run(conn: sqlite3.Connection, previous_version: int) -> None:
     _migrate_scan_counters(conn)
     _migrate_nonhuman(conn)
     _migrate_video(conn)
+    _migrate_text_index(conn)
     if previous_version < 12:
         _drop_legacy_video_embeddings(conn)
