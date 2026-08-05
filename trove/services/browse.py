@@ -25,11 +25,40 @@ from ._common import (
 from .places import _PLACE_EXEMPT
 from .types import MediaItem, MediaPage
 
+# The file's own name, in SQL. `rel_path` is stored with the OS separator, so
+# both are stripped: `replace` removes every character that is not a separator,
+# leaving a set `rtrim` uses to cut the name off the end, which leaves the
+# directory prefix -- and replacing that prefix with nothing leaves the name.
+# A path with no separator at all yields an empty prefix, and `replace(x,'','')`
+# returns x unchanged, which is the wanted answer for a file at the root.
+_BASENAME = (
+    "replace(f.rel_path, rtrim(f.rel_path, replace(replace(f.rel_path, '/', ''), '\\', '')), '')"
+)
+# How many words of a name search are honoured. Each one costs a pass over the
+# archive's rows (no index can serve a substring), and a name nobody could type
+# in full is not a search anyone is waiting on.
+_NAME_TOKEN_LIMIT = 8
+
+
+def _name_tokens(query: str | None) -> list[str]:
+    """The words a filename search has to contain, lowercased and de-duplicated.
+
+    Split on whitespace rather than matched as one string, so "beach 2019" finds
+    ``2019_beach_trip.jpg`` -- typed order is not the order a camera or an export
+    chose. Everything else in a token is kept verbatim: an extension, a dot, a
+    dash and an underscore are all things people actually type when they are
+    hunting for a file by name, and `instr` treats them as the literal characters
+    they are (unlike LIKE, where `_` would quietly match anything).
+    """
+    seen = dict.fromkeys(word.lower() for word in (query or "").split())
+    return list(seen)[:_NAME_TOKEN_LIMIT]
+
 
 def _media_where(
     *,
     root_id: int | None,
     mtype: str | None,
+    name: str | None,
     year: int | str | None,
     month: str | None,
     person_id: int | None,
@@ -52,6 +81,14 @@ def _media_where(
     if mtype:
         where.append("f.media_type = ?")
         params.append(mtype)
+    # Filename matching: the search an archive has when it has no search
+    # feature. Every word has to appear somewhere in the name, which is what
+    # "narrow it down by typing more" means here as well. `instr` over a
+    # computed name cannot use an index, so this is a pass over the archive's
+    # rows -- acceptable because it only runs while someone is typing at it.
+    for token in _name_tokens(name):
+        where.append(f"instr(lower({_BASENAME}), ?) > 0")
+        params.append(token)
     if year:
         where.append("substr(d.best_datetime,1,4) = ?")
         params.append(str(year))
@@ -124,6 +161,7 @@ def media(
     year: int | str | None = None,
     month: str | None = None,
     mtype: str | None = None,
+    name: str | None = None,
     person_id: int | None = None,
     person_ids: list[int] | None = None,
     cluster_id: int | None = None,
@@ -142,12 +180,18 @@ def media(
     The GUI only ever asks for True on either ("Show only …" boxes) -- unchecked
     means no filter at all. False is kept because the predicate is naturally
     three-valued and because the two halves summing to the unfiltered grid is
-    the property worth testing."""
+    the property worth testing.
+
+    ``name`` narrows to the files whose own name contains every word of it. It
+    is a filter rather than a ranking -- there is nothing to score, so the grid
+    keeps its date order -- and it is what Browse's search box runs on an
+    archive with no search feature at all."""
     from . import semantic
 
     clause, params, indexed_sql = _media_where(
         root_id=root_id,
         mtype=mtype,
+        name=name,
         year=year,
         month=month,
         person_id=person_id,

@@ -4,7 +4,7 @@
 // could actually see.
 
 import {
-  checkedPeople, reloadGrids, renderSortOptions, updateClearBtn,
+  checkedPeople, mediaRanksQueries, reloadGrids, renderSortOptions, updateClearBtn,
   updatePeopleFilterLabel,
 } from "./library.js";
 import {
@@ -389,7 +389,7 @@ export function renderActiveQuery(g) {
   // Only where there is a ranking to widen. A text match is a match, with no
   // cut to relax, so on a documents-only archive this would name a choice
   // that changes nothing.
-  if (g.query && archiveHasFeature(S.arch, "semantic")) parts.push(resultScopeControl(g));
+  if (g.query && mediaRanksQueries()) parts.push(resultScopeControl(g));
   el.replaceChildren(...parts, clear);
 }
 /* How much of the ranking is on screen -- two views of one result set, not a

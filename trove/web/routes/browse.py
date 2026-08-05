@@ -41,6 +41,9 @@ def media(req: Request) -> MediaPage:
         year=req.one("year"),
         month=req.one("month"),
         mtype=req.one("type"),
+        # `name` is Browse's search box on an archive with no search feature:
+        # every word of it has to appear in the file's own name.
+        name=req.one("name"),
         person_ids=req.many("person"),
         cluster_id=req.one("place", int),
         sort="oldest" if req.one("sort") == "oldest" else "newest",

@@ -211,6 +211,14 @@ hash computed here is what [Duplicates](duplicates.md) groups on. If the
 archive runs [Search by description](search.md), the composer at the top of
 Browse searches vectors built from the same files.
 
+**The search box works whatever else is switched off.** With no search feature
+at all it matches what you type against the names of the files themselves — the
+names this stage recorded, which is why it needs nothing else to be enabled.
+Every word you type has to appear somewhere in the name, in any order, so
+`escritura 2019` finds `2019-escritura-casa.pdf`; only the file's own name is
+matched, never the folders it sits in. Switching on a search feature changes
+what the words are matched against, not whether the box is there.
+
 Not every stage takes every kind of file. Duplicate grouping compares all of
 them by content but only fingerprints images; People and Pets look at images
 and videos; Places needs GPS coordinates, whatever carries them; search by

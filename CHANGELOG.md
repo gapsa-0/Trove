@@ -69,6 +69,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.doc`, `.xls` and `.ppt` files cannot be read at all; they are listed and
   dated like any other file and reported as an unsupported format, rather than
   half-read into something misleading.
+- **Every archive can be searched, whatever it has switched on.** Browse's
+  search box is no longer conditional on a search feature: with none of them on
+  it matches what you type against the names of the files themselves, which
+  needs no model, no download and no indexing. Every word has to appear in the
+  name, in any order, so `escritura 2019` finds `2019-escritura-casa.pdf`, and
+  only the file's own name counts — a folder called `playa` does not make
+  everything inside it a match for "playa". Switching a search feature on
+  changes what your words are matched against, not whether you can type them.
 - **Browse captions each thumbnail with the file's name** rather than its date.
   The grid is already broken into dated sections, so the date under every tile
   was repeating the heading above it, while the name is the one thing that says

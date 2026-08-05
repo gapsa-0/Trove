@@ -248,11 +248,14 @@ own previous `user_version` so it cannot fire twice.
   fork off a branch, which neither screen draws.
 - **A feature that unlocks no section is gated where it lives.** Hiding a nav
   section is how most features disappear, and Search by description has none —
-  it is the composer at the top of Browse. So `library.js` gates that composer
-  on the feature (`archiveHasFeature`), and `/api/browse/semantic/status`
-  reports `configured` only when the archive both chose the feature and can
-  run it. Reporting importability alone was the bug: an archive that declined
-  the feature was offered a search over an index nothing would ever write.
+  it is the composer at the top of Browse. So `library.js` gates on the feature
+  (`archiveHasFeature`) what the composer's words are *matched against*, and
+  `/api/browse/semantic/status` reports `configured` only when the archive both
+  chose the feature and can run it. Reporting importability alone was the bug:
+  an archive that declined the feature was offered a search over an index
+  nothing would ever write. The box itself is ungated, because its floor asks
+  nothing of any stage: with no search feature the words are matched against
+  file names, which the scan already recorded (`browse.media`'s `name`).
 - A stage may only depend on a stage owned by a *required* feature. Otherwise a
   stage whose dependency was switched off would sit blocked on a state that can
   never arrive — `tests/unit/test_features.py` enforces this rather than

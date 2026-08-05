@@ -281,22 +281,63 @@ def test_the_nav_only_offers_what_the_archive_runs(open_app, archive):
 def test_browse_only_offers_description_search_to_an_archive_that_runs_it(open_app, archive):
     """The one feature that unlocks no section of its own: Search by
     description lives inside Browse, so switching it off cannot be expressed by
-    dropping a nav item and has to be expressed here. Left ungated, the
-    composer invited a search of an index whose stage the scheduler never
-    starts, over a line promising files "queued for indexing"."""
+    dropping a nav item and has to be expressed here.
+
+    What switching it off removes is the *promise*, not the box: the line
+    reporting how much of the archive is indexed goes, and so does the offer to
+    describe a photo. The box stays, because matching what you type against
+    file names needs no index and no model, and asks nothing of a stage the
+    scheduler will never start."""
     with open_app("library", wait_for=".library-controls") as app:
         assert app.count(".semantic-composer") == 1
+        assert "describe" in app.tab.evaluate(
+            "document.getElementById('semantic-q').dataset.placeholder"
+        )
         assert app.errors() == []
 
     _configure(archive, features=["index", "duplicates", "places"])
 
     with open_app("library", wait_for=".library-controls") as app:
-        assert app.count(".semantic-composer") == 0
         assert app.count(".search-reach") == 0
-        # The rest of the screen is untouched: this removes a search, not a way
-        # of looking through the archive.
+        assert app.count(".semantic-composer") == 1
+        assert (
+            app.tab.evaluate("document.getElementById('semantic-q').dataset.placeholder")
+            == "Search your library by file name"
+        )
+        # The rest of the screen is untouched: this changes what a search is
+        # matched against, not the ways of looking through the archive.
         assert app.count("#filterbar") == 1
         assert app.count("#grid") == 1
+        assert app.errors() == []
+
+
+def test_browse_searches_file_names_when_it_has_no_index_to_search(open_app, archive):
+    """The floor under Browse's search box, driven the way a person drives it.
+
+    Nothing in this archive is embedded or read here -- the feature that would
+    do either is off -- so a single tile coming back proves the words were
+    matched against the names the scan already recorded, and that the box is
+    wired to the endpoint that can answer it."""
+    _configure(archive, features=["index", "duplicates", "places"])
+
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(
+            "(() => { const c = document.getElementById('semantic-q');"
+            " c.textContent = 'photo003';"
+            " c.closest('form').dispatchEvent("
+            "new Event('submit', {cancelable: true, bubbles: true})); })()"
+        )
+        app.tab.wait_for(
+            "document.querySelectorAll('#grid .tile').length === 1",
+            what="the grid to narrow to the one file named photo003",
+        )
+
+        assert "photo003.jpg" in app.text("#grid")
+        # No ranking to sort by and none to widen: a name is matched or it is
+        # not, so neither control that belongs to the description search
+        # appears alongside it.
+        assert app.count(".aq-scope") == 0
+        assert "Best match" not in app.text("#f-sort")
         assert app.errors() == []
 
 
