@@ -111,7 +111,11 @@ def _pending(conn: sqlite3.Connection, root_id: int | None) -> int:
     covered = conn.execute(
         f"SELECT COALESCE(SUM(covered_files),0) FROM dedup_runs{where}", params
     ).fetchone()[0]
-    return max(0, present - covered)
+    # int() around the result is a no-op at runtime -- both operands are counts
+    # SQLite always returns as ints -- but sqlite3.Row.__getitem__ is typed Any,
+    # which the `-> int` would otherwise silently swallow (see search.py's
+    # semantic_pending, which spells out the same thing).
+    return int(max(0, present - covered))
 
 
 @reading
