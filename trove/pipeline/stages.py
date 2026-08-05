@@ -114,6 +114,45 @@ def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
     }
 
 
+def _optional_pending(
+    cfg: Config,
+    db_path: str,
+    root_id: int,
+    avail: dict[str, bool],
+    enabled: tuple[str, ...],
+) -> dict[str, int]:
+    """Backlog for the stages an archive can decline, each behind its own probe.
+
+    Split out of ``_pending`` because these are the entries that grow: every
+    optional feature added to the catalogue adds one here, while the required
+    four above it stay as they are. Each is guarded on ``avail`` so a stage
+    whose backend will not import reports no backlog rather than a queue that
+    can never drain.
+    """
+    from ..pets.extract import scan_source as pet_scan_source
+
+    # Imported unqualified rather than module-qualified (as in server.py):
+    # ``pending`` is a name this module uses for a local dict, which a
+    # `from ..services import pending` import would shadow.
+    from ..services.pending import detect_pending
+    from ..services.search import semantic_pending
+
+    return {
+        DETECT: (
+            detect_pending(
+                db_path,
+                root_id,
+                pet_scan_source(cfg),
+                cfg.detect_video_frames,
+                features.detectors(enabled),
+            )
+            if avail[DETECT]
+            else 0
+        ),
+        SEMANTIC: (semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
+    }
+
+
 def _pending(
     cfg: Config,
     jobs: JobManager,
@@ -125,14 +164,6 @@ def _pending(
 ) -> dict[str, int]:
     """Countable backlog per stage, from the catalog. One connection for the
     cheap DB counts; the expensive disk walk is served from the manager's cache."""
-    from ..pets.extract import scan_source as pet_scan_source
-
-    # Imported unqualified rather than module-qualified (as in server.py):
-    # this function has local variables named `pending` below, which a
-    # `from ..services import pending` import would shadow.
-    from ..services.pending import detect_pending
-    from ..services.search import semantic_pending
-
     db_path = cfg.archive_db_path(root_id)
     # The disk walk is the expensive half and must happen outside the read
     # connection, so a slow drive never holds one open across the whole query.
@@ -180,18 +211,7 @@ def _pending(
         # set when scan/enrich change data and cleared on a successful rebuild.
         DEDUP: 1 if jobs.dedup_needed(root_id) else 0,
         PLACES: geo_unplaced,
-        DETECT: (
-            detect_pending(
-                db_path,
-                root_id,
-                pet_scan_source(cfg),
-                cfg.detect_video_frames,
-                features.detectors(enabled),
-            )
-            if avail[DETECT]
-            else 0
-        ),
-        SEMANTIC: (semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
+        **_optional_pending(cfg, db_path, root_id, avail, enabled),
     }
 
 
