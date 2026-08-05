@@ -102,6 +102,11 @@ class Feature:
     # rather than imported because that module is a layer above this one;
     # ``tests/unit/test_features.py`` checks the two spellings still agree.
     detector: str = ""
+    # The same idea for the fused text pass: which reader this feature turns on.
+    # ``text.results.DOCUMENTS`` / ``OCR``, spelled out for the same reason and
+    # checked the same way. A file's row records which of these were on when it
+    # was read, so switching the other one on later brings the file back.
+    extractor: str = ""
 
 
 FEATURES: tuple[Feature, ...] = (
@@ -218,6 +223,35 @@ FEATURES: tuple[Feature, ...] = (
         sections=(),
         download_mb=689,
     ),
+    Feature(
+        id="documents",
+        label="Documents",
+        icon="documents",
+        tagline="Read what your PDFs and documents actually say",
+        verb="Reading",
+        noun="documents",
+        detail=(
+            "Reads the text out of PDFs that carry a text layer, Word, Excel and "
+            "PowerPoint files, OpenDocument files, plain text, Markdown, CSV, web pages "
+            "and notebooks, so you can find a contract by a phrase inside it rather than "
+            "by remembering what the file was called. Nothing is downloaded and nothing "
+            "leaves this machine — the readers are the Python standard library and one "
+            "PDF library. A PDF that is only pictures of text needs Text in images "
+            "instead, and older .doc, .xls and .ppt files cannot be read at all."
+        ),
+        required=False,
+        stages=("text",),
+        card="text",
+        sections=(),
+        # Deliberately no ``pairs_with``. Documents and Text in images share a
+        # stage, but they are not a pair in this field's sense: People and Pets
+        # check each other's work and each is more accurate for the other being
+        # on, which is what the panel's note about a lonely half actually says.
+        # These two read *different files* -- one the text layer, one the pixels
+        # -- and neither improves the other. The detail above says which is
+        # which, where a note claiming they verify each other would be wrong.
+        extractor="documents",
+    ),
 )
 
 _BY_ID = {f.id: f for f in FEATURES}
@@ -277,6 +311,19 @@ def detectors(enabled: Iterable[str]) -> frozenset[str]:
     """Which detectors the fused detect pass should run for this feature set."""
     on = set(enabled)
     return frozenset(f.detector for f in FEATURES if f.id in on and f.detector)
+
+
+def extractors(enabled: Iterable[str]) -> frozenset[str]:
+    """Which readers the fused text pass should run for this feature set.
+
+    The same shape as ``detectors`` and for the same reason: one stage serves two
+    independently-chosen features, so it has to be told which half it is running
+    rather than inferring it. Here the answer is also recorded per file, because
+    a document read with only one half on may become work again when the other
+    is switched on (``doc_text.wanted``).
+    """
+    on = set(enabled)
+    return frozenset(f.extractor for f in FEATURES if f.id in on and f.extractor)
 
 
 def owners(card: str) -> tuple[Feature, ...]:

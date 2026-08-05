@@ -43,19 +43,32 @@ if TYPE_CHECKING:
     from .manager import JobManager
 
 # Stage kinds (also the job ``kind`` values the worker dispatches on).
-SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC = (
+SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC, TEXT = (
     "scan",
     "enrich",
     "dedup",
     "places",
     "detect",
     "semantic",
+    "text",
 )
 
 # Stages that take the single DB-writer lock run one at a time; the rest use
-# their own connection and overlap freely (scan ∥ enrich ∥ semantic).
+# their own connection and overlap freely (scan ∥ enrich ∥ semantic ∥ text).
+# Every stage kind must appear in exactly one of these two: a kind in neither
+# falls through ``scheduler._may_start``'s single-writer branch by omission
+# rather than by decision, which ``tests/unit/test_stage_declarations.py``
+# refuses to allow.
 LOCK_KINDS = frozenset({DEDUP, PLACES, DETECT})
-PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC})
+PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC, TEXT})
+
+# Stages where one pass serves two features an archive chooses separately.
+# Fusing is a decision about the *work* -- detect opens an image once and lets
+# the face and animal detectors arbitrate; text opens a PDF once because whether
+# it needs reading as pictures cannot be known until its text layer has been
+# tried -- so it is declared here beside the stage table, and asserted from
+# ``tests/unit/test_features.py`` rather than being a name hardcoded there.
+MULTI_OWNER_KINDS = frozenset({DETECT, TEXT})
 
 
 @dataclass(frozen=True)
@@ -75,12 +88,13 @@ STAGES: tuple[StageDef, ...] = (
     StageDef(PLACES, (DEDUP,), "places", True),
     StageDef(DETECT, (DEDUP,), "detect", True),  # people + pets, one decode
     StageDef(SEMANTIC, (DEDUP,), "semantic", True),
+    StageDef(TEXT, (DEDUP,), "text", True),  # documents + OCR, one open per file
 )
 
 # Display cards, in the order the Overview renders them. Dependency-ordered,
 # which _mark_stalled's single forward walk relies on, and the same order the
 # setup panel draws its chain in (``tests/unit/test_features.py``).
-CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic")
+CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic", "text")
 # What each card is *called*, what it says while it runs and which mark it
 # carries all come from ``features.py``, composed per card from the features
 # the archive actually enabled -- there is deliberately no table of card names
@@ -92,7 +106,7 @@ CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic")
 
 def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
     from ..detect import extract as dx
-    from ..services import semantic
+    from ..services import documents, semantic
 
     # Both of these ask "are the dependencies importable", never "are the model
     # weights on disk": an unavailable stage is never queued, and a stage still
@@ -111,6 +125,11 @@ def _availability(cfg: Config, enabled: tuple[str, ...]) -> dict[str, bool]:
         PLACES: True,
         DETECT: dx.available(features.detectors(enabled)),
         SEMANTIC: semantic.available(),
+        # Text asks the same question of a different thing: not a model, but
+        # whether this SQLite has FTS5 to index into. Missing pypdfium2 does not
+        # come into it -- everything but PDF is standard library, so that is a
+        # per-file skip rather than a stage that cannot run.
+        TEXT: documents.available(features.extractors(enabled)),
     }
 
 
@@ -134,6 +153,7 @@ def _optional_pending(
     # Imported unqualified rather than module-qualified (as in server.py):
     # ``pending`` is a name this module uses for a local dict, which a
     # `from ..services import pending` import would shadow.
+    from ..services.documents import text_pending
     from ..services.pending import detect_pending
     from ..services.search import semantic_pending
 
@@ -150,6 +170,7 @@ def _optional_pending(
             else 0
         ),
         SEMANTIC: (semantic_pending(db_path, root_id) if avail[SEMANTIC] else 0),
+        TEXT: (text_pending(db_path, root_id, features.extractors(enabled)) if avail[TEXT] else 0),
     }
 
 

@@ -14,11 +14,20 @@ import pytest
 from trove import features
 from trove.detect import results as detect_results
 from trove.pipeline import stages
+from trove.text import results as text_results
 
 
 def test_every_stage_belongs_to_exactly_one_card_and_some_feature():
     """A stage no feature claims can never run; one two features claim runs when
-    either is on, which is only correct for the fused detect pass."""
+    either is on, which is only correct where the fusion was a decision.
+
+    Which stages those are is declared in ``stages.MULTI_OWNER_KINDS``, beside
+    the stage table, rather than named here. Fusing is a claim about the work --
+    detect opens an image once and lets its two detectors arbitrate; text opens a
+    PDF once because whether it needs reading as pictures cannot be known until
+    its text layer has been tried -- and a test is the wrong place to keep the
+    list of which claims have been made.
+    """
     claimed = {kind for f in features.FEATURES for kind in f.stages}
     assert claimed == {sd.kind for sd in stages.STAGES}
     for sd in stages.STAGES:
@@ -26,7 +35,32 @@ def test_every_stage_belongs_to_exactly_one_card_and_some_feature():
         assert owners, f"{sd.kind} belongs to no feature"
         assert all(f.card == sd.card for f in owners), sd.kind
         if len(owners) > 1:
-            assert sd.kind == stages.DETECT, "only the fused pass may have two owners"
+            assert sd.kind in stages.MULTI_OWNER_KINDS, (
+                f"{sd.kind} has two owners but is not declared a fused pass"
+            )
+
+
+def test_extractor_names_match_the_ones_the_text_stage_actually_uses():
+    """The same spelling check ``detectors`` gets, for the other fused pass.
+
+    ``features.py`` is L0 and may not import ``trove.text``, so the extractor
+    names are plain strings there. This is what stops the two drifting -- a
+    feature naming an extractor the pass has never heard of would simply read
+    nothing, with no error anywhere.
+    """
+    named = {f.extractor for f in features.FEATURES if f.extractor}
+    assert named <= set(text_results.BOTH_EXTRACTORS)
+    assert features.extractors(["documents"]) == frozenset({text_results.DOCUMENTS})
+    assert features.extractors(["semantic"]) == frozenset()
+
+
+def test_a_feature_naming_a_partner_names_one_that_exists():
+    """``pairs_with`` is resolved by the setup panel to draw a note about a
+    lonely half. A dangling id degrades to no note at all, which is exactly the
+    kind of silence that survives a refactor unnoticed."""
+    for f in features.FEATURES:
+        if f.pairs_with:
+            assert features.by_id(f.pairs_with) is not None, f"{f.id} names a feature that is gone"
 
 
 def test_every_stage_depends_only_on_required_features():

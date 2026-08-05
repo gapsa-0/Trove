@@ -19,7 +19,18 @@ which the scheduler reads to decide whether to start it at all.
 from __future__ import annotations
 
 from ..job import Runner
-from . import dedup, detect, enrich, face_cluster, models, pet_cluster, places, scan, semantic
+from . import (
+    dedup,
+    detect,
+    enrich,
+    face_cluster,
+    models,
+    pet_cluster,
+    places,
+    scan,
+    semantic,
+    text,
+)
 
 RUNNERS: dict[str, Runner] = {
     scan.RUNNER.kind: scan.RUNNER,
@@ -30,6 +41,7 @@ RUNNERS: dict[str, Runner] = {
     pet_cluster.RUNNER.kind: pet_cluster.RUNNER,
     detect.RUNNER.kind: detect.RUNNER,
     semantic.RUNNER.kind: semantic.RUNNER,
+    text.RUNNER.kind: text.RUNNER,
     models.RUNNER.kind: models.RUNNER,
 }
 
