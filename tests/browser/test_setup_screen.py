@@ -305,11 +305,11 @@ def test_browse_only_offers_description_search_to_an_archive_that_runs_it(open_a
         assert app.count(".semantic-composer") == 1
         placeholder = app.tab.evaluate("document.getElementById('semantic-q').dataset.placeholder")
         assert "what your photos show" not in placeholder
-        assert placeholder == "Search your library by file name"
+        assert placeholder == "Search your library by filename"
         ways = app.tab.evaluate(
             "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
         )
-        assert ways == ["File namesalways"], "one way left, and it says it is always there"
+        assert ways == ["Search by filenamealways"], "one way left, and it says it is always there"
         # The rest of the screen is untouched: this changes what a search is
         # matched against, not the ways of looking through the archive.
         assert app.count("#filterbar") == 1
@@ -366,7 +366,7 @@ def test_an_archive_that_only_reads_pictures_can_still_search_what_it_read(open_
         )
         # Named after the half that is actually on -- not "Documents", and not a
         # wording of Browse's own.
-        assert ways == ["File namesalways", "Text in images"]
+        assert ways == ["Search by filenamealways", "Text in images"]
         # ...and it carries that half's mark, where it used to draw the document
         # page over a group full of photographs.
         said = app.text(".way:nth-child(2)")

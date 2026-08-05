@@ -183,10 +183,10 @@ export async function renderPhotos(m) {
      The one-way archive is the exception, since there the placeholder is the
      only thing on the screen that can say what the box will do. */
   const placeholder = live.length === 1
-    ? "Search your library by file name"
+    ? "Search your library by filename"
     : "Search your library";
   const blurb = "Everything in this archive. Narrow it with the filters, or type and Trove will " +
-    (live.length === 1 ? "match it against your file names." : "look in every place it can.");
+    (live.length === 1 ? "match it against your filenames." : "look in every place it can.");
   m.innerHTML = `<div class="pagehead">
       <div><h2 class="sec">Browse</h2>
       <p>${blurb}</p></div>

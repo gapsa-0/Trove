@@ -13,10 +13,11 @@ share no scale.
 Each one is named after the feature you switched on to get it, so the heading
 over a group of results is the same words as the card on the setup screen, the
 card on the Overview and the page documenting it. The only exception is the
-first, which is not a feature and which nobody chose.
+first, which is not a feature and which nobody chose -- so its name is free,
+and it is phrased the way the others read.
 
-**File names** are always searched. Every word you type has to appear somewhere
-in the file's own name, in any order, so "beach 2019" finds
+**Search by filename** is always available. Every word you type has to appear
+somewhere in the file's own name, in any order, so "beach 2019" finds
 `2019_beach_trip.jpg`. This needs no index, no model and no feature: it is the
 one way every archive has, whatever else it runs, and the part of the name that
 matched is marked on the result.

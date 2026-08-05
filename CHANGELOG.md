@@ -80,8 +80,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Every way is named after the feature you switched on to get it, so a group of
   results is headed with the same words as the card you chose it from, the card
   reporting its progress and the page explaining it — *Documents & text in
-  images*, *Search by description*. Only file names are named for what they do,
-  because no feature produces them and nobody chose them.
+  images*, *Search by description*. The one way no feature produces, searching
+  filenames, is named to read alongside them.
 
   When you search, those same rows become the headings over their own results,
   so what the screen promised and what it labels are the same list. A way that

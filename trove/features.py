@@ -499,9 +499,14 @@ class SearchWay:
 # heading a group of results "Indexing" would name the stage rather than the
 # answer -- and unlike the other two there is nothing here anybody chose, so
 # there is no feature label to keep faith with.
+#
+# Which leaves this one name free, and it is phrased the way the other two read
+# rather than as the thing it matches: the panel lists ways of searching and the
+# headings say how a result was found, so "Search by filename" belongs beside
+# "Search by description" in a way that a bare "File names" did not.
 _NAME_WAY = SearchWay(
     id="name",
-    label="File names",
+    label="Search by filename",
     icon="filename",
     matches="Matches the words in a file's own name, in any order.",
     always=True,

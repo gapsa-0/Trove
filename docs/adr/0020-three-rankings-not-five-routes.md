@@ -28,7 +28,7 @@ same list, and the screen says so:
 
 | Group | Endpoint | Fed by |
 | --- | --- | --- |
-| File names | `/api/media?name=` | the name Indexing recorded |
+| Search by filename | `/api/media?name=` | the name Indexing recorded |
 | Documents & text in images | `/api/browse/text/search` | Documents, Text in images, Search by meaning |
 | Search by description | `/api/browse/semantic/search` | Search by description |
 
@@ -41,9 +41,11 @@ the documentation all call Search by description. That is precisely the drift
 `features.py` documents itself as existing to stop, so the naming lives there
 and the screen renders what it is given.
 
-Only file names are named for what they do, because no feature produces them:
-Indexing records them, and heading a group of results "Indexing" would name the
-stage rather than the answer.
+The filename way is the one whose name is free, because no feature produces
+it: Indexing records the name, and heading a group of results "Indexing" would
+name the stage rather than the answer. Being free, it is phrased the way the
+others read -- "Search by filename", beside "Search by description" -- since the
+panel lists ways of searching and the headings say how a result was found.
 
 The composition happens server-side (`routes/archives.py:_ways`) and rides on
 the archive payload the picker already hands the client, so Browse draws its
