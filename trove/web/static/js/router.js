@@ -40,7 +40,7 @@ import {
   MAP, disposeMap, drawMap, renderMap,
 } from "./places.js";
 import {
-  renderSearchReach,
+  renderSearchWays,
 } from "./search.js";
 import {
   ICONS, S, archiveSections,
@@ -158,7 +158,7 @@ function stashActiveSection() {
 }
 function resumeSection(id) {
   if (id === "overview") startPoll();
-  else if (id === "library") renderSearchReach();
+  else if (id === "library") renderSearchWays();
   else if (id === "people" && document.getElementById("facejob")) startFacePoll();
   else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
   else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);

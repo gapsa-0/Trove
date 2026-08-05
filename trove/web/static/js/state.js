@@ -19,6 +19,11 @@ export const ICONS = {
   // only ever drawn on its setup card and its Overview card. It is the same
   // magnifier the setup card's preview types into.
   semantic: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg>',
+  // Searching file names. Not a feature -- every archive can do it and none
+  // chose it -- but it is one of the three ways Browse can answer a query, so
+  // it needs a mark on the same footing as the two that are. A luggage tag:
+  // the name a thing was given, as opposed to anything inside it.
+  filename: '<svg viewBox="0 0 24 24"><path d="M20.6 12.7 12.7 20.6a2 2 0 0 1-2.8 0l-6.5-6.5a2 2 0 0 1-.6-1.6l.5-6a2 2 0 0 1 1.8-1.8l6-.5a2 2 0 0 1 1.6.6l6.5 6.5a2 2 0 0 1 0 2.8Z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>',
   // Documents unlocks no nav section either: it widens what the one search box
   // reaches. A page with lines of writing on it, which is what the feature is
   // about -- the words inside the file rather than the file itself.

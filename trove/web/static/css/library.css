@@ -253,46 +253,134 @@
   }
 }
 
-/* Search reach: how much of the library the description search can currently
-   find, broken down by media type. Colored keys match the Overview's
-   Storage panel so a hue means the same type everywhere. */
-.search-reach {
+/* ---- Where Trove looks ---------------------------------------------------
+
+   The panel under the box while nothing has been typed: one row per way this
+   archive can answer a query, saying what it matches and how much of the
+   archive it currently sees. It is the same list as the result headings below,
+   in its other state, which is what keeps the promise and the label from
+   drifting apart. */
+.search-ways {
+  margin: 0 0 18px;
+  padding: 4px 16px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm)
+}
+
+.search-ways[hidden] {
+  display: none
+}
+
+.ways-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px 15px;
-  padding: 11px 4px 3px 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -4px;
+  padding: 13px 0 11px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 600
+}
+
+.ways-head .muted {
+  font-weight: 400;
   font-size: 12px;
-  color: var(--muted)
+  color: var(--faint)
 }
 
-.search-reach .reach-item {
-  display: inline-flex;
+.way {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
-  gap: 7px
+  padding: 13px 0;
+  border-top: 1px solid var(--line)
 }
 
-.search-reach .reach-item b {
-  color: var(--text);
+.way:first-child {
+  border-top: 0
+}
+
+.way-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0
+}
+
+.way-text b {
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: -.01em
+}
+
+.way-text span {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45
+}
+
+/* File names is not a feature and was never chosen, so it says so rather than
+   sitting in the list looking like something that could be switched off. */
+.way-always {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--panel2);
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  vertical-align: 1px
+}
+
+.way-cov {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: right;
   font-variant-numeric: tabular-nums
 }
 
-.search-reach .reach-key {
-  width: 8px;
-  height: 8px;
+/* The mark a way carries, shared with the result headings and the badges so a
+   glyph means the same thing wherever it appears. Media type owns hue in this
+   app (TYPE_COL), so a search route is told apart by its shape and never by a
+   colour of its own. */
+.ranking-mark {
+  display: inline-grid;
+  place-items: center;
   flex: none;
-  border-radius: 50%
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent)
 }
 
-.search-reach .reach-div {
-  width: 1px;
-  height: 11px;
-  background: var(--line-strong)
+.ranking-mark svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round
 }
 
-.search-reach .reach-note {
-  color: var(--muted)
+@media (max-width: 700px) {
+  .way {
+    grid-template-columns: 22px minmax(0, 1fr);
+    row-gap: 4px
+  }
+
+  .way-cov {
+    grid-column: 2;
+    text-align: left
+  }
 }
 
 .check-control {
@@ -499,38 +587,141 @@ input[type="checkbox"] {
   margin: 0
 }
 
-/* ---- Two result groups ---------------------------------------------------
+/* ---- Result groups -------------------------------------------------------
 
-   Browse shows what a search matched in two labelled groups, because the two
-   answer different questions -- which file *says* this, and which photo *looks
-   like* this -- and their scores are not on a shared scale. Text goes first
-   when it has hits: an exact word match is explainable in a way a cosine is
-   not, so it is the one a reader can trust at a glance.
+   A search is answered by up to three rankings, and each gets a labelled group,
+   because they answer different questions -- which file is *called* this, which
+   file *says* it, which photo *looks like* it -- and their scores share no
+   scale. They are ordered by how explainable they are: a name match is the most
+   literal thing Browse can show you, a cosine the least.
 
-   Neither heading is drawn while browsing without a query, or when only one
-   group has anything: a label telling you which of one thing you are looking
-   at is noise. */
+   A group that found nothing is hidden entirely and reports on the collapsed
+   line at the foot instead. Three empty headings stacked above your photos is
+   worse than the missing label that rule replaced. */
+.results-group[hidden] {
+  display: none;
+}
+
 .results-label {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 18px 0 10px;
+  align-items: center;
+  gap: 9px;
+  margin: 22px 0 10px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: .01em;
   color: var(--text);
 }
 
-/* `display` here beats the browser's own rule for the `hidden` attribute, so
-   without this the heading renderGroupLabels hid stayed on screen -- over an
-   unlabelled grid, announcing a match to a search nobody had made. */
-.results-label[hidden] {
+/* The plain dated listing is not a result, so it carries no heading: a label
+   telling you which of one thing you are looking at is noise. */
+.results-group.plain > .results-label {
   display: none;
 }
 
 .results-label .muted {
   font-weight: 400;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Which ways were searched and came back with nothing. One line rather than
+   one heading each, so "the documents were looked in" is still answered
+   without pushing the results that did land off the screen. */
+.nothing-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  margin: 22px 0 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.nothing-line[hidden] {
+  display: none;
+}
+
+.nothing-line .nl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nothing-line .ranking-mark {
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  background: var(--panel2);
+  color: var(--muted);
+}
+
+.nothing-line .ranking-mark svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2.1;
+}
+
+/* Which part of a file's name answered the search. The caption sits on a dark
+   gradient over the thumbnail whatever the theme, so this cannot use the
+   accent-tinted mark the passages use -- it has to read on black. */
+.cap-label mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .32);
+  color: #fff;
+  font-weight: 650;
+}
+
+/* A group that has finished loading has an empty sentinel, and three of those
+   at 42px apiece is a screenful of nothing between the results. */
+.infinite-status:empty {
+  min-height: 0;
+  margin: 0;
+}
+
+/* How one result was found, where the heading above it does not already say.
+   Only the text group draws these, and only for the facts that vary inside it:
+   which reader produced the text when both are on, and a passage matched by
+   meaning rather than by the words in it. */
+.found-by {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 3px;
+  border-radius: 99px;
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A second badge sits under the first rather than beside it: a tile is 260px
+   wide and two of these plus a passage is a cell that says more about itself
+   than about the document. */
+.found-by ~ .found-by {
+  top: 30px;
+}
+
+.found-by .ranking-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.found-by .ranking-mark svg {
+  width: 9px;
+  height: 9px;
+  stroke-width: 2.2;
 }
 
 /* A passage is the content of a text result, not a caption on a picture, so

@@ -54,6 +54,13 @@ class MediaItem(_MediaItemBase, total=False):
     snippet: str
     page: int | None
     page_last: int | None
+    # How a text hit was found, in the two parts Browse labels it with:
+    # ``reader`` is the feature whose reader produced the text ("documents" or
+    # "ocr"), and ``found_by`` is which half of the fused ranking surfaced it
+    # ("words", "meaning" or "both"). They vary independently -- a scanned
+    # receipt found by meaning is ocr + meaning.
+    reader: str
+    found_by: str
 
 
 class MediaPage(TypedDict):

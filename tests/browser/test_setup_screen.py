@@ -283,32 +283,44 @@ def test_browse_only_offers_description_search_to_an_archive_that_runs_it(open_a
     description lives inside Browse, so switching it off cannot be expressed by
     dropping a nav item and has to be expressed here.
 
-    What switching it off removes is the *promise*, not the box: the line
-    reporting how much of the archive is indexed goes, and so does the offer to
+    What switching it off removes is one *way* of searching, not the box: the
+    row promising to match what is in the frame goes, and so does the offer to
     describe a photo. The box stays, because matching what you type against
     file names needs no index and no model, and asks nothing of a stage the
     scheduler will never start."""
-    with open_app("library", wait_for=".library-controls") as app:
+    with open_app("library", wait_for=".way") as app:
         assert app.count(".semantic-composer") == 1
-        assert "describe" in app.tab.evaluate(
+        assert "what your photos show" in app.tab.evaluate(
             "document.getElementById('semantic-q').dataset.placeholder"
         )
+        assert app.count("#group-media") == 1
         assert app.errors() == []
 
     _configure(archive, features=["index", "duplicates", "places"])
 
-    with open_app("library", wait_for=".library-controls") as app:
-        assert app.count(".search-reach") == 0
+    with open_app("library", wait_for=".way") as app:
         assert app.count(".semantic-composer") == 1
-        assert (
-            app.tab.evaluate("document.getElementById('semantic-q').dataset.placeholder")
-            == "Search your library by file name"
+        placeholder = app.tab.evaluate("document.getElementById('semantic-q').dataset.placeholder")
+        assert "what your photos show" not in placeholder
+        assert placeholder == "Search your library by file name"
+        ways = app.tab.evaluate(
+            "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
         )
+        assert ways == ["File namesalways"], "one way left, and it says it is always there"
         # The rest of the screen is untouched: this changes what a search is
         # matched against, not the ways of looking through the archive.
         assert app.count("#filterbar") == 1
         assert app.count("#grid") == 1
         assert app.errors() == []
+
+
+def _search_for(app, text):
+    app.tab.evaluate(
+        "(() => { const c = document.getElementById('semantic-q');"
+        f" c.textContent = {text!r};"
+        " c.closest('form').dispatchEvent("
+        "new Event('submit', {cancelable: true, bubbles: true})); })()"
+    )
 
 
 def test_browse_searches_file_names_when_it_has_no_index_to_search(open_app, archive):
@@ -321,23 +333,63 @@ def test_browse_searches_file_names_when_it_has_no_index_to_search(open_app, arc
     _configure(archive, features=["index", "duplicates", "places"])
 
     with open_app("library", wait_for=".tile") as app:
-        app.tab.evaluate(
-            "(() => { const c = document.getElementById('semantic-q');"
-            " c.textContent = 'photo003';"
-            " c.closest('form').dispatchEvent("
-            "new Event('submit', {cancelable: true, bubbles: true})); })()"
-        )
+        _search_for(app, "photo003")
         app.tab.wait_for(
-            "document.querySelectorAll('#grid .tile').length === 1",
-            what="the grid to narrow to the one file named photo003",
+            "document.querySelectorAll('#grid-name .tile').length === 1",
+            what="the name group to narrow to the one file named photo003",
         )
 
-        assert "photo003.jpg" in app.text("#grid")
+        assert "photo003.jpg" in app.text("#grid-name")
+        assert app.count("#grid-name mark") > 0, "the part of the name that matched is marked"
         # No ranking to sort by and none to widen: a name is matched or it is
         # not, so neither control that belongs to the description search
         # appears alongside it.
         assert app.count(".aq-scope") == 0
         assert "Best match" not in app.text("#f-sort")
+        assert app.errors() == []
+
+
+def test_an_archive_that_only_reads_pictures_can_still_search_what_it_read(open_app, archive):
+    """Text in images filled the same index as Documents and had no way to reach
+    it: the group that searches it was built only for archives that chose
+    Documents, so an archive reading its pictures indexed them and was never
+    shown anywhere to look. Both readers are halves of one feature's index, so
+    either one alone has to bring the group with it."""
+    _configure(archive, features=["index", "duplicates", "ocr"])
+
+    with open_app("library", wait_for=".way") as app:
+        ways = app.tab.evaluate(
+            "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
+        )
+        assert any("what your files say" in w.lower() for w in ways)
+        # The sentence names the reader that is actually on, not the other one.
+        said = app.text(".way:nth-child(2)")
+        assert "photos, screenshots and scans" in said
+        assert "documents" not in said, "this archive was never promised its documents"
+
+        _search_for(app, "lease")
+        app.wait_for("#grid-text .tile")
+        assert app.count("#group-text[hidden]") == 0
+        assert app.errors() == []
+
+
+def test_a_file_stays_findable_by_name_once_description_search_is_on(open_app, archive):
+    """The regression this pair of groups exists to prevent.
+
+    The two used to be alternatives -- with a description index the query went
+    there *instead*, and the name filter was never sent -- so switching on
+    Search by description silently took away the ability to find a file by its
+    name, and a query like this one scored below the relevance floor and came
+    back with nothing at all."""
+    _configure(archive, features=["index", "duplicates", "semantic"])
+
+    with open_app("library", wait_for=".tile") as app:
+        _search_for(app, "photo003")
+        app.tab.wait_for(
+            "document.querySelectorAll('#grid-name .tile').length === 1",
+            what="the name group to find photo003 even with description search on",
+        )
+        assert "photo003.jpg" in app.text("#grid-name")
         assert app.errors() == []
 
 

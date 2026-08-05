@@ -6,8 +6,14 @@ Read side only. Deciding what gets read and recording it is
 Ranking is BM25, straight out of FTS5. It is not comparable to the cosine
 ``services/search.py`` produces and is never mixed with it: the two answer
 different questions -- which file *says* this, and which photo *looks like* this
--- and Browse shows them as two labelled groups rather than one list pretending
-to a shared scale.
+-- and Browse shows them as separate labelled groups rather than one list
+pretending to a shared scale. The same goes for the third, which is a plain
+filter on file names.
+
+What *is* mixed, here and nowhere else, is the meaning half: it ranks the same
+passages this does, so the two are fused by rank into one result rather than
+shown apart. Which of them found a given file is reported per hit (``found_by``)
+instead, since that is a fact about one result and not about the ranking.
 """
 
 from __future__ import annotations
@@ -18,6 +24,8 @@ import sqlite3
 from typing import Any, cast
 
 from ..db import database as db
+from ..text import extract
+from ..text.results import IMAGE_OCR, PDF_OCR
 from ._common import _HAS_LOCATION, _NOT_HIDDEN, _root_clause, reading
 from .types import MediaItem, MediaPage
 
@@ -62,23 +70,46 @@ def match_expression(query: str) -> str:
 
 
 @reading
-def text_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
+def text_summary(
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    *,
+    extractors: frozenset[str],
+) -> dict[str, Any]:
     """How much of this archive can be searched by what it says.
 
-    ``total`` counts documents rather than every file: an archive of 150k photos
-    and 300 PDFs has 300 things this feature could ever read, and reporting the
-    150k as a denominator would make a finished stage look 0.2% done.
+    ``total`` counts the files the switched-on halves could actually read, not
+    every file: an archive of 150k photos and 300 PDFs has 300 things Documents
+    could ever open, and reporting the 150k as a denominator would make a
+    finished stage look 0.2% done.
+
+    Which is why it is ``readable_exts`` rather than ``media_type='document'``.
+    Those two agreed only for as long as Documents was the only reader. Text in
+    images reads *pictures*, so an archive that chose it and not Documents used
+    to be told it had nothing to read and nothing pending, forever, while the
+    pass filled the index behind it. The denominator has to be built from the
+    same set the backlog is (``services/documents.py:_candidate_exts``), or the
+    two answer different questions.
     """
     rc, rp = _root_clause(root_id)
+    exts = sorted(extract.readable_exts(extractors))
+    # An empty IN list is a syntax error in SQLite rather than an empty result,
+    # so spell "no file" as a false literal. Reached only by a direct call: the
+    # route asks for a live feature set.
+    ext_sql = f"f.ext IN ({','.join('?' for _ in exts)})" if exts else "0"
     total = conn.execute(
-        f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}{rc} AND f.media_type='document'",
-        rp,
+        f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}{rc} AND {ext_sql}",
+        (*rp, *exts),
     ).fetchone()[0]
+    # Scoped to the same extensions as the total above. A file read while the
+    # other half was on stays in ``doc_text`` after that half is switched off,
+    # and counting it here would report more files read than there are files to
+    # read -- and drive ``pending`` to zero while the backlog was not empty.
     rows = conn.execute(
         f"""SELECT t.status, COUNT(*) c FROM doc_text t JOIN files f ON f.id=t.file_id
-             WHERE {_NOT_HIDDEN}{rc} AND t.source_sha256 IS f.sha256
+             WHERE {_NOT_HIDDEN}{rc} AND {ext_sql} AND t.source_sha256 IS f.sha256
              GROUP BY t.status""",
-        rp,
+        (*rp, *exts),
     ).fetchall()
     counts = {r["status"]: r["c"] for r in rows}
     passages = conn.execute(
@@ -106,8 +137,12 @@ def _filters(
 ) -> tuple[str, list[Any]]:
     """The same narrowing Browse offers, applied to a text search.
 
-    Deliberately no media-type filter: every hit is a document by construction,
-    so offering one could only ever empty the result.
+    Deliberately no media-type filter. It used to be justified by every hit
+    being a document by construction, which stopped being true when Text in
+    images began writing into these same passages -- a hit can be a photographed
+    receipt. The reason now is narrower and still holds: the caller has one
+    filter bar for three groups, and a type filter that emptied this one while
+    narrowing the others would be one control doing two things.
     """
     where = [_NOT_HIDDEN]
     params: list[Any] = []
@@ -268,13 +303,31 @@ def _empty(offset: int, limit: int) -> MediaPage:
 
 _HYDRATE = """
 SELECT c.id AS chunk_id, c.page_first, c.page_last,
-       f.id AS file_id, f.media_type, f.rel_path,
+       f.id AS file_id, f.media_type, f.rel_path, t.extractor AS extractor,
        d.best_datetime AS dt, d.date_source AS dsrc, {has_location} AS has_gps
   FROM doc_chunks c
   JOIN files f ON f.id = c.file_id
+  LEFT JOIN doc_text t ON t.file_id = f.id
   LEFT JOIN dates d ON d.file_id = f.id
  WHERE c.id IN ({places})
 """
+
+# Which half of the fused pass produced a file's text, from the extractor
+# recorded on its row. Two values rather than six, because this names the
+# *feature* a reader belongs to and those are the words the user chose from.
+# ``pdf-ocr`` counts as pixels: it is a PDF whose pages had to be looked at
+# rather than decoded, so saying "text in pictures" is what happened.
+_PIXEL_EXTRACTORS = frozenset({IMAGE_OCR, PDF_OCR})
+
+
+def reader_of(extractor: str | None) -> str:
+    """The feature whose reader produced this text: ``ocr`` or ``documents``.
+
+    Falls back to Documents for an unrecognised or missing value, which is what
+    a row written before this distinction existed looks like -- and the older
+    behaviour, since Documents was the only reader there was.
+    """
+    return "ocr" if extractor in _PIXEL_EXTRACTORS else "documents"
 
 
 def _snippets(conn: sqlite3.Connection, chunk_ids: list[int], expression: str) -> dict[int, str]:
@@ -309,6 +362,24 @@ def _snippets(conn: sqlite3.Connection, chunk_ids: list[int], expression: str) -
     return out
 
 
+def _found_by(file_id: int, word_ids: set[int], vector_ids: set[int]) -> str:
+    """Which half of the ranking put this file here: ``words``, ``meaning`` or ``both``.
+
+    Derived from the two rankings rather than reported by ``_rrf``, which keeps
+    that function what it is -- arithmetic over ranks, with nothing in it about
+    where a rank came from.
+
+    It is worth a field of its own because the difference is already visible and
+    currently unexplained: a file only the vectors found has no literal match to
+    highlight, so its passage comes back unmarked (see ``_snippets``) and renders
+    exactly like a word match that happens to have no marks in view.
+    """
+    in_words, in_vectors = file_id in word_ids, file_id in vector_ids
+    if in_words and in_vectors:
+        return "both"
+    return "meaning" if in_vectors else "words"
+
+
 def _page(
     conn: sqlite3.Connection,
     fused: list[tuple[int, int]],
@@ -316,6 +387,8 @@ def _page(
     sort: str,
     offset: int,
     limit: int,
+    word_ids: set[int],
+    vector_ids: set[int],
 ) -> list[MediaItem]:
     """Turn one slice of the fused ranking into rendered results.
 
@@ -358,7 +431,7 @@ def _page(
         )
     }
     items: list[MediaItem] = []
-    for _file_id, chunk_id in window:
+    for file_id, chunk_id in window:
         row = rows.get(chunk_id)
         if row is None:
             continue
@@ -375,6 +448,11 @@ def _page(
                     "snippet": snippets.get(chunk_id, ""),
                     "page": row["page_first"],
                     "page_last": row["page_last"],
+                    # How this hit was found, in two independent parts: which
+                    # reader produced the text, and which half of the ranking
+                    # surfaced it. Browse labels a result with both.
+                    "reader": reader_of(row["extractor"]),
+                    "found_by": _found_by(file_id, word_ids, vector_ids),
                 },
             )
         )
@@ -423,24 +501,30 @@ def text_search(
         return _empty(offset, limit)
 
     where, params = _filters(root_id, year, month, person_ids, cluster_id)
-    rankings: list[list[tuple[int, int]]] = []
+    # The two halves are kept as named lists rather than pushed straight onto
+    # ``rankings``: which one a file came from is what the result is labelled
+    # with, and an index into a list that may or may not hold the words half is
+    # not something to work that out from afterwards.
+    word_ranked: list[tuple[int, int]] = []
+    vector_ranked: list[tuple[int, int]] = []
     if expression:
-        rankings.append(
-            [
-                (int(r["file_id"]), int(r["chunk_id"]))
-                for r in conn.execute(
-                    _BM25_RANKED.format(where=where), (expression, *params, fuse_depth)
-                )
-            ]
-        )
+        word_ranked = [
+            (int(r["file_id"]), int(r["chunk_id"]))
+            for r in conn.execute(
+                _BM25_RANKED.format(where=where), (expression, *params, fuse_depth)
+            )
+        ]
     if query_vector is not None:
-        rankings.append(
-            _vector_ranked(conn, query_vector, where, params, min_similarity, fuse_depth)
+        vector_ranked = _vector_ranked(
+            conn, query_vector, where, params, min_similarity, fuse_depth
         )
 
+    rankings = [r for r in (word_ranked, vector_ranked) if r]
     fused = _rrf(rankings, rrf_k) if len(rankings) > 1 else (rankings[0] if rankings else [])
+    word_ids = {file_id for file_id, _chunk in word_ranked}
+    vector_ids = {file_id for file_id, _chunk in vector_ranked}
     return {
-        "items": _page(conn, fused, expression, sort, offset, limit),
+        "items": _page(conn, fused, expression, sort, offset, limit, word_ids, vector_ids),
         "offset": offset,
         "limit": limit,
         "count": len(fused[offset : offset + limit]),

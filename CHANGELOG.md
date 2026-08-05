@@ -69,14 +69,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `.doc`, `.xls` and `.ppt` files cannot be read at all; they are listed and
   dated like any other file and reported as an unsupported format, rather than
   half-read into something misleading.
-- **Every archive can be searched, whatever it has switched on.** Browse's
-  search box is no longer conditional on a search feature: with none of them on
-  it matches what you type against the names of the files themselves, which
-  needs no model, no download and no indexing. Every word has to appear in the
-  name, in any order, so `escritura 2019` finds `2019-escritura-casa.pdf`, and
-  only the file's own name counts — a folder called `playa` does not make
-  everything inside it a match for "playa". Switching a search feature on
-  changes what your words are matched against, not whether you can type them.
+- **Browse says what it can search, before you ask it to.** With the box empty
+  there is now a panel under it listing every way this archive can answer a
+  query — file names, what your files say, what your photos show — what each one
+  matches in plain words, and how much of the archive it currently covers, so
+  you can see that 300 documents have been read and 6,000 photos are still
+  queued. An archive with no search features switched on gets the panel too,
+  saying it has one way.
+
+  When you do search, those same rows become the headings over their own
+  results, so what the screen promised and what it labels are the same list. A
+  way that found nothing says so on one quiet line at the foot rather than
+  leaving you to wonder whether it ran.
+- **Every archive can be searched by file name, and now it always is.** Matching
+  what you type against the names of the files themselves needs no model, no
+  download and no indexing, so it runs on every search whatever else is switched
+  on, and gets a group of its own with the matched part of the name marked.
+  Every word has to appear in the name, in any order, so `escritura 2019` finds
+  `2019-escritura-casa.pdf`, and only the file's own name counts — a folder
+  called `playa` does not make everything inside it a match for "playa".
+
+  Until now it was a *fallback*, reached only by archives with no other way to
+  search, which meant switching on Search by description quietly took it away:
+  `IMG_2019` went to the picture model, scored below its relevance floor, and
+  came back with nothing at all. Searching by description no longer costs you
+  searching by name.
+- **A search result says how it was found.** Where a group could have found
+  something two ways, each result now carries it: text read from a file's own
+  words is told apart from text read off the pixels of a scan or a screenshot,
+  and a passage matched by meaning rather than by the words you typed says so —
+  previously that came back looking like an ordinary word match whose highlight
+  had scrolled out of view.
 - **Browse captions each thumbnail with the file's name** rather than its date.
   The grid is already broken into dated sections, so the date under every tile
   was repeating the heading above it, while the name is the one thing that says
@@ -121,6 +144,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **An archive that only reads the writing in pictures can now search it.**
+  Switching on *Text in images* without *Documents* filled the index exactly as
+  it should, and Browse never showed the group that searches it — so the work
+  was done, the passages were there, and there was nowhere to look. The same
+  archive was also told it had nothing to read and nothing queued, because
+  coverage counted documents rather than the files its readers actually open.
+  Both halves write into one index, so either one alone now brings the group and
+  the count with it.
+- **Browse's "How this works" opened the page about scanning folders**, which
+  answered a question nobody pressing it had. It now opens a page about
+  searching — and Documents, Text in images and Search by meaning have one to
+  link to from the setup screen, which they did not before, so choosing them was
+  the one decision made with no way to read what it does first.
 - **Browse opens on a finished-looking screen, and opens far faster.** It used
   to wait for the filter bar's options — which years, which people, which
   places this archive holds — before doing anything else, and that answer is a

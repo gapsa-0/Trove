@@ -184,8 +184,13 @@ def media(
 
     ``name`` narrows to the files whose own name contains every word of it. It
     is a filter rather than a ranking -- there is nothing to score, so the grid
-    keeps its date order -- and it is what Browse's search box runs on an
-    archive with no search feature at all."""
+    keeps its date order -- and it is one of the three groups Browse's search
+    box fills, on every archive.
+
+    It used to be the *fallback*, run only where there was no description index
+    to rank against, so an archive that switched Search by description on lost
+    the ability to find a file by its name: the words went to the picture model,
+    scored below its relevance floor, and came back with nothing."""
     from . import semantic
 
     clause, params, indexed_sql = _media_where(

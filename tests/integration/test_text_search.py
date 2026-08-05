@@ -181,9 +181,9 @@ def test_the_expression_quotes_every_token_and_asks_for_a_prefix():
 # --- the summary the controls read ------------------------------------------
 
 
-def test_the_summary_counts_documents_rather_than_every_file(indexed):
-    """An archive of 150k photos and 300 PDFs has 300 things this can read.
-    Reporting the 150k would make a finished stage look 0.2% done."""
+@pytest.fixture
+def indexed_with_a_photo(indexed):
+    """The same archive, plus one photograph nobody has read."""
     conn = db.connect(indexed)
     conn.execute(
         """INSERT INTO files(id, root_id, rel_path, ext, size, mtime, media_type,
@@ -192,12 +192,38 @@ def test_the_summary_counts_documents_rather_than_every_file(indexed):
     )
     conn.commit()
     conn.close()
+    return indexed
 
-    summary = text_search.text_summary(indexed, 1)
-    assert summary["total"] == 3
+
+def test_the_summary_counts_only_what_the_live_readers_could_open(indexed_with_a_photo):
+    """An archive of 150k photos and 300 PDFs has 300 things Documents can read.
+    Reporting the 150k would make a finished stage look 0.2% done."""
+    summary = text_search.text_summary(indexed_with_a_photo, 1, extractors=frozenset({"documents"}))
+    assert summary["total"] == 3, "the photograph is not work Documents will ever do"
     assert summary["read"] == 3
     assert summary["pending"] == 0
     assert summary["passages"] == 4
+
+
+def test_turning_on_text_in_images_makes_pictures_count_as_work(indexed_with_a_photo):
+    """The bug this replaced: the denominator was ``media_type='document'``, so an
+    archive reading its *pictures* was told it had nothing to read and nothing
+    pending -- forever -- while the pass filled the index behind it."""
+    summary = text_search.text_summary(
+        indexed_with_a_photo, 1, extractors=frozenset({"documents", "ocr"})
+    )
+    assert summary["total"] == 4, "the photograph is now a file something will open"
+    assert summary["read"] == 3
+    assert summary["pending"] == 1
+
+
+def test_an_archive_that_only_reads_pictures_still_reports_its_backlog(indexed_with_a_photo):
+    """OCR's work is every picture *and* every PDF -- a scan is a PDF whose pages
+    are pictures, and which of them need reading that way is decided per page.
+    The .txt is the one file here it will never open."""
+    summary = text_search.text_summary(indexed_with_a_photo, 1, extractors=frozenset({"ocr"}))
+    assert summary["total"] == 3, "the two PDFs and the photograph, not the .txt"
+    assert summary["pending"] == 1, "the photograph; both PDFs already have a row"
 
 
 # --- fusing the two rankings ------------------------------------------------
@@ -250,6 +276,53 @@ def test_ties_are_broken_deterministically():
 def test_an_empty_ranking_contributes_nothing():
     assert _rrf([], [(1, 1)]) == [(1, 1)]
     assert _rrf([], []) == []
+
+
+# --- what a hit says about how it was found ---------------------------------
+
+
+def test_a_word_hit_says_it_was_found_by_its_words(indexed):
+    item = _hits(indexed, "arrendamiento")["items"][0]
+    assert item["found_by"] == "words"
+
+
+def test_a_hit_says_which_reader_produced_its_text(indexed):
+    """The fixture's rows carry ``pdf-text``, so these were decoded rather than
+    looked at. A result read off pixels must not be presented as though it were
+    quoted from a text layer."""
+    assert _hits(indexed, "arrendamiento")["items"][0]["reader"] == "documents"
+
+
+def test_text_read_off_pixels_is_reported_as_such(indexed):
+    conn = db.connect(indexed)
+    conn.execute("UPDATE doc_text SET extractor='ocr' WHERE file_id=1")
+    conn.commit()
+    conn.close()
+    assert _hits(indexed, "arrendamiento")["items"][0]["reader"] == "ocr"
+
+
+def test_a_pdf_whose_pages_had_to_be_looked_at_counts_as_pixels(indexed):
+    conn = db.connect(indexed)
+    conn.execute("UPDATE doc_text SET extractor='pdf-ocr' WHERE file_id=1")
+    conn.commit()
+    conn.close()
+    assert _hits(indexed, "arrendamiento")["items"][0]["reader"] == "ocr"
+
+
+def test_a_row_written_before_readers_were_recorded_reads_as_documents(indexed):
+    conn = db.connect(indexed)
+    conn.execute("UPDATE doc_text SET extractor=NULL WHERE file_id=1")
+    conn.commit()
+    conn.close()
+    assert _hits(indexed, "arrendamiento")["items"][0]["reader"] == "documents"
+
+
+def test_found_by_separates_the_two_halves_of_the_ranking():
+    from trove.services.text_search import _found_by
+
+    assert _found_by(1, {1}, set()) == "words"
+    assert _found_by(1, set(), {1}) == "meaning"
+    assert _found_by(1, {1}, {1}) == "both"
 
 
 def test_search_without_a_vector_is_exactly_the_bm25_ranking(indexed):

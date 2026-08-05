@@ -276,11 +276,30 @@ def test_choosing_all_results_widens_the_search_it_is_attached_to(open_app):
 
 
 def test_browse_shows_no_group_headings_until_there_is_a_search(open_app):
-    """A label telling you which of one thing you are looking at is noise. The
-    headings earn their space only when there are two groups to tell apart."""
+    """Browsing is the plain dated listing, not a result: a label telling you
+    which of one thing you are looking at is noise. The rankings that answer a
+    query stay out of the way until one is asked."""
     with open_app("library", wait_for=".tile") as app:
         assert app.count("#group-text[hidden]") == 1
-        assert app.count("#label-media[hidden]") == 1
+        assert app.count("#group-name[hidden]") == 1
+        assert app.count("#nothing-line[hidden]") == 1
+        # The media group is the listing, so it is on screen without a heading.
+        assert app.count("#group-media[hidden]") == 0
+        assert app.count("#group-media.plain") == 1
+        assert app.errors() == []
+
+
+def test_browse_says_what_it_can_search_before_anything_is_typed(open_app):
+    """The panel that replaced a one-line blurb. Every way this archive can
+    answer a query gets a row saying what it matches, so the screen states what
+    it can do rather than waiting to be asked."""
+    with open_app("library", wait_for=".way") as app:
+        ways = app.tab.evaluate(
+            "[...document.querySelectorAll('.way-text b')].map(e => e.textContent)"
+        )
+        assert any("File names" in w for w in ways)
+        assert any("what your files say".lower() in w.lower() for w in ways)
+        assert "always" in " ".join(ways).lower(), "file names is not a feature anyone chose"
         assert app.errors() == []
 
 

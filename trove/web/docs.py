@@ -45,6 +45,10 @@ ORDER: tuple[str, ...] = (
     "people",
     "pets",
     "places",
+    # Not a stage, and deliberately ahead of the three search features rather
+    # than among them: it is the screen they all feed, and what it says is how
+    # to read a result that could have come from any of them.
+    "browse",
     "search",
     "documents",
     "ocr",

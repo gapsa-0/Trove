@@ -1,4 +1,6 @@
-"""The two searches Browse offers: by description, and by what a file says.
+"""Two of the three searches Browse offers: by description, and by what a file
+says. The third needs no endpoint of its own -- matching a file's name is a
+filter on the plain listing, and ``routes/browse.py`` already serves that.
 
 They are kept apart all the way out to the client. A SigLIP cosine and a BM25
 rank are different scales measuring different things, so there is no merged
@@ -147,23 +149,32 @@ def semantic_search(req: Request) -> MediaPage | Json:
 
 
 def text_status(req: Request) -> dict:
-    """Document-text index state, and whether this archive can search inside documents.
+    """Text-index state, and whether this archive can search what its files say.
 
     The same ``configured``/``enabled`` split ``semantic_status`` draws, for the
-    same reason: an archive that declined Documents must not be shown a box that
-    searches an index nothing will ever write. Here ``configured`` also covers
-    the one dependency that can genuinely be missing -- a SQLite without FTS5 --
-    which is a property of the build rather than of the choice.
+    same reason: an archive that declined both readers must not be shown a box
+    that searches an index nothing will ever write. Here ``configured`` also
+    covers the one dependency that can genuinely be missing -- a SQLite without
+    FTS5 -- which is a property of the build rather than of the choice.
+
+    ``readers`` is the third fact, and the new one: *which* halves are on.
+    Documents and Text in images write into one index, so a count of what has
+    been read means nothing without saying what was being read.
     """
+    from ... import features
     from ...services import documents
 
     rid = req.root_id
-    status = text_search.text_summary(req.db(rid), rid)
-    # Spelled out rather than imported, the way the catalogue spells out stage
-    # kinds; tests/unit/test_features.py checks the id still exists.
-    enabled = "documents" in req.cfg.archive_features(rid)
-    status["enabled"] = enabled
-    status["configured"] = enabled and documents.available(frozenset({"documents"}))
+    # Which readers this archive switched on, which is both what the summary
+    # counts against and what decides the feature is live at all. Documents and
+    # Text in images are chosen separately and either one alone fills the same
+    # index, so asking only about Documents told an OCR-only archive its text
+    # search did not exist while the pass was filling it.
+    extractors = features.extractors(req.cfg.archive_features(rid))
+    status = text_search.text_summary(req.db(rid), rid, extractors=extractors)
+    status["readers"] = sorted(extractors)
+    status["enabled"] = bool(extractors)
+    status["configured"] = documents.available(extractors)
     return status
 
 

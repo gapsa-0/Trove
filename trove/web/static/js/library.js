@@ -19,11 +19,11 @@ import {
   openItem,
 } from "./item.js";
 import {
-  onSemanticComposerInput, renderActiveQuery, renderSearchReach, renderSemanticComposer,
+  onSemanticComposerInput, renderActiveQuery, renderSearchWays, renderSemanticComposer,
   setPeopleChecks, warmLocalTranslator,
 } from "./search.js";
 import {
-  S, TYPE_ICON, archiveHasFeature, typeLabel,
+  ICONS, S, TYPE_ICON, archiveHasFeature, typeLabel,
 } from "./state.js";
 import {
   applyTimelineFilters,
@@ -45,17 +45,28 @@ const FILTER_SKELETON = [108, 120, 104, 98, 116]
   .join("");
 /* Which elements a grid owns, and what it asks for.
 
-   Browse shows up to two result groups, and they page identically -- same
+   Browse shows up to three result groups, and they page identically -- same
    bidirectional window, same sentinel margins, same generation guard -- so they
-   run through one implementation rather than two that drift. What differs is
+   run through one implementation rather than three that drift. What differs is
    only which elements a grid draws into and which endpoint answers it, so that
-   is what lives on the grid object. */
+   is what lives on the grid object.
+
+   Three, not five, and the difference is worth stating because the screen used
+   to imply otherwise. There are five *readers* filling indexes -- the name,
+   the picture, a document's text layer, writing read off pixels, a passage's
+   meaning -- but only three *rankings* that can answer a query. Words and
+   meaning are fused by reciprocal rank inside one request (services/
+   text_search.py), and a document both halves found outranks one only a single
+   half did; splitting them into groups here would throw that away. So the
+   readers are what a result is labelled with, and the rankings are what gets a
+   group. */
 const GRID_IDS = {
-  media: { grid: "grid", top: "grid-top-sentinel", bottom: "grid-sentinel", count: "gridcount" },
+  name: { grid: "grid-name", top: "grid-name-top", bottom: "grid-name-sentinel", count: "gridcount-name" },
+  media: { grid: "grid", top: "grid-top-sentinel", bottom: "grid-sentinel", count: "gridcount-media" },
   text: { grid: "grid-text", top: "grid-text-top", bottom: "grid-text-sentinel", count: "gridcount-text" },
 };
-// The filter and query state both groups search under. Held once, on the media
-// grid, and copied across before a reload rather than edited in two places --
+// The filter and query state every group searches under. Held once, on the media
+// grid, and copied across before a reload rather than edited in three places --
 // two grids narrowing by different years is a bug with no symptom until someone
 // notices the totals disagree.
 const SHARED_QUERY_FIELDS = ["year", "month", "type", "people", "inferredPeople", "place",
@@ -70,15 +81,22 @@ function newGrid(kind) {
     anchor: null, savedScrollTop: 0,
   };
 }
-// Every grid currently on screen. The text one only exists for an archive that
-// reads its documents, and only says anything while a search is active.
+/* Every grid currently on screen, in the order they are drawn.
+
+   Literal matches first, which is the rule the text group already followed for
+   being above the photos: an exact word match is explainable in a way a cosine
+   is not, and a file's own name is the most literal thing Browse can show you.
+   The media grid is last because it is also the plain dated listing, which is
+   what fills the screen when nothing has been typed. */
 export function activeGrids() {
-  return S.textGrid ? [S.textGrid, S.grid] : [S.grid];
+  return [S.nameGrid, S.textGrid, S.grid].filter(Boolean);
 }
 function shareQueryState() {
-  if (!S.textGrid) return;
-  SHARED_QUERY_FIELDS.forEach(f => {
-    S.textGrid[f] = Array.isArray(S.grid[f]) ? S.grid[f].slice() : S.grid[f];
+  activeGrids().forEach(g => {
+    if (g === S.grid) return;
+    SHARED_QUERY_FIELDS.forEach(f => {
+      g[f] = Array.isArray(S.grid[f]) ? S.grid[f].slice() : S.grid[f];
+    });
   });
 }
 // Reset and reload every group at once. Filters, sort and the search itself all
@@ -88,42 +106,128 @@ export function reloadGrids() {
   shareQueryState();
   activeGrids().forEach(g => { resetGridResults(g); loadGrid("append", g); });
 }
+/* The three rankings a typed query can take, and the words the whole screen
+   uses for them.
+
+   Held here rather than spelled out in the markup because the same three facts
+   are needed in three places -- the panel that says what can be searched, the
+   heading over each group of results, and the line naming the ones that found
+   nothing -- and three copies of a sentence is how the old blurb drifted out of
+   step with the features in the first place.
+
+   `readers` is which feature ids fill this ranking's index. That is what makes
+   the text ranking one row rather than three: Documents and Text in images
+   write into the same passages, and Search by meaning ranks those passages
+   again and is fused into the same result. */
+const RANKINGS = [
+  {
+    kind: "name", label: "File names", always: true, readers: [],
+    short: "by name",
+    matches: () => "Matches the words in a file's own name, in any order.",
+    empty: "No file name contains all of those words.",
+  },
+  {
+    kind: "text", label: "What your files say", readers: ["documents", "ocr", "meaning"],
+    short: "by what your files say",
+    // Composed from the readers switched on, because "the words inside your
+    // files" means a different set of files depending on which are. An archive
+    // that reads only pictures should not be promised its documents.
+    matches: live => {
+      const reads = live.includes("documents") && live.includes("ocr")
+        ? "the words inside your documents, and the writing in your pictures"
+        : live.includes("ocr")
+          ? "the writing in your photos, screenshots and scans"
+          : "the words written inside your documents";
+      return `Matches ${reads}.` + (live.includes("meaning")
+        ? " A passage can match what you meant without your words appearing in it." : "");
+    },
+    empty: "None of your files say that.",
+  },
+  {
+    kind: "media", label: "What your photos show", readers: ["semantic"],
+    short: "by what your photos show",
+    matches: () => "Matches what is in the frame, without anything having been tagged.",
+    empty: "No photo in this archive looks like that.",
+  },
+];
+// The sentence one way puts under its name, for this archive's readers.
+export function rankingMatches(r) {
+  return r.matches(liveReaders(r));
+}
+/* Which of a ranking's readers this archive actually switched on.
+
+   Search by meaning is the one that cannot stand alone: it indexes what the
+   other two read, so an archive with it and neither of them has nothing to
+   rank and the ranking is not live. The catalogue says the same thing with
+   `pairs_with`; this is that rule where it is used. */
+function liveReaders(r) {
+  return r.readers.filter(id => archiveHasFeature(S.arch, id) &&
+    (id !== "meaning" || r.readers.some(o => o !== "meaning" && archiveHasFeature(S.arch, o))));
+}
+export function liveRankings() {
+  return RANKINGS.filter(r => r.always || liveReaders(r).length > 0);
+}
+const rankingFor = kind => RANKINGS.find(r => r.kind === kind);
+/* One group of results, with the heading that says which ranking produced it.
+
+   The heading is markup rather than a string set later because it holds the
+   ranking's mark, its name and its count, and those are three elements that
+   have to line up; `renderGroupLabels` fills the count and hides the group. */
+function resultsGroup(kind) {
+  const r = rankingFor(kind), ids = GRID_IDS[kind];
+  // The media group is the plain dated listing until something is typed, so it
+  // is on screen from the first paint. Starting it hidden and unhiding it once
+  // the first page landed put the whole grid inside a `display:none` container
+  // while its thumbnails were being requested, which cost some of them.
+  const start = kind === "media" ? ' class="results-group plain"' : ' class="results-group" hidden';
+  return `<section${start} id="group-${kind}">
+      <h3 class="results-label">
+        <span class="ranking-mark" aria-hidden="true">${ICONS[RANKING_ICON[kind]]}</span>
+        <span class="ranking-name">${esc(r.label)}</span>
+        <span class="muted" id="${ids.count}"></span>
+      </h3>
+      <div class="infinite-status top" id="${ids.top}" aria-hidden="true"></div>
+      <div class="grid" id="${ids.grid}"></div>
+      <div class="infinite-status" id="${ids.bottom}" aria-live="polite"></div>
+    </section>`;
+}
+// The mark each ranking carries, keyed into the frontend's ICONS. The text
+// ranking takes the Documents page: it is the mark of the reader that fills
+// most of it, and the badges on the results themselves are what say which
+// reader found any particular one.
+const RANKING_ICON = { name: "filename", text: "documents", media: "semantic" };
+
 export async function renderPhotos(m) {
   const gen = S.nav;
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
   const g = restored ? S.grid : newGrid("media");
   S.grid = g;
-  // Documents unlocks no nav section either, so like Search by description it
-  // is gated where it is used. An archive that declined it must not be shown a
-  // group searching an index whose stage the scheduler will never start.
-  const readsText = archiveHasFeature(S.arch, "documents");
-  S.textGrid = readsText ? (restored && S.textGrid ? S.textGrid : newGrid("text")) : null;
-  refreshGallery();
-  /* Neither search feature unlocks a nav section -- both are this one box --
-     so what each of them adds is decided here rather than by dropping a
+  /* Neither search feature unlocks a nav section -- they are all this one box
+     -- so what each of them adds is decided here rather than by dropping a
      section, and the box says what it can actually do.
 
-     The box itself is unconditional. Its floor is matching what you type
-     against file names, which needs no index, no model and no feature: an
-     archive that runs neither search feature can still be asked for
-     "escritura" and find escritura-2019.pdf. What the features add on top is
-     what the words are matched *against* -- the description index, the
-     documents' own text, or both. */
-  const searchable = archiveHasFeature(S.arch, "semantic");
-  const placeholder = searchable
-    ? (readsText
-      ? "Search your library — describe a photo, or quote a document"
-      : "Search your library, describe anything")
-    : (readsText
-      ? "Search your documents, or any file by name"
-      : "Search your library by file name");
-  const blurb = searchable
-    ? (readsText
-      ? "Look through every item, by filter, by description, or by what it says."
-      : "Look through every item, by filter or by description.")
-    : (readsText
-      ? "Look through every item, by filter, by name, or by what your documents say."
-      : "Look through every item, by filter or by file name.");
+     The name ranking is unconditional, and now really is: matching what you
+     type against file names needs no index, no model and no feature, so it is
+     built for every archive and runs on every search. It used to be the
+     *fallback*, reached only when there was no description index, which meant
+     switching Search by description on quietly took it away. */
+  const live = liveRankings();
+  const runs = kind => live.some(r => r.kind === kind);
+  S.nameGrid = restored && S.nameGrid ? S.nameGrid : newGrid("name");
+  S.textGrid = runs("text") ? (restored && S.textGrid ? S.textGrid : newGrid("text")) : null;
+  refreshGallery();
+  // Built from the live rankings rather than picked from a table of hand-written
+  // combinations: there are five features feeding this box, and a sentence per
+  // combination is a sentence that stops being true when a feature is added.
+  //
+  // Short forms, because the panel below is where a way is described in full. A
+  // placeholder that spells all three out is a line of prose inside a text box.
+  const ways = live.map(r => r.short);
+  const placeholder = live.length === 1
+    ? "Search your library by file name"
+    : "Search " + ways.slice(0, -1).join(", ") + ", or " + ways[ways.length - 1];
+  const blurb = "Everything in this archive. Narrow it with the filters, or type and Trove will " +
+    (live.length === 1 ? "match it against your file names." : "look in every place it can.");
   m.innerHTML = `<div class="pagehead">
       <div><h2 class="sec">Browse</h2>
       <p>${blurb}</p></div>
@@ -138,7 +242,6 @@ export async function renderPhotos(m) {
         <button class="btn" type="submit">Search</button>
       </form>
       <div class="active-query" id="active-query" aria-live="polite" hidden></div>
-      ${searchable ? `<div class="search-reach" id="search-reach" aria-live="polite" hidden></div>` : ""}
       <div class="library-toolbar">
         <div class="filterbar" id="filterbar" aria-busy="true">${FILTER_SKELETON}</div>
         <div class="chips">
@@ -147,18 +250,11 @@ export async function renderPhotos(m) {
         </div>
       </div>
     </div>
-    ${readsText ? `<section class="results-group" id="group-text" hidden>
-      <h3 class="results-label">Matched in text<span class="muted" id="gridcount-text"></span></h3>
-      <div class="infinite-status top" id="grid-text-top" aria-hidden="true"></div>
-      <div class="grid" id="grid-text"></div>
-      <div class="infinite-status" id="grid-text-sentinel" aria-live="polite"></div>
-    </section>` : ""}
-    <section class="results-group" id="group-media">
-      <h3 class="results-label" id="label-media" hidden>Matched by description</h3>
-      <div class="infinite-status top" id="grid-top-sentinel" aria-hidden="true"></div>
-      <div class="grid" id="grid"></div>
-      <div class="infinite-status" id="grid-sentinel" aria-live="polite"></div>
-    </section>`;
+    <section class="search-ways" id="search-ways" hidden></section>
+    ${resultsGroup("name")}
+    ${runs("text") ? resultsGroup("text") : ""}
+    ${resultsGroup("media")}
+    <p class="nothing-line" id="nothing-line" hidden></p>`;
   const composer = document.getElementById("semantic-q");
   composer?.addEventListener("compositionstart", () => S.composerComposing = true);
   composer?.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
@@ -175,7 +271,7 @@ export async function renderPhotos(m) {
   // Only where a description search can actually use it: translation exists to
   // help the image model, and neither a document's own words nor a file's name
   // is searched in English.
-  if (searchable) composer?.addEventListener("input", warmLocalTranslator, { once: true });
+  if (runs("media")) composer?.addEventListener("input", warmLocalTranslator, { once: true });
   // Everything that needs nothing from the server goes first, and the grid's
   // own fetch is started here rather than after the filters land. The filter
   // options are needed by the filter bar alone -- the grid asks for the pages
@@ -183,11 +279,11 @@ export async function renderPhotos(m) {
   // only added one slow request's time to the other, and left the whole screen
   // blank for the sum. Both requests are now in flight together.
   const filters = buildFilterBar();
-  // The reach line reports how much of the archive the *description* index
-  // covers, so it belongs to that feature alone -- on an archive without it,
-  // the line has nothing to report but its own absence, and the element it
-  // would fill is not in the markup above either.
-  if (searchable) renderSearchReach();
+  // The panel that says what can be searched here. Drawn for every archive,
+  // including the one whose only way is file names: "one way in this archive"
+  // is the honest answer, and a screen that says nothing at all is what sent
+  // people looking for a search that was there all along.
+  renderSearchWays();
   renderSortOptions(g);
   renderActiveQuery(g);
   if (restored) {
@@ -312,8 +408,9 @@ function setLibraryMonthOptions(y, selected = "") {
    search to rank against. */
 export function renderSortOptions(g) {
   const sel = document.getElementById("f-sort"); if (!sel) return;
-  // A filename search has no ranking of its own, so it offers no "best match"
-  // to sort by -- the grid stays in date order and only the set narrows.
+  // "Best match" needs something ranked to be the best of. An archive whose
+  // only ways are file names -- a filter on the dated listing -- has nothing to
+  // order by relevance, however much it finds.
   const opts = g.query && mediaRanksQueries()
     ? [["", "Best match"], ["newest", "Newest first"], ["oldest", "Oldest first"]]
     : [["", "Newest first"], ["oldest", "Oldest first"]];
@@ -323,10 +420,17 @@ export function renderSortOptions(g) {
   if (!opts.some(([v]) => v === g.sort)) g.sort = "";
   sel.value = g.sort;
 }
+/* What a group's count reads. "Matches" everywhere a query ran, and files only
+   for the plain listing.
+
+   The text group used to count "documents", which stopped being true the day
+   Text in images was added: a hit there can be a photographed receipt. Counting
+   matches says the same thing about the search without claiming anything about
+   what was matched. */
 function gridCountLabel(g) {
   const n = (g.total || 0).toLocaleString();
-  if (g.kind === "text") return `${n} document${g.total === 1 ? "" : "s"}`;
-  return g.query ? `${n} match${g.total === 1 ? "" : "es"}` : `${n} files`;
+  if (!g.query && g.kind === "media") return `${n} files`;
+  return `${n} match${g.total === 1 ? "" : "es"}`;
 }
 export function applySort() {
   S.grid.sort = selVal("f-sort");
@@ -416,31 +520,73 @@ export function resetGridResults(g) {
 function refreshGallery() {
   S.gallery = activeGrids().flatMap(g => g.pages.flatMap(p => p.items.map(i => i.id)));
 }
-/* The group headings only earn their space when there are two groups to tell
-   apart. Browsing with no query shows one grid and no labels at all; a search
-   with no text hits hides that group rather than leaving an empty heading over
-   a blank row.
+/* Which groups are on screen, and what the ones that found nothing say.
 
-   The media group is never hidden: whatever the archive runs, it has an answer
-   to a query -- the description ranking where that exists, and the files whose
-   names match everywhere else -- so its heading says which of the two the row
-   below it is. */
+   Browsing with nothing typed is one grid and no headings at all: a label
+   telling you which of one thing you are looking at is noise, and the media
+   grid is the plain dated listing rather than a result.
+
+   Searching draws a heading over every ranking that found something, and
+   collapses the ones that found nothing into a single line at the foot. Both
+   halves of that matter. A ranking that was searched and came back empty is an
+   answer -- "the documents were looked in" is worth knowing, and its absence is
+   what used to make an archive with one feature wonder whether the others had
+   run. But three empty headings stacked above your photos is worse than the
+   missing label it replaced, so they report as one quiet line instead. */
 function renderGroupLabels() {
-  const textGroup = document.getElementById("group-text");
-  const mediaLabel = document.getElementById("label-media");
   const searching = !!S.grid.query;
-  const textHits = !!(S.textGrid && S.textGrid.total);
-  if (textGroup) textGroup.hidden = !(searching && textHits);
-  if (mediaLabel) {
-    mediaLabel.hidden = !(searching && textHits);
-    mediaLabel.textContent = mediaRanksQueries() ? "Matched by description" : "Matched by name";
+  const empty = [];
+  activeGrids().forEach(g => {
+    const group = document.getElementById("group-" + g.kind);
+    if (!group) return;
+    const hits = !!g.total;
+    // The media grid with nothing typed is the listing, not a result: it stays
+    // on screen whatever it holds -- an archive filtered down to nothing still
+    // needs somewhere to say so -- and loses its heading, which is what
+    // `.results-group.plain` turns off. Every other group is a ranking, and a
+    // ranking with nothing in it has nothing to show.
+    const listing = g.kind === "media" && !searching;
+    group.hidden = !listing && !hits;
+    group.classList.toggle("plain", listing);
+    if (searching && !hits && gridAnswers(g)) empty.push(rankingFor(g.kind));
+  });
+  // The toolbar's count is the whole answer, not one group's: with results in
+  // three places, a number sitting beside the sort control has to be the total
+  // or it is a figure with no label.
+  const overall = document.getElementById("gridcount");
+  if (overall) {
+    const grids = activeGrids().filter(g => g.total != null && gridAnswers(g));
+    const n = grids.reduce((sum, g) => sum + g.total, 0);
+    overall.textContent = !grids.length ? ""
+      : searching ? `${n.toLocaleString()} result${n === 1 ? "" : "s"}`
+        : `${n.toLocaleString()} files`;
   }
+  const line = document.getElementById("nothing-line");
+  if (!line) return;
+  line.hidden = !empty.length;
+  if (!empty.length) { line.replaceChildren(); return; }
+  const anyHits = activeGrids().some(g => g.total);
+  line.replaceChildren(document.createTextNode(
+    anyHits ? "Nothing found in " : "Searched, with nothing found in "));
+  empty.forEach((r, i) => {
+    if (i) line.append(document.createTextNode(i === empty.length - 1 ? " or " : ", "));
+    const item = document.createElement("span");
+    item.className = "nl-item";
+    const glyph = document.createElement("span");
+    glyph.className = "ranking-mark";
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.innerHTML = ICONS[RANKING_ICON[r.kind]];
+    item.append(glyph, document.createTextNode(r.label.toLowerCase()));
+    line.append(item);
+  });
 }
-/* Whether a typed query reaches the media grid as a ranking or as a filter.
-   With Search by description on it is a ranking, so "best match" is an order
-   and the relevance cuts have something to widen; without it the words are
-   matched against file names, which is a narrowing of the same dated listing
-   and has neither. */
+/* Whether the media grid can rank a typed query at all.
+
+   It is the one grid whose job depends on the answer: with Search by
+   description on it ranks the query, so "best match" is an order and the
+   relevance cuts have something to widen; without it the grid has nothing to
+   say about a query and stays out of the results entirely, since file names now
+   have a group of their own rather than borrowing this one. */
 export function mediaRanksQueries() {
   return archiveHasFeature(S.arch, "semantic");
 }
@@ -470,24 +616,29 @@ export function updateClearBtn() {
    still in flight. */
 function renderGridEmptyState(g, grid) {
   if (g.loaded || g.total == null) return;
-  // The text group is hidden outright when it has nothing, so this is only ever
-  // the media group's message.
-  if (g.kind === "text") return;
-  const nothing = g.query && !mediaRanksQueries()
-    ? "No file names match this search."
-    : "No media matches these filters.";
+  // A search that found nothing hides its whole group and reports on the
+  // collapsed line instead, so the only message left to paint here is the one
+  // no line can carry: the plain listing, filtered down to nothing.
+  if (g.query && !g.error) return;
   grid.innerHTML = `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${
-    g.error ? esc(g.error) : nothing}</div>`;
+    g.error ? esc(g.error) : "No media matches these filters."}</div>`;
 }
 function renderGridPages(g, anchor = null) {
   const grid = document.getElementById(g.ids.grid); if (!grid) return;
   grid.replaceChildren();
   let lastHeading = null;
+  // Which readers can produce a hit in the text group here. With only one of
+  // them on, a badge saying so on every tile repeats the heading above it and
+  // spends the caption -- which is the file's name -- to say nothing.
+  const mixedReaders = g.kind === "text" && liveReaders(rankingFor("text"))
+    .filter(id => id !== "meaning").length > 1;
+  const tokens = g.kind === "name" ? nameTokens(g.query) : [];
   g.pages.forEach(page => page.items.forEach((item, itemOffset) => {
-    // Month headings only make sense while the grid is in date order, which a
-    // text group ranked by relevance never is -- and which a name search always
-    // is, being a filter on the dated listing rather than a ranking of its own.
-    if (g.kind !== "text" && (!g.query || g.sort || !mediaRanksQueries())) {
+    // Month headings belong to the listing and nothing else. A group of results
+    // already carries a heading saying which way found them, and a second tier
+    // of headings under it -- "Unknown date" in 21px over a single tile -- is
+    // the listing's furniture in a place that is not the listing.
+    if (g.kind === "media" && (!g.query || g.sort)) {
       const heading = item.date ? (item.date.slice(0, 7) || "Unknown date") : "Unknown date";
       if (lastHeading !== heading) {
         const h = document.createElement("div"); h.className = "date-heading";
@@ -495,22 +646,37 @@ function renderGridPages(g, anchor = null) {
         grid.appendChild(h); lastHeading = heading;
       }
     }
-    grid.appendChild(g.kind === "text"
-      ? textTile(item) : tile(item, page.offset + itemOffset, "name"));
+    grid.appendChild(
+      g.kind === "text" ? textTile(item, mixedReaders)
+        : g.kind === "name" ? nameTile(item, tokens)
+          : tile(item, page.offset + itemOffset, "name"));
   }));
   refreshGallery();
   g.loaded = g.pages.reduce((n, page) => n + page.items.length, 0);
   renderGridEmptyState(g, grid);
   if (anchor) restoreLibraryAnchor(anchor);
 }
+/* Whether a grid has anything to fetch right now.
+
+   The media grid is the one that does two jobs: with nothing typed it is the
+   plain dated listing, and with a query it is the description ranking. So it
+   runs always while browsing, and while searching only where there is a
+   description index to rank against -- otherwise it would answer a search with
+   the entire library.
+
+   The other two are rankings and nothing else: no query, no request. */
+function gridAnswers(g) {
+  if (g.kind === "media") return !g.query || mediaRanksQueries();
+  return !!g.query;
+}
 /* Which endpoint answers this grid, and with what.
 
-   Four cases, one shape: a plain browse, a description search, a text search,
-   and a name search. Kept together so that a filter added to one is visibly
+   Four cases, one shape: a plain browse, a name search, a text search and a
+   description search. Kept together so that a filter added to one is visibly
    absent from the others rather than quietly missing. The text endpoint takes
-   no `type` (every hit is a document by construction) and no `top` (there are
-   no relevance cuts to widen -- MATCH is the cut); the name search is a filter
-   on the plain listing, so it keeps every parameter that listing takes. */
+   no `type` (a hit is whatever the readers opened) and no `top` (there are no
+   relevance cuts to widen -- MATCH is the cut); the name search is a filter on
+   the plain listing, so it keeps every parameter that listing takes. */
 function gridRequest(g, offset) {
   const p = new URLSearchParams({ root: S.arch.id, offset, limit: GRID_PAGE_SIZE });
   if (g.year) p.set("year", g.year);
@@ -523,11 +689,16 @@ function gridRequest(g, offset) {
     return "/api/browse/text/search?" + p;
   }
   if (g.type) p.set("type", g.type);
-  // A query only reaches the description index when this archive has one. With
-  // Documents on and Search by description off there is still a search box --
-  // it just searches the other group -- and sending its words here would ask an
-  // endpoint whose stage never runs.
-  if (g.query && mediaRanksQueries()) {
+  // The name search, which every archive has and which now runs whatever else
+  // is switched on. It used to be the *fallback* -- reached only when there was
+  // no description index -- so turning on Search by description silently took
+  // away the ability to find a file by its name, and `IMG_2019` went to the
+  // picture model, scored below the relevance floor, and came back empty.
+  if (g.kind === "name") {
+    p.set("name", g.query);
+    return "/api/media?" + p;
+  }
+  if (g.query) {
     // When local translation succeeds it replaces, rather than supplements,
     // the Spanish semantic query. This avoids admitting weak matches unique to
     // the original-language vector. English and fallback searches use g.query.
@@ -540,17 +711,15 @@ function gridRequest(g, offset) {
     if (g.topMatchesOnly === false) p.set("top", "no");
     return "/api/browse/semantic/search?" + p;
   }
-  // No description index to rank against, so the words are matched against the
-  // one thing every archive has read: the names of its own files.
-  if (g.query) p.set("name", g.query);
   return "/api/media?" + p;
 }
 export async function loadGrid(direction = "append", g = S.grid) {
   const gen = g.gen, grid = document.getElementById(g.ids.grid);
   const sentinel = document.getElementById(direction === "prepend" ? g.ids.top : g.ids.bottom);
-  // A text group with nothing typed has nothing to search: it is a ranking, not
-  // a listing, so an empty query means an empty group rather than every file.
-  if (g.kind === "text" && !g.query) {
+  // A ranking with nothing to rank has nothing to fetch: it is not a listing, so
+  // no query means an empty group rather than every file. Same for the media
+  // grid on an archive that cannot rank a query at all.
+  if (!gridAnswers(g)) {
     g.total = 0;
     renderGroupLabels();
     return;
@@ -669,8 +838,16 @@ function ph(icon) { const s = document.createElement("div"); s.className = "ph";
    returning `<mark>` from the server would mean a document containing the word
    "<script>" could put it into the page. Escaping first and substituting after
    is what keeps the highlight from being an injection point. */
-export function textTile(it) {
+export function textTile(it, mixedReaders = false) {
   const d = tile(it, null, "name");
+  // How this one was found, where that is not already answered by the heading.
+  // Two independent facts: which reader produced the text -- only worth saying
+  // when both are on and a hit could be either -- and whether the words were
+  // actually in it. A passage the vectors alone matched comes back with no
+  // marks in it, and without this that reads as a word match whose highlight
+  // happens to be out of view.
+  if (mixedReaders && it.reader) d.appendChild(foundBadge(READER_BADGE[it.reader]));
+  if (it.found_by === "meaning") d.appendChild(foundBadge(MEANING_BADGE));
   if (!it.snippet) return d;
   const box = document.createElement("div");
   box.className = "tile-snippet";
@@ -685,6 +862,68 @@ export function textTile(it) {
   }
   d.appendChild(box);
   return d;
+}
+// The words a badge carries, keyed by what the server reported. Named after the
+// features the user chose from rather than after the extractor that ran: nobody
+// switched on "pdf-ocr".
+const READER_BADGE = {
+  documents: { icon: "documents", text: "document text", hint: "Read from this file's own text" },
+  ocr: { icon: "ocr", text: "text in pictures", hint: "Read from the writing in this picture" },
+};
+const MEANING_BADGE = {
+  icon: "meaning", text: "by meaning",
+  hint: "Matched what this passage is about — none of your words appear in it",
+};
+function foundBadge({ icon, text, hint }) {
+  const b = document.createElement("span");
+  b.className = "found-by";
+  b.title = hint;
+  const glyph = document.createElement("span");
+  glyph.className = "ranking-mark";
+  glyph.setAttribute("aria-hidden", "true");
+  glyph.innerHTML = ICONS[icon];
+  b.append(glyph, document.createTextNode(text));
+  return b;
+}
+/* A library tile whose caption shows which words of the name matched.
+
+   The one grid where that is worth drawing: a name search is a search *for* a
+   name, so seeing which part of it answered is the whole result. Attached after
+   tile() rather than folded into it, the way the snippet and the detach control
+   are. */
+export function nameTile(it, tokens) {
+  const d = tile(it, null, "name");
+  const label = d.querySelector(".cap-label");
+  if (label && tokens.length) label.innerHTML = markedName(it.name || "", tokens);
+  return d;
+}
+/* The words a name search required, lowercased -- the same split the server
+   does (services/browse.py:_name_tokens), so what is marked is what matched. */
+function nameTokens(query) {
+  return [...new Set((query || "").toLowerCase().split(/\s+/).filter(Boolean))];
+}
+/* The name with every matched run wrapped in a mark.
+
+   Offsets are found on the lowercased name and applied to the original, and
+   each slice is escaped as it is emitted -- so a file called `<b>.jpg` is
+   marked up by this function and never by itself. */
+function markedName(name, tokens) {
+  const lower = name.toLowerCase();
+  const spans = [];
+  tokens.forEach(token => {
+    for (let at = lower.indexOf(token); at >= 0; at = lower.indexOf(token, at + 1))
+      spans.push([at, at + token.length]);
+  });
+  if (!spans.length) return esc(name);
+  spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  let out = "", cursor = 0;
+  spans.forEach(([start, end]) => {
+    if (end <= cursor) return;            // wholly inside a run already marked
+    start = Math.max(start, cursor);      // overlapping runs merge rather than nest
+    out += esc(name.slice(cursor, start)) + "<mark>" + esc(name.slice(start, end)) + "</mark>";
+    cursor = end;
+  });
+  return out + esc(name.slice(cursor));
 }
 // A library tile plus a "not this person" control, for the person detail
 // page ONLY -- tile() itself is shared with the plain library grid, which

@@ -4,14 +4,17 @@
 // could actually see.
 
 import {
-  checkedPeople, mediaRanksQueries, reloadGrids, renderSortOptions, updateClearBtn,
-  updatePeopleFilterLabel,
+  checkedPeople, liveRankings, mediaRanksQueries, rankingMatches, reloadGrids,
+  renderSortOptions, updateClearBtn, updatePeopleFilterLabel,
 } from "./library.js";
 import {
   jget,
 } from "./api.js";
 import {
-  S, TYPE_COL, archiveHasFeature,
+  esc,
+} from "./dom.js";
+import {
+  ICONS, S, archiveHasFeature,
 } from "./state.js";
 
 let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
@@ -95,62 +98,89 @@ async function localEnglishTranslation(text) {
 // of them -- "the mountains" fell from 11 results to 4 -- so the two
 // corrections were stacking. It also made "el bosque" and "the forest" behave
 // differently, since only the translated one carried the suffix.
-// Natural singular/plural label for a media type, so the reach line reads
-// "1 video" / "12 videos" rather than a bare type slug.
-function reachTypeLabel(type, n) {
-  const forms = {
-    image: ["image", "images"], video: ["video", "videos"],
-    audio: ["audio file", "audio files"], document: ["document", "documents"],
-    archive: ["compressed file", "compressed files"], other: ["file", "files"],
-  }[type] || [type, type + "s"];
-  return forms[n === 1 ? 0 : 1];
+/* "Where Trove looks when you type": the panel under the box while nothing has
+   been typed.
+
+   It is the same object as the result headings, in its other state. That is the
+   point of it rather than a saving: the screen has to say what can be searched
+   *and* label what came back, and when those were two separate pieces of copy
+   the first one drifted -- Browse spent three features describing itself as
+   "by filter or by description". Here a ranking that gains a reader gains a row,
+   and that row is both the promise and the label.
+
+   It answers two questions per row. What this way matches, in words; and how
+   much of the archive it can currently see, which is a number only the server
+   has. The rows are drawn immediately and the counts filled in when they land,
+   so the panel is never the thing holding up the screen. */
+let SEARCH_WAYS_GEN = 0;
+export function renderSearchWays() { searchWaysTick(++SEARCH_WAYS_GEN); }
+
+// What each way's coverage line says, given the status payloads. Kept as one
+// function per ranking so the sentence and the numbers it reads sit together.
+function nameCoverage() {
+  const total = S.grid && S.grid.query ? null : (S.grid && S.grid.total);
+  return total == null ? "" : `${total.toLocaleString()} files, all searchable`;
 }
-// Each fresh render supersedes any earlier poll chain (leaving and returning
-// to Library must not leave two timers fetching in parallel).
-let SEARCH_REACH_GEN = 0;
-export function renderSearchReach() { searchReachTick(++SEARCH_REACH_GEN); }
-async function searchReachTick(gen) {
-  if (gen !== SEARCH_REACH_GEN || S.section !== "library" || !S.arch) return;
-  const el = document.getElementById("search-reach"); if (!el) return;
-  let s;
-  try { s = await jget("/api/browse/semantic/status?root=" + S.arch.id); }
-  catch {
-    const cur = document.getElementById("search-reach");
-    if (cur && gen === SEARCH_REACH_GEN) {
-      cur.hidden = false;
-      cur.innerHTML = `<span class="reach-note">Description search is unavailable right now.</span>`;
-    }
-    return;
-  }
-  if (gen !== SEARCH_REACH_GEN || S.section !== "library") return;
-  const cur = document.getElementById("search-reach"); if (!cur) return;
-  const by = (s.by_type || []).filter(t => t.count > 0);
+function textCoverage(s) {
+  if (!s) return "";
+  if (!s.configured) return "Not available in this installation";
+  const read = s.read || 0, pending = s.pending || 0;
+  // Which files were read is said in the row's own sentence, from the features
+  // that are on; this is the count, and only the count.
+  if (!read) return pending
+    ? `Nothing read yet · ${pending.toLocaleString()} queued`
+    : "Nothing to read in this archive yet";
+  const passages = s.passages ? ` · ${s.passages.toLocaleString()} passages` : "";
+  return `${read.toLocaleString()} read${passages}` +
+    (pending ? ` · ${pending.toLocaleString()} queued` : "");
+}
+function photoCoverage(s) {
+  if (!s) return "";
+  if (!s.configured) return "Not available in this installation";
+  const indexed = (s.by_type || []).reduce((n, t) => n + (t.count || 0), 0);
   const pending = s.pending || 0;
-  let html;
-  if (by.length) {
-    const chips = by.map(t =>
-      `<span class="reach-item"><span class="reach-key" style="background:${TYPE_COL[t.type] || TYPE_COL.other}"></span><b>${t.count.toLocaleString()}</b> ${reachTypeLabel(t.type, t.count)}</span>`
-    ).join("");
-    // Some of the archive is already searchable; if more is still queued, say
-    // so in the same breath rather than a separate alarming line.
-    const note = pending ? `searchable by description · ${pending.toLocaleString()} more queued for indexing`
-      : "searchable by description";
-    html = `${chips}<span class="reach-div" aria-hidden="true"></span><span class="reach-note">${note}</span>`;
-  } else if (!s.configured) {
-    html = `<span class="reach-note">Search by description isn’t available in this installation.</span>`;
-  } else if (pending) {
-    // Nothing indexed yet, but work is queued: promise it, with no "0 files"
-    // chip — a colour-keyed count of zero has nothing to key.
-    html = `<span class="reach-note">No files searchable by description yet · ${pending.toLocaleString()} queued for indexing</span>`;
-  } else {
-    // Nothing indexed and nothing queued (e.g. an empty archive): no promise to make.
-    html = `<span class="reach-note">No files searchable by description yet.</span>`;
-  }
-  cur.hidden = false;
-  cur.innerHTML = html;
-  // Indexing runs automatically; keep the counts live until it drains.
-  if (s.configured && pending) setTimeout(() => searchReachTick(gen), 2500);
+  if (!indexed) return pending
+    ? `Nothing indexed yet · ${pending.toLocaleString()} queued`
+    : "Nothing indexed yet";
+  return `${indexed.toLocaleString()} photos and videos indexed` +
+    (pending ? ` · ${pending.toLocaleString()} queued` : "");
 }
+
+async function searchWaysTick(gen) {
+  if (gen !== SEARCH_WAYS_GEN || S.section !== "library" || !S.arch) return;
+  const panel = document.getElementById("search-ways"); if (!panel) return;
+  const ways = liveRankings();
+  // Only while browsing: once a search runs, the result headings are this same
+  // list saying what each way actually found.
+  if (S.grid && S.grid.query) { panel.hidden = true; return; }
+  const wants = kind => ways.some(w => w.kind === kind);
+  const [text, photo] = await Promise.all([
+    wants("text") ? jget("/api/browse/text/status?root=" + S.arch.id).catch(() => null) : null,
+    wants("media") ? jget("/api/browse/semantic/status?root=" + S.arch.id).catch(() => null) : null,
+  ]);
+  if (gen !== SEARCH_WAYS_GEN || S.section !== "library") return;
+  const cur = document.getElementById("search-ways"); if (!cur) return;
+  if (S.grid && S.grid.query) { cur.hidden = true; return; }
+  const coverage = { name: nameCoverage(), text: textCoverage(text), media: photoCoverage(photo) };
+  cur.hidden = false;
+  cur.innerHTML =
+    `<h3 class="ways-head">Where Trove looks when you type
+       <span class="muted">${ways.length === 1 ? "one way" : ways.length + " ways"} in this archive</span>
+     </h3>
+     <div class="ways-list">${ways.map(w => `
+       <div class="way">
+         <span class="ranking-mark" aria-hidden="true">${ICONS[WAY_ICON[w.kind]]}</span>
+         <div class="way-text">
+           <b>${esc(w.label)}${w.always ? `<span class="way-always">always</span>` : ""}</b>
+           <span>${esc(rankingMatches(w))}</span>
+         </div>
+         <span class="way-cov">${esc(coverage[w.kind] || "")}</span>
+       </div>`).join("")}</div>`;
+  // Indexing runs on its own; keep the counts live until both drain.
+  const busy = (text && text.pending) || (photo && photo.pending);
+  if (busy) setTimeout(() => searchWaysTick(gen), 2500);
+}
+const WAY_ICON = { name: "filename", text: "documents", media: "semantic" };
 function normalizedWords(value) {
   return (value || "").normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase()
     .replace(/[’']/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -346,6 +376,9 @@ export async function semanticSubmit(ev) {
   if (submit) { submit.disabled = false; submit.textContent = oldLabel; }
   updateClearBtn();
   reloadGrids();
+  // The ways panel and the result headings are the same list in two states, so
+  // the only thing that switches between them is a query arriving or leaving.
+  renderSearchWays();
   return false;
 }
 /* The line under the search box states which search the grid below is

@@ -20,20 +20,30 @@ import {
   ICONS, S,
 } from "./state.js";
 
-// Which page a section's info button opens. Browse and the Timeline share one:
-// they are two views of what a single stage produced, and saying so is more
-// honest than writing the same page twice.
+// Which page a section's info button opens. The Timeline opens Indexing: it is
+// a view of what that stage produced, and saying so is more honest than writing
+// the same page twice.
+//
+// Browse used to do the same, which was right when the only thing to explain
+// about it was where the files came from. It is now the one screen with five
+// readers behind it, and a button labelled "How search works" that opened a
+// page about scanning was answering a question nobody had asked.
 const DOC_FOR_SECTION = {
-  overview: "index", library: "indexing", timeline: "indexing",
+  overview: "index", library: "browse", timeline: "indexing",
   people: "people", pets: "pets", places: "places", dups: "duplicates",
 };
 // Which page a feature's "How it works" link opens, for the setup panel. Two
 // tables rather than one because they answer different questions -- a section
 // is a place in the app, a feature is a piece of work, and the Timeline and
 // Browse share one feature between two sections.
+//
+// Every feature is listed. The three that arrived with document text were not,
+// so choosing them on the setup panel was the one decision made with no way to
+// read what it does first.
 const DOC_FOR_FEATURE = {
   index: "indexing", duplicates: "duplicates", people: "people",
   pets: "pets", places: "places", semantic: "search",
+  documents: "documents", ocr: "ocr", meaning: "meaning",
 };
 const DOCS = {
   pages: [],
