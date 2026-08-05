@@ -42,8 +42,12 @@ real dependency graph, from `trove/pipeline/stages.py`:
   enrich ──┘                  ├──▶ places ────────────▶ place_clusters
   (exif, Takeout sidecar,     │    (GPS clustering)
    filename parse, mtime)     │
-                              └──▶ semantic ──────────▶ embeddings
-                                   (optional, SigLIP 2)
+                              ├──▶ semantic ──────────▶ embeddings
+                              │    (optional, SigLIP 2)
+                              │
+                              └──▶ text ──────────────▶ doc_text / doc_chunks
+                                   (optional; documents + OCR,
+                                    one open per file)
 
                    one archive.db per open archive (SQLite)
                                     ▲ read / write
@@ -80,7 +84,7 @@ grandfathered.
 | Layer | Packages | Role |
 | --- | --- | --- |
 | L0 foundation | `config`, `paths`, `app_data_migration`, `runtime`, `model_manifest`, `features`, `logging_setup`, `errors`, `progress`, `db` | Knows nothing about the rest of the package: settings, filesystem locations, process wiring, the catalogue of what an archive can be asked to do, the shape a long pass reports progress through, and the SQLite connection/schema layer. |
-| L1 domain | `scan`, `hashing`, `metadata`, `media`, `dedup`, `geo`, `detect`, `faces`, `pets`, `embeddings`, `thumbnails` | The archive's actual algorithms — one package per concern, each usable on its own against a connection it is handed. |
+| L1 domain | `scan`, `hashing`, `metadata`, `media`, `dedup`, `geo`, `detect`, `faces`, `pets`, `embeddings`, `text`, `thumbnails` | The archive's actual algorithms — one package per concern, each usable on its own against a connection it is handed. |
 | L2 application | `services`, `pipeline` | Orchestrates L1: `services/` holds the business rules a caller invokes (merges, renames, browse queries); `pipeline/` schedules and runs the stages above. |
 | L3 delivery | `web`, `cli`, `desktop`, `__main__` | Translates an external request (HTTP, command line, desktop shell) into one service call and serialises the result. Holds no business logic itself. |
 
@@ -96,7 +100,7 @@ grandfathered.
 | which model weights a feature needs, and when they are downloaded | `trove/services/models.py` + `trove/pipeline/runners/models.py` |
 | how the archive setup screen looks and behaves | `trove/web/static/js/setup.js` + `web/static/css/setup.css` |
 | what a status card *says* (its wording, its bar, the pause overlay) | `trove/pipeline/status.py` |
-| how a job does its work | `trove/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`) |
+| how a job does its work | `trove/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`, `text.py`) |
 | a new API endpoint | `trove/web/routes/<domain>.py`, then add it to the route tables in `trove/web/routes/__init__.py` — see below |
 | what the detectors find in one frame (and the people-vs-pets cross-check) | `trove/detect/frame.py` |
 | which way up a photo really is | `trove/detect/orientation.py` |
@@ -107,6 +111,10 @@ grandfathered.
 | what a face re-cluster destroys, and what survives it | `trove/faces/cluster.py` |
 | pet clustering behaviour | `trove/pets/cluster.py` |
 | which semantic matches are shown (the two cuts, and the modality-gap centering they are tuned for) | `trove/services/search.py`, with the thresholds and their reasoning in `trove/config/settings.py` |
+| how a file's text is read, and what a format contributes | `trove/text/extract.py`, then the reader for that family (`pdf.py`, `office.py`, `plain.py`) |
+| how a document is cut into searchable passages | `trove/text/chunk.py` (its docstring carries the token measurements the sizes came from) |
+| when the text stage re-reads a file | `trove/services/documents.py`'s four-legged pending predicate, and `TEXT_VERSION` beside it |
+| how text search ranks, and what a hit shows | `trove/services/text_search.py` + the text group in `trove/web/static/js/library.js` |
 | how a screen looks | `trove/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
 | the SQLite schema | `trove/db/schema.sql`, plus the migration in `init_db` (`trove/db/database.py`) |
 | settings and their defaults | `trove/config/settings.py` |
@@ -124,7 +132,7 @@ follow automatically.
 
 ## The schema, summarised
 
-`trove/db/schema.sql` currently defines 31 tables, grouped by what
+`trove/db/schema.sql` currently defines 33 tables, grouped by what
 they describe:
 
 | Group | Tables |
@@ -135,6 +143,7 @@ they describe:
 | People | `persons`, `faces`, `face_links`, `person_merges`, `person_files`, `fiqa_calibration` |
 | Pets | `pets`, `animal_detections`, `pet_links`, `pet_merges`, `pet_files`, `nonhuman_detections` |
 | Semantic | `semantic_embeddings` |
+| Document text | `doc_text`, `doc_chunks` (+ `doc_chunk_fts`, see below) |
 | Bookkeeping | `app_state`, `scan_runs`, `face_scan`, `pet_scan` |
 
 `orientation` is grouped with the catalogue rather than with people or pets:
@@ -148,7 +157,15 @@ suppressed by an overlapping animal/toy box goes for review — reachable from
 both People and Pets, filed here with pets because that is the detector that
 vetoed it.
 
-`SCHEMA_VERSION` (currently 13) lives in `trove/db/database.py`.
+`SCHEMA_VERSION` (currently 14) lives in `trove/db/database.py`, and the
+migrations it runs live beside it in `trove/db/migrations.py`.
+
+`doc_chunk_fts` is the one table `schema.sql` does not declare. It is an FTS5
+virtual table, and `executescript` runs that file at every job start on every
+archive -- so an unsupported statement there would fail archives that never
+asked to read a document. `migrations._migrate_text_index` creates it where
+FTS5 exists and leaves it absent where it does not, and the Documents feature
+reports itself unavailable in that case (ADR 0017).
 `init_db` is close to additive-only: on every run it creates any missing
 table/index (`CREATE ... IF NOT EXISTS`) and adds any missing column
 (`_add_column_if_missing`), never drops or renames one. The one exception is

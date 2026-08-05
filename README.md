@@ -74,6 +74,16 @@ library.*
   re-clustering that runs as the catalogue grows.
 - Searches the library by description when optional semantic indexing is enabled
   (see below).
+- Reads the text inside documents, when the optional Documents feature is enabled,
+  so a phrase finds the file: PDFs that carry a text layer, Word, Excel and
+  PowerPoint files, OpenDocument files, plain text, Markdown, CSV, web pages and
+  notebooks. Results show the passage that matched and the page it was on, and a
+  search for `peticion` finds `petición`. Nothing is downloaded for it — every
+  reader is the Python standard library or the PDF library the app already
+  bundles. Two limits are worth knowing: a scanned PDF is pictures of a page with
+  no text in the file at all, so this finds nothing in it (that is what the
+  planned Text in images feature is for), and pre-2007 `.doc`, `.xls` and `.ppt`
+  files cannot be read.
 - Shows photos the right way up. EXIF orientation is always honoured, and a photo
   whose pixels are stored turned while its EXIF says otherwise (common among
   re-exports of the same shot) is recognised by the detectors and displayed
@@ -91,7 +101,8 @@ stages no longer depend on each other:
 scan ┐
      ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
 metadata ┘                   ├─→ places
-                             └─→ semantic indexing (optional)
+                             ├─→ semantic indexing (optional)
+                             └─→ reading documents (optional)
 ```
 
 Long stages commit progress in batches. Closing or switching archives asks current
@@ -106,8 +117,9 @@ something else. The sidebar lists every stage currently running, not just one.
 
 Everything is local. Scanning, hashing, metadata extraction, duplicates,
 thumbnails, place clustering, face detection and clustering, search by
-description, and the SQLite catalogue all stay on the machine. Trove has no
-telemetry, no accounts, no API keys, and does not modify source media.
+description, reading the text inside documents, and the SQLite catalogue all
+stay on the machine. Trove has no telemetry, no accounts, no API keys, and does
+not modify source media.
 
 **The map's street-map layer is the only outbound network call in the app.**
 Turning it on fetches public map tiles, which discloses the coordinates you are

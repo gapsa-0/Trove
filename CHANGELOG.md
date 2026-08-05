@@ -15,6 +15,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Trove can read what is inside your documents.** Switch on *Documents* when
+  you set up an archive, and the search box also looks inside the files rather
+  than only at their names: type a phrase from a contract and the contract comes
+  back, showing the passage that matched and the page it was on. It reads PDFs
+  that carry a text layer, Word, Excel and PowerPoint files, OpenDocument files,
+  plain text, Markdown, CSV, web pages and notebooks — spreadsheet numbers
+  included, since an invoice total is exactly the sort of thing worth searching
+  for. Accents do not have to match (`peticion` finds `petición`), and a plural
+  finds its singular.
+
+  Nothing is downloaded for it and nothing leaves the machine: reading a
+  document is parsing rather than recognition, so there is no model involved. On
+  a few thousand files it is minutes, and it runs alongside everything else.
+
+  Two limits, both stated on the feature's card before you switch it on. A
+  scanned PDF is a picture of a page with no text in the file at all, so this
+  finds nothing in one — that is what *Text in images* will be for, and switching
+  it on later re-reads every file this feature had to pass over. And pre-2007
+  `.doc`, `.xls` and `.ppt` files cannot be read at all; they are listed and
+  dated like any other file and reported as an unsupported format, rather than
+  half-read into something misleading.
 - **Each archive now chooses what Trove does with it.** Adding a folder opens a
   setup screen: name the archive, and build up what it runs by dragging features
   onto it — People, Pets, Places, Search by description — or leave them off.

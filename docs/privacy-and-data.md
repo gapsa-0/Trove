@@ -8,6 +8,15 @@ Face processing, pet recognition and search by description all run locally, on
 models that execute on this machine. There is no API key to set anywhere in the
 app, and no configuration that would send archive content to a service.
 
+**Reading the text inside your documents needs no model and no download.** The
+Documents feature parses files that already carry their own text — a PDF's text
+layer, a Word document's body, a spreadsheet's cells — and parsing is not
+recognition: the readers are the Python standard library and the PDF library
+already inside the app. The text it finds is stored in the same per-archive
+SQLite catalogue as everything else, and searching it is a SQLite query. No part
+of a document, and no phrase you search for, is sent anywhere or written outside
+that catalogue.
+
 **The only time Archive uses the network on its own** is downloading model
 weights: ~550 MB for People and Pets detection on their first run, and ~690 MB
 for the search-by-description model on an archive's first indexing pass, both

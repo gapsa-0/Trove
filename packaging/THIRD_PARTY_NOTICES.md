@@ -41,5 +41,12 @@ Do not publish a release while any entry is incomplete.
   repository above) — Gemma Terms of Use —
   https://ai.google.dev/gemma/terms — used only to turn a typed search query
   into token ids for the SigLIP 2 text tower.
+- pypdfium2 / PDFium — Apache-2.0 or BSD-3-Clause (pypdfium2's own code) over a
+  prebuilt PDFium, BSD-3-Clause — https://github.com/pypdfium2-team/pypdfium2
+  Bundled in the installer, not downloaded: the wheel carries the PDFium shared
+  library with it, which is why the desktop build needs no compiler for it. Used
+  to read a PDF's text layer, and later to rasterise pages for Text in images.
+  Note this is a *binary* redistribution of PDFium — the BSD-3-Clause notice
+  belongs in any release that ships it, not only the Python-side licence.
 - Bundled Python packages — [generated package/version/licence inventory from
   packaging/requirements-desktop.txt]
