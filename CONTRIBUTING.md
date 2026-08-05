@@ -13,7 +13,7 @@ make check
 is the whole onboarding sequence.
 
 `make setup` creates a venv with `python3.13 -m venv .venv`, upgrades pip inside it,
-installs the package editable with every extra (`pip install -e '.[dev,cli,media,faces,pets,semantic]'
+installs the package editable with every extra (`pip install -e '.[dev,cli,media,faces,pets,semantic,documents]'
 -c constraints.txt`), installs the pre-commit hook, and runs `npm ci` in `desktop/`.
 If your machine has no `python3.13` on PATH, point the venv step at whichever
 interpreter you do have:

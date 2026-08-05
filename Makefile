@@ -12,7 +12,7 @@ PY ?= .venv/bin/python
 # The interpreter used to *create* the venv. Overridable, because a system
 # python3.13 is not universal yet: `make setup PYTHON=/path/to/python3.13`.
 PYTHON ?= python3.13
-EXTRAS := dev,cli,media,faces,pets,semantic
+EXTRAS := dev,cli,media,faces,pets,semantic,documents
 GUI_PORT ?= 8799
 
 help:            ## Show this help

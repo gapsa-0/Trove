@@ -29,8 +29,10 @@ hiddenimports = []
 # (collect_dynamic_libs): the Python package is a thin wrapper over a Rust
 # extension module, and the app only imports it lazily inside the semantic
 # backend, so the native library has to be collected explicitly.
+# `pypdfium2` is here for the same reason: a bundled PDFium shared library,
+# imported lazily inside trove/text/pdf.py so PyInstaller never sees it.
 for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklearn",
-                "numpy", "tokenizers"):
+                "numpy", "tokenizers", "pypdfium2"):
     hiddenimports += collect_submodules(package)
     binaries += collect_dynamic_libs(package)
 # insightface supplies the buffalo_l model-zoo loader and the face_align helpers.

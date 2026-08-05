@@ -8,7 +8,7 @@
 #
 # Install with the pins applied:
 #
-#   pip install -e '.[dev,cli,media,faces,pets,semantic]' -c constraints.txt
+#   pip install -e '.[dev,cli,media,faces,pets,semantic,documents]' -c constraints.txt
 #
 # or just `make setup`, which does exactly that. CI installs the same way, so a
 # green run here and a green run there mean the same thing. Every pin below that
@@ -55,6 +55,11 @@ numpy==2.5.1
 # will therefore hold this back on a developer machine. That is expected: the
 # packaged app excludes transformers entirely.
 tokenizers==0.23.1
+
+# --- documents extra ---
+# Bundles its own PDFium build, so this pin fixes the PDF parser itself and not
+# just the binding. Text extraction results can shift between PDFium releases.
+pypdfium2==5.12.1
 
 # --- dev extra ---
 # Dev-only: the desktop build excludes faiss (trove.spec), but the

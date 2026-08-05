@@ -35,7 +35,7 @@ parsing and mtime. Nothing in `dependencies = []` at the top of
 `[project]` in `pyproject.toml` needs to change for the core to work; it is
 empty on purpose.
 
-## The six extras
+## The seven extras
 
 Every optional dependency is *probed*, not assumed. The pattern recurs across
 `trove/embeddings/backend.py`, `trove/faces/backend.py`,
@@ -56,6 +56,7 @@ semantic indexing all check this before starting a job; the GUI surfaces it as
 | `faces` | `insightface>=1.0`, `onnxruntime>=1.20`, `opencv-python>=4.8`, `scikit-learn>=1.3`, `numpy>=1.24`, `faiss-cpu>=1.13` | Face detection (SCRFD), embedding (AdaFace ir101) and clustering into People | `trove faces` reports the stage unavailable; nothing crashes |
 | `pets` | `onnxruntime>=1.20`, `opencv-python>=4.8`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | YOLOX animal detection plus DINOv2 pet re-identification | `trove pets` reports the stage unavailable |
 | `semantic` | `onnxruntime>=1.20`, `tokenizers>=0.20`, `numpy>=1.24`, `Pillow>=10`, `pillow-heif>=0.16` | Local SigLIP 2 search-by-description | Indexing and search both report unavailable — search says so by raising, for the reason given below |
+| `documents` | `pypdfium2>=5` | Reading the text inside PDFs, Office and OpenDocument files, text, Markdown, CSV, HTML and notebooks | Every format except PDF still reads: `zipfile` and `ElementTree` cover the six office formats and the rest is stdlib. PDFs alone become a per-file skip carrying that reason, the way a missing ffmpeg makes videos unindexable without disabling search by description. `trove/text/pdf.py:available()` is the probe |
 | `dev` | `pytest>=8`, `ruff>=0.6`, `pre-commit>=3` | Running the test suite and linting | You can't develop the project, but a packaged build needs none of it |
 
 `faces` is the extra with the most going on, and its own comment in
@@ -177,7 +178,7 @@ make setup
 runs, among other things,
 
 ```
-pip install -e '.[dev,cli,media,faces,pets,semantic]' -c constraints.txt
+pip install -e '.[dev,cli,media,faces,pets,semantic,documents]' -c constraints.txt
 ```
 
 which is also the exact line CI runs, so a green CI run and a green local run

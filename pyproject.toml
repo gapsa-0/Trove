@@ -41,6 +41,15 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # transformers or torch — a 64-token tokenizer does not justify reversing the
 # torch exclusion in packaging/trove.spec.
 semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
+# Reading the text inside documents. One dependency, and only for PDFs: Word,
+# Excel, PowerPoint and the OpenDocument three are zipped XML, which zipfile and
+# ElementTree read without help, and text/markdown/CSV/HTML/notebooks are stdlib
+# too. pypdfium2 ships a prebuilt PDFium in the wheel (BSD-3-Clause/Apache-2.0),
+# so no compiler and no system library. Deliberately NOT PyMuPDF, which is
+# AGPL-3.0 against this repository's MIT, and not pypdf, because the same
+# PDFium build also rasterises -- which is what lets Text in images read a
+# scanned page later without a second PDF dependency.
+documents = ["pypdfium2>=5"]
 # faiss-cpu is a dev dependency and not a runtime one: the desktop build excludes
 # it, but tests/integration/test_core_expansion.py asserts the FAISS and NumPy
 # search paths agree exactly, and those tests skip themselves when it is absent.
