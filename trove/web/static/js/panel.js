@@ -81,6 +81,13 @@ function dateProv(it) {
    the map stays and those three go, because cutting the whole section would
    hide a fact the archive genuinely has. */
 function placeSection(it) {
+  // Only something that was taken can have been taken somewhere. A spreadsheet
+  // has no there: it was written, and wherever the laptop was that day is not a
+  // fact about the file. So a document gets no map, no coordinates and no offer
+  // to attach one -- the same rule People states in words a few sections down,
+  // said here by leaving the section out, because an empty Place section would
+  // be an invitation to answer a question the file cannot be asked.
+  if (it.type !== "image" && it.type !== "video") return "";
   const clustered = has("places");
   if (!it.gps && !clustered) return "";
   if (!it.gps) {

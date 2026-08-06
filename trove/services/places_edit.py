@@ -405,6 +405,9 @@ def set_place(
     pc = conn.execute("SELECT id, name FROM place_clusters WHERE id=?", (place_id,)).fetchone()
     if not pc:
         return {"error": "unknown place"}
+    refused = _unplaceable(conn, file_id)
+    if refused:
+        return refused
     _detach_file_from_places(conn, file_id)
     conn.execute(
         "INSERT OR IGNORE INTO place_cluster_members(cluster_id, file_id, source) "
@@ -449,6 +452,12 @@ def create_place(
         return {"error": "coordinates out of range"}
     if not conn.execute("SELECT 1 FROM roots WHERE id=?", (root_id,)).fetchone():
         return {"error": "unknown archive"}
+    # Checked before the place is created, not after: the file is the reason
+    # this call exists ("put *this* on the map here"), so refusing it half way
+    # would leave an empty pin behind as the record of a rejected request.
+    refused = _unplaceable(conn, file_id) if file_id else None
+    if refused:
+        return refused
     cur = conn.execute(
         """INSERT INTO place_clusters(root_id, name, lat, lon, member_count,
                                       pinned, created_at)
@@ -469,6 +478,26 @@ def create_place(
     conn.commit()
     pc = conn.execute("SELECT id, name FROM place_clusters WHERE id=?", (cid,)).fetchone()
     return {"ok": True, "id": cid, "place": {"id": pc["id"], "name": pc["name"]}}
+
+
+#: What can be a member of a place at all. Only something that was *taken* can
+#: have been taken somewhere: a spreadsheet was written, and wherever the laptop
+#: was that day is not a fact about the file. The clustering never produced
+#: anything else -- it works from EXIF coordinates, which only a camera writes --
+#: so this is about the manual attachments, where the file is whatever the user
+#: had open. The panel stopped offering it for a document; this is the same rule
+#: kept where it cannot drift back.
+PLACEABLE = ("image", "video")
+
+
+def _unplaceable(conn: sqlite3.Connection, file_id: int) -> dict[str, Any] | None:
+    """The refusal for a file that cannot be somewhere, or None if it can."""
+    row = conn.execute("SELECT media_type FROM files WHERE id=?", (file_id,)).fetchone()
+    if row is None:
+        return {"error": "unknown file"}
+    if row["media_type"] not in PLACEABLE:
+        return {"error": "only photos and videos can be attached to a place"}
+    return None
 
 
 def _detach_file_from_places(conn: sqlite3.Connection, file_id: int) -> None:

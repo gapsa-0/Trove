@@ -11,10 +11,18 @@ why the app has a reading mode at all.
 
 
 def _open_document(app, archive, key="document"):
-    """Open one file straight by id and wait for the panel to name it."""
+    """Open one file straight by id and wait for the panel to name it.
+
+    Waits for the name to *change* when a panel is already open, not merely to
+    be there: opening a second file into a viewer that is already showing one
+    would otherwise sail straight through the wait and read the first file's
+    panel.
+    """
+    was = app.tab.evaluate("(document.querySelector('#minfo h3') || {}).textContent || ''")
     app.tab.evaluate(f"openItem({archive.ids[key]})")
     app.tab.wait_for(
-        "!!(document.querySelector('#modal.open #minfo h3') || {}).textContent",
+        "(name => !!name && name !== " + repr(was) + ")"
+        "((document.querySelector('#modal.open #minfo h3') || {}).textContent)",
         what="the panel to name the file it opened",
     )
 
@@ -29,6 +37,24 @@ def test_a_document_reports_its_reader_and_never_its_text(open_app, archive):
         assert "Detected text" in panel
         assert "text layer" in panel  # which reader found it
         assert "The lease agreement" not in panel  # never the words
+        assert app.errors() == []
+
+
+def test_a_document_is_never_asked_where_it_was_taken(open_app, archive):
+    """Only something that was taken can have been taken somewhere. A document
+    was written, and where the laptop happened to be is not a fact about it --
+    so the panel drops the section rather than showing an empty one, which
+    would be an invitation to answer a question the file cannot be asked.
+
+    The picture beside it still gets the offer, since that is the difference.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        _open_document(app, archive)
+        assert "Place" not in app.text("#minfo")
+        assert app.count("#minfo #placeval") == 0
+
+        _open_document(app, archive, "ocr_photo")
+        assert app.count("#minfo #placeval") == 1
         assert app.errors() == []
 
 
