@@ -1,0 +1,523 @@
+/* The inspector: the panel that floats over the media and says what Trove knows
+   about the file on screen.
+
+   Split from viewer.css, which owns the frame around it -- the stage, the
+   floating chrome, the filmstrip and the document view. Everything here styles
+   the panel's own contents.
+
+   All of it is written in fixed dark-on-glass values rather than through the
+   theme tokens, and that is deliberate: this panel sits ON the media, which is
+   its own black whatever appearance the app is in. The shared greys are chosen
+   against a page background and are unreadable here in light appearance. */
+
+/* -- the inspector -- */
+.viewer .info {
+  position: absolute;
+  top: 0;
+  right: 0;
+  /* Same stop as the media stage, from the one variable viewer.css sets, so
+     the panel and the photo never disagree about where the viewer ends. */
+  bottom: var(--film, 96px);
+  z-index: 5;
+  width: 354px;
+  max-height: none;
+  padding: 58px 19px 22px;
+  box-sizing: border-box;
+  /* One scrolling direction. Anything that cannot fit the column wraps or
+     shrinks; nothing earns a second scrollbar across the panel. */
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  background: rgba(24, 24, 27, .76);
+  backdrop-filter: blur(26px) saturate(1.4);
+  -webkit-backdrop-filter: blur(26px) saturate(1.4);
+  border-left: 1px solid rgba(255, 255, 255, .12);
+  color: #f5f5f7;
+  transition: transform .28s cubic-bezier(.32, .72, 0, 1), opacity .22s
+}
+
+.viewer:not(.rail-on) .info {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none
+}
+
+.viewer .info h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.015em;
+  color: #fff;
+  word-break: break-word
+}
+
+.viewer .info .subline {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .6)
+}
+
+.viewer .info a,
+.viewer .info .linkbtn {
+  color: #6cb6ff
+}
+
+/* The panel floats on the media, so the shared greys -- which are chosen
+   against a page background -- are unreadable here in light appearance. Every
+   piece of muted copy in this panel is re-grounded on the glass instead. This
+   catches the rows the edit flows below build (`faceRow`, the pickers), which
+   share their markup with nothing else and would otherwise each need their own
+   class. */
+.viewer .info .muted,
+.viewer .info .facecrop.placeholder,
+.viewer .info .pet-species {
+  color: rgba(255, 255, 255, .6)
+}
+
+.viewer .info .facecrop {
+  background: rgba(255, 255, 255, .1)
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
+  font-size: 12.5px
+}
+
+.kv:last-child {
+  border-bottom: 0
+}
+
+.kv .k {
+  flex: none;
+  color: rgba(255, 255, 255, .6)
+}
+
+.kv .v {
+  text-align: right;
+  word-break: break-word;
+  color: #fff
+}
+
+.kv .v.warn {
+  color: var(--warning);
+  font-weight: 600
+}
+
+.isec {
+  margin-top: 19px
+}
+
+.isec>.h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .6)
+}
+
+.isec .val {
+  color: #fff
+}
+
+.facecrop {
+  border-radius: 10px;
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .1)
+}
+
+.fsel,
+.dtrow input {
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .1);
+  color: #fff
+}
+
+.fsel option {
+  color: var(--text);
+  background: var(--panel)
+}
+
+/* Date, with its source in words rather than the raw column value. The dot
+   carries how much the date can be trusted: from the camera, guessed from a
+   file name, or nothing better than the file's own timestamp. */
+/* A Details row can carry a control and a second line now that the date lives
+   in one: the value column wraps instead of being a single right-aligned run. */
+.kv {
+  flex-wrap: wrap
+}
+
+.kv .k .linkbtn {
+  margin-left: 7px
+}
+
+/* `min-width: auto` is the flex default and it stops an item shrinking below
+   its content, which is how a value ended up wider than the column holding it. */
+.kv .k,
+.kv .v {
+  min-width: 0
+}
+
+.kv .v {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px
+}
+
+/* Editing a date is not a value any more, it is a form: three fields and two
+   buttons. Squeezed into the right-hand half of a row it sized to its content
+   and pushed a horizontal scrollbar onto the whole panel, so while the editor
+   is open the cell takes the full width and its controls stretch to fit it. */
+.kv .v:has(.dtrow) {
+  width: 100%;
+  align-items: stretch
+}
+
+.kv .v .dtrow,
+.kv .v .btnrow {
+  width: 100%
+}
+
+.kv .v .btnrow {
+  justify-content: flex-end
+}
+
+.prov {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .1);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .72)
+}
+
+.prov::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--good)
+}
+
+.prov.guess::before {
+  background: var(--warning)
+}
+
+.prov.weak::before {
+  background: var(--bad)
+}
+
+/* "Nothing found" and "not looked at yet" must not look alike: the second is
+   temporary, and a panel that renders them identically is claiming a finding
+   it does not have. */
+.notyet {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .58)
+}
+
+.notyet::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .4);
+  animation: notyet-pulse 2.4s ease-in-out infinite
+}
+
+@keyframes notyet-pulse {
+
+  0%,
+  100% {
+    opacity: .35
+  }
+
+  50% {
+    opacity: 1
+  }
+}
+
+.notyet .sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, .42)
+}
+
+.imuted {
+  font-size: 12px;
+  color: rgba(255, 255, 255, .55)
+}
+
+/* -- the map card: pin drawn locally, tiles only once you stop -- */
+.imap {
+  position: relative;
+  height: 132px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .07)
+}
+
+.imap .pinhold {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center
+}
+
+.imap .pin {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 7px rgba(10, 132, 255, .25)
+}
+
+.imapcap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .66)
+}
+
+.imapcap .coords {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums
+}
+
+.itilenote {
+  margin-top: 6px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, .42)
+}
+
+/* -- detected text -- */
+.textcard {
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .08);
+  overflow: hidden
+}
+
+.textcard .body {
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 11px 12px;
+  font-size: 12px;
+  line-height: 1.62;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #fff
+}
+
+.textcard .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(0, 0, 0, .24);
+  font-size: 11px;
+  color: rgba(255, 255, 255, .66)
+}
+
+/* A document reports that it was read and by which reader. Its words are not
+   put in the panel: the document itself is on the stage, and that is where you
+   read it. */
+.readflag {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .08)
+}
+
+.readflag .mark {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: rgba(108, 182, 255, .2);
+  color: #6cb6ff
+}
+
+.readflag .mark svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+.readflag .lead {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff
+}
+
+.readflag .meta {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, .6);
+  font-variant-numeric: tabular-nums
+}
+
+.iwide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 13px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .08);
+  font: 600 12px/1 inherit;
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s
+}
+
+.iwide:hover {
+  background: rgba(255, 255, 255, .16)
+}
+
+.iwide[disabled] {
+  color: rgba(255, 255, 255, .55);
+  cursor: default
+}
+
+/* A grid, not a scrolling row. Sideways scrolling inside a panel that already
+   scrolls downward means one of the two directions is always the wrong guess,
+   and half the results sat off the edge where nothing suggested they existed.
+   Everything found is on screen at once, in as many columns as the panel is
+   wide. */
+.relstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 6px
+}
+
+.relstrip button {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .07);
+  cursor: pointer
+}
+
+.relstrip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block
+}
+
+/* Narrow: the panel stops being a side column and becomes a bottom sheet.
+
+   These live here rather than with the viewer's other responsive rules because
+   a media query adds no specificity: `.viewer .info` in this file and
+   `.viewer .info` inside a query score the same, so whichever sheet loads LAST
+   wins. inspector.css loads after viewer.css, so an override left over there
+   would simply never apply. */
+@media(max-width:800px) {
+  .viewer .info {
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-height: 62vh;
+    padding-top: 20px;
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, .14)
+  }
+
+  .viewer:not(.rail-on) .info {
+    transform: translateY(100%)
+  }
+}
+
+/* "Find similar pictures" is the one control in this panel that starts real
+   work, so it looks like a control rather than like another row of facts --
+   but quietly, because it is optional and sits among plain readings. */
+.findbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 6px 13px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  font: 600 12px/1 inherit;
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s
+}
+
+.findbtn:hover {
+  background: rgba(255, 255, 255, .18)
+}
+
+.findbtn[disabled] {
+  color: rgba(255, 255, 255, .55);
+  cursor: default
+}
+
+.kv .v.filepath {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .7);
+  text-align: right;
+  word-break: break-all
+}
+
+.filelinks {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 12px
+}
+
+/* The tag picker, drawn inline rather than behind an "Add" button: choosing a
+   name saves it, so the control is the whole interaction. */
+.tagpick {
+  width: 100%;
+  margin-top: 9px
+}

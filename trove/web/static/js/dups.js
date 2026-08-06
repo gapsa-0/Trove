@@ -16,6 +16,9 @@ import {
 import {
   S, TYPE_COL, TYPE_ICON, typeLabel,
 } from "./state.js";
+import {
+  setGallery,
+} from "./gallery.js";
 
 const DUP_PAGE_SIZE = 40;
 // What an archive with nothing grouped yet gets in place of the list: the
@@ -51,6 +54,13 @@ export async function renderDedup(m) {
       const wrap = document.getElementById("dupgroups");
       if (first) wrap.innerHTML = "";
       groups.forEach(g => wrap.appendChild(dupGroupRow(g)));
+      // Every copy on screen, group by group, in the order they are drawn --
+      // so the arrows step from one copy of a photo straight to the next,
+      // which is the comparison this screen exists for.
+      setGallery(
+        [...wrap.querySelectorAll("[data-file-id]")].map(el => Number(el.dataset.fileId)),
+        "in the duplicate groups"
+      );
     },
   });
 }
@@ -109,7 +119,7 @@ function dupGroupRow(g) {
         : '<span class="duptag visual">Visual match</span>';
     const thumb = (mm.type === "image" || mm.type === "video") ? `<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type] || "📦"}'}))">`
       : `<div class="ph">${TYPE_ICON[mm.type] || "📦"}</div>`;
-    return `<div class="duptile ${kept ? 'kept' : ''}" title="${mm.folder}" onclick="openItem(${mm.id})">
+    return `<div class="duptile ${kept ? 'kept' : ''}" data-file-id="${mm.id}" title="${mm.folder}" onclick="openItem(${mm.id})">
         ${thumb}<div class="dtcap">${tag}</div>
         <div class="dtpath">${mm.folder || '/'}</div></div>`;
   }).join("");

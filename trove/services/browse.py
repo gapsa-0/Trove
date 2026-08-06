@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ._common import (
     _HAS_LOCATION,
@@ -22,7 +22,6 @@ from ._common import (
     reading,
     writing,
 )
-from .places import _PLACE_EXEMPT
 from .types import MediaItem, MediaPage
 
 # The file's own name, in SQL. `rel_path` is stored with the OS separator, so
@@ -367,175 +366,6 @@ def set_date(conn: sqlite3.Connection, file_id: int | None, value: str) -> dict[
     )
     conn.commit()
     return {"ok": True, "date": v, "date_source": "manual"}
-
-
-def _item_detections(
-    conn: sqlite3.Connection, fid: int
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Detected people and animals for one file, as (people, animals)."""
-    people = [
-        {
-            "person_id": r["person_id"],
-            "name": r["name"],
-            "face_id": r["face_id"],
-        }
-        for r in conn.execute(
-            f"""SELECT fa.id AS face_id, fa.person_id, p.name
-           FROM faces fa LEFT JOIN persons p ON p.id=fa.person_id
-           WHERE fa.file_id=? AND fa.not_person=0 AND {_QUALITY_OK}
-           ORDER BY fa.det_score DESC""",
-            (fid,),
-        )
-    ]
-    animals = [
-        {
-            "detection_id": row["detection_id"],
-            "species": row["species"],
-            "pet_id": row["pet_id"],
-            "name": row["name"],
-            "score": row["det_score"],
-        }
-        for row in conn.execute(
-            """SELECT a.id detection_id,a.species,a.pet_id,p.name,a.det_score
-           FROM animal_detections a LEFT JOIN pets p ON p.id=a.pet_id
-           WHERE a.file_id=? AND a.species!='teddy bear'
-           ORDER BY a.det_score DESC""",
-            (fid,),
-        )
-    ]
-    return people, animals
-
-
-def _item_place(conn: sqlite3.Connection, fid: int, min_media: int) -> sqlite3.Row | None:
-    # Current place membership (a file belongs to at most one place).
-    # A below-threshold, unnamed/unpinned cluster is not reported as a
-    # "place" here either (see place_min_media) — this file just has no
-    # location, matching what place_clusters() shows on the map.
-    row = conn.execute(
-        f"""SELECT pc.id, pc.name FROM place_cluster_members pcm
-           JOIN place_clusters pc ON pc.id=pcm.cluster_id
-           WHERE pcm.file_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})
-           LIMIT 1""",
-        (fid, min_media),
-    ).fetchone()
-    # sqlite3.Cursor.fetchone() is typed Any, so say what this one returns.
-    return cast("sqlite3.Row | None", row)
-
-
-def _item_pick_lists(
-    conn: sqlite3.Connection, root_id: int | None
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    # Pick-lists for in-panel editing: only *named* places (in this file's root)
-    # and *named* persons are offered as targets.
-    place_options = [
-        {"id": r["id"], "name": r["name"]}
-        for r in conn.execute(
-            """SELECT id, name FROM place_clusters
-           WHERE root_id=? AND name IS NOT NULL
-           ORDER BY name COLLATE NOCASE""",
-            (root_id,),
-        )
-    ]
-    person_options = [
-        {"id": r["id"], "name": r["name"]}
-        for r in conn.execute(
-            """SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''
-           ORDER BY name COLLATE NOCASE"""
-        )
-    ]
-    pet_options = [
-        {"id": r["id"], "name": r["name"]}
-        for r in conn.execute(
-            """SELECT id, name FROM pets WHERE name IS NOT NULL AND name != ''
-           ORDER BY name COLLATE NOCASE"""
-        )
-    ]
-    return place_options, person_options, pet_options
-
-
-def _item_manual_tags(
-    conn: sqlite3.Connection, fid: int
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    # Manually tagged people/pets on this file (person_files/pet_files) --
-    # no face/detection exists for these, so there's no face_id/detection_id.
-    # Name resolves from the live persons/pets table; if the id has rotted
-    # (a re-cluster ran since and repair hasn't caught up yet) fall back to
-    # the name stored on the row itself.
-    manual_people = [
-        {
-            "person_id": r["person_id"],
-            "name": r["name"] or r["person_name"],
-        }
-        for r in conn.execute(
-            """SELECT pf.person_id, pf.person_name, p.name
-           FROM person_files pf LEFT JOIN persons p ON p.id=pf.person_id
-           WHERE pf.file_id=?
-           ORDER BY COALESCE(p.name, pf.person_name) COLLATE NOCASE""",
-            (fid,),
-        )
-    ]
-    manual_pets = [
-        {
-            "pet_id": r["pet_id"],
-            "name": r["name"] or r["pet_name"],
-        }
-        for r in conn.execute(
-            """SELECT pf.pet_id, pf.pet_name, p.name
-           FROM pet_files pf LEFT JOIN pets p ON p.id=pf.pet_id
-           WHERE pf.file_id=?
-           ORDER BY COALESCE(p.name, pf.pet_name) COLLATE NOCASE""",
-            (fid,),
-        )
-    ]
-    return manual_people, manual_pets
-
-
-@reading
-def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, Any] | None:
-    """The detail-panel payload for one file: its dates, GPS, metadata,
-    people/animals, place, and the pick lists to edit them. Returns None if
-    ``fid`` doesn't exist."""
-    f = conn.execute(
-        """SELECT f.*, r.path AS root_path FROM files f
-           JOIN roots r ON r.id=f.root_id WHERE f.id=?""",
-        (fid,),
-    ).fetchone()
-    if not f:
-        return None
-    d = conn.execute("SELECT * FROM dates WHERE file_id=?", (fid,)).fetchone()
-    g = conn.execute("SELECT * FROM geo WHERE file_id=?", (fid,)).fetchone()
-    m = conn.execute("SELECT * FROM media_meta WHERE file_id=?", (fid,)).fetchone()
-    t = conn.execute("SELECT * FROM takeout_sidecar WHERE file_id=?", (fid,)).fetchone()
-    people, animals = _item_detections(conn, fid)
-    place = _item_place(conn, fid, min_media)
-    place_options, person_options, pet_options = _item_pick_lists(conn, f["root_id"])
-    manual_people, manual_pets = _item_manual_tags(conn, fid)
-    return {
-        "id": fid,
-        "name": os.path.basename(f["rel_path"]),
-        "rel_path": f["rel_path"],
-        "type": f["media_type"],
-        "size": f["size"],
-        "root_id": f["root_id"],
-        "date": d["best_datetime"] if d else None,
-        "date_source": d["date_source"] if d else None,
-        "date_confidence": d["date_confidence"] if d else None,
-        "gps": (
-            {"lat": g["lat"], "lon": g["lon"], "alt": g["alt"], "source": g["geo_source"]}
-            if g
-            else None
-        ),
-        "meta": (dict(m) if m else None),
-        "description": (t["description"] if t else None),
-        "people": people,
-        "animals": animals,
-        "place": ({"id": place["id"], "name": place["name"]} if place else None),
-        "place_options": place_options,
-        "person_options": person_options,
-        "pet_options": pet_options,
-        "manual_people": manual_people,
-        "manual_pets": manual_pets,
-    }
 
 
 @reading

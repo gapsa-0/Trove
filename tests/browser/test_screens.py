@@ -89,6 +89,24 @@ def test_a_health_row_without_a_rail_still_gets_the_full_width(open_app):
         assert app.errors() == []
 
 
+def test_a_visual_match_says_how_far_it_is_from_the_kept_copy(open_app):
+    """The distance is the whole point of showing a visual match separately:
+    "same picture" is a judgement, and the number is the evidence for it. It
+    has to reach the tile as a number with its unit explained somewhere a
+    reader can get at it, not as a bare figure that reads like a percentage.
+    """
+    with open_app("dups", wait_for=".duptile") as app:
+        tag = app.tab.evaluate("document.querySelector('.duptag.visual').textContent")
+        title = app.tab.evaluate("document.querySelector('.duptag.visual').title")
+
+        assert tag == "Visual match · 3"
+        assert title == "3 of 64 fingerprint bits differ from the kept copy"
+        # The kept copy is labelled by what it is, never by a distance of 0 to
+        # itself.
+        assert app.text(".duptile.kept .dtcap").strip() == "✓ kept"
+        assert app.errors() == []
+
+
 def test_the_library_grid_fills_with_the_archives_media(open_app):
     with open_app("library") as app:
         app.wait_for("#main img")
@@ -392,8 +410,11 @@ def test_a_photograph_and_a_document_are_the_same_size_in_the_text_group(open_ap
         assert len(set(media)) == 1, f"the media boxes disagree: {media}"
         assert max(media) < 140, f"a thumbnail grew to fill the column: {media}"
         # A photograph's own thumbnail is the most recognisable thing about it,
-        # so the picture is what it shows -- not the generic glyph.
-        assert app.count("#grid-text img") == 1
+        # so the picture is what it shows -- not the generic glyph. Asked of the
+        # photograph rather than as a count over the group: a document can carry
+        # a thumbnail too now (a PDF renders its first page), so "exactly one
+        # image here" would be pinning the absence of that rather than this.
+        assert app.count(f"#grid-text .tile[data-file-id='{archive.ids['ocr_photo']}'] img") == 1
         assert app.errors() == []
 
 

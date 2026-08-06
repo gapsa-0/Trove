@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...db import database as db
-from ...services import browse
+from ...services import browse, item_detail
 from ...services.types import MediaPage
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
@@ -11,13 +11,20 @@ from ._request import NOT_FOUND, Json, Request, ok_or_error
 def item(req: Request) -> dict | Json:
     """One file's full detail page, by id.
 
-    Takes no ``root``: the frontend never sends one for an item it reached from
-    the open archive's grid, so this resolves against whichever archive is open,
-    the same way thumbnails and originals do.
+    Takes ``root`` when the caller knows it, and falls back to whichever archive
+    the GUI has open when it does not (thumbnails and originals still resolve
+    that second way alone).
+
+    The explicit form exists because the two are not equally available. The grid
+    is drawn from ``?root=``, so a tile can be on screen and clickable before the
+    separate "open this archive" POST has landed -- and the viewer then asked
+    for an item against an archive the server did not yet consider open, and got
+    a 404 for a file that plainly exists. Browse never had the problem because
+    it always named the archive it was reading; this now does the same.
     """
-    rid = req.open_root_id
+    rid = req.root_id or req.open_root_id
     it = (
-        browse.item(req.db(rid), int(req.path.rsplit("/", 1)[1]), req.cfg.place_min_media)
+        item_detail.item(req.db(rid), int(req.path.rsplit("/", 1)[1]), req.cfg.place_min_media)
         if rid
         else None
     )

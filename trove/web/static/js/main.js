@@ -23,10 +23,15 @@ import {
 } from "./search.js";
 
 import {
-  MITEM, addPersonPicker, addPetPicker, closeModal, closePick, editDate, editPlace, newPlace,
-  onAddPerson, onAddPet, onPlaceSelect, openItem, reassignFace, removeManualPerson,
-  removeManualPet, renderInfo, saveDate, saveNewPlace,
+  MITEM, closeModal, closePick, copyText, editDate,
+  editPlace, isReading, newPlace, onAddPerson, onAddPet, openFileLocation, onPlaceSelect, openItem,
+  openRelated, reassignFace,
+  removeManualPerson, removeManualPet, renderInfo, saveDate, saveNewPlace, setReading, showRelated,
+  stepItem, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
 } from "./item.js";
+import {
+  highlightFace, toggleBoxes,
+} from "./boxes.js";
 import {
   renamePet,
 } from "./pets.js";
@@ -95,16 +100,44 @@ window.addEventListener("pagehide", () => {
 
 applyNavCollapsed();
 
+/* Clicking into an embedded PDF hands the keyboard to the browser's own viewer,
+   which uses the arrows to page and swallows them before this listener ever
+   runs. That is the bug where arrows mysteriously stop moving between files, so
+   it is made explicit instead: the frame taking focus puts the viewer into
+   reading mode, which says so on screen and gives Esc the job of stepping back
+   out. The window's blur is the only signal we get -- an iframe's focus does
+   not bubble, and its content is a browser-internal document we cannot listen
+   inside. */
+window.addEventListener("blur", () => {
+  if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
+  // The focused element is the <iframe>; `.docstage` is the box around it.
+  const el = document.activeElement;
+  if (el && el.tagName === "IFRAME" && el.closest(".docstage")) setReading(true);
+});
+
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
     closeSettings(); return;
   }
   if (e.key === "Escape" && docsOpen()) { closeDocs(); return; }
-  if (e.key === "Escape") { closeModal(); return; }
+  // closeModal() leaves the document first when one has the keyboard, and only
+  // closes the viewer on a second press.
+  if (e.key === "Escape") { closeModal(); document.getElementById("viewer").focus(); return; }
   if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
-  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-  const ids = S.gallery || [], at = ids.indexOf(MITEM.id), next = ids[at + (e.key === "ArrowLeft" ? -1 : 1)];
-  if (next != null) { e.preventDefault(); openItem(next); }
+  // While the document is being read, every key below belongs to it.
+  if (isReading()) return;
+  // Not while a field is being typed into: the date editor and the place
+  // name live inside this panel.
+  const el = document.activeElement, tag = el ? el.tagName : "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); stepItem(-1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); stepItem(1); }
+  else if (e.key === "i" || e.key === "I") { e.preventDefault(); toggleInspector(); }
+  else if (e.key === "b" || e.key === "B") { e.preventDefault(); toggleBoxes(); }
+  // The keys every image viewer has. "=" is the unshifted "+" on most layouts.
+  else if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomStep(1); }
+  else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomStep(-1); }
+  else if (e.key === "0") { e.preventDefault(); zoomReset(); }
 });
 
 syncThemeControl();
@@ -118,17 +151,21 @@ loadPicker().then(applyHash);
 // This list is the frontend's public surface; keep it alphabetical.
 // `tools/dev/check_handlers.py` fails the build if the two ever disagree.
 Object.assign(window, {
-  addArchiveFromForm, addPersonPicker, addPetPicker, answerSuggest, applyFilters,
+  addArchiveFromForm, answerSuggest, applyFilters,
   applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
   closeArchiveSetup, closeDocs, closeModal, closePick, closePlaceCluster, closeSettings,
-  editClusterName, editDate, editPersonName, editPlace, flipFeature, hidePerson, mergeAskCancel,
+  copyText,
+  editClusterName, editDate, editPersonName, editPlace, flipFeature, hidePerson, highlightFace,
+  mergeAskCancel,
   newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
-  openDocs, openItem, openSettings, reassignFace, removeFeature, removeManualPerson,
+  openDocs, openFileLocation, openItem, openRelated, openSettings, reassignFace, removeFeature, removeManualPerson,
   removeManualPet,
   renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setArchiveName, setMapView,
-  setStorageMetric, showDoc, showSection, submitArchiveSetup, toPicker, toggleFeature, toggleNav,
+  setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
+  toggleBoxes, toggleFeature, toggleInspector, toggleNav,
+  viewerBack,
   togglePipelinePause,
-  toggleStagePause, toggleTheme, undoMerge,
+  toggleStagePause, toggleTheme, undoMerge, zoomReset, zoomStep, zoomToSlider,
 });

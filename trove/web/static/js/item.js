@@ -1,92 +1,516 @@
-// The detail modal: what one item shows, and everything editable on it --
-// reassigning a face, adding a manual person or pet tag, correcting the date at
-// whatever precision is known, and attaching or creating a place. The place
-// picker's own small map is private here; syncPickerMapTiles() is the theme
-// switch's only way in.
+// The viewer: what one item shows, how you move between items, and everything
+// editable on it -- reassigning a face, adding a manual person or pet tag,
+// correcting the date at whatever precision is known, and attaching or creating
+// a place. The place picker's own small map is private here;
+// syncPickerMapTiles() is the theme switch's only way in.
+//
+// Two rules run through the whole panel and are worth knowing before editing it:
+//
+// * **A feature this archive declined produces no section at all.** Not an
+//   empty one, not an explanation. The setup panel is where an archive says
+//   what it wants; the viewer must not re-open that conversation on every file.
+//   `archiveHasFeature` is the gate, the same one Browse uses for its composer.
+// * **"Found nothing" and "not looked at yet" are different facts.** The server
+//   sends `read`, one flag per stage, and every empty state branches on it. An
+//   archive mid-pipeline is mostly the second case, and rendering it as the
+//   first claims a finding we do not have.
 
 import {
   jget, qpost,
 } from "./api.js";
 import {
-  esc, fmtBytes, fmtDate, toast,
+  drawBoxes, setBoxSource,
+} from "./boxes.js";
+import {
+  esc, toast,
 } from "./dom.js";
+import {
+  relStrip, renderPanel, wordish,
+} from "./panel.js";
 import {
   MAP_WORLD_BOUNDS, configureMapViewport, replaceMapTiles, themedTileLayer,
 } from "./places.js";
 import {
-  TYPE_ICON, typeLabel,
+  setGallery,
+} from "./gallery.js";
+import {
+  S, TYPE_ICON, archiveHasFeature, typeLabel,
 } from "./state.js";
 
 export let MITEM = null;                 // the currently-open item, mutated in place on edit
-export async function openItem(id) {
-  MITEM = await jget("/api/item/" + id);
-  const m = document.getElementById("mmedia");
-  if (MITEM.type === "image") m.innerHTML = `<img src="/file/${id}">`;
-  else if (MITEM.type === "video") m.innerHTML = `<video src="/file/${id}" controls autoplay></video>`;
-  else if (MITEM.type === "audio") m.innerHTML = `<div style="padding:40px"><div class="ph" style="font-size:60px;text-align:center">🎵</div><audio src="/file/${id}" controls autoplay></audio></div>`;
-  else m.innerHTML = `<div class="ph" style="font-size:70px;padding:60px">${TYPE_ICON[MITEM.type] || "📦"}</div>`;
+let RAIL_OPEN = true;                    // the inspector, remembered across items
+let READING = false;                     // the document has the keyboard
+let RELATED = null;                      // ids fetched by "Show related files", for this item only
+/* Where a jump came from, so it can be undone.
+
+   Opening a picture out of "Looks like this" leaves the gallery you were
+   walking behind, which is right -- the arrows should then move through the
+   similar set you jumped into. But it also means there is no way back to the
+   file you were looking at, and no screen behind the viewer to return to. Each
+   jump pushes the item and the gallery it was walking; Back pops one. */
+let TRAIL = [];
+
+const has = id => archiveHasFeature(S.arch, id);
+const viewer = () => document.getElementById("viewer");
+
+export async function openItem(id, opts = {}) {
+  // Named archive, not "whichever one is open": the grid is drawn from ?root=,
+  // so a tile is clickable before the open-archive POST has necessarily landed.
+  const it = await jget(`/api/item/${id}${S.arch ? `?root=${S.arch.id}` : ""}`);
+  // An error payload is an object too, so `!it` alone would let a 404 through
+  // and open a viewer with no name, no media and an empty panel.
+  if (!it || it.error || !it.name) {
+    toast("Couldn’t open that file.", true);
+    return;
+  }
+  MITEM = it;
+  // Any ordinary open -- a tile, an arrow, the filmstrip -- ends the trail: you
+  // are somewhere you navigated to yourself, not somewhere you jumped from.
+  if (!opts.keepTrail) TRAIL = [];
+  RELATED = opts.related || null;
+  READING = false;
+  renderStage();
   renderInfo();
+  renderChrome();
+  renderFilmstrip();
   document.getElementById("modal").classList.add("open");
+  prefetchNeighbours();
 }
+
+/* ---------- moving between items ----------
+   The gallery is whatever screen you opened this from, in the order it is on
+   screen (S.gallery). Every screen that opens an item fills it, so the arrows
+   walk a person's photos when you came from a person and the Browse results
+   when you came from Browse. */
+function galleryAt() {
+  const ids = S.gallery || [];
+  return ids.indexOf(MITEM ? MITEM.id : -1);
+}
+/* Open a file from the "Looks like this" grid: the arrows then walk those
+   results, and Back returns to the file they were found for. */
+export function openRelated(id) {
+  if (MITEM) {
+    TRAIL.push({
+      id: MITEM.id,
+      gallery: (S.gallery || []).slice(),
+      source: S.gallerySource,
+      related: RELATED,
+    });
+  }
+  // The results become what the arrows walk. The guard is for the degenerate
+  // case of a jump with nothing else alongside it: a file should always be in
+  // its own gallery, or the viewer reports it as coming from nowhere.
+  const ids = (RELATED || []).map(r => r.id);
+  if (!ids.includes(id)) ids.push(id);
+  setGallery(ids, "in pictures that look alike");
+  openItem(id, { keepTrail: true });
+}
+export function viewerBack() {
+  const previous = TRAIL.pop();
+  if (!previous) return;
+  setGallery(previous.gallery, previous.source);
+  openItem(previous.id, { keepTrail: true, related: previous.related });
+}
+
+export function stepItem(delta) {
+  if (READING) return;                   // the document owns the arrows
+  const ids = S.gallery || [], at = galleryAt();
+  if (at < 0) return;
+  const next = ids[at + delta];
+  if (next != null) openItem(next);
+}
+/* The change that makes arrowing feel instant rather than merely possible: the
+   next and previous originals are already in the browser's cache by the time
+   you ask for them. Images only -- a video or a PDF is far too large to fetch
+   on speculation, and both stream on demand anyway. */
+function prefetchNeighbours() {
+  const ids = S.gallery || [], at = galleryAt();
+  if (at < 0) return;
+  [ids[at - 1], ids[at + 1]].forEach(id => {
+    if (id == null) return;
+    const img = new Image();
+    img.src = "/thumb/" + id;            // the filmstrip's copy, always cheap
+  });
+  // The full-size neighbour is worth it for a photo and nothing else.
+  if (MITEM && MITEM.type === "image") {
+    const next = ids[at + 1];
+    if (next != null) { const i = new Image(); i.src = "/file/" + next; }
+  }
+}
+
+/* ---------- the stage ---------- */
+function renderStage() {
+  const it = MITEM, m = document.getElementById("mmedia");
+  const v = viewer();
+  v.classList.remove("reading");
+  m.className = "stage";
+  m.innerHTML = "";
+  if (!m.dataset.zoomMounted) { mountZoom(m); m.dataset.zoomMounted = "1"; }
+  // Every file opens fit to the frame; see the note on ZOOM.
+  ZOOM = { scale: 1, x: 0, y: 0 };
+  // A PDF is rendered by the browser's own viewer: it brings a toolbar, a page
+  // count, zoom and text selection, so we build none of them. `/file/` already
+  // serves it as application/pdf with Accept-Ranges, which is what lets a long
+  // document load the pages you reach rather than all of them.
+  const old = v.querySelector(".docstage,.noview");
+  if (old) old.remove();
+  if (isPdf(it)) {
+    const box = document.createElement("div");
+    box.className = "docstage";
+    const f = document.createElement("iframe");
+    f.title = it.name;
+    f.src = "/file/" + it.id;
+    box.appendChild(f);
+    // Clicking into the frame is what hands the arrows over; the frame cannot
+    // tell us that itself, so the window's blur is the signal (see main.js).
+    v.insertBefore(box, m.nextSibling);
+    return;
+  }
+  if (it.type === "document" || it.type === "archive" || it.type === "other") {
+    const d = document.createElement("div");
+    d.className = "noview";
+    d.innerHTML = `<div class="big">${TYPE_ICON[it.type] || "📦"}</div>
+      <div class="say">No preview for ${esc(fileKind(it))}</div>
+      <div class="sub">${esc(noPreviewReason(it))}</div>
+      <a class="iwide" style="width:auto" href="/file/${it.id}" target="_blank">Open in the app that owns it ↗</a>`;
+    v.insertBefore(d, m.nextSibling);
+    return;
+  }
+  if (it.type === "image") {
+    const img = document.createElement("img");
+    img.src = "/file/" + it.id;
+    img.alt = it.name;
+    m.appendChild(img);
+  } else if (it.type === "video") {
+    m.innerHTML = `<video src="/file/${it.id}" controls autoplay></video>`;
+  } else if (it.type === "audio") {
+    m.innerHTML = `<div style="padding:40px;text-align:center">
+      <div class="ph" style="font-size:60px">🎵</div>
+      <audio src="/file/${it.id}" controls autoplay></audio></div>`;
+  }
+  setBoxSource(m, it);
+  drawBoxes();
+  renderZoomBar();
+}
+function isPdf(it) {
+  return (it.rel_path || "").toLowerCase().endsWith(".pdf");
+}
+function fileKind(it) {
+  const ext = ((it.rel_path || "").split(".").pop() || "").toLowerCase();
+  return ext && ext.length <= 5 ? `a .${ext} file` : `this ${typeLabel(it.type)}`;
+}
+/* Why there is nothing to look at, in terms of what was actually read -- which
+   depends on whether this archive reads documents at all, and whether the pass
+   has reached this file. */
+function noPreviewReason(it) {
+  if (!has("documents")) return "Nothing here can draw this file, and this archive does not read the text inside documents.";
+  if (!it.read.text) return "Nothing here can draw this file. Trove has not read it yet either, so its words are not searchable — for now.";
+  if (it.text) return `Nothing here can draw this file. Trove read ${wordish(it.text.chars)} out of it, and they are searchable.`;
+  return "Nothing here can draw this file, and there was no text in it to read.";
+}
+/* ---------- zoom ----------
+   Scale 1 is "fit the frame", which is where every file opens; the image is
+   laid out by the stage's own max-width/max-height and this only ever scales up
+   from there. Everything is one transform on the <img>: anchoring at the
+   pointer is then arithmetic rather than scroll juggling, it composites instead
+   of relaying out a large bitmap, and the controls have a single number to read.
+
+   Reset on every open, deliberately. Zoom is about the picture in front of you,
+   and carrying 400% onto the next file means arrowing through an archive shows
+   you a sequence of arbitrary crops. */
+const ZOOM_MAX = 8;
+let ZOOM = { scale: 1, x: 0, y: 0 };
+
+function stageImg() {
+  const m = document.getElementById("mmedia");
+  return m ? m.querySelector("img") : null;
+}
+function resetZoom() {
+  ZOOM = { scale: 1, x: 0, y: 0 };
+  applyZoom();
+}
+function applyZoom() {
+  const img = stageImg(), m = document.getElementById("mmedia");
+  if (img) img.style.transform = `translate(${ZOOM.x}px, ${ZOOM.y}px) scale(${ZOOM.scale})`;
+  if (m) m.classList.toggle("zoomed", ZOOM.scale > 1.001);
+  renderZoomBar();
+  // The boxes are positioned against the image's rendered rectangle, which the
+  // transform has just moved.
+  drawBoxes();
+}
+// A slider position of 0..100 mapped onto 1..ZOOM_MAX geometrically, so the
+// first half of the travel is the range people actually use.
+const sliderToScale = v => Math.pow(ZOOM_MAX, v / 100);
+const scaleToSlider = s => Math.round(100 * Math.log(s) / Math.log(ZOOM_MAX));
+
+function renderZoomBar() {
+  const bar = document.getElementById("zoombar");
+  if (!bar) return;
+  // Only once there is something to control. At fit there is nothing to say,
+  // and a permanent bar over every photograph is chrome earning nothing.
+  const show = MITEM && MITEM.type === "image" && ZOOM.scale > 1.001;
+  bar.hidden = !show;
+  if (!show) return;
+  document.getElementById("zoom-range").value = String(scaleToSlider(ZOOM.scale));
+  document.getElementById("zoom-pct").textContent = `${Math.round(ZOOM.scale * 100)}%`;
+  document.getElementById("zoom-out").disabled = ZOOM.scale <= 1.001;
+  document.getElementById("zoom-in").disabled = ZOOM.scale >= ZOOM_MAX - 0.001;
+}
+
+/* Zoom to `scale`, keeping whatever is under (clientX, clientY) where it is.
+   With transform-origin at the image's own top-left, the point under the cursor
+   sits at (client - rect) in displayed pixels, so holding it still is a shift
+   of that distance times the change in scale. */
+function zoomTo(scale, clientX, clientY) {
+  const img = stageImg();
+  if (!img) return;
+  const next = Math.max(1, Math.min(ZOOM_MAX, scale));
+  const rect = img.getBoundingClientRect();
+  const ax = clientX == null ? rect.left + rect.width / 2 : clientX;
+  const ay = clientY == null ? rect.top + rect.height / 2 : clientY;
+  const k = next / ZOOM.scale;
+  ZOOM.x -= (ax - rect.left) * (k - 1);
+  ZOOM.y -= (ay - rect.top) * (k - 1);
+  ZOOM.scale = next;
+  if (ZOOM.scale <= 1.001) { ZOOM.x = 0; ZOOM.y = 0; ZOOM.scale = 1; }
+  else clampPan();
+  applyZoom();
+}
+/* Keep at least a quarter of the frame covered by the picture, so it can be
+   pushed to the edge to look at a corner but never flicked off screen. */
+function clampPan() {
+  const img = stageImg(), m = document.getElementById("mmedia");
+  if (!img || !m) return;
+  const frame = m.getBoundingClientRect();
+  const w = img.offsetWidth * ZOOM.scale, h = img.offsetHeight * ZOOM.scale;
+  const slackX = Math.max(0, (w - frame.width) / 2) + frame.width * 0.25;
+  const slackY = Math.max(0, (h - frame.height) / 2) + frame.height * 0.25;
+  ZOOM.x = Math.max(-slackX, Math.min(slackX, ZOOM.x));
+  ZOOM.y = Math.max(-slackY, Math.min(slackY, ZOOM.y));
+}
+
+export function zoomStep(direction) {
+  zoomTo(ZOOM.scale * (direction > 0 ? 1.5 : 1 / 1.5), null, null);
+}
+export function zoomToSlider(value) {
+  zoomTo(sliderToScale(Number(value)), null, null);
+}
+export function zoomReset() { resetZoom(); }
+
+/* Wheel, trackpad and drag, bound to the stage for the life of one item.
+   A trackpad pinch arrives as a wheel event with ctrlKey set, which is why both
+   paths lead here; a plain two-finger scroll zooms too, because the stage has
+   nothing else to scroll. */
+function mountZoom(m) {
+  m.addEventListener("wheel", event => {
+    if (!MITEM || MITEM.type !== "image") return;
+    event.preventDefault();
+    // Pinch gestures report far larger deltas than a wheel notch, so the
+    // exponent is on the delta itself rather than a fixed step per event.
+    const factor = Math.exp(-event.deltaY * (event.ctrlKey ? 0.01 : 0.0022));
+    zoomTo(ZOOM.scale * factor, event.clientX, event.clientY);
+  }, { passive: false });
+
+  m.addEventListener("pointerdown", event => {
+    if (ZOOM.scale <= 1.001 || event.button !== 0) return;
+    event.preventDefault();
+    m.setPointerCapture(event.pointerId);
+    m.classList.add("panning");
+    let lastX = event.clientX, lastY = event.clientY;
+    const move = e => {
+      ZOOM.x += e.clientX - lastX;
+      ZOOM.y += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      clampPan();
+      applyZoom();
+    };
+    const up = () => {
+      m.removeEventListener("pointermove", move);
+      m.removeEventListener("pointerup", up);
+      m.removeEventListener("pointercancel", up);
+      m.classList.remove("panning");
+    };
+    m.addEventListener("pointermove", move);
+    m.addEventListener("pointerup", up);
+    m.addEventListener("pointercancel", up);
+  });
+
+  // Double-click is the shortcut everyone tries: in to 200% at the point you
+  // clicked, or back to fit if already in.
+  m.addEventListener("dblclick", event => {
+    if (!MITEM || MITEM.type !== "image") return;
+    if (ZOOM.scale > 1.001) resetZoom();
+    else zoomTo(2, event.clientX, event.clientY);
+  });
+}
+/* ---------- floating chrome ---------- */
+function renderChrome() {
+  const it = MITEM, v = viewer();
+  v.classList.toggle("rail-on", RAIL_OPEN);
+  const ids = S.gallery || [], at = galleryAt();
+  const pos = document.getElementById("vpos");
+  if (READING) {
+    pos.className = "vpos reading";
+    pos.innerHTML = `<b>Reading</b><span class="in">· the arrows belong to the document — Esc to step out</span>`;
+  } else {
+    pos.className = "vpos";
+    // Position only when we know it. Opened from somewhere with no gallery
+    // (a map pin, say), the name is the honest thing to show instead of a
+    // made-up "1 of 1".
+    pos.innerHTML = at >= 0 && ids.length > 1
+      ? `<b>${at + 1}</b><span class="sep">of</span><b>${ids.length.toLocaleString()}</b><span class="in">· ${esc(gallerySource())}</span>`
+      : `<span class="in">${esc(it.name)}</span>`;
+  }
+  const back = document.getElementById("vback");
+  back.hidden = !TRAIL.length;
+  const prev = document.getElementById("vprev"), next = document.getElementById("vnext");
+  prev.disabled = !(at > 0);
+  next.disabled = !(at >= 0 && at < ids.length - 1);
+  document.getElementById("vinfo").setAttribute("aria-pressed", String(RAIL_OPEN));
+  renderChip();
+}
+function gallerySource() {
+  return S.gallerySource || "in Browse";
+}
+export function toggleInspector() {
+  RAIL_OPEN = !RAIL_OPEN;
+  renderChrome();
+  // The map is laid out against a panel that just changed width.
+  if (MMAP) setTimeout(() => MMAP && MMAP.invalidateSize(), 300);
+}
+/* The map chip: a geotagged file still says where it was with the inspector
+   closed. Drawn from the same coordinates, never its own tile request. */
+function renderChip() {
+  const chip = document.getElementById("vchip"), it = MITEM;
+  const show = it.gps && has("places") && it.place && it.place.name;
+  chip.hidden = !show;
+  if (show) {
+    chip.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <span class="cap">${esc(it.place.name)}</span>`;
+  }
+}
+
+/* ---------- the filmstrip ---------- */
+function renderFilmstrip() {
+  const film = document.getElementById("vfilm");
+  const ids = S.gallery || [], at = galleryAt();
+  // `no-film` is what tells the stage and the inspector to run to the bottom
+  // of the frame instead of stopping above a strip that is not there.
+  const v = viewer();
+  if (at < 0 || ids.length < 2) {
+    film.innerHTML = ""; film.hidden = true; v.classList.add("no-film"); return;
+  }
+  film.hidden = false;
+  v.classList.remove("no-film");
+  // A window around the current file rather than the whole gallery: a 97k-file
+  // archive would otherwise build 97k buttons every time you press an arrow.
+  const from = Math.max(0, at - 12), to = Math.min(ids.length, at + 13);
+  film.innerHTML = ids.slice(from, to).map((id, n) => {
+    const i = from + n;
+    // A file with no thumbnail (a .docx, a PDF on an install without the PDF
+    // reader) answers 404, and a broken-image glyph in the strip reads as a
+    // bug rather than as "nothing to show".
+    return `<button type="button" onclick="openItem(${id})" aria-current="${i === at}"
+      aria-label="File ${i + 1} of ${ids.length}"><img src="/thumb/${id}" loading="lazy" alt=""
+        onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'filmph',textContent:'📄'}))"></button>`;
+  }).join("");
+  const cur = film.querySelector('[aria-current="true"]');
+  if (cur) cur.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
+/* ---------- the inspector ---------- */
 export function renderInfo() {
   closePick();
+  disposeItemMap();
   const it = MITEM;
-  const kv = (k, v) => v != null && v !== "" ? `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>` : "";
-  const dims = it.meta && it.meta.width ? `${it.meta.width}×${it.meta.height}` : "";
-  const cam = it.meta && it.meta.model ? ((it.meta.make || "") + " " + it.meta.model).trim() : "";
-  const gps = it.gps ? `<a href="https://www.openstreetmap.org/?mlat=${it.gps.lat}&mlon=${it.gps.lon}&zoom=14" target="_blank">${it.gps.lat.toFixed(5)}, ${it.gps.lon.toFixed(5)}</a>` : "";
-  const dsrc = it.date && it.date_source ? `<span class="muted" style="font-size:11px"> · ${it.date_source}</span>` : "";
-  // faces (detected) + manual person tags, unioned in one list
-  const faceRows = (it.people || []).map(faceRow).join("") +
-    (it.manual_people || []).map(manualPersonRow).join("");
-  let faces;
-  if (faceRows) faces = `<div class="facelist">${faceRows}</div>`;
-  else if (it.type !== "image" && it.type !== "video")
-    faces = `<div class="muted" style="font-size:12px">Face detection runs on photos and videos.</div>`;
-  else faces = `<div class="muted" style="font-size:12px">No faces detected.</div>`;
-  // pets (detected) + manual pet tags
-  const animalRows = (it.animals || []).map(a => `<div class="facerow">
-        <img class="facecrop" src="/animalThumb/${a.detection_id}" loading="lazy">
-        <span>${a.name ? `<strong>${esc(a.name)}</strong> ` : ""}<span class="pet-species">${esc(a.species)}</span>
-        <span class="muted">${Math.round(a.score * 100)}%</span></span></div>`).join("") +
-    (it.manual_pets || []).map(manualPetRow).join("");
-  const animals = animalRows ? `<div class="facelist">${animalRows}</div>`
-    : `<div class="muted" style="font-size:12px">No pets detected.</div>`;
-  // place
-  const placeTxt = it.place ? (it.place.name ? esc(it.place.name) : '<span class="muted">Name this place</span>')
-    : '<span class="muted">No place set</span>';
-  document.getElementById("minfo").innerHTML = `<h3>${esc(it.name)}</h3>` +
-    `<div class="isec"><div class="h">People <button class="linkbtn" onclick="addPersonPicker()">Add</button></div>
-       <div id="people-add"></div>${faces}</div>` +
-    `<div class="isec"><div class="h">Pets <button class="linkbtn" onclick="addPetPicker()">Add</button></div>
-       <div id="pet-add"></div>${animals}</div>` +
-    `<div class="isec"><div class="h">Place <button class="linkbtn" onclick="editPlace()">Change</button></div>
-       <div id="placeval" class="val">${placeTxt}</div></div>` +
-    `<div class="isec"><div class="h">Date <button class="linkbtn" onclick="editDate()">Edit</button></div>
-       <div id="dateval" class="val">${fmtDate(it.date)}${dsrc}</div></div>` +
-    `<div class="isec"><div class="h">Details</div>` +
-    kv("Type", typeLabel(it.type)) + kv("Size", fmtBytes(it.size)) + kv("Dimensions", dims) + kv("Camera", cam) +
-    kv("Coordinates", gps) + kv("Description", it.description ? esc(it.description) : "") + `</div>` +
-    `<div class="isec"><div class="h">File</div>
-       <div style="font-size:11px;color:var(--muted);word-break:break-all">${esc(it.rel_path)}</div>
-       <div style="margin-top:10px"><a href="/file/${it.id}" target="_blank">Open original ↗</a></div></div>`;
+  if (!it) return;
+  document.getElementById("minfo").innerHTML = renderPanel(it, RELATED);
+  mountItemMap();
+}
+
+
+/* The three things the panel's controls DO. Their markup is in panel.js, which
+   is pure; anything that touches the open item, the clipboard or the network
+   belongs here with the rest of the edit flows. */
+export function copyText() {
+  const t = MITEM && MITEM.text;
+  if (!t || !t.transcript) return;
+  navigator.clipboard.writeText(t.transcript)
+    .then(() => toast("Copied the detected text."))
+    .catch(() => toast("Couldn’t copy that text.", true));
+}
+/* Reveal the file in the OS file manager. Desktop only: a browser tab has no
+   way to do this, so the control is not drawn there at all (see panel.js).
+   The absolute path comes from the payload, and the main process checks it is
+   under a registered archive root before handing it to the shell. */
+export function openFileLocation() {
+  if (!window.archiveDesktop || !MITEM || !MITEM.abs_path) return;
+  window.archiveDesktop.revealFile(MITEM.abs_path)
+    .catch(() => toast("Couldn’t open that folder.", true));
+}
+/* Deliberately on demand, never on open: this is the only thing the panel can
+   ask for that costs a pass over every embedding in the archive, and a viewer
+   you hold an arrow key down on must not start one per file. */
+export function showRelated() {
+  const id = MITEM.id, hold = document.getElementById("relhold");
+  if (!hold) return;
+  hold.innerHTML = `<button class="findbtn" disabled>Looking through the archive…</button>`;
+  jget(`/api/similar?id=${id}&limit=8${S.arch ? `&root=${S.arch.id}` : ""}`)
+    .then(r => {
+      if (!stillOpen(id)) return;
+      RELATED = (r && r.items) || [];
+      const h = document.getElementById("relhold");
+      if (h) h.innerHTML = relStrip(RELATED);
+    })
+    .catch(() => {
+      if (!stillOpen(id)) return;
+      const h = document.getElementById("relhold");
+      if (h) h.innerHTML = `<div class="imuted">Couldn’t look for related files just now.</div>`;
+    });
+}
+
+/* ---------- the item's map ----------
+   Drawn as a pin immediately and given tiles only once you have stopped on the
+   file. Opening an item is a far more frequent act than opening Places, and
+   arrowing through two hundred geotagged photos would otherwise stream two
+   hundred sets of coordinates to a public tile server -- turning the one
+   bounded exception in ARCHITECTURE.md into a side effect of browsing. Flick
+   past and nothing is fetched; stop to look and the map fills in. */
+const TILE_DWELL_MS = 400;
+let MMAP = null, MMAP_TILES = null, MMAP_T = null;
+function disposeItemMap() {
+  clearTimeout(MMAP_T); MMAP_T = null;
+  if (MMAP) { MMAP.remove(); MMAP = null; }
+  MMAP_TILES = null;
+}
+function mountItemMap() {
+  const it = MITEM;
+  if (!it || !it.gps || !document.getElementById("imap")) return;
+  const id = it.id;
+  MMAP_T = setTimeout(() => {
+    if (!stillOpen(id)) return;
+    const host = document.getElementById("imap");
+    if (!host) return;
+    host.innerHTML = "";
+    MMAP = L.map(host, {
+      zoomControl: false, attributionControl: false, dragging: false,
+      scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false,
+      keyboard: false, zoomSnap: 0, maxBounds: MAP_WORLD_BOUNDS, maxBoundsViscosity: 1
+    });
+    configureMapViewport(MMAP);
+    MMAP_TILES = themedTileLayer().addTo(MMAP);
+    MMAP.setView([it.gps.lat, it.gps.lon], 14);
+    L.circleMarker([it.gps.lat, it.gps.lon], {
+      radius: 7, weight: 2, color: "#fff", fillColor: "#3a7bd5", fillOpacity: 1
+    }).addTo(MMAP);
+    setTimeout(() => MMAP && MMAP.invalidateSize(), 40);
+  }, TILE_DWELL_MS);
 }
 // Optimistic saves: update the panel now, persist in the background, and roll back
 // only if the DB write actually fails, so editing feels instant even while the
 // pipeline holds the single writer. Every background callback bails out (or re-checks
 // stillOpen) if the modal has since closed or moved to another item.
-function faceRow(f) {
-  const named = MITEM.person_options || [];
-  const isNamed = f.person_id && f.name;
-  let opts = isNamed ? "" : `<option value="" selected>${f.name ? esc(f.name) : "unknown"}</option>`;
-  named.forEach(p => { opts += `<option value="${p.id}"${p.id === f.person_id ? " selected" : ""}>${esc(p.name)}</option>`; });
-  if (!named.length && !isNamed)
-    return `<div class="facerow"><img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
-      <span class="muted" style="font-size:12px">Name people in the People section to label them here.</span></div>`;
-  return `<div class="facerow">
-    <img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
-    <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select></div>`;
-}
 function stillOpen(id) { return MITEM && MITEM.id === id; }
 export function reassignFace(faceId, pid, sel) {
   if (!pid) return;
@@ -114,45 +538,6 @@ function flashSaved(el) {
    filter to named ones), same discipline as reassignFace: mutate MITEM
    and repaint now, POST in the background, roll back + toast only on an
    actual failure, bail via stillOpen if the user has moved on. ----- */
-function manualPersonRow(p) {
-  return `<div class="facerow">
-    <div class="facecrop placeholder">👤</div>
-    <span style="flex:1;min-width:0"><strong>${esc(p.name)}</strong></span>
-    <button class="linkbtn" onclick="removeManualPerson(${p.person_id})">Remove</button></div>`;
-}
-function manualPetRow(p) {
-  return `<div class="facerow">
-    <div class="facecrop placeholder">🐾</div>
-    <span style="flex:1;min-width:0"><strong>${esc(p.name)}</strong></span>
-    <button class="linkbtn" onclick="removeManualPet(${p.pet_id})">Remove</button></div>`;
-}
-function _taggedPersonIds(it) {
-  const ids = new Set((it.people || []).filter(f => f.person_id).map(f => f.person_id));
-  (it.manual_people || []).forEach(p => ids.add(p.person_id));
-  return ids;
-}
-function _taggedPetIds(it) {
-  const ids = new Set((it.animals || []).filter(a => a.pet_id).map(a => a.pet_id));
-  (it.manual_pets || []).forEach(p => ids.add(p.pet_id));
-  return ids;
-}
-export function addPersonPicker() {
-  const it = MITEM, host = document.getElementById("people-add");
-  if (!host) return;
-  if (!(it.person_options || []).length) {
-    host.innerHTML = `<div class="muted" style="font-size:12px;margin:2px 0 8px">Name people in the People section to label them here.</div>`;
-    return;
-  }
-  const present = _taggedPersonIds(it);
-  const avail = it.person_options.filter(p => !present.has(p.id));
-  if (!avail.length) {
-    host.innerHTML = `<div class="muted" style="font-size:12px;margin:2px 0 8px">Everyone named is already tagged here.</div>`;
-    return;
-  }
-  let sel = `<select class="fsel" onchange="onAddPerson(this.value)"><option value="" selected>Add a person…</option>`;
-  avail.forEach(p => sel += `<option value="${p.id}">${esc(p.name)}</option>`);
-  host.innerHTML = sel + `</select>`;
-}
 export function onAddPerson(pid) {
   if (!pid) return;
   const it = MITEM, id = it.id;
@@ -186,23 +571,6 @@ export function removeManualPerson(pid) {
   qpost("/api/item/person/remove", { person_id: pid, file_id: id })
     .then(r => { if (!(r && r.ok)) revert("Couldn’t remove that tag: " + ((r && r.error) || "try again")); })
     .catch(() => revert("Couldn’t remove that tag: connection error"));
-}
-export function addPetPicker() {
-  const it = MITEM, host = document.getElementById("pet-add");
-  if (!host) return;
-  if (!(it.pet_options || []).length) {
-    host.innerHTML = `<div class="muted" style="font-size:12px;margin:2px 0 8px">Name pets in the Pets section to label them here.</div>`;
-    return;
-  }
-  const present = _taggedPetIds(it);
-  const avail = it.pet_options.filter(p => !present.has(p.id));
-  if (!avail.length) {
-    host.innerHTML = `<div class="muted" style="font-size:12px;margin:2px 0 8px">Every named pet is already tagged here.</div>`;
-    return;
-  }
-  let sel = `<select class="fsel" onchange="onAddPet(this.value)"><option value="" selected>Add a pet…</option>`;
-  avail.forEach(p => sel += `<option value="${p.id}">${esc(p.name)}</option>`);
-  host.innerHTML = sel + `</select>`;
 }
 export function onAddPet(pid) {
   if (!pid) return;
@@ -270,6 +638,10 @@ export function saveDate() {
     .catch(() => revert("Couldn’t save the date: connection error"));
 }
 export function editPlace() {
+  // The editor replaces the whole of #placeval, and on a geotagged file that
+  // is where the item's map lives -- so the Leaflet handle has to go with the
+  // node it is drawn into, or it survives pointing at a detached element.
+  disposeItemMap();
   const cur = MITEM.place ? MITEM.place.id : "";
   let sel = `<select class="fsel" onchange="onPlaceSelect(this.value)"><option value="">No place</option>`;
   (MITEM.place_options || []).forEach(p => sel += `<option value="${p.id}"${p.id === cur ? " selected" : ""}>${esc(p.name)}</option>`);
@@ -295,6 +667,9 @@ export function closePick() { if (MPICK) { MPICK.remove(); MPICK = null; } MPICK
 // Places map's own seam: the switch swaps tiles, it does not own the handle.
 export function syncPickerMapTiles() {
   if (MPICK) MPICK_TILES = replaceMapTiles(MPICK, MPICK_TILES);
+  // The item's own map is the second Leaflet handle this module owns, and it
+  // cannot re-theme itself from CSS either.
+  if (MMAP) MMAP_TILES = replaceMapTiles(MMAP, MMAP_TILES);
 }
 export function newPlace() {
   const host = document.getElementById("p-pick");
@@ -345,7 +720,26 @@ export function saveNewPlace() {
     toast("Couldn’t create the place: connection error", true);
   });
 }
+/* Whether the document currently owns the keyboard. main.js asks, because Esc
+   has to mean "leave the document" before it can mean "close the viewer". */
+export function isReading() { return READING; }
+export function setReading(on) {
+  if (READING === on) return;
+  READING = on;
+  viewer().classList.toggle("reading", on);
+  renderChrome();
+}
+
 export function closeModal() {
-  closePick(); document.getElementById("modal").classList.remove("open");
-  document.getElementById("mmedia").innerHTML = ""; MITEM = null;
+  if (READING) { setReading(false); return; }   // Esc leaves the document first
+  closePick();
+  disposeItemMap();
+  TRAIL = [];
+  document.getElementById("modal").classList.remove("open");
+  const v = viewer();
+  const doc = v.querySelector(".docstage,.noview");
+  if (doc) doc.remove();                        // stops a playing PDF/embed holding focus
+  document.getElementById("mmedia").innerHTML = "";
+  document.getElementById("vfilm").innerHTML = "";
+  MITEM = null; RELATED = null;
 }

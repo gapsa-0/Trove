@@ -77,6 +77,32 @@ def semantic_status(req: Request) -> dict:
     return status
 
 
+def similar(req: Request) -> MediaPage | Json:
+    """Files whose picture looks like the one named by ``id``.
+
+    Unlike description search this needs no model at all: the vector is already
+    in the catalogue, so an installation that has lost the embedding extras can
+    still answer it as long as numpy is importable. Hence no
+    ``ModelUnavailableError`` here -- the one failure worth distinguishing is
+    "this file has nothing to compare with", which is a 200 saying so rather
+    than an error, because it is a normal state of a half-indexed archive.
+    """
+    raw = req.one("id")
+    if raw is None or not raw.isdigit():
+        return Json({"error": "A file id is required"}, 400)
+    limit = max(1, min(24, int(req.one("limit") or 8)))
+    # Same fallback as /api/item/: the viewer knows its archive and names it,
+    # but ``req.db(None)`` raises rather than returning nothing, so an omitted
+    # ``root`` would surface as a 500 instead of an empty answer.
+    rid = req.root_id or req.open_root_id
+    if rid is None:
+        return Json({"items": [], "indexed": False})
+    page = search.similar_media(req.db(rid), int(raw), root_id=rid, limit=limit)
+    if page is None:
+        return Json({"items": [], "indexed": False})
+    return page
+
+
 def semantic_search(req: Request) -> MediaPage | Json:
     """Free-text semantic search over the archive's media, ranked by embedding similarity."""
     search_queries = []

@@ -12,6 +12,7 @@ import importlib.util
 import math
 import os
 import sqlite3
+import struct
 from typing import Any, cast
 
 from ..errors import ModelUnavailableError
@@ -338,6 +339,58 @@ def _score_candidates(
         blocks.append(best_per_row)
     scores = np.concatenate(blocks) if blocks else np.zeros(0, dtype=np.float32)
     return scores, meta
+
+
+@reading
+def _stored_vector(conn: sqlite3.Connection, file_id: int) -> list[float] | None:
+    """One file's own embedding, or None if it has none to offer.
+
+    None covers every reason a file cannot anchor a search -- never indexed,
+    skipped, failed, or written by an embedder whose vectors are no longer the
+    ones the archive scores in. The caller reports all of those the same way,
+    because to the user they are one fact: there is nothing to compare with.
+    """
+    row = conn.execute(
+        "SELECT embedding, dimensions, status FROM semantic_embeddings WHERE file_id=?",
+        (file_id,),
+    ).fetchone()
+    if row is None or row["status"] != "indexed" or not row["embedding"]:
+        return None
+    dim = int(row["dimensions"] or 0)
+    if dim <= 0 or len(row["embedding"]) != dim * 4:
+        return None
+    return list(struct.unpack(f"<{dim}f", row["embedding"]))
+
+
+def similar_media(
+    db_path: str, file_id: int, *, root_id: int | None = None, limit: int = 8
+) -> MediaPage | None:
+    """Files whose picture looks like this one's, best first.
+
+    A file's own embedding IS a query vector -- the towers put pictures and
+    words in one space -- so this is ``semantic_search`` with the vector read
+    out of the catalogue instead of typed, and no new ranking code at all.
+
+    Returns None when the question cannot be answered rather than an empty page
+    for a wrong reason: no numpy in this installation, or nothing indexed for
+    this file. An empty page means the opposite -- we looked and the archive
+    holds nothing that resembles it.
+
+    Not decorated with ``@reading``: it reads once for the vector and then hands
+    a path to ``semantic_search``, which opens its own connection. One
+    connection at a time, never one nested inside another.
+    """
+    if not scoring_available():
+        return None
+    vector = _stored_vector(db_path, file_id)
+    if vector is None:
+        return None
+    # +1 because the file is its own nearest neighbour at similarity 1.0 and is
+    # dropped below; asking for exactly `limit` would return one short.
+    page = semantic_search(db_path, vector, root_id=root_id, limit=limit + 1, sort="relevance")
+    page["items"] = [item for item in page["items"] if item["id"] != file_id][:limit]
+    page["count"] = len(page["items"])
+    return page
 
 
 def _apply_similarity_cuts(scores: Any, min_similarity: float, relative_floor: float) -> Any:

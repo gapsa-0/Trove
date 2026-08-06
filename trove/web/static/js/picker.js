@@ -120,7 +120,17 @@ async function removeArchive(a) {
   ARCHIVES = ARCHIVES.filter(x => x.id !== a.id);
   await loadPicker();
 }
-export function openArchive(a, section) {
+/* Async because the open has to LAND before the section draws.
+
+   Thumbnails and originals are served by bare id and resolve against whichever
+   archive the server has open (routes/media.py), so a grid that renders before
+   this POST arrives asks for pictures the server will not admit exist, and gets
+   404s it never retries -- a screen of broken tiles, or a viewer whose photo
+   never appears. It was fire-and-forget and usually won the race on a local
+   socket, which is exactly what made the failure rare and baffling.
+
+   Callers do not await it: what matters is the ordering inside. */
+export async function openArchive(a, section) {
   if (S.arch && S.arch.id !== a.id) jpost("/api/archive/close", { root_id: S.arch.id });
   resetSectionViews();
   // Don't carry a previous archive's idle status into this one. Until its disk
@@ -133,6 +143,6 @@ export function openArchive(a, section) {
   document.getElementById("app").classList.add("on");
   document.getElementById("archname").textContent = a.name;
   location.hash = `/archive/${a.id}/${S.section}`;
-  jpost("/api/archive/open", { root_id: a.id });
+  await jpost("/api/archive/open", { root_id: a.id });
   showSection(S.section); startGlobalStatus();
 }

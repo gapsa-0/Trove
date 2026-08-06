@@ -172,16 +172,6 @@
   word-break: break-word;
 }
 
-.close {
-  position: absolute;
-  top: 14px;
-  right: 18px;
-  font-size: 26px;
-  color: #fff;
-  cursor: pointer;
-  z-index: 21;
-}
-
 /* transient, non-blocking notice (used when an optimistic save is rolled back) */
 #toast {
   position: fixed;

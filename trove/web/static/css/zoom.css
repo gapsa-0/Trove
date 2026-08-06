@@ -1,0 +1,114 @@
+/* The image inspector's controls: the zoom pill above the filmstrip.
+
+   Split from viewer.css, which owns the frame -- the stage, the floating chrome,
+   the filmstrip and the document view. This is the one piece of chrome that is
+   about looking *into* a picture rather than moving between files, and it is
+   drawn only for a still image.
+
+   Dark-on-glass values rather than theme tokens, like every other surface that
+   floats over the media: what is behind it is the photograph's own black
+   whatever appearance the app is in. */
+
+/* -- the zoom control --
+   Left of the map chip and above the filmstrip, out of the way of both, and
+   only ever drawn for a still image. */
+.zoombar {
+  position: absolute;
+  left: 15px;
+  bottom: 108px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(28, 28, 30, .58);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #fff;
+  transition: opacity .2s
+}
+
+.zoombar[hidden] {
+  display: none
+}
+
+.viewer.reading .zoombar {
+  opacity: .18
+}
+
+.zoombar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font: 400 16px/1 inherit;
+  cursor: pointer;
+  transition: background .15s
+}
+
+.zoombar button:hover {
+  background: rgba(255, 255, 255, .16)
+}
+
+.zoombar button[disabled] {
+  opacity: .35;
+  cursor: default
+}
+
+.zoombar .fit {
+  width: auto;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600
+}
+
+.zoombar input[type="range"] {
+  width: 104px;
+  height: 3px;
+  margin: 0 4px;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .28);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer
+}
+
+.zoombar input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff
+}
+
+.zoombar input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff
+}
+
+.zoombar .pct {
+  min-width: 44px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center
+}
+
+.viewer .stage .ph {
+  color: rgba(255, 255, 255, .5)
+}

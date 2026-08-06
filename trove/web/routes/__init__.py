@@ -75,6 +75,7 @@ GET_ROUTES: dict[str, Handler] = {
     "/api/folders": browse.folders,
     "/api/browse/semantic/status": search.semantic_status,
     "/api/browse/semantic/search": search.semantic_search,
+    "/api/similar": search.similar,
     "/api/browse/text/status": search.text_status,
     "/api/browse/text/search": search.text_search_route,
     "/api/map/clusters": places.clusters,

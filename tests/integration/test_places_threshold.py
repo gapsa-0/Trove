@@ -3,7 +3,7 @@ one: place_clusters rows are never deleted for falling short, they just stop
 being *reported*, except when named or pinned (see places._PLACE_EXEMPT)."""
 
 from trove.db import database as db
-from trove.services import browse, places
+from trove.services import item_detail, places
 
 
 def _catalog_with_places(tmp_path):
@@ -95,7 +95,7 @@ def test_item_reports_no_place_for_a_hidden_membership(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
     # File 1's only place is cluster 1: unnamed, unpinned, below threshold.
-    it = browse.item(str(db_path), 1, min_media=10)
+    it = item_detail.item(str(db_path), 1, min_media=10)
 
     assert it["place"] is None
 
@@ -104,7 +104,7 @@ def test_item_still_reports_a_named_place_below_threshold(tmp_path):
     db_path = _catalog_with_places(tmp_path)
 
     # File 4's only place is cluster 2: named, below threshold -> exempt.
-    it = browse.item(str(db_path), 4, min_media=10)
+    it = item_detail.item(str(db_path), 4, min_media=10)
 
     assert it["place"] == {"id": 2, "name": "Home"}
 

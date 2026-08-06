@@ -77,6 +77,8 @@ export function archiveHasFeature(archive, id) {
 }
 export const S = {
   arch: null, section: "overview", grid: null,
+  // Filled by whichever screen last rendered media; see setGallery.
+  gallery: [], gallerySource: "",
   // The text-results group, present only for an archive that reads its
   // documents. Null everywhere else, which is what activeGrids() reads.
   textGrid: null,

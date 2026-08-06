@@ -26,6 +26,9 @@ import {
   ICONS, S, TYPE_ICON, archiveHasFeature, typeLabel,
 } from "./state.js";
 import {
+  setGallery,
+} from "./gallery.js";
+import {
   applyTimelineFilters,
 } from "./timeline.js";
 
@@ -475,7 +478,8 @@ export function resetGridResults(g) {
    document order. Rebuilt from the grids rather than appended to, because a
    group can reload independently of the other. */
 function refreshGallery() {
-  S.gallery = activeGrids().flatMap(g => g.pages.flatMap(p => p.items.map(i => i.id)));
+  setGallery(activeGrids().flatMap(g => g.pages.flatMap(p => p.items.map(i => i.id))),
+    S.grid && S.grid.query ? "in these results" : "in Browse");
 }
 /* Which groups are on screen, and what the ones that found nothing say.
 
@@ -762,7 +766,12 @@ export function tile(it, resultIndex = null, caption = "date") {
     (it.indexed ? ", indexed for description search" : "") +
     (it.has_gps ? ", has a location" : ""));
   d.onclick = () => openItem(it.id);
-  if (it.type === "image" || it.type === "video") {
+  // Documents get a thumbnail too where one can be made -- a PDF renders its
+  // first page -- because what is printed on a page is the only thing that
+  // tells two contracts apart in a grid. The server answers 404 when it cannot
+  // render one, and `onerror` is already the path back to the type icon, so
+  // asking costs nothing on the formats that have none.
+  if (it.type === "image" || it.type === "video" || it.type === "document") {
     const img = document.createElement("img"); img.loading = "lazy";
     img.src = "/thumb/" + it.id; img.onerror = () => img.replaceWith(ph(TYPE_ICON[it.type] || "🖼️")); d.appendChild(img);
   }

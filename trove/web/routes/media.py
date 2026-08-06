@@ -3,6 +3,7 @@ param) except for the start-page cover mosaic, which names its archive."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 from ... import thumbnails
@@ -35,7 +36,23 @@ def thumb(req: Request) -> FileBody | Json:
     cache_dir = cast(str, cache_dir)
     src, sha256, rotate = info
     tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
-    return FileBody(tp if tp else src)
+    return _thumb_body(tp, src)
+
+
+def _thumb_body(tp: Path | None, src: Path) -> FileBody | Json:
+    """The generated thumbnail, or the original when that IS an image.
+
+    Falling back to the original unconditionally meant an ``<img src="/thumb/">``
+    for a PDF received a whole PDF: undecodable, so the tile showed a broken
+    image, and the archive shipped a multi-megabyte document to draw a 62 px
+    square. A file we cannot render a thumbnail for and that is not itself an
+    image is simply absent, which is what the grid's own fallback icon is for.
+    """
+    if tp:
+        return FileBody(tp)
+    if src.suffix.lower() in thumbnails.VIDEO_EXTS or src.suffix.lower() == ".pdf":
+        return NOT_FOUND
+    return FileBody(src)
 
 
 def archive_thumb(req: Request) -> FileBody | Json:
@@ -56,7 +73,7 @@ def archive_thumb(req: Request) -> FileBody | Json:
         return NOT_FOUND
     src, sha256, rotate = info
     tp = thumbnails.thumb_for(cache_dir, fid, src, sha256=sha256, rotate=rotate)
-    return FileBody(tp if tp else src)
+    return _thumb_body(tp, src)
 
 
 def face_thumb(req: Request) -> FileBody | Json:

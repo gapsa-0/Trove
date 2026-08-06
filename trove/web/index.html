@@ -26,6 +26,8 @@
   <link rel="stylesheet" href="/static/css/library.css">
   <link rel="stylesheet" href="/static/css/screens.css">
   <link rel="stylesheet" href="/static/css/viewer.css">
+  <link rel="stylesheet" href="/static/css/inspector.css">
+  <link rel="stylesheet" href="/static/css/zoom.css">
   <link rel="stylesheet" href="/static/css/start-page.css">
   <link rel="stylesheet" href="/static/css/setup.css">
   <link rel="stylesheet" href="/static/css/merge.css">
@@ -152,12 +154,61 @@
     <main id="main"></main>
   </div>
 
-  <!-- MODAL -->
+  <!-- VIEWER
+       The media takes the whole frame; everything else floats over it. The
+       inspector (#minfo) is a dismissible glass panel rather than a column, so
+       a photo is never letterboxed to make room for a form it is not being
+       edited with. Chrome, side chevrons and filmstrip are siblings of the
+       stage, not children, because the stage's content can be an <iframe>
+       (a PDF) that must not have controls inside it.
+
+       #modal keeps its id: the router, the Escape handler and half a dozen
+       `.classList.contains("open")` checks address it by that name. -->
   <div class="modal" id="modal" onclick="if(event.target.id==='modal')closeModal()">
-    <span class="close" onclick="closeModal()">×</span>
-    <div class="viewer">
-      <div class="media" id="mmedia"></div>
+    <!-- tabindex="-1" so Escape has somewhere to put the keyboard when it steps
+         out of an embedded document. Without a focusable target the focus stays
+         inside the PDF frame, which goes on swallowing the arrow keys after the
+         viewer has said it handed them back. -->
+    <div class="viewer" id="viewer" tabindex="-1">
+      <div class="stage" id="mmedia"></div>
+
+      <div class="vchrome">
+        <!-- Only ever on screen after a jump (a picture opened from "Looks like
+             this"), because that is the one way into the viewer with nothing
+             behind it to go back to. -->
+        <button type="button" class="vround" id="vback" onclick="viewerBack()"
+          title="Back to where you jumped from" aria-label="Back" hidden>‹</button>
+        <div class="vpos" id="vpos"></div>
+        <div class="vspacer"></div>
+        <button type="button" class="vround" id="vinfo" onclick="toggleInspector()"
+          title="Details (I)" aria-pressed="true">i</button>
+        <button type="button" class="vround" onclick="closeModal()" title="Close (Esc)"
+          aria-label="Close">×</button>
+      </div>
+
+      <button type="button" class="vstep prev" id="vprev" onclick="stepItem(-1)"
+        title="Previous (←)" aria-label="Previous file">‹</button>
+      <button type="button" class="vstep next" id="vnext" onclick="stepItem(1)"
+        title="Next (→)" aria-label="Next file">›</button>
+
+      <!-- Zoom, for a still image only. A slider rather than a pair of buttons
+           because the useful question is "how far in am I", which a stepper
+           cannot answer; the buttons and the percentage are there for the
+           people who want an exact 100%. -->
+      <div class="zoombar" id="zoombar" hidden>
+        <button type="button" id="zoom-out" onclick="zoomStep(-1)" title="Zoom out (−)"
+          aria-label="Zoom out">−</button>
+        <input type="range" id="zoom-range" min="0" max="100" value="0" step="1"
+          oninput="zoomToSlider(this.value)" aria-label="Zoom">
+        <button type="button" id="zoom-in" onclick="zoomStep(1)" title="Zoom in (+)"
+          aria-label="Zoom in">+</button>
+        <span class="pct" id="zoom-pct">100%</span>
+        <button type="button" class="fit" onclick="zoomReset()" title="Fit to the frame (0)">Fit</button>
+      </div>
+
+      <div class="vchip" id="vchip" hidden></div>
       <div class="info" id="minfo"></div>
+      <div class="filmstrip" id="vfilm"></div>
     </div>
   </div>
 

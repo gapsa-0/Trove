@@ -131,7 +131,18 @@ function onlyArchiveOrigin(url) {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1360, height: 880, minWidth: 980, minHeight: 680,
-    webPreferences: { preload: path.join(__dirname, "preload.cjs"), nodeIntegration: false, contextIsolation: true, sandbox: true }
+    // `plugins` gates Chromium's built-in PDF viewer, which is what renders a
+    // document in the media viewer's stage. Without it the <iframe> the viewer
+    // points at /file/<id> stays blank in the packaged app while working fine
+    // in a browser -- the one difference that would make the feature look
+    // broken only after shipping.
+    //
+    // It does not re-enable NPAPI or any external plugin: those were removed
+    // from Chromium years ago, and this flag now controls only the bundled
+    // internal viewers. The window keeps nodeIntegration off, contextIsolation
+    // on and the renderer sandboxed, and will-navigate below still confines it
+    // to the loopback origin.
+    webPreferences: { preload: path.join(__dirname, "preload.cjs"), nodeIntegration: false, contextIsolation: true, sandbox: true, plugins: true }
   });
   mainWindow.webContents.on("will-navigate", (event, url) => { if (!onlyArchiveOrigin(url)) event.preventDefault(); });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -188,6 +199,32 @@ function diagnosticText() {
 ipcMain.handle("archive:about", async () => ({ version: app.getVersion(), commit: process.env.ARCHIVE_BUILD_COMMIT || "dev", backendVersion: backendPort === null ? "not running" : app.getVersion(), dataFolder: app.getPath("userData") }));
 ipcMain.handle("archive:copy-diagnostics", async () => { clipboard.writeText(diagnosticText()); return true; });
 ipcMain.handle("archive:open-data-folder", async () => shell.openPath(app.getPath("userData")));
+
+/* Show a file in the OS file manager, for the viewer's "Open file location".
+
+   The renderer is confined to the loopback origin, but it is still the place a
+   path arrives from, so this does not hand an arbitrary string to the shell. The
+   backend is asked which folders it has registered as archive roots, and the
+   path has to resolve to somewhere inside one of them -- which is exactly the
+   set of files the app is allowed to be showing in the first place. `resolve`
+   before the comparison so `..` cannot climb out of a root it starts inside. */
+ipcMain.handle("archive:reveal-file", async (event, target) => {
+  if (!mainWindow || event.senderFrame !== mainWindow.webContents.mainFrame || !onlyArchiveOrigin(event.senderFrame.url)) {
+    throw new Error("untrusted reveal request");
+  }
+  if (typeof target !== "string" || !target) throw new Error("no path given");
+  const resolved = path.resolve(target);
+  const response = await fetch(`http://${LOOPBACK}:${backendPort}/api/archives`, { signal: AbortSignal.timeout(5_000) });
+  const { archives = [] } = await response.json();
+  const inside = archives.some(a => {
+    if (!a.path) return false;
+    const root = path.resolve(a.path);
+    return resolved === root || resolved.startsWith(root + path.sep);
+  });
+  if (!inside) throw new Error("path is not inside a registered archive");
+  shell.showItemInFolder(resolved);
+  return true;
+});
 
 async function showStartupFailure(error) {
   appendMainDiagnostic(`startup failure: ${error.stack || error.message}`);

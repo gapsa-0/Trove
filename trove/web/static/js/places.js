@@ -10,6 +10,9 @@ import {
   tile,
 } from "./library.js";
 import {
+  galleryFromGrid,
+} from "./gallery.js";
+import {
   startInfiniteList,
 } from "./infinite.js";
 import {
@@ -352,6 +355,7 @@ async function selectPlaceCluster(id) {
       const grid = document.getElementById("mapsidegrid");
       if (first) grid.replaceChildren();
       items.forEach(it => grid.appendChild(tile(it)));
+      galleryFromGrid("mapsidegrid", "at this place");
     },
   });
 }

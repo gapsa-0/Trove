@@ -296,6 +296,47 @@ def face_thumb_for(
         return None
 
 
+def _thumb_pdf(tp: Path, src: Path, size: int) -> Path | None:
+    """The first page of a PDF, rendered to the thumbnail cache.
+
+    A document is a picture of a page as far as a grid is concerned, and without
+    this every PDF in the archive is an identical grey icon -- so the one thing
+    that tells two contracts apart, what is actually printed on them, is the one
+    thing not shown.
+
+    Uses the PDFium already vendored for the text stage (`trove/text/pdf.py`),
+    and returns None when that extra is not installed, which callers already
+    treat as "no thumbnail" rather than as a failure.
+    """
+    from ..text import pdf as pdf_reader
+
+    if not pdf_reader.available():
+        return None
+    try:
+        import pypdfium2 as pdfium
+
+        tp.parent.mkdir(parents=True, exist_ok=True)
+        doc = pdfium.PdfDocument(src)
+        try:
+            if len(doc) == 0:
+                return None
+            page = doc[0]
+            # Scale so the longer side lands on `size`; PDFium works in points
+            # at 72 dpi, and rendering at 1:1 would give a ~600 px page we then
+            # throw most of away.
+            box = page.get_size()
+            scale = max(0.1, min(4.0, size / max(box[0], box[1])))
+            bitmap = page.render(scale=scale)
+            image = bitmap.to_pil()
+            image.convert("RGB").save(tp, "JPEG", quality=80)
+        finally:
+            doc.close()
+        return tp
+    except Exception:
+        logger.warning("pdf thumbnail failed for src=%s", src, exc_info=True)
+        return None
+
+
 def thumb_for(
     cache_dir: str, fid: int, src: Path, size: int = 320, sha256: str | None = None, rotate: int = 0
 ) -> Path | None:
@@ -304,6 +345,8 @@ def thumb_for(
         return tp
     if src.suffix.lower() in VIDEO_EXTS:
         return _thumb_video(tp, src, size)
+    if src.suffix.lower() == ".pdf":
+        return _thumb_pdf(tp, src, size)
     pil = _try_pillow()
     if pil is None:
         return None

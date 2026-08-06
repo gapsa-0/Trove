@@ -12,6 +12,9 @@ import {
   tile,
 } from "./library.js";
 import {
+  galleryFromGrid,
+} from "./gallery.js";
+import {
   startInfiniteList,
 } from "./infinite.js";
 import {
@@ -289,6 +292,8 @@ export async function showPet(id) {
       const grid = document.getElementById("grid");
       if (first) grid.replaceChildren();
       items.forEach(item => grid.appendChild(tile(item)));
+      galleryFromGrid("grid", (S.currentPet && S.currentPet.name)
+        ? `in ${S.currentPet.name}\u2019s photos` : "in this pet\u2019s photos");
     },
   });
 }

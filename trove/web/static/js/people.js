@@ -12,6 +12,9 @@ import {
   personTile,
 } from "./library.js";
 import {
+  galleryFromGrid,
+} from "./gallery.js";
+import {
   startInfiniteList,
 } from "./infinite.js";
 import {
@@ -329,6 +332,13 @@ async function savePersonCardName(card, p, input) {
   await renderPeopleGrid();
 }
 const PERSON_PAGE_SIZE = 120;
+/* Whose photos the arrows are walking, for the viewer's position readout.
+   Held here because the detail screen already knows it and the viewer must not
+   have to re-fetch a person to caption a counter. */
+let PERSON_NAME = "";
+function personGalleryLabel() {
+  return PERSON_NAME ? `in ${PERSON_NAME}\u2019s photos` : "in this person\u2019s photos";
+}
 export async function showPerson(id) {
   stopPoll();
   S.section = "people"; renderNav(); S.facePerson = id;
@@ -337,6 +347,7 @@ export async function showPerson(id) {
   m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
   const r = await jget(`/api/faces/person/${id}?root=${S.arch.id}&limit=${PERSON_PAGE_SIZE}`);
   if (!r || r.error) { m.innerHTML = '<div class="soonbox">Person not found.</div>'; return; }
+  PERSON_NAME = r.name || "";
   const nm = r.name ? esc(r.name) : "Name this person";
   const nmCls = r.name ? "nm" : "nm un";
   const safe = (r.name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -379,6 +390,9 @@ export async function showPerson(id) {
       const grid = document.getElementById("grid");
       if (first) grid.replaceChildren();
       items.forEach(it => grid.appendChild(personTile(it, id)));
+      // Opened from here, the viewer's arrows walk this person's photos and
+      // stop at the ends of them -- not the whole archive.
+      galleryFromGrid("grid", personGalleryLabel());
     },
   });
 }
