@@ -1,0 +1,351 @@
+/* ============ the card covers =============================================
+   One drawing per feature, showing what it produces rather than describing
+   it -- the description is on the back of the same card, and a cover that
+   repeats it is a cover that says nothing.
+
+   Every one of them is drawn, never photographic. At setup time the folder has
+   not been read yet, so a preview built from real thumbnails would be a picture
+   of a promise. The gradients standing in for photographs are declared with the
+   rest of the screen's palette in setup.css.
+
+   Built from phrasing content -- spans, never divs -- because a preview sits
+   inside a card that used to be a button, and because keeping them inline
+   means they never introduce a block box the cover has to fight.
+
+   Split out of setup.css because that file was over the size budget and this
+   is the part of it that grows: every feature added to the catalogue wants a
+   drawing here, and none of them wants a rule in the screen's own layout.   */
+
+.set-pv {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  background: var(--panel2);
+}
+
+.set-pv-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  height: 100%;
+  padding: 10px;
+}
+
+.set-ph {
+  flex: none;
+  border-radius: 5px;
+  background: var(--set-ph-1);
+}
+
+.set-ph.p2 { background: var(--set-ph-2); }
+.set-ph.p3 { background: var(--set-ph-3); }
+.set-ph.p4 { background: var(--set-ph-4); }
+.set-ph.p5 { background: var(--set-ph-5); }
+.set-ph.p6 { background: var(--set-ph-6); }
+
+/* people and pets: crops gathered into named groups */
+.set-face-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.set-face-chip i {
+  position: relative;
+  display: block;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--set-ph-1);
+}
+
+/* The subject sits *in* the crop, in a translucent dark, rather than being a
+   white glyph laid on top of it. A white head-and-shoulders icon is the
+   universal sign for "no picture here", which is the opposite of the point. */
+.set-face-chip i svg {
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 31px;
+  transform: translateX(-50%);
+  fill: rgba(24, 26, 32, .34);
+}
+
+.set-face-chip span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+/* "+34 more" is another crop with a scrim over it, not an empty dashed hole.
+   Written to outrank `.set-face-chip i`, which sets display:block and its own
+   background: without the extra weight the count is laid out as ordinary
+   inline text and sits at the top left of the circle rather than its middle. */
+.set-face-chip i.set-more {
+  display: grid;
+  place-items: center;
+  background: var(--set-ph-6);
+  box-shadow: inset 0 0 0 99px rgba(0, 0, 0, .46);
+  color: #fff;
+  font: 620 11px/1 var(--set-figures);
+}
+
+.set-face-chip .set-more+span {
+  color: var(--faint);
+}
+
+/* places: coordinates the photos already carry, plotted */
+.set-pv-map {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--set-map);
+}
+
+.set-pv-map .road {
+  position: absolute;
+  background: var(--set-road);
+}
+
+.set-pv-map .r1 { left: -10%; top: 55%; width: 120%; height: 4px; transform: rotate(-9deg); }
+.set-pv-map .r2 { left: 38%; top: -10%; width: 4px; height: 120%; transform: rotate(11deg); }
+.set-pv-map .r3 { left: -10%; top: 25%; width: 120%; height: 2px; transform: rotate(6deg); opacity: .7; }
+
+.set-pv-map .pin {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  margin: -13px 0 0 -6.5px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--bad);
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .3);
+}
+
+.set-pv-map .cluster {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .85);
+  background: var(--accent);
+  color: #fff;
+  font: 620 10px/1 var(--set-figures);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+
+/* search by description: a sentence, and what comes back */
+.set-pv-semantic {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  padding: 11px;
+}
+
+.set-pv-semantic .q {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.set-pv-semantic .q svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 2;
+}
+
+.set-pv-semantic .qt {
+  white-space: nowrap;
+}
+
+/* The cursor after the typed query: still, not blinking. Every other cover on
+ the shelf is a held still of what its feature produces, and one card twinkling
+ away in the corner of the eye was the only thing on the screen asking to be
+ looked at while someone was reading the others. */
+.set-pv-semantic .caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 12px;
+  background: var(--accent);
+}
+
+.set-pv-semantic .hits {
+  display: flex;
+  gap: 5px;
+}
+
+.set-pv-semantic .hits .set-ph {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+}
+
+/* indexing: a row per file, each carrying what it knows about itself. The
+   catalogue is the product here, so the drawing is a listing -- not a folder
+   tree, which is the part indexing exists to stop anyone thinking about. */
+.set-pv-index {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 18px;
+}
+
+.set-pv-index .row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 3px 9px;
+}
+
+.set-pv-index .set-ph {
+  grid-row: span 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+/* The name, then what was read off it. Two weights of the same grey: the
+   second line is a fact about the first, not a second name. */
+.set-pv-index b,
+.set-pv-index em {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.set-pv-index em {
+  width: 52%;
+  height: 3px;
+  background: var(--line);
+}
+
+/* duplicates: one shot, three times, and the stage deciding which of them you
+   see. The two behind are offset rather than faded -- they are not going
+   anywhere, which is the promise the card's description makes. */
+.set-pv-duplicates .stack {
+  position: relative;
+  display: block;
+  width: 62px;
+  height: 62px;
+  margin: 22px auto;
+}
+
+.set-pv-duplicates .set-ph {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+}
+
+.set-pv-duplicates .c3 { left: 16px; top: 0; opacity: .5; }
+.set-pv-duplicates .c2 { left: 8px; top: 8px; opacity: .75; }
+.set-pv-duplicates .c1 { left: 0; top: 16px; }
+
+/* The one that stays in view, marked where a badge would sit on it. */
+.set-pv-duplicates .kept {
+  position: absolute;
+  left: 34px;
+  top: 50px;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 2px solid var(--panel2);
+  background: var(--good);
+}
+
+.set-pv-duplicates .kept svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* search by document text: paper. The characters the file already stores,
+   with the phrase that was typed sitting among them. */
+.set-pv-documents .page {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 76px;
+  height: 84px;
+  margin: 11px auto;
+  padding: 13px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .1);
+}
+
+.set-pv-documents em {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.set-pv-documents .short {
+  width: 58%;
+}
+
+/* The hit. Lit rather than boxed: what a text search returns is the passage
+   carrying your words, and a rectangle drawn round it would be the picture
+   the card beside this one is making. */
+.set-pv-documents .hit {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* search by picture text: pixels. The same words on something that stores
+   none of them, with the reader's boxes drawn round what it found -- which is
+   the whole difference between this feature and the one beside it.
+
+   Deliberately the same size and place on the card as that page, because the
+   pair is the comparison: one sheet of paper, one photograph, side by side on
+   the shelf. Filling the whole cover instead made the brightest panel on the
+   screen out of the feature with the least to say for itself. */
+.set-pv-ocr .shot {
+  position: relative;
+  display: block;
+  width: 88px;
+  height: 84px;
+  margin: 11px auto;
+  border-radius: 4px;
+  background: var(--set-ph-6);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+}
+
+.set-pv-ocr .word {
+  position: absolute;
+  border: 1.5px solid var(--accent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.set-pv-ocr .w1 { left: 14%; top: 24%; width: 58%; height: 13px; }
+.set-pv-ocr .w2 { left: 14%; top: 52%; width: 34%; height: 11px; }
+.set-pv-ocr .w3 { left: 55%; top: 52%; width: 28%; height: 11px; }

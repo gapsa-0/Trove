@@ -182,6 +182,35 @@ const PREVIEWS = {
       <span class="qt">a dog on the beach</span><span class="caret"></span>
     </span>
     <span class="hits"><i class="set-ph p3"></i><i class="set-ph p1"></i><i class="set-ph p5"></i></span>`,
+
+  // A row per file, each carrying two facts about itself. Not a folder tree:
+  // what indexing produces is the catalogue, and the depth it walked is the
+  // part nobody has to think about again.
+  index: () => ["p1", "p6", "p4"].map(c => `<span class="row">
+      <i class="set-ph ${c}"></i><b></b><em></em></span>`).join(""),
+
+  // The same shot three times over, one on top. What the stage does is decide
+  // which copy you see; the two behind it are the ones it stops showing you,
+  // still there and still whole.
+  duplicates: () => `<span class="stack">
+      <i class="set-ph p3 c3"></i><i class="set-ph p3 c2"></i>
+      <i class="set-ph p3 c1"></i>
+      <span class="kept"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 5 5L19 7"/></svg></span>
+    </span>`,
+
+  // Paper: the characters a file already stores, with the phrase you typed
+  // sitting in the middle of them.
+  documents: () => `<span class="page">
+      <em></em><em></em><em class="hit"></em><em></em><em class="short"></em>
+    </span>`,
+
+  // Pixels: the same words, on a picture that stores none of them, with the
+  // reader's boxes drawn round what it found. Sibling to the page above, and
+  // the difference between them is the whole difference between the two
+  // features.
+  ocr: () => `<span class="shot">
+      <i class="word w1"></i><i class="word w2"></i><i class="word w3"></i>
+    </span>`,
 };
 
 function preview(f) {
