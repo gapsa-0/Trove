@@ -59,9 +59,16 @@ function dateRow(it) {
 /* The date's source, in words. It was always resolved and always sent; the
    panel simply printed the raw column ("mtime") in grey and left the user to
    know what that meant. Next to an Edit button, how much the date can be
-   trusted is the single most useful thing the section can say. */
+   trusted is the single most useful thing the section can say.
+
+   `exif` is the timestamp a file carries about itself, whatever wrote it. For a
+   photo that is the shutter; for a PDF it is whatever exiftool finds in
+   CreateDate -- Word, a scanner, a bank's statement generator -- and the enrich
+   stage files both under the one key (metadata/resolver.py). So the words are
+   about the *file*, not the instrument: this said "From the camera" over every
+   contract in the archive. */
 const DATE_SOURCE = {
-  exif: ["From the camera", ""],
+  exif: ["From file metadata", ""],
   takeout_json: ["From the Google Takeout sidecar", ""],
   filename: ["Guessed from the file name", "guess"],
   mtime: ["From the file's own timestamp", "weak"],

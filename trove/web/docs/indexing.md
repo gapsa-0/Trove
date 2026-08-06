@@ -102,8 +102,11 @@ Trove looks in four places and takes the first that answers.
    rules in confidence order and falls back to a truncated-prefix match against
    the JSON files actually present in the folder. Every match records which
    rule found it.
-2. **EXIF**, read with exiftool, which covers far more formats and tag dialects
-   than an image library does.
+2. **The file's own metadata**, read with exiftool, which covers far more
+   formats and tag dialects than an image library does. On a photo that is the
+   moment the shutter opened; on a document it is whatever wrote the file —
+   Word, a scanner, a bank — recording when it did so. Both are the file's
+   account of itself, which is why they count as one source.
 3. **The filename.** Camera and app filenames carry dates in a few dozen
    recognisable shapes: `IMG_20190812_143045`, `WhatsApp Image 2020-05-03`, a
    13-digit millisecond epoch, and so on. The patterns were derived from a real

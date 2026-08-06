@@ -19,8 +19,13 @@ import {
   S, TYPE_COL,
 } from "./state.js";
 
+// Same five sources the file panel names, in the shorter form a legend wants.
+// "Embedded EXIF" was this chart's own wording for the key the panel called
+// "From the camera", and both were wrong in the same way: the key covers any
+// timestamp a file carries about itself, and a PDF carries one without ever
+// having been near a camera or an EXIF block.
 const DATE_SRC_LABEL = {
-  takeout_json: "Google Takeout JSON", exif: "Embedded EXIF",
+  takeout_json: "Google Takeout JSON", exif: "File metadata",
   filename: "Filename pattern", mtime: "File modified time", unknown: "Unresolved source",
   unresolved: "No date found"
 };
