@@ -371,7 +371,21 @@ function renderChrome() {
     : `<span class="in">${esc(it.name)}</span>`;
   const back = document.getElementById("vback");
   back.hidden = !TRAIL.length;
+  // Two states, not one. At either end of a set the arrow is disabled and stays
+  // put -- greyed out, it says there are others and which way they lie, and
+  // removing it would shift the other one across the moment you reached the
+  // first file. With nowhere to go at all, though -- a search that matched one
+  // file, a place with one photo, a file opened from somewhere with no set
+  // behind it -- there is no set to be at the end of, and two dead controls are
+  // furniture over the picture rather than an answer to anything.
+  //
+  // Same test the filmstrip already applies to itself (renderFilmstrip), so the
+  // three things that report on a set now agree about when there is one: no
+  // strip, no arrows, and a readout that gives the file's name instead of a
+  // made-up "1 of 1".
+  const alone = at < 0 || ids.length < 2;
   const prev = document.getElementById("vprev"), next = document.getElementById("vnext");
+  prev.hidden = next.hidden = alone;
   prev.disabled = !(at > 0);
   next.disabled = !(at >= 0 && at < ids.length - 1);
   document.getElementById("vinfo").setAttribute("aria-pressed", String(RAIL_OPEN));

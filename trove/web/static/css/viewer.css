@@ -187,6 +187,7 @@
    element in this file that JS hides needs to say so itself -- this is why the
    face-box button showed up on archives that do not even run face detection. */
 .vround[hidden],
+.vstep[hidden],
 .vchip[hidden],
 .filmstrip[hidden] {
   display: none

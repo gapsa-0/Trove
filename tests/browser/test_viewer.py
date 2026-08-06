@@ -86,6 +86,38 @@ def test_the_position_readout_names_the_set_the_arrows_walk(open_app, archive):
         assert app.errors() == []
 
 
+def test_a_file_opened_on_its_own_gets_no_arrows(open_app, archive):
+    """A search that matched one file, a place holding one photo, a file opened
+    from somewhere with no set behind it. The arrows used to stay, greyed out,
+    which is the right answer at the *end* of a set -- it says there are others
+    and which way they lie -- and no answer at all when there is no set. Two
+    dead controls over the picture instead.
+
+    Driven by opening a file with a gallery of one, which is what all three of
+    those cases produce.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        _open_first_photo(app)
+        assert app.count("#vprev:not([hidden])") == 1, "a real set lost its arrows"
+
+        one = archive.ids["first_file"]
+        app.tab.evaluate(
+            f"import('/static/js/gallery.js').then(m => {{"
+            f" m.setGallery([{one}], 'in this search'); openItem({one}); }})"
+        )
+        app.tab.wait_for(
+            "document.getElementById('vprev').hidden",
+            what="the arrows to go with the set they walked",
+        )
+
+        assert app.count("#vnext[hidden]") == 1
+        # The filmstrip already answered this question the same way, and the
+        # readout names the file rather than inventing "1 of 1".
+        assert app.count(".filmstrip[hidden]") == 1
+        assert "of" not in app.text("#vpos")
+        assert app.errors() == []
+
+
 def test_the_arrows_walk_a_places_photos_when_opened_from_a_place(open_app, archive):
     """`S.gallery` used to be filled in exactly one place -- Browse -- so on
     every other screen the arrows silently did nothing.
