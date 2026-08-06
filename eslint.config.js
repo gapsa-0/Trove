@@ -103,6 +103,7 @@ module.exports = [
         clearTimeout: "readonly",
         requestAnimationFrame: "readonly",
         requestIdleCallback: "readonly",
+        ResizeObserver: "readonly",
         getSelection: "readonly",
         Node: "readonly",
         alert: "readonly",

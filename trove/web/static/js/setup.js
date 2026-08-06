@@ -290,16 +290,80 @@ function cardItem(f) {
 // only part set as data; the prose around it is a sentence, not a measurement.
 //
 // Each link carries the connector that *follows* it rather than the two being
-// laid out as siblings, because the chain wraps (see .set-flow). Wrapping
-// between a chip and its own connector is what would put a dash at the start of
-// a row, reading as a chain that begins with nothing; kept together, a row ends
-// "chip —" and the next begins with a chip, which reads as the continuation it
-// is. The last one has nothing after it and so carries no connector.
+// laid out as siblings, because the chain wraps (see .set-flow) and the pair
+// has to wrap together: a connector that breaks away from its own chip opens
+// the next row with a line pointing at nothing.
+//
+// The empty <svg> is where the chain turns the corner -- drawn rather than laid
+// out, because only the browser knows where a flexbox chose to wrap. See
+// drawChainTurns.
 function pipeline(live, waiting) {
   const links = live.map(chipItem);
   if (waiting.length) links.push(`<span class="set-slot">Drop a feature here</span>`);
   return links.map((link, at) => `<span class="set-step">${link}${at < links.length - 1
-    ? `<span class="set-link" aria-hidden="true"></span>` : ""}</span>`).join("");
+    ? `<span class="set-link" aria-hidden="true"></span>` : ""}</span>`).join("")
+    + `<svg class="set-turns" aria-hidden="true"></svg>`;
+}
+
+// Where the chain changes rows, drawn as one stroke: out of the last chip on
+// the row, along to the panel's edge, down into the gap, back across to the
+// left, and down into the top of the chip the chain carries on from.
+//
+// The whole screen rests on the pipeline being a chain rather than a menu, and
+// a chain that stops at one margin and starts again at the other is two chains.
+// The row used to end in a dangling connector, which is a hyphen doing a link's
+// job.
+//
+// It has to be measured. A flexbox decides where to wrap from the widths of
+// eight labels against whatever the window is, and no CSS selector can name the
+// chip that ended up last on a row -- so this runs after each render and on
+// every resize, and draws nothing at all while the chain fits on one line.
+//
+// The return travels through the *gap* between the rows and enters the next
+// chip from above. At either row's own height it would cross the chips it is
+// there to join, and it cannot come in from the left because a row starts hard
+// against the panel's edge, with no room to turn in.
+function drawChainTurns(flow) {
+  const svg = flow.querySelector(".set-turns");
+  if (!svg) return;
+  const steps = [...flow.querySelectorAll(".set-step")];
+  const box = flow.getBoundingClientRect();
+  const paths = [];
+  for (let at = 0; at < steps.length - 1; at++) {
+    const from = steps[at].getBoundingClientRect();
+    const to = steps[at + 1].getBoundingClientRect();
+    if (to.top < from.bottom - 1) continue;          // same row: its own link joins them
+    // Out of the connector this step already carries, rather than out of the
+    // chip: the two are one line, and the corner is where it goes next.
+    const x0 = from.right - box.left, y0 = from.top - box.top + from.height / 2;
+    const edge = box.width - 1, top = to.top - box.top;
+    const turn = (from.bottom - box.top + top) / 2;  // mid-gap, clear of both rows
+    const into = to.left - box.left + 17;            // under the next chip's mark
+    const r = Math.max(1, Math.min(7, edge - x0, turn - y0, edge - into, top - turn));
+    paths.push(`<path d="M${x0} ${y0}H${edge - r}Q${edge} ${y0} ${edge} ${y0 + r}`
+      + `V${turn - r}Q${edge} ${turn} ${edge - r} ${turn}`
+      + `H${into + r}Q${into} ${turn} ${into} ${turn + r}V${top}"/>`);
+  }
+  svg.innerHTML = paths.join("");
+}
+
+// One observer for the life of the module, re-pointed at each render's chain --
+// which is a new element every time, so what it draws into is held here rather
+// than captured: a callback closed over the first render's chain would go on
+// drawing into a node that had left the document.
+//
+// Watching the chain rather than the window catches every way the wrap can move
+// -- the panel resized, the app's own sidebar collapsing -- and the turns are
+// absolutely positioned, so drawing them cannot change what is being measured.
+let CHAIN_WATCH = null, CHAIN_FLOW = null;
+function watchChain(flow) {
+  CHAIN_FLOW = flow;
+  drawChainTurns(flow);
+  if (!CHAIN_WATCH) {
+    CHAIN_WATCH = new ResizeObserver(() => CHAIN_FLOW && drawChainTurns(CHAIN_FLOW));
+  }
+  CHAIN_WATCH.disconnect();
+  CHAIN_WATCH.observe(flow);
 }
 
 // Half of a pair running without the other half. Both halves name each other,
@@ -392,6 +456,7 @@ function renderSetup(landed) {
       </div>
     </div>`;
   wireDragAndDrop();
+  watchChain(document.getElementById("set-flow"));
   if (landed) flashLanded(landed);
 }
 

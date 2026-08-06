@@ -171,12 +171,33 @@
    summary of what the archive will do is the wrong half to hide.
 
    It wraps between steps, never inside one: see pipeline() in setup.js for why
-   each link carries its own connector. */
+   each link carries its own connector.
+
+   The row gap is what it is because the chain's corner runs through it (see
+   drawChainTurns): the returning line needs room to be a line rather than a
+   crease between two rows. */
 .set-flow {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  row-gap: 8px;
+  row-gap: 20px;
+}
+
+/* The corner, drawn over the chain's own box and taking no part in laying it
+   out -- which is what lets it be measured from the layout it is drawn on.
+   Same stroke as .set-link, because it is the same line. */
+.set-turns {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 .set-step {
