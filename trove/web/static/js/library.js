@@ -533,7 +533,7 @@ function renderGroupLabels() {
   if (!empty.length) { line.replaceChildren(); return; }
   const anyHits = activeGrids().some(g => g.total);
   line.replaceChildren(document.createTextNode(
-    anyHits ? "Nothing found in " : "Searched, with nothing found in "));
+    anyHits ? "Nothing found by " : "Searched, with nothing found by "));
   empty.forEach((r, i) => {
     if (i) line.append(document.createTextNode(i === empty.length - 1 ? " or " : ", "));
     const item = document.createElement("span");
@@ -542,13 +542,22 @@ function renderGroupLabels() {
     glyph.className = "ranking-mark";
     glyph.setAttribute("aria-hidden", "true");
     glyph.innerHTML = ICONS[r.icon];
-    // Not lowercased. These are the names the features were chosen under, and
-    // "search by document or picture text" is a different string from the one on
-    // the setup panel, the Overview card and the page documenting it.
-    item.append(glyph, document.createTextNode(r.label));
+    item.append(glyph, document.createTextNode(wayNoun(r.label)));
     line.append(item);
   });
 }
+/* Every way is called "Search by ‹what you type against›" (ADR 0021), so the
+   line says "found by" once and names each way by the half that tells it from
+   the others. Printing the labels whole read "Nothing found in Search by
+   filename or Search by description" -- the same two words twice, in a line of
+   nine.
+
+   Nothing is lowercased on the way and nothing is retyped: what is left is the
+   common noun the feature was already named for, so the words still match the
+   ones on the setup card, the Overview card and the page documenting it, minus
+   a prefix this sentence has already supplied. A label that is not phrased that
+   way keeps all of itself rather than being cut somewhere arbitrary. */
+function wayNoun(label) { return label.replace(/^Search by /, ""); }
 /* Whether the media grid can rank a typed query at all.
 
    It is the one grid whose job depends on the answer: with Search by

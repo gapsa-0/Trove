@@ -50,8 +50,8 @@ feeding a way; pressing it opens that feature's page. The shared way has two,
 which is why they are marks rather than a row of link text.
 
 **A way that found nothing still reports.** It collapses into one line at the
-foot — "Nothing found in what your photos show" — rather than a heading over an
-empty row. That line is there because "the documents were searched and none
+foot — "Nothing found by filename or description" — rather than a heading over
+an empty row. That line is there because "the documents were searched and none
 matched" is an answer, and its absence used to leave people wondering whether a
 feature had run at all.
 

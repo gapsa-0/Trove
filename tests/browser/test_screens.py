@@ -492,6 +492,33 @@ def test_choosing_all_results_widens_the_search_it_is_attached_to(open_app):
         assert app.count(".aq-scope button[aria-pressed='true']") == 1
 
 
+def test_a_way_that_found_nothing_is_named_by_what_you_typed_against(open_app):
+    """The line at the foot is the answer for every ranking that came back
+    empty -- "the documents were searched and none matched" is worth knowing,
+    and its absence used to leave people wondering whether a feature had run.
+
+    It names the ways the way the sentence already reads. Printing their whole
+    labels gave "Nothing found in Search by filename or Search by description",
+    which is the same two words three times in one line; the ways are all
+    called "Search by <something>", so the line says it once.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        app.wait_for("#f-clear")
+        app.tab.evaluate(
+            "document.querySelector('#semantic-q').textContent = 'zzqqxx';"
+            "document.querySelector('.library-search').requestSubmit()"
+        )
+        app.wait_for("#nothing-line:not([hidden])")
+
+        line = app.text("#nothing-line")
+        assert "found by filename" in line
+        assert "Search by" not in line
+        # One mark per way named, since the marks are how results are labelled
+        # everywhere else on this screen.
+        assert app.count("#nothing-line .ranking-mark") == app.count("#nothing-line .nl-item")
+        assert app.errors() == []
+
+
 def test_browse_shows_no_group_headings_until_there_is_a_search(open_app):
     """Browsing is the plain dated listing, not a result: a label telling you
     which of one thing you are looking at is noise. The rankings that answer a
