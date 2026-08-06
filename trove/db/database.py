@@ -41,7 +41,7 @@ __all__ = [
     "write_with_retry",
 ]
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 16
 _SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 

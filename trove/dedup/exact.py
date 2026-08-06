@@ -126,6 +126,52 @@ class _BKTree:
         return found
 
 
+def _imaging_ready() -> bool:
+    """Whether this run can fingerprint, with HEIC support registered if present.
+
+    Probed once before the pass rather than per file, so a minimal installation
+    returns an empty result instead of failing 150,000 times over.
+    """
+    if not perceptual_available():
+        return False
+    try:
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
+    return True
+
+
+def _fingerprint(path: Path) -> int | None:
+    """One file's 64-bit perceptual hash, or None where it must not have one.
+
+    None for an animated file. Pillow hands back frame 0 and nothing else, so
+    a fingerprint of an animation describes only how it OPENS: two unrelated
+    GIFs sharing a title card or a fade-in from white come out identical
+    (measured at 0 bits apart) and one is hidden as a copy of the other. Video
+    is exact-match only for exactly this reason, and an animated GIF is a video
+    wearing an image extension.
+
+    Asked of the decoded image rather than the file name, so a GIF saved as
+    ``.png`` is caught by the same rule -- Pillow reads the magic bytes and
+    opens it correctly however it is named.
+
+    Imports at call time like its caller: Pillow and ImageHash are optional,
+    and ``_perceptual_hashes`` has already proved they are importable before
+    anything reaches here.
+    """
+    import imagehash
+    from PIL import Image, ImageOps
+
+    with Image.open(path) as image:
+        if getattr(image, "n_frames", 1) > 1:
+            return None
+        # Apply EXIF orientation before hashing, so a rotated export and its
+        # original compare as the same photograph.
+        return int(str(imagehash.phash(ImageOps.exif_transpose(image))), 16)
+
+
 def _perceptual_hashes(
     conn: sqlite3.Connection,
     cfg: Config,
@@ -137,18 +183,14 @@ def _perceptual_hashes(
     ImageHash/Pillow are optional so exact duplicate detection continues to work
     in a minimal installation.  Decode failures are skipped; a corrupt or RAW
     file must never prevent the rest of an archive from being grouped.
+
+    Animated files are skipped too (see ``_fingerprint``), and never get a
+    stored fingerprint -- so they are re-opened on every run rather than
+    answered from the cache. That is the cheap side of the trade: counting a
+    GIF's frames costs a fraction of the decode-and-DCT every photograph in the
+    archive pays for.
     """
-    try:
-        import imagehash
-        from PIL import Image, ImageOps
-
-        try:
-            import pillow_heif
-
-            pillow_heif.register_heif_opener()
-        except ImportError:
-            pass
-    except ImportError:
+    if not _imaging_ready():
         return {}, 0, 0
 
     root_clause = "" if root_id is None else " AND f.root_id=?"
@@ -175,11 +217,9 @@ def _perceptual_hashes(
             except ValueError:
                 pass
         try:
-            with Image.open(Path(row["root"]) / row["rel_path"]) as image:
-                # Apply EXIF orientation before hashing, so a rotated export and
-                # its original compare as the same photograph.
-                digest = imagehash.phash(ImageOps.exif_transpose(image))
-            value = int(str(digest), 16)
+            value = _fingerprint(Path(row["root"]) / row["rel_path"])
+            if value is None:  # animated: deliberately never fingerprinted
+                continue
             conn.execute(
                 """INSERT INTO perceptual_hashes(file_id, source_sha256, algorithm, hash, created_at)
                    VALUES(?, ?, 'phash64', ?, ?)

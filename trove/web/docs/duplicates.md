@@ -58,9 +58,17 @@ note Hamming distance between two 64-bit perceptual hashes: how many of the 64 b
 | `phash_hamming_threshold` | 6 | Two images are the same shot when at most this many of their 64 hash bits differ |
 | `fast_hash_sample_bytes` | 65536 | Head and tail sample size for the prefilter that decides whether a full SHA-256 is worth computing |
 
-Perceptual hashing only runs on images. Videos, audio and documents are grouped
-by exact content only, so two re-encodes of the same clip are two files as far
-as Trove is concerned.
+Perceptual hashing only runs on still images. Videos, audio and documents are
+grouped by exact content only, so two re-encodes of the same clip are two files
+as far as Trove is concerned.
+
+**Animated files are on that side of the line too.** A fingerprint can only
+describe one frame, and for an animation that frame is the first one — which
+says how the animation opens, not what it is. Two unrelated GIFs that share a
+title card, or both fade in from white, come out with the same fingerprint.
+So an animated file is never fingerprinted, and is grouped by its bytes alone.
+This is decided by looking inside the file rather than at its name, so a GIF
+saved as `.png` is treated as the animation it is.
 
 ## What you see on the Duplicates screen
 

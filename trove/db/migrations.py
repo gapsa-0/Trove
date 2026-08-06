@@ -169,6 +169,34 @@ def _migrate_video(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "semantic_embeddings", "indexer_version", "TEXT")
 
 
+def _clear_multiframe_fingerprints(conn: sqlite3.Connection) -> None:
+    """Retire fingerprints taken of an animated file's first frame.
+
+    Dedup no longer fingerprints animated files at all (see dedup/exact.py):
+    frame 0 describes how an animation opens, not what it is, so two unrelated
+    GIFs sharing a title card were grouped as one picture. But the pass answers
+    from ``perceptual_hashes`` whenever the source SHA still matches, so the
+    old first-frame values would keep grouping those files forever without
+    the file ever being opened again.
+
+    Scoped to the formats that can hold more than one frame rather than
+    clearing the table: re-fingerprinting is the slow pass, and there is no
+    reason to make an archive of JPEGs pay for it. PNG is in the list because
+    of APNG -- and because an animated GIF saved as ``.png`` is exactly the
+    case that motivated this. Files that turn out to be single-frame are
+    simply fingerprinted once more and cached again as before.
+
+    One-time, gated on the schema version by ``run`` below: ``init_db`` runs at
+    every job start, and an unconditional DELETE would take the writer's lock
+    on every one of them (see ``_drop_legacy_video_embeddings``).
+    """
+    conn.execute(
+        """DELETE FROM perceptual_hashes WHERE file_id IN (
+               SELECT id FROM files WHERE lower(ext) IN ('gif','png','webp','tif','tiff','apng')
+           )"""
+    )
+
+
 def _drop_legacy_video_embeddings(conn: sqlite3.Connection) -> None:
     """One-time cleanup, gated to schema version 12 so it runs exactly once ever
     rather than on every init_db call.
@@ -255,3 +283,5 @@ def run(conn: sqlite3.Connection, previous_version: int) -> None:
     _migrate_text_index(conn)
     if previous_version < 12:
         _drop_legacy_video_embeddings(conn)
+    if previous_version < 16:
+        _clear_multiframe_fingerprints(conn)

@@ -132,6 +132,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Animated pictures are no longer grouped as copies of each other.** A GIF was
+  compared on its first frame alone, so two unrelated animations that open the
+  same way — a shared title card, a fade in from white — were treated as one
+  picture and one of them was hidden from your library. Animations are now
+  matched on their contents like videos are, and this is decided by looking
+  inside the file, so a GIF saved as a `.png` is handled correctly too. Anything
+  wrongly hidden comes back at the next automatic rebuild.
 - **A photograph found by its writing no longer swallows the results beside
   it.** Text-search results hold two kinds of file — documents read from their
   own text, and pictures read off the pixels — and a picture's thumbnail had
