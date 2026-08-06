@@ -274,13 +274,23 @@ function extractPeopleMentions(query, people, commitEnd = false) {
   });
   return mentions;
 }
+/* The typed text with the recognised names lifted out of it, tidied back into a
+   sentence -- the gap a removed name leaves behind is what the last three
+   replacements close up.
+
+   The punctuation rule only closes a gap in front of punctuation that ENDS a
+   word ("Ada , and the lake" -> "the lake,"). It used to close every one, which
+   quietly broke the search that needs no feature at all: a query ending in an
+   extension is two words, and " .pdf" collapsed to ".pdf" glued the extension
+   onto the word before it, so `escritura .pdf` searched for `escritura.pdf` and
+   found nothing. */
 function semanticTextWithoutPeople(query, mentions) {
   let cursor = 0, output = "";
   mentions.forEach(mention => { output += query.slice(cursor, mention.start) + " "; cursor = mention.end; });
   output += query.slice(cursor);
   return output.replace(/\s+/g, " ").replace(/^\s*[’']s\b\s*/i, "")
     .replace(/^\s*(?:and|with|y|con)\b\s*/i, "")
-    .replace(/\s+([,.;!?])/g, "$1").trim();
+    .replace(/\s+([,.;!?])(?=\s|$)/g, "$1").trim();
 }
 function semanticComposerText() {
   const composer = document.getElementById("semantic-q");

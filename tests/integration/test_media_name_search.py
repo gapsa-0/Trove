@@ -83,6 +83,28 @@ def test_punctuation_in_a_name_search_is_matched_literally(tmp_path):
     assert wildcarded["items"] == []
 
 
+def test_the_extension_is_part_of_the_name(tmp_path):
+    """ "Show me the PDFs" is a search people actually make, and the extension is
+    where a file says what it is. It is matched like any other part of the name,
+    so `.pdf` is the whole query."""
+    db_path = _named_catalogue(tmp_path)
+
+    result = browse.media(db_path, root_id=1, name=".pdf")
+
+    assert [item["id"] for item in result["items"]] == [3, 4]
+    assert result["total"] == 2
+
+
+def test_an_extension_narrows_the_words_beside_it(tmp_path):
+    """The extension is one of the ANDed words, not a mode: `playa .jpg` is the
+    beach photos, not every JPEG and not every file mentioning the beach."""
+    db_path = _named_catalogue(tmp_path)
+
+    result = browse.media(db_path, root_id=1, name="escritura .pdf")
+
+    assert [item["id"] for item in result["items"]] == [3]
+
+
 def test_an_empty_name_search_is_not_a_filter(tmp_path):
     """Whitespace is not a search, and must not empty the grid."""
     db_path = _named_catalogue(tmp_path)

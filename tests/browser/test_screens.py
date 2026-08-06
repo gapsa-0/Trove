@@ -432,6 +432,41 @@ def test_a_search_finds_a_word_inside_a_document(open_app):
         assert app.errors() == []
 
 
+def test_an_extension_typed_beside_a_word_stays_a_word_of_its_own(open_app):
+    """Searching filenames is the one way every archive has, and `.pdf` on the
+    end of a query is how you say "and it is a PDF".
+
+    The composer tidies the sentence left behind when a person's name is lifted
+    out of it, and that tidy-up used to close the gap in front of ANY
+    punctuation -- so ` .jpg` became `.jpg` glued to the word before it, and
+    `2 .jpg` searched the names ENDING in `2.jpg` rather than the ones holding
+    both words. Asserted by typing the same two words in both orders: a filter
+    over ANDed words cannot care which came first.
+    """
+
+    def search(text):
+        # The previous search's count is cleared first, so waiting for one is
+        # not answered instantly by the number already on screen.
+        app.tab.evaluate(
+            "(() => { const c = document.getElementById('semantic-q');"
+            f" c.textContent = {text!r};"
+            " document.getElementById('gridcount-name').textContent = '';"
+            " c.closest('form').dispatchEvent("
+            "new Event('submit', {cancelable: true, bubbles: true})); })()"
+        )
+        return app.tab.wait_for(
+            "document.getElementById('gridcount-name').textContent",
+            what=f"the filename group to count what {text!r} found",
+        )
+
+    with open_app("library", wait_for=".tile") as app:
+        trailing = search("2 .jpg")
+        leading = search(".jpg 2")
+
+        assert trailing == leading, "the extension was glued to the word before it"
+        assert app.errors() == []
+
+
 def test_a_photograph_and_a_document_are_the_same_size_in_the_text_group(open_app, archive):
     """Both text features write into the same passages, so this group holds both
     kinds of file -- and a result should look like a result whichever

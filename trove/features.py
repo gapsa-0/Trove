@@ -494,7 +494,7 @@ _NAME_WAY = SearchWay(
     id="name",
     label="Search by filename",
     icon="filename",
-    matches="Matches the words in a file's own name, in any order.",
+    matches="Matches the words in a file's own name, extension included, in any order.",
     always=True,
     readers=(),
 )

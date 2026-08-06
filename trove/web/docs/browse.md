@@ -18,9 +18,11 @@ and it is phrased the way the others read.
 
 **Search by filename** is always available. Every word you type has to appear
 somewhere in the file's own name, in any order, so "beach 2019" finds
-`2019_beach_trip.jpg`. This needs no index, no model and no feature: it is the
-one way every archive has, whatever else it runs, and the part of the name that
-matched is marked on the result.
+`2019_beach_trip.jpg`. The extension is part of the name like anything else, so
+`.pdf` on its own is every PDF in the archive, and "escritura .pdf" is the PDFs
+among the files whose name says escritura. This needs no index, no model and no
+feature: it is the one way every archive has, whatever else it runs, and the
+part of the name that matched is marked on the result.
 
 **Search by document text** and **Search by picture text** share one way, headed
 with whichever of them you have on — or *Search by document or picture text* when

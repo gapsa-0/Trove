@@ -77,7 +77,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   on, and gets a group of its own with the matched part of the name marked.
   Every word has to appear in the name, in any order, so `escritura 2019` finds
   `2019-escritura-casa.pdf`, and only the file's own name counts — a folder
-  called `playa` does not make everything inside it a match for "playa".
+  called `playa` does not make everything inside it a match for "playa". The
+  extension is part of the name, so `.pdf` on its own is every PDF you have, and
+  `escritura .pdf` narrows to the PDFs among the matches.
 
   Until now it was a *fallback*, reached only by archives with no other way to
   search, which meant switching on Search by description quietly took it away:
