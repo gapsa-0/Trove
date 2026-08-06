@@ -160,7 +160,15 @@ def dup_groups(
     sort: str | None = None,
 ) -> dict[str, Any]:
     """A page of duplicate groups, each with its canonical and duplicate members
-    (name, folder, role, match type).
+    (name, folder, size, role, match type).
+
+    Every member carries its own ``size`` rather than the group carrying one
+    ``size_each``: that column is the CANONICAL's size (see dedup/exact.py's
+    ``_write_group``) and is only "each" for exact groups, where every copy is
+    byte-identical by definition. A perceptual group is routinely a big
+    original beside two re-compressed exports, and reporting the original's
+    size as what all three weigh contradicts ``redundant_bytes`` beside it,
+    which sums what the copies actually take up.
 
     ``match`` keeps only groups holding at least one identical copy, or at least
     one visual match; ``sort`` orders by member count either way. Both fall back
@@ -190,7 +198,7 @@ def dup_groups(
     out = []
     for g in groups:
         members = conn.execute(
-            """SELECT f.id, f.media_type, f.rel_path, m.role,
+            """SELECT f.id, f.media_type, f.rel_path, f.size, m.role,
                       r.path AS root,
                       CASE
                         WHEN m.role='canonical' THEN 'canonical'
@@ -208,13 +216,13 @@ def dup_groups(
                 "id": g["id"],
                 "method": g["method"],
                 "count": g["member_count"],
-                "size_each": g["size_each"],
                 "reclaimable": g["redundant_bytes"],
                 "canonical_id": g["canonical_file_id"],
                 "members": [
                     {
                         "id": m["id"],
                         "type": m["media_type"],
+                        "size": m["size"],
                         "role": m["role"],
                         "match_type": m["match_type"],
                         "name": os.path.basename(m["rel_path"]),

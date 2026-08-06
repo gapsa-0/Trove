@@ -195,9 +195,22 @@ export function openDupCopy(id) {
   }
   openItem(id);
 }
+/* What the copies weigh, without claiming they all weigh the same. Only an
+   exact group is copies of one size; a perceptual group is as often a big
+   original beside two re-compressed exports, where "218.1 KB each" is both
+   false and visibly at odds with the reclaimable figure next to it. Compared
+   on the FORMATTED sizes so the answer matches what is on screen: two copies a
+   few bytes apart round to one number, and "107.1 KB–107.1 KB" would be a
+   worse way of saying "each". */
+function dupSizes(members) {
+  const sizes = (members || []).map(m => m.size || 0).sort((a, b) => a - b);
+  if (!sizes.length) return "";
+  const lo = fmtBytes(sizes[0]), hi = fmtBytes(sizes[sizes.length - 1]);
+  return lo === hi ? `${lo} each` : `${lo}–${hi}`;
+}
 function dupGroupRow(g) {
   const row = document.createElement("div"); row.className = "dupgroup";
-  const head = `<div class="dghead"><b>${g.count}×</b> · ${fmtBytes(g.size_each)} each ·
+  const head = `<div class="dghead"><b>${g.count}×</b> · ${dupSizes(g.members)} ·
       <span class="muted">${fmtBytes(g.reclaimable)} reclaimable</span></div>`;
   const tiles = g.members.map(mm => {
     const kept = mm.role === "canonical";
