@@ -20,7 +20,7 @@ import {
   boxesShown,
 } from "./boxes.js";
 import {
-  S, archiveHasFeature, typeLabel,
+  S, TYPE_ICON, archiveHasFeature, typeLabel,
 } from "./state.js";
 
 const has = id => archiveHasFeature(S.arch, id);
@@ -33,15 +33,16 @@ const has = id => archiveHasFeature(S.arch, id);
    of the same kind as its dimensions and its date, and a heading over two links
    was a section in name only.
 
-   "Looks like this" comes after all of it. It is the only section about OTHER
-   files, and the only one that starts work when you press it -- so it reads as
-   a footer to the file's own facts rather than as one of them, and it cannot
-   push the readings down the panel as it fills with results. */
+   The two sections about OTHER files come after all of it, most literal first:
+   the copies of this exact file, then the ones that merely look like it.
+   "Looks like this" is last because it is also the only section that starts
+   work when you press it, so it cannot push the readings down the panel as it
+   fills with results. */
 export function renderPanel(it, related) {
   return `<h3>${esc(it.name)}</h3>` +
     `<div class="subline">${esc(typeLabel(it.type))} \u00b7 ${fmtBytes(it.size)}</div>` +
     peopleSection(it) + petsSection(it) + placeSection(it) + textSection(it) +
-    detailsSection(it) + looksLikeSection(it, related);
+    detailsSection(it) + duplicatesSection(it) + looksLikeSection(it, related);
 }
 
 function notYet(line, sub) {
@@ -232,10 +233,52 @@ function folderCell(it) {
   if (!it.folder_count) return `${where} · only this file`;
   return `${where} · ${it.folder_count.toLocaleString()} other file${it.folder_count === 1 ? "" : "s"}`;
 }
-function duplicateCell(it) {
+/* The copies of this exact file, as the copies themselves.
+
+   It used to be one row of Details reading "3 copies", which is the one thing
+   the panel is in a position to improve on: it says three files somewhere are
+   the same and leaves you to open the Duplicates screen and hunt for them. The
+   group is small and already grouped, so it is shown -- each copy with what
+   makes it a copy, which of them Trove keeps, and where you are among them.
+
+   The vocabulary is the Duplicates screen's, deliberately: kept, identical
+   copy, visual match. Two screens naming the same fact differently is how a
+   user ends up believing they are two facts. */
+function duplicatesSection(it) {
   const d = it.duplicates;
-  if (!d) return "";
-  return `${d.count} cop${d.count === 1 ? "y" : "ies"}${d.canonical ? " · this is the one kept" : ""}`;
+  const body = d ? dupGroup(it, d)
+    : !it.read.duplicates
+      ? notYet("Not compared yet", "Trove has not looked for copies of this file.")
+      : `<div class="imuted">No duplicates found.</div>`;
+  return `<div class="isec"><div class="h">Duplicates</div>${body}</div>`;
+}
+function dupGroup(it, d) {
+  const others = Math.max(0, d.count - 1);
+  const copies = `${others} other cop${others === 1 ? "y" : "ies"}`;
+  // What the group means for the file in front of you, which is the one thing
+  // the Duplicates screen cannot say: it lists groups, not the file you opened.
+  const lead = d.canonical
+    ? `${copies}. This is the one Trove shows.`
+    : `${copies}. This one is hidden from browsing; the copy marked kept is shown instead.`;
+  return `<div class="copies">${d.members.map(m => copyTile(m, it.id)).join("")}</div>
+    <div class="imuted">${esc(lead)}</div>`;
+}
+const COPY_TAG = { canonical: "✓ Kept", identical: "Identical", visual: "Looks the same" };
+/* One copy. The file you are looking at is marked and does not open itself;
+   every other copy is a way into that copy, with the arrows then walking the
+   group -- the same claim about "next" the Duplicates screen makes. */
+function copyTile(m, openId) {
+  const here = m.id === openId;
+  const tag = `<span class="ctag ${m.match_type}">${here ? "This file" : COPY_TAG[m.match_type]}</span>`;
+  const face = m.type === "image" || m.type === "video" || m.type === "document"
+    ? `<img src="/thumb/${m.id}" loading="lazy" alt=""
+        onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'cph',textContent:'${TYPE_ICON[m.type] || "📦"}'}))">`
+    : `<span class="cph">${TYPE_ICON[m.type] || "📦"}</span>`;
+  const where = `${esc(m.folder || "the archive root")} · ${esc(m.name)}`;
+  const cls = `copy ${m.match_type}${here ? " here" : ""}`;
+  if (here) return `<div class="${cls}" title="${where}" aria-current="true">${face}${tag}</div>`;
+  return `<button type="button" class="${cls}" title="${where}"
+    onclick="openCopy(${m.id})">${face}${tag}</button>`;
 }
 
 /* Its own section, with its own name.
@@ -276,7 +319,6 @@ function detailsSection(it) {
   return `<div class="isec"><div class="h">Details</div>` +
     dateRow(it) + kv("Dimensions", dims) + kv("Length", dur) + kv("Camera", cam) +
     kv("Folder", folderCell(it)) +
-    kv("Duplicates", duplicateCell(it)) +
     kv("Description", it.description ? esc(it.description) : "") +
     takeoutRows(it) + fileRows(it) + `</div>`;
 }

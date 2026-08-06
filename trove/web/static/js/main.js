@@ -24,8 +24,8 @@ import {
 
 import {
   MITEM, closeModal, closePick, copyText, editDate,
-  editPlace, isReading, newPlace, onAddPerson, onAddPet, openFileLocation, onPlaceSelect, openItem,
-  openRelated, reassignFace,
+  editPlace, isReading, newPlace, onAddPerson, onAddPet, openCopy, openFileLocation, onPlaceSelect,
+  openItem, openRelated, reassignFace,
   removeManualPerson, removeManualPet, renderInfo, saveDate, saveNewPlace, setReading, showRelated,
   stepItem, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
 } from "./item.js";
@@ -163,7 +163,8 @@ Object.assign(window, {
   newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
-  openDocs, openDupCopy, openFileLocation, openItem, openRelated, openSettings, reassignFace,
+  openCopy, openDocs, openDupCopy, openFileLocation, openItem, openRelated, openSettings,
+  reassignFace,
   removeFeature, removeManualPerson,
   removeManualPet,
   renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setArchiveName, setMapView,

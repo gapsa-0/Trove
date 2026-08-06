@@ -105,6 +105,24 @@ export function openRelated(id) {
   setGallery(ids, "in pictures that look alike");
   openItem(id, { keepTrail: true });
 }
+/* Open another copy of this file from the Duplicates section.
+
+   The arrows then walk the group and nothing else, which is the claim the
+   Duplicates screen already makes about its own tiles (dups.js:openDupCopy):
+   the group is the set you are comparing, so running off the end of it lands
+   you on an unrelated photograph. Back returns to the copy you came from. */
+export function openCopy(id) {
+  if (!MITEM || id === MITEM.id) return;
+  const group = ((MITEM.duplicates && MITEM.duplicates.members) || []).map(m => m.id);
+  TRAIL.push({
+    id: MITEM.id,
+    gallery: (S.gallery || []).slice(),
+    source: S.gallerySource,
+    related: RELATED,
+  });
+  setGallery(group.includes(id) ? group : [id], "in this duplicate group");
+  openItem(id, { keepTrail: true });
+}
 export function viewerBack() {
   const previous = TRAIL.pop();
   if (!previous) return;

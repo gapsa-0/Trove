@@ -165,7 +165,7 @@ def _item_manual_tags(
     return manual_people, manual_pets
 
 
-def _item_coverage(conn: sqlite3.Connection, fid: int) -> dict[str, bool]:
+def _item_coverage(conn: sqlite3.Connection, f: sqlite3.Row) -> dict[str, bool]:
     """Which stages have actually looked at this file yet.
 
     "Nothing found" and "not looked at yet" are different facts, and the panel
@@ -177,6 +177,7 @@ def _item_coverage(conn: sqlite3.Connection, fid: int) -> dict[str, bool]:
     resumable), so a missing row already *means* "not yet" and nothing new has
     to be recorded to answer this. One indexed primary-key probe each.
     """
+    fid = f["id"]
 
     def seen(table: str) -> bool:
         return conn.execute(f"SELECT 1 FROM {table} WHERE file_id=?", (fid,)).fetchone() is not None
@@ -189,7 +190,30 @@ def _item_coverage(conn: sqlite3.Connection, fid: int) -> dict[str, bool]:
         "pets": seen("pet_scan"),
         "text": seen("doc_text"),
         "semantic": seen("semantic_embeddings"),
+        "duplicates": _dedup_seen(conn, f),
     }
+
+
+def _dedup_seen(conn: sqlite3.Connection, f: sqlite3.Row) -> bool:
+    """Whether the last grouping run compared this file against the archive.
+
+    Dedup is the one stage that writes no per-file row -- a file with no copies
+    is simply in no group -- so the answer comes from the run marker instead
+    (``db/database.py:dedup_mark_done``). A run covered the eligible files up to
+    the id it recorded, and ids only grow, so a file past that mark was scanned
+    after the run and has been compared against nothing yet. An unhashed file is
+    not eligible either: ``dedup/exact.py`` groups on ``sha256``.
+
+    No marker at all means never run, or invalidated because something the
+    canonical pick reads moved -- a regroup is owed, and until it lands the
+    honest answer for every file is "not compared yet".
+    """
+    if f["sha256"] is None:
+        return False
+    row = conn.execute(
+        "SELECT covered_max_file_id FROM dedup_runs WHERE root_id=?", (f["root_id"],)
+    ).fetchone()
+    return row is not None and row[0] is not None and int(f["id"]) <= int(row[0])
 
 
 def _item_text(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | None:
@@ -233,20 +257,53 @@ def _item_text(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | None:
 
 
 def _item_duplicates(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | None:
-    """The duplicate group this file is in, if any."""
+    """The duplicate group this file is in, with every copy in it.
+
+    The whole group rather than a count, because the viewer's Duplicates section
+    shows the copies themselves: a count says two files somewhere are the same
+    and leaves you to go and find them, which is the one thing the panel is in a
+    position to answer. Same shape and the same per-member match rule as the
+    Duplicates screen (``services/dups.py:dup_groups``) -- a copy is *identical*
+    when its bytes match the kept one's and *visual* otherwise, decided per copy
+    rather than from the group's method, so the two screens cannot label the same
+    file differently.
+    """
     row = conn.execute(
-        """SELECT g.id, g.method, g.member_count, m.role
+        """SELECT g.id, g.method, g.member_count, g.canonical_file_id, m.role
              FROM dup_members m JOIN dup_groups g ON g.id=m.group_id
             WHERE m.file_id=?""",
         (fid,),
     ).fetchone()
     if row is None:
         return None
+    members = conn.execute(
+        """SELECT f.id, f.media_type, f.rel_path, m.role,
+                  CASE
+                    WHEN m.role='canonical' THEN 'canonical'
+                    WHEN f.sha256 = canonical.sha256 THEN 'identical'
+                    ELSE 'visual'
+                  END AS match_type
+             FROM dup_members m JOIN files f ON f.id=m.file_id
+             JOIN files canonical ON canonical.id=?
+            WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
+        (row["canonical_file_id"], row["id"]),
+    ).fetchall()
     return {
         "group_id": row["id"],
         "method": row["method"],
         "count": row["member_count"],
         "canonical": row["role"] == "canonical",
+        "members": [
+            {
+                "id": m["id"],
+                "type": m["media_type"],
+                "role": m["role"],
+                "match_type": m["match_type"],
+                "name": os.path.basename(m["rel_path"]),
+                "folder": os.path.dirname(m["rel_path"]),
+            }
+            for m in members
+        ],
     }
 
 
@@ -339,7 +396,7 @@ def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, A
         # Which stages have looked at this file, so the panel can say "read,
         # and nothing here" rather than "nothing here" for a file no stage has
         # reached. See _item_coverage.
-        "read": _item_coverage(conn, fid),
+        "read": _item_coverage(conn, f),
         "text": _item_text(conn, fid),
         "duplicates": _item_duplicates(conn, fid),
         **_item_neighbours(conn, f),

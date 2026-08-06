@@ -420,6 +420,83 @@
   cursor: default
 }
 
+/* -- the copies of this file --
+   Same grid discipline as .relstrip below, with room under each tile for the
+   one thing a copy has to say. Two rings carry the meaning: green marks the
+   copy Trove keeps, white marks the one you are looking at, and a group where
+   they are the same tile wears both without a third state to explain. */
+.copies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 9px;
+  margin-bottom: 9px
+}
+
+.copy {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer
+}
+
+.copy>img,
+.copy>.cph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .07);
+  object-fit: cover;
+  font-size: 22px;
+  transition: border-color .15s
+}
+
+.copy:hover>img,
+.copy:hover>.cph,
+.copy:focus-visible>img,
+.copy:focus-visible>.cph {
+  border-color: rgba(255, 255, 255, .45)
+}
+
+.copy.canonical>img,
+.copy.canonical>.cph {
+  border-color: var(--good)
+}
+
+.copy.here {
+  cursor: default
+}
+
+.copy.here>img,
+.copy.here>.cph {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .16)
+}
+
+.ctag {
+  display: block;
+  margin-top: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .58)
+}
+
+.ctag.canonical {
+  color: var(--good)
+}
+
+.copy.here .ctag {
+  color: #fff
+}
+
 /* A grid, not a scrolling row. Sideways scrolling inside a panel that already
    scrolls downward means one of the two directions is always the wrong guess,
    and half the results sat off the edge where nothing suggested they existed.

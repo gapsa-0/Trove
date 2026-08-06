@@ -305,6 +305,7 @@ def _seed(conn, root_id: int, source_dir: Path) -> dict:
         (canonical, factories.FIXED_TIME),
     )
     ids["dup_group"] = cur.lastrowid
+    ids["dup_kept"], ids["dup_copy"] = canonical, copy
     for fid, role in ((canonical, "canonical"), (copy, "duplicate")):
         conn.execute(
             "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, ?)",
@@ -315,6 +316,14 @@ def _seed(conn, root_id: int, source_dir: Path) -> dict:
     # panel opens, not a person's, not a pet's, not half of the duplicate pair.
     ids["ocr_photo"] = file_ids[20]
     ids["document"] = _seed_documents(conn, root_id, source_dir, ids["ocr_photo"])
+
+    # The run that produced the group above. Dedup writes no per-file row -- a
+    # file with no copies is simply in no group -- so this marker is the whole
+    # of what says a file has been compared, and the viewer's Duplicates section
+    # reads it to tell "no copies" from "not compared yet". Written last, so it
+    # covers everything seeded; a group no run ever made is a state no real
+    # archive can be in.
+    db.dedup_mark_done(conn, root_id, *db.dedup_coverage(conn, root_id))
 
     # Without this, opening the archive treats every person seeded above as
     # stale identity data from a retired embedder and wipes them -- see the

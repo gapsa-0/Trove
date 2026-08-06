@@ -97,6 +97,18 @@ how much of the archive is being shown.
 anywhere else. The screen exists to tell you what is redundant and where it
 lives, so you can act on it with your file manager if you want to.
 
+## Copies, from the file you are looking at
+
+You do not have to come to this screen to find out whether a file has copies.
+Open any file and its panel has a **Duplicates** section: the whole group as
+thumbnails, tagged the same way as here — kept, identical, looks the same —
+with the copy you are looking at marked. Pressing another copy opens it, with
+the arrows kept inside the group and a way back to the copy you came from.
+
+A file that has been compared and matched nothing says *No duplicates found*. A
+file the last grouping run has not reached — scanned since, or not hashed yet —
+says it has not been compared instead, because that is a different fact.
+
 ## Which copy is kept
 
 One member of each group is the **canonical** copy: the one that stays visible

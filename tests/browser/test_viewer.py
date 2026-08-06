@@ -362,6 +362,73 @@ def test_related_pictures_are_a_grid_rather_than_a_sideways_scroll(open_app, arc
         assert app.errors() == []
 
 
+def _open(app, file_id):
+    """Open one file by id and wait for its panel."""
+    app.tab.evaluate(f"openItem({file_id})")
+    app.tab.wait_for(
+        "!!(document.querySelector('#modal.open #minfo h3') || {}).textContent",
+        what="the panel to name the file it opened",
+    )
+
+
+def test_the_copies_of_a_file_are_shown_rather_than_counted(open_app, archive):
+    """ "3 copies" says three files somewhere are the same and leaves you to go
+    and find them. The group is small and already grouped, so it is drawn."""
+    with open_app("library", wait_for=".tile") as app:
+        _open(app, archive.ids["dup_kept"])
+        app.wait_for("#minfo .copies")
+
+        assert app.count("#minfo .copy") == 2
+        # Where you are among them, and which one Trove keeps -- the file you
+        # opened is both here, and does not offer to open itself.
+        assert app.count("#minfo .copy.here") == 1
+        assert app.count("#minfo button.copy.here") == 0, "the open file offers to open itself"
+        section = app.tab.evaluate(
+            "document.querySelector('#minfo .copies').closest('.isec').textContent"
+        )
+        assert "Duplicates" in section
+        assert "This file" in section and "Looks the same" in section
+        assert "1 other copy" in section
+        assert app.errors() == []
+
+
+def test_opening_a_copy_from_the_panel_bounds_the_arrows_to_the_group(open_app, archive):
+    """Same claim about "next" the Duplicates screen makes about its tiles: the
+    group is the set you are comparing, and running off the end of it lands you
+    on an unrelated photograph. Back returns to the copy you came from."""
+    with open_app("library", wait_for=".tile") as app:
+        _open(app, archive.ids["dup_kept"])
+        app.wait_for("#minfo .copies")
+        started_on = app.tab.evaluate("document.querySelector('#minfo h3').textContent")
+
+        app.tab.evaluate("document.querySelector('#minfo button.copy').click()")
+        app.tab.wait_for(
+            f"document.querySelector('#minfo h3').textContent !== {started_on!r}",
+            what="the viewer to land on the other copy",
+        )
+
+        assert "in this duplicate group" in app.text("#vpos")
+        app.tab.evaluate("viewerBack(); 1")
+        app.tab.wait_for(
+            f"document.querySelector('#minfo h3').textContent === {started_on!r}",
+            what="the viewer to return to the copy the jump started from",
+        )
+        assert "in Browse" in app.text("#vpos")
+        assert app.errors() == []
+
+
+def test_a_compared_file_with_no_copies_says_so(open_app, archive):
+    """And says it as a finding, not as the pulse that means "still queued":
+    this file has been through a grouping run and nothing matched it."""
+    with open_app("library", wait_for=".tile") as app:
+        _open(app, archive.ids["ocr_photo"])
+        panel = app.text("#minfo")
+
+        assert "No duplicates found" in panel
+        assert app.count("#minfo .copies") == 0
+        assert app.errors() == []
+
+
 def _zoom(app):
     return app.tab.evaluate(
         "Math.round(parseFloat("

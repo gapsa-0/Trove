@@ -119,6 +119,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The map has a Places/Photos switch: alongside the existing grouped-place view,
   it can plot one dot per geotagged photo, coloured by the place it belongs to, for
   seeing the actual spread of a place rather than just where you keep going back.
+- **Open a file and you can see its copies.** The viewer's panel has a
+  Duplicates section showing the whole group the file belongs to — every copy as
+  a thumbnail, which one Trove keeps, which are byte-identical and which only
+  look the same, and which one you are looking at. Pressing another copy opens
+  it, with the arrows kept inside the group and a way back to where you started.
+  A file that has been compared and matched nothing says so; one the last
+  grouping run has not reached yet says that instead, rather than claiming it has
+  no copies. This replaces a line in Details reading "3 copies", which told you
+  three files somewhere were the same and left you to go and find them.
 - The Duplicates page breaks the redundant-copies total down by what the copies
   actually are: byte-identical versus only visually the same, and photos versus
   videos.

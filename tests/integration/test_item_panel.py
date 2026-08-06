@@ -41,7 +41,13 @@ def test_a_file_no_stage_has_reached_reports_every_stage_as_unread(tmp_path):
 
     # No scan rows at all: nothing has looked, and the panel must not be able
     # to render this as "read, and no faces here".
-    assert it["read"] == {"people": False, "pets": False, "text": False, "semantic": False}
+    assert it["read"] == {
+        "people": False,
+        "pets": False,
+        "text": False,
+        "semantic": False,
+        "duplicates": False,
+    }
 
 
 def test_a_stage_that_found_nothing_still_counts_as_read(tmp_path):
@@ -180,24 +186,91 @@ def test_a_file_at_the_root_counts_only_other_root_level_files(tmp_path):
     assert it["folder_count"] == 1  # alone.jpg only
 
 
-def test_a_duplicate_group_is_reported_with_the_files_role(tmp_path):
-    conn = _catalog(tmp_path)
+def _grouped(conn, *, method="exact", member_count=3):
+    """Files 1 and 2 in one group, 1 kept. Their hashes differ, so 2 is a
+    visual match rather than a byte-identical copy."""
     conn.execute(
         """INSERT INTO dup_groups(id,method,canonical_file_id,member_count,created_at)
-           VALUES(7,'exact',1,3,?)""",
-        (FIXED,),
+           VALUES(7,?,1,?,?)""",
+        (method, member_count, FIXED),
     )
     conn.execute("INSERT INTO dup_members(group_id,file_id,role) VALUES(7,1,'canonical')")
     conn.execute("INSERT INTO dup_members(group_id,file_id,role) VALUES(7,2,'duplicate')")
+
+
+def test_a_duplicate_group_is_reported_with_the_files_role(tmp_path):
+    conn = _catalog(tmp_path)
+    _grouped(conn)
     conn.commit()
     conn.close()
 
     db_path = str(tmp_path / "archive.db")
-    assert item_detail.item(db_path, 1)["duplicates"] == {
-        "group_id": 7,
-        "method": "exact",
-        "count": 3,
-        "canonical": True,
-    }
+    kept = item_detail.item(db_path, 1)["duplicates"]
+    assert (kept["group_id"], kept["method"], kept["count"], kept["canonical"]) == (
+        7,
+        "exact",
+        3,
+        True,
+    )
     assert item_detail.item(db_path, 2)["duplicates"]["canonical"] is False
     assert item_detail.item(db_path, 3)["duplicates"] is None
+
+
+def test_the_group_carries_its_copies_so_the_panel_can_show_them(tmp_path):
+    """The panel draws the group, not a count of it: "3 copies" says three files
+    somewhere are the same and leaves you to go and find them."""
+    conn = _catalog(tmp_path)
+    _grouped(conn)
+    conn.commit()
+    conn.close()
+
+    members = item_detail.item(str(tmp_path / "archive.db"), 2)["duplicates"]["members"]
+
+    # The kept copy first, whichever file you opened -- it is the one the group
+    # is measured against.
+    assert [(m["id"], m["role"], m["name"]) for m in members] == [
+        (1, "canonical", "lake.jpg"),
+        (2, "duplicate", "letter.jpg"),
+    ]
+
+
+def test_a_copy_is_identical_or_visual_by_its_own_bytes(tmp_path):
+    """The same per-copy rule the Duplicates screen labels its tiles with: a
+    perceptual group routinely holds byte-identical copies too, and deciding
+    from the group's method would label the same file differently on the two
+    screens."""
+    conn = _catalog(tmp_path)
+    _grouped(conn, method="phash")
+    conn.execute("UPDATE files SET sha256='sha1' WHERE id=2")  # same bytes as the kept copy
+    conn.commit()
+    conn.close()
+
+    members = item_detail.item(str(tmp_path / "archive.db"), 1)["duplicates"]["members"]
+
+    assert [m["match_type"] for m in members] == ["canonical", "identical"]
+
+
+def test_a_file_the_last_grouping_run_never_reached_is_not_yet_compared(tmp_path):
+    """Dedup writes no per-file row -- a file with no copies is simply in no
+    group -- so "no duplicates found" would otherwise be claimed for a file
+    scanned after the last run, which nothing has compared against anything."""
+    conn = _catalog(tmp_path)
+    db.dedup_mark_done(conn, root_id=1, covered_files=2, covered_max_file_id=2)
+    conn.commit()
+    conn.close()
+
+    db_path = str(tmp_path / "archive.db")
+    assert item_detail.item(db_path, 2)["read"]["duplicates"] is True
+    assert item_detail.item(db_path, 3)["read"]["duplicates"] is False
+
+
+def test_an_unhashed_file_is_not_yet_compared_either(tmp_path):
+    """`dedup/exact.py` groups on sha256, so a file the hashing pass has not
+    reached is not eligible however far the run's mark reaches."""
+    conn = _catalog(tmp_path)
+    conn.execute("UPDATE files SET sha256=NULL WHERE id=1")
+    db.dedup_mark_done(conn, root_id=1, covered_files=3, covered_max_file_id=3)
+    conn.commit()
+    conn.close()
+
+    assert item_detail.item(str(tmp_path / "archive.db"), 1)["read"]["duplicates"] is False
