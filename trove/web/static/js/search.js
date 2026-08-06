@@ -14,7 +14,7 @@ import {
   esc,
 } from "./dom.js";
 import {
-  ICONS, S, archiveHasFeature,
+  ICONS, S, archiveHasFeature, typeLabel,
 } from "./state.js";
 
 let LOCAL_TRANSLATOR_PROMISE = null, SEARCH_SUBMISSION = 0;
@@ -117,9 +117,31 @@ export function renderSearchWays() { searchWaysTick(++SEARCH_WAYS_GEN); }
 
 // What each way's coverage line says, given the status payloads. Kept as one
 // function per ranking so the sentence and the numbers it reads sit together.
+
+// The kinds of file an index holds, counted. Both status endpoints answer with
+// the same per-type tally, and the question the panel is asking is the same one
+// for both -- what can this way actually see -- so the line is built once.
+//
+// It replaces a single total and a word for what had been done to it: "12,040
+// read", "8,900 photos and videos indexed". The total was the least useful part
+// of it. What tells you whether a way can answer your question is *what* it
+// holds, and "read" and "indexed" are the stage's vocabulary rather than
+// anything the reader needs.
+const KINDS = { image: "images", video: "videos", document: "documents", audio: "audio files" };
+
+function reach(list) {
+  return (list || [])
+    .filter(t => t.count)
+    .map(t => `${t.count.toLocaleString()} `
+      + (t.count === 1 ? typeLabel(t.type) : (KINDS[t.type] || typeLabel(t.type) + "s")))
+    .join(" · ");
+}
+
 function nameCoverage() {
   const total = S.grid && S.grid.query ? null : (S.grid && S.grid.total);
-  return total == null ? "" : `${total.toLocaleString()} files, all searchable`;
+  // Every file, with no qualifier: this way needs no index and no feature, so
+  // there is nothing here that some of them could be short of.
+  return total == null ? "" : `${total.toLocaleString()} files`;
 }
 /* How many files there are is the one coverage figure that comes from the grid
    rather than from a status endpoint, and the grid's first page can land either
@@ -135,13 +157,13 @@ function textCoverage(s) {
   if (!s.configured) return "Not available in this installation";
   const read = s.read || 0, pending = s.pending || 0;
   // Which files were read is said in the row's own sentence, from the features
-  // that are on; this is the count, and only the count.
+  // that are on; this is the count, and only the count. Passages are gone from
+  // it: how many pieces a file was cut into for the index is a fact about the
+  // index, and there is nothing anybody can do with it.
   if (!read) return pending
     ? `Nothing read yet · ${pending.toLocaleString()} queued`
     : "Nothing to read in this archive yet";
-  const passages = s.passages ? ` · ${s.passages.toLocaleString()} passages` : "";
-  return `${read.toLocaleString()} read${passages}` +
-    (pending ? ` · ${pending.toLocaleString()} queued` : "");
+  return reach(s.by_type) + (pending ? ` · ${pending.toLocaleString()} queued` : "");
 }
 function photoCoverage(s) {
   if (!s) return "";
@@ -151,8 +173,7 @@ function photoCoverage(s) {
   if (!indexed) return pending
     ? `Nothing indexed yet · ${pending.toLocaleString()} queued`
     : "Nothing indexed yet";
-  return `${indexed.toLocaleString()} photos and videos indexed` +
-    (pending ? ` · ${pending.toLocaleString()} queued` : "");
+  return reach(s.by_type) + (pending ? ` · ${pending.toLocaleString()} queued` : "");
 }
 
 async function searchWaysTick(gen) {

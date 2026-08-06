@@ -14,6 +14,7 @@ here, because the screen it was supposed to fill stays empty.
 from __future__ import annotations
 
 import importlib.util
+import re
 import urllib.request
 
 import pytest
@@ -534,6 +535,35 @@ def test_a_way_links_to_the_page_that_documents_it(open_app):
         assert "How Search by document text works" in links
         assert "How Search by picture text works" in links
         assert "How Search by description works" in links
+        assert app.errors() == []
+
+
+def test_a_way_says_what_it_holds_rather_than_how_much_was_done_to_it(open_app):
+    """The second half of a way's row is how much of the archive it can see.
+
+    It used to be a total and the name of the thing the stage did to it -- "12
+    read · 40 passages", "8,900 photos and videos indexed" -- where the total
+    answers nothing on its own and the verb is the pipeline's vocabulary. What
+    decides whether a way can answer your question is *what kind of thing* it
+    holds, so that is what the line counts.
+    """
+    with open_app("library", wait_for=".way") as app:
+        cover = app.tab.evaluate(
+            "Object.fromEntries([...document.querySelectorAll('.way')].map(e => ["
+            " e.querySelector('.way-text b').textContent.replace('always', ''),"
+            " e.querySelector('.way-cov').textContent]))"
+        )
+
+        # The fixture reads two documents and one picture, and has indexed
+        # neither of them by description yet.
+        text = cover["Search by text extracted"]
+        assert "2 documents" in text and "1 image" in text
+        assert "passages" not in text and "read" not in text
+        # Every file is searchable by name, so there is no share of them to
+        # qualify -- the count is the whole archive, with nothing after it.
+        assert re.fullmatch(r"[\d,]+ files", cover["Search by filename"])
+        # A backlog is still worth saying: it is the part that will change.
+        assert "queued" in text
         assert app.errors() == []
 
 

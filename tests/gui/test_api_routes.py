@@ -164,7 +164,17 @@ API_GET_CASES = [
     ),
     pytest.param(
         "/api/browse/text/status?root={root_id}",
-        {"total", "read", "skipped", "errors", "pending", "passages", "configured", "enabled"},
+        {
+            "total",
+            "read",
+            "by_type",
+            "skipped",
+            "errors",
+            "pending",
+            "passages",
+            "configured",
+            "enabled",
+        },
         id="GET /api/browse/text/status",
     ),
     pytest.param(

@@ -101,13 +101,23 @@ def text_summary(
     # other half was on stays in ``doc_text`` after that half is switched off,
     # and counting it here would report more files read than there are files to
     # read -- and drive ``pending`` to zero while the backlog was not empty.
+    # Grouped by media type as well as status, because "read" is two different
+    # promises depending on what was read: the document half opens files, the
+    # picture half opens pictures, and an archive that has read 12,000 images
+    # and 40 documents is told exactly that rather than "12,040 read".
     rows = conn.execute(
-        f"""SELECT t.status, COUNT(*) c FROM doc_text t JOIN files f ON f.id=t.file_id
+        f"""SELECT t.status, f.media_type mt, COUNT(*) c
+             FROM doc_text t JOIN files f ON f.id=t.file_id
              WHERE {_NOT_HIDDEN}{rc} AND {ext_sql} AND t.source_sha256 IS f.sha256
-             GROUP BY t.status""",
+             GROUP BY t.status, f.media_type""",
         (*rp, *exts),
     ).fetchall()
-    counts = {r["status"]: r["c"] for r in rows}
+    counts: dict[str, int] = {}
+    read_by_type: dict[str, int] = {}
+    for row in rows:
+        counts[row["status"]] = counts.get(row["status"], 0) + row["c"]
+        if row["status"] == "extracted":
+            read_by_type[row["mt"]] = read_by_type.get(row["mt"], 0) + row["c"]
     passages = conn.execute(
         f"""SELECT COUNT(*) FROM doc_chunks c JOIN files f ON f.id=c.file_id
              WHERE {_NOT_HIDDEN}{rc}""",
@@ -117,6 +127,12 @@ def text_summary(
     return {
         "total": int(total),
         "read": counts.get("extracted", 0),
+        # Same shape and same ordering as ``semantic_summary``'s: the two feed
+        # one line each in Browse's panel, and the line is built once.
+        "by_type": [
+            {"type": mt, "count": n}
+            for mt, n in sorted(read_by_type.items(), key=lambda kv: -kv[1])
+        ],
         "skipped": counts.get("skipped", 0),
         "errors": counts.get("error", 0),
         "pending": max(0, int(total) - completed),

@@ -216,6 +216,9 @@ def test_turning_on_text_in_images_makes_pictures_count_as_work(indexed_with_a_p
     assert summary["total"] == 4, "the photograph is now a file something will open"
     assert summary["read"] == 3
     assert summary["pending"] == 1
+    # What was read, by kind: the panel says "3 documents", not "3 read", because
+    # what the two halves open is the difference between them.
+    assert summary["by_type"] == [{"type": "document", "count": 3}]
 
 
 def test_an_archive_that_only_reads_pictures_still_reports_its_backlog(indexed_with_a_photo):
