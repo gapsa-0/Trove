@@ -34,17 +34,16 @@ def _configure(archive, **body):
         return json.loads(response.read())
 
 
-def _open_setup(app, path="/tmp/example-folder", archive="null"):
-    """Open setup the way the picker does: for a not-yet-created archive, or
-    (with ``archive`` as a registry entry) for one being reconfigured.
+def _open_setup(app, path="/tmp/example-folder"):
+    """Open setup the way the picker does: for a folder that is not an archive
+    yet, which -- since the Features sheet took over changing what a live one
+    runs -- is the only way this screen opens at all.
 
     Waits on the path the panel was opened *for*, not on the panel: closing
     setup only hides it, so its last visit's markup is still in the DOM and
     anything that merely waits for a chip sails straight through the render.
     """
-    app.tab.evaluate(
-        f"import('/static/js/setup.js').then(m => m.openArchiveSetup({archive}, {path!r}))"
-    )
+    app.tab.evaluate(f"import('/static/js/setup.js').then(m => m.openArchiveSetup({path!r}))")
     app.tab.wait_for(
         f"(document.querySelector('#setup .set-path') || {{}}).textContent === {path!r}",
         what=f"the setup panel to open on {path!r}",
@@ -202,11 +201,6 @@ def test_choosing_one_of_a_pair_says_what_it_costs(open_app):
         assert app.count(".set-pair") == 0, "with both on there is nothing to warn about"
 
 
-_EXISTING = (
-    "{id: 1, path: '/tmp/example-folder', name: 'Old name', features: ['index', 'duplicates']}"
-)
-
-
 def test_a_name_typed_for_one_folder_does_not_follow_the_next_one(open_app):
     """The panel is hidden on close, not destroyed, so its markup outlives the
     visit that built it. Reading the name back off that field is how the second
@@ -238,21 +232,6 @@ def test_a_half_typed_name_survives_adding_a_feature(open_app):
         app.wait_for('#set-flow .set-chip[data-feature="places"]')
 
         assert _name(app) == "Holidays"
-        assert app.errors() == []
-
-
-def test_renaming_an_archive_survives_adding_a_feature_too(open_app):
-    """The same field on the same screen: a rename that reverted to the stored
-    name the moment a feature was added is the same bug, from the other end."""
-    with open_app() as app:
-        _open_setup(app, "/tmp/example-folder", archive=_EXISTING)
-        assert _name(app) == "Old name"
-
-        _type_name(app, "New name")
-        app.click('.set-card[data-feature="places"] .set-add')
-        app.wait_for('#set-flow .set-chip[data-feature="places"]')
-
-        assert _name(app) == "New name"
         assert app.errors() == []
 
 

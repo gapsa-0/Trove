@@ -50,9 +50,12 @@ def test_library_health_draws_the_pipeline_as_a_chain(open_app):
     two are the ones nobody can decline is not.
     """
     with open_app("overview") as app:
-        # A node, not a row: the "Checking for work…" placeholder is a row too,
-        # and has no rail, no head and no label to read.
-        app.wait_for(".health-node")
+        # A stage's node, not any node: the "Checking for work…" placeholder is a
+        # row too, and has no rail, no head and no label to read -- and the row
+        # that opens the Features sheet hangs its own node off the end of this
+        # same rail, from markup that is on screen before the first poll has
+        # said what the chain is.
+        app.wait_for(".health-task .health-node")
         labels = app.tab.evaluate(
             "[...document.querySelectorAll('.health-task')]"
             ".map(e => [e.classList.contains('trunk'),"
@@ -73,7 +76,9 @@ def test_a_health_row_without_a_rail_still_gets_the_full_width(open_app):
     placeholder's markup, because the rule is what has to hold for any row.
     """
     with open_app("overview") as app:
-        app.wait_for(".health-node")
+        # A stage's node: the chain's closing node is drawn before the poll that
+        # fills the grid this reaches into.
+        app.wait_for(".health-task .health-node")
         width = app.tab.evaluate("""
           (() => {
             const grid = document.querySelector('.health-grid');
@@ -86,6 +91,53 @@ def test_a_health_row_without_a_rail_still_gets_the_full_width(open_app):
           })()
         """)
         assert width > 200, f"a railless row collapsed to {width}px"
+        assert app.errors() == []
+
+
+def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
+    """The window between opening an archive and its first pipeline snapshot.
+
+    A pause is per-archive and persisted, so an archive that was paused when it
+    was last closed opens paused -- but the client starts with no snapshot, and
+    reading that absence as "not paused" made the button announce "Pause all"
+    over a pipeline that was already stopped. Pressing it then posted
+    ``paused: true`` to pause it again, which is the half that made this a bug
+    rather than a wrong word: the one control that could have got the archive
+    running again instead confirmed it stopped.
+
+    Driven by holding the snapshot back, because that is the real condition --
+    the button is wrong for exactly as long as the answer has not arrived.
+    """
+    with open_app("overview") as app:
+        app.wait_for("#pause-btn")
+        app.tab.evaluate("""
+          (() => {
+            window.__realFetch = window.fetch;
+            window.__pausePosts = 0;
+            window.fetch = (...args) => {
+              const url = String(args[0]);
+              if (url.includes('/api/pipeline/pause')) window.__pausePosts++;
+              // Never answers: the snapshot is what has not arrived yet.
+              if (url.includes('/api/pipeline?')) return new Promise(() => {});
+              return window.__realFetch(...args);
+            };
+          })()
+        """)
+        app.tab.evaluate(
+            "import('/static/js/state.js').then(m => { m.S.pipeline = null;"
+            " showSection('overview', true); })"
+        )
+        app.tab.wait_for(
+            "(document.getElementById('pause-btn') || {}).textContent === 'Checking…'",
+            what="the pause button to say it does not know yet",
+        )
+
+        assert app.tab.evaluate("document.getElementById('pause-btn').disabled") is True
+        # ...and stays inert if something reaches it anyway.
+        app.tab.evaluate("togglePipelinePause()")
+        assert app.tab.evaluate("window.__pausePosts") == 0, "it posted a pause it could not know"
+
+        app.tab.evaluate("window.fetch = window.__realFetch")
         assert app.errors() == []
 
 

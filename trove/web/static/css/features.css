@@ -1,0 +1,274 @@
+/* The Features sheet: the catalogue of what an archive can do.
+   The card itself is the setup screen's card, shell and class names both (see
+   setup.css) -- what is here is the sheet around it and the few things a
+   catalogue of a *live* archive needs that a new one's does not.
+
+   Every rule that overrides the shared card is written `.set-card.fcard` rather
+   than `.fcard`, so it wins on specificity wherever these two stylesheets end
+   up in the load order. */
+
+/* Centred, on the same backdrop-and-card geometry the merge dialog uses, and
+   pointedly NOT the right-hand drawer: in this app that edge means app-wide
+   settings, and this belongs to one archive. Wide, because it holds a grid that
+   has to keep working as features are added to it. */
+.fsheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: rgba(0, 0, 0, .38);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .18s, visibility .18s;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px)
+}
+
+.fsheet-backdrop.open {
+  opacity: 1;
+  visibility: visible
+}
+
+.fsheet {
+  position: fixed;
+  z-index: 45;
+  top: 50%;
+  left: 50%;
+  width: min(1080px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  transform: translate(-50%, -50%) scale(.985);
+  opacity: 0;
+  transition: opacity .16s, transform .16s
+}
+
+.fsheet.open {
+  display: flex;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1)
+}
+
+@media(prefers-reduced-motion:reduce) {
+
+  .fsheet,
+  .fsheet-backdrop {
+    transition: none
+  }
+}
+
+.fsheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--line)
+}
+
+.fsheet-head h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -.02em
+}
+
+.fsheet-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px
+}
+
+/* The grid scrolls, not the sheet: the head says where you are and the foot
+   holds the total and the way out, and neither should leave the screen because
+   the catalogue got longer. */
+.fsheet-body {
+  padding: 20px 24px 24px;
+  overflow-y: auto
+}
+
+/* Where the setup screen fixes four columns for a shelf it knows the size of,
+   this fills: the catalogue is meant to grow, and a fifth and sixth optional
+   feature should widen the grid rather than squeeze the cards. */
+.set-cards.fcards {
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 16px
+}
+
+/* Tall enough to hold the longest description the catalogue is allowed to
+   carry, which is what `features.DETAIL_MAX_WORDS` fixes at 33 words. At this
+   column width that is seven lines, and a card any shorter puts the end of a
+   paragraph -- the part that answers "should I turn this on" -- below a fold
+   inside its own back face. The budget is the card's, so the card is the thing
+   measured against it: if that constant is ever raised, this has to grow.
+
+   The pointer cursor and the lift on hover come from the shared card and are
+   earned here: pressing the front of one switches its feature. */
+.set-card.fcard {
+  height: 236px
+}
+
+/* Except where there is nothing to switch -- a required feature, or one whose
+   backend is not installed. Those cards do not rise to meet the pointer,
+   because rising is a promise of a click that would do nothing. */
+.set-card.fcard.fcard-fixed-face {
+  cursor: default
+}
+
+.set-card.fcard.fcard-fixed-face:hover {
+  transform: none;
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm)
+}
+
+.set-card.fcard.fcard-fixed-face.on:hover {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm)
+}
+
+/* The back of a card is a page to read, not a switch: turning one over should
+   not leave the whole thing armed under the pointer. */
+.set-card.fcard .set-back {
+  cursor: default
+}
+
+/* The tagline gets the room the cover art is not taking, so it runs as long as
+   it needs to instead of being held to two lines. */
+.set-card.fcard .set-card-line {
+  min-height: 0;
+  line-height: 1.5
+}
+
+/* ...which is possible because "More info" is anchored to the bottom of the
+   card rather than left to follow the tagline. The setup card reserves two
+   lines above it to keep it level across a row; here the free space is simply
+   collected above it, which levels it across the row whatever the taglines do
+   -- and stops a card with a short one reading as half empty. The foot then
+   gives up its own auto margin, or the two would share the gap between them. */
+.set-card.fcard .set-meta .set-flip {
+  margin-top: auto
+}
+
+/* As tall as the switch whether or not it holds one, so that "Always runs" and
+   "Not in this build" do not raise the card's foot -- and with it "More info" --
+   above where its neighbours' sit. */
+.set-card.fcard .set-card-foot {
+  margin-top: 0;
+  padding-top: 13px;
+  min-height: 37px
+}
+
+.set-card.fcard .set-meta {
+  padding: 15px 16px 14px
+}
+
+/* A count of what the feature found is a sentence about this archive; the
+   shared rule mutes it to a caption, and here it is the point of the card. */
+.set-card.fcard.on .set-cost {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 620
+}
+
+.fcard-fixed {
+  color: var(--faint);
+  font-size: 11.5px
+}
+
+/* The switch. A real one: role="switch" on a button, so it announces its state
+   and answers Space and Enter without any key handling of ours. */
+.fsw {
+  flex: none;
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background .16s
+}
+
+.fsw i {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  transition: transform .16s
+}
+
+.fsw[aria-checked="true"] {
+  background: var(--accent)
+}
+
+.fsw[aria-checked="true"] i {
+  transform: translateX(16px)
+}
+
+@media(prefers-reduced-motion:reduce) {
+
+  .fsw,
+  .fsw i {
+    transition: none
+  }
+}
+
+.fsheet-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--panel2)
+}
+
+.fsheet-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5
+}
+
+.fsheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px
+}
+
+.fsheet-total {
+  margin: 0 auto 0 0;
+  font-size: 12.5px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums
+}
+
+/* One column on a phone, and the card gives up its fixed height there: with a
+   single column nothing sits beside a card to be pushed around when it turns
+   over, and a 208px box is a needless scroll on a narrow screen. */
+@media(max-width:560px) {
+  .fsheet {
+    width: 100vw;
+    max-height: 100vh;
+    border-radius: 0
+  }
+
+  .fsheet-body {
+    padding: 16px
+  }
+
+  .set-cards.fcards {
+    grid-template-columns: minmax(0, 1fr)
+  }
+
+  .set-card.fcard {
+    height: auto;
+    min-height: 172px
+  }
+}

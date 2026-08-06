@@ -1,4 +1,13 @@
-// Archive setup: what work this folder gets, and what it is called.
+// Archive setup: what work a new folder gets, and what it is called.
+//
+// Creation only. This screen used to be reopened months later to change the
+// answer, on the theory that adding a feature and choosing one are the same
+// decision. They are not: by then the archive has results, and what the
+// decision turns on is what each feature actually found in *these* files --
+// which is a column this screen cannot fill, because at create time it would be
+// prices from top to bottom. That job moved to the Features sheet inside the
+// archive (static/js/features.js), and the rules both screens obey moved with
+// it (static/js/feature-rules.js), so the two cannot come to disagree.
 //
 // The screen is built around one true thing: the pipeline is a chain, not a
 // menu. Indexing and Duplicates are the trunk everything else reads from, so
@@ -22,6 +31,9 @@
 // that will not happen.
 
 import {
+  cost, costClass, lonelyPair, pendingDownloadMb as downloadMb,
+} from "./feature-rules.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -35,19 +47,16 @@ import {
 } from "./state.js";
 
 // The catalogue is app-wide and immutable within a session; the rest is this
-// visit's work in progress. `archive` is null while adding a folder that has
-// no id yet, which is also what tells Save whether to create or reconfigure.
-// `flipped` and `name` live here rather than in the DOM so that adding a
-// feature, which rebuilds the whole shelf, does not turn back a card that was
-// turned over or discard a name that was half typed. Reading them back off the
-// DOM instead is what used to carry the last archive's name into the next one:
-// the panel's markup outlives the visit that built it.
+// visit's work in progress. `flipped` and `name` live here rather than in the
+// DOM so that adding a feature, which rebuilds the whole shelf, does not turn
+// back a card that was turned over or discard a name that was half typed.
+// Reading them back off the DOM instead is what used to carry the last
+// archive's name into the next one: the panel's markup outlives the visit that
+// built it.
 const SETUP = {
   catalogue: [], chosen: new Set(), flipped: new Set(),
-  archive: null, path: "", name: "", busy: false, done: null,
+  path: "", name: "", busy: false, done: null,
 };
-
-export function isSetupOpen() { return SETUP.path !== "" || SETUP.archive !== null; }
 
 function feature(id) { return SETUP.catalogue.find(f => f.id === id); }
 
@@ -59,37 +68,26 @@ function feature(id) { return SETUP.catalogue.find(f => f.id === id); }
 function mark(f) { return `<i class="feat-mark" aria-hidden="true">${ICONS[f.icon] || ""}</i>`; }
 function folderName(path) { return (path || "").replace(/[/\\]+$/, "").split(/[/\\]/).pop() || path; }
 
-// What the first run of this archive will actually download. A feature whose
-// weights are already on disk contributes nothing, which is the difference
-// between an honest figure and a scary one.
-function pendingDownloadMb() {
-  return SETUP.catalogue
-    .filter(f => SETUP.chosen.has(f.id) && !f.ready)
-    .reduce((total, f) => total + f.download_mb, 0);
-}
+function pendingDownloadMb() { return downloadMb(SETUP.catalogue, SETUP.chosen); }
 
-// `done` is called with the created archive (or null after a reconfigure) once
-// the save lands. A callback rather than an import back into the picker: this
-// module is imported *by* the picker, and the cycle would be a real one.
-export async function openArchiveSetup(archive, path, done) {
+// `done` is called with the created archive once the save lands. A callback
+// rather than an import back into the picker: this module is imported *by* the
+// picker, and the cycle would be a real one.
+export async function openArchiveSetup(path, done) {
   if (!SETUP.catalogue.length) {
     const { features } = await jget("/api/features");
     SETUP.catalogue = features;
   }
-  SETUP.archive = archive || null;
   SETUP.done = done || null;
-  SETUP.path = archive ? archive.path : path;
+  SETUP.path = path;
   SETUP.flipped = new Set();
-  // An archive being reconfigured opens on the name it already has; a new one
-  // opens empty, with its folder's name as the placeholder it will fall back to.
-  SETUP.name = archive ? archive.name : "";
+  // Empty, with the folder's own name as the placeholder it falls back to.
+  SETUP.name = "";
   // A new archive starts with only the two features it cannot do without, and
   // everything else waiting on the shelf. Starting with all of them ticked
   // would pre-select ~1 GB of model downloads on a screen whose entire purpose
   // is to let someone not pay that.
-  SETUP.chosen = new Set(
-    archive ? archive.features : SETUP.catalogue.filter(f => f.required).map(f => f.id),
-  );
+  SETUP.chosen = new Set(SETUP.catalogue.filter(f => f.required).map(f => f.id));
   document.getElementById("picker").style.display = "none";
   // Explicit `block`, not "": the stylesheet's own rule for #setup is
   // `display: none`, so clearing the inline value would hand the element back
@@ -101,7 +99,7 @@ export async function openArchiveSetup(archive, path, done) {
 }
 
 export function closeArchiveSetup() {
-  SETUP.archive = null; SETUP.path = ""; SETUP.name = ""; SETUP.busy = false; SETUP.done = null;
+  SETUP.path = ""; SETUP.name = ""; SETUP.busy = false; SETUP.done = null;
   SETUP.flipped = new Set();
   document.getElementById("setup").style.display = "none";
   document.getElementById("picker").style.display = "";
@@ -191,15 +189,6 @@ function preview(f) {
 
 // ---- rendering -------------------------------------------------------------
 
-// What a feature costs to switch on, said in as few words as it deserves. The
-// megabyte figure is the only one set as data, because it is the only one that
-// is a measurement; the rest are states.
-function cost(f) {
-  if (!f.download_mb) return { text: "no download", figure: false };
-  if (f.ready) return { text: "downloaded", figure: false };
-  return { text: `${f.download_mb} MB`, figure: true };
-}
-
 function chipItem(f) {
   const out = f.required ? "" : `<button class="set-chip-out" type="button"
         onclick="removeFeature('${f.id}')"
@@ -234,7 +223,7 @@ function fixedNote() {
 function cardItem(f) {
   const chosen = SETUP.chosen.has(f.id);
   const back = SETUP.flipped.has(f.id);
-  const { text, figure } = cost(f);
+  const { text } = cost(f);
   const pill = f.available
     ? `<button class="set-add" type="button" aria-pressed="${chosen}">${chosen
       ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 5 5L19 7"/></svg>On`
@@ -249,9 +238,9 @@ function cardItem(f) {
           <span class="set-card-name">${mark(f)}${esc(f.label)}</span>
           <p class="set-card-line">${esc(f.tagline)}</p>
           <button class="set-flip" type="button"
-            onclick="event.stopPropagation();flipFeature('${f.id}')">What this does</button>
+            onclick="event.stopPropagation();flipFeature('${f.id}')">More info</button>
           <div class="set-card-foot">
-            <span class="set-cost${figure ? " figure" : ""}">${text}</span>
+            <span class="${costClass(f)}">${text}</span>
             ${pill}
           </div>
         </div>
@@ -277,11 +266,10 @@ function pipeline(live, waiting) {
 
 // Half of a pair running without the other half. Both halves name each other,
 // so this is said once, about the chain, rather than on both cards.
-function pairNote(live) {
-  const lonely = live.find(f => f.pairs_with && !SETUP.chosen.has(f.pairs_with));
-  if (!lonely) return "";
-  const partner = feature(lonely.pairs_with);
-  if (!partner || !partner.available) return "";
+function pairNote() {
+  const pair = lonelyPair(SETUP.catalogue, SETUP.chosen);
+  if (!pair) return "";
+  const [lonely, partner] = pair;
   return `<p class="set-pair">${esc(lonely.label)} is running without ${esc(partner.label)}.
     The two check each other's work, so having both makes each of them more accurate.</p>`;
 }
@@ -294,19 +282,17 @@ function totalLine() {
 }
 
 function renderSetup(landed) {
-  const editing = SETUP.archive !== null;
   const live = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id));
   const optional = SETUP.catalogue.filter(f => !f.required);
   const waiting = optional.filter(f => !SETUP.chosen.has(f.id) && f.available);
   document.getElementById("setup-body").innerHTML = `
     <div class="set-head">
       <div>
-        <div class="set-eyebrow">${editing ? "Archive setup" : "New archive"}</div>
-        <h1>${editing ? "Change what Trove does with this archive"
-    : "Choose what Trove does here"}</h1>
-        <p class="set-sub">${editing
-    ? "Adding a feature picks up from what is already catalogued, and removing one keeps whatever it found."
-    : "Pick what you want now. You can turn features off or add more later, and nothing in the folder is ever moved, renamed or deleted."}</p>
+        <div class="set-eyebrow">New archive</div>
+        <h1>Choose what Trove does here</h1>
+        <p class="set-sub">Pick what you want now. Once the archive is open you can change
+          any of this from its Library health panel, and nothing in the folder is ever moved,
+          renamed or deleted.</p>
         <p class="set-path" title="${esc(SETUP.path)}">${esc(SETUP.path)}</p>
       </div>
       <label class="set-name">
@@ -324,7 +310,7 @@ function renderSetup(landed) {
       <div class="set-flow" id="set-flow">${pipeline(live, waiting)}</div>
       ${fixedNote()}
       <p class="set-pipe-note">Every other stage reads what they produce.</p>
-      ${pairNote(live)}
+      ${pairNote()}
     </section>
 
     <section class="set-shelf" id="set-shelf" aria-labelledby="set-shelf-h">
@@ -350,7 +336,7 @@ function renderSetup(landed) {
       <div class="set-actions">
         <button class="btn sec" type="button" onclick="closeArchiveSetup()">Cancel</button>
         <button class="btn" type="button" onclick="submitArchiveSetup()"${SETUP.busy ? " disabled" : ""}>
-          ${editing ? "Save changes" : "Create archive"}</button>
+          Create archive</button>
       </div>
     </div>`;
   wireDragAndDrop();
@@ -417,16 +403,12 @@ export async function submitArchiveSetup() {
   SETUP.busy = true;
   const name = SETUP.name.trim();
   const features = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id)).map(f => f.id);
-  const editing = SETUP.archive !== null;
-  const body = editing
-    ? { root_id: SETUP.archive.id, name, features }
-    : { path: SETUP.path, name, features };
-  const result = await jpost(editing ? "/api/archive/configure" : "/api/archives", body);
+  const result = await jpost("/api/archives", { path: SETUP.path, name, features });
   SETUP.busy = false;
   if (result.error) { toast(result.error, true); return; }
-  // The caller decides what happens next: the picker reloads either way, and a
-  // freshly created archive is opened.
+  // The caller decides what happens next: the picker reloads, and the archive
+  // just created is opened.
   const done = SETUP.done;
   closeArchiveSetup();
-  if (done) done(editing ? null : result);
+  if (done) done(result);
 }

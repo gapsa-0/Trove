@@ -50,6 +50,21 @@ from dataclasses import dataclass
 # indexing produces, so they never depend on an optional feature.
 ALWAYS_ON_SECTIONS = ("overview",)
 
+# The longest a ``detail`` may run, in words.
+#
+# It is a budget rather than a guideline because of where the text lands: the
+# back of a fixed-height card, on two screens, in a grid whose cards are all the
+# same size. A paragraph that overruns does not push its card taller -- it
+# scrolls inside it, and the part that answers "should I turn this on" is the
+# part that ends up below the fold. So the limit is the card's, and the writing
+# is made to fit rather than the card made to stretch.
+#
+# 33 is the length of the description of Search by description, which is the
+# one that had to say the most: what an embedding is, that nothing has to be
+# tagged first, and what you can then type. If that fits, none of the others has
+# an excuse. ``tests/unit/test_features.py`` holds every entry to it.
+DETAIL_MAX_WORDS = 33
+
 
 @dataclass(frozen=True)
 class Feature:
@@ -75,7 +90,7 @@ class Feature:
     # ``tests/unit/test_features.py`` checks.
     verb: str
     noun: str
-    # The paragraph behind the card's "What this does". Long enough to answer
+    # The paragraph behind the card's "More info". Long enough to answer
     # "should I turn this on", which means it has to be honest about cost.
     detail: str
     # Required features cannot be removed: everything else in the pipeline is
@@ -118,13 +133,9 @@ FEATURES: tuple[Feature, ...] = (
         verb="Scanning",
         noun="files",
         detail=(
-            "Walks the folder and every folder inside it, to any depth, and records "
-            "every file it finds. For each one it extracts what the file already "
-            "knows about itself: its dimensions, its camera, its GPS coordinates if "
-            "it has any, and above all a date, resolved from Google Takeout sidecars, "
-            "embedded metadata, the filename, and finally the file's own timestamp. "
-            "Each date keeps a note of where it came from, and nothing is moved, "
-            "renamed or edited."
+            "Walks the folder to any depth and records every file, with what it knows "
+            "about itself: dimensions, camera, coordinates, and a date resolved from "
+            "Takeout sidecars, metadata, the filename or its own timestamp."
         ),
         required=True,
         stages=("scan", "enrich"),
@@ -140,9 +151,8 @@ FEATURES: tuple[Feature, ...] = (
         noun="duplicates",
         detail=(
             "Groups byte-identical copies, and photos that are the same shot re-saved by "
-            "a different export or messaging app. One copy in each group is picked as the "
-            "one to show and the rest are hidden from browsing, never deleted, so you can "
-            "bring them back at any point."
+            "a different export or messaging app. One in each group is shown; the rest are "
+            "hidden from browsing, never deleted."
         ),
         required=True,
         stages=("dedup",),
@@ -157,9 +167,9 @@ FEATURES: tuple[Feature, ...] = (
         verb="Finding",
         noun="people",
         detail=(
-            "Finds faces, checks each one is sharp, large and complete enough to trust, "
-            "and groups them into people you can name, correct, merge and split. Video is "
-            "covered too, from a few frames sampled per clip."
+            "Finds faces, checks each is sharp, large and complete enough to trust, and "
+            "groups them into people you can name, correct, merge and split. Video too, "
+            "from frames sampled per clip."
         ),
         required=False,
         stages=("detect",),
@@ -196,9 +206,9 @@ FEATURES: tuple[Feature, ...] = (
         verb="Mapping",
         noun="locations",
         detail=(
-            "Gathers photos that already carry GPS coordinates into the places you keep "
-            "going back to, so you can name them, pin them and correct them. Photos that "
-            "carry no coordinates of their own can be added to a place by hand."
+            "Gathers photos that carry GPS coordinates into the places you keep going "
+            "back to, so you can name, pin and correct them. Photos without coordinates "
+            "can be added to a place by hand."
         ),
         required=False,
         stages=("places",),
@@ -231,11 +241,9 @@ FEATURES: tuple[Feature, ...] = (
         verb="Reading",
         noun="documents",
         detail=(
-            "Reads the text a file already carries: Word, Excel and PowerPoint, "
-            "OpenDocument, plain text, Markdown, CSV, web pages, notebooks, and PDFs "
-            "that store their characters rather than a picture of them. A scanned PDF "
-            "stores no such text, however much writing is on the page; that one is "
-            "Search by picture text."
+            "Reads the text a file carries: Office and OpenDocument files, text, "
+            "Markdown, CSV, web pages, and PDFs that store characters, not a picture of "
+            "them. A scanned PDF is Search by picture text."
         ),
         required=False,
         stages=("text",),
@@ -259,12 +267,9 @@ FEATURES: tuple[Feature, ...] = (
         verb="Reading",
         noun="pictures of text",
         detail=(
-            "Reads writing off the pixels: a photographed receipt, a screenshot, and "
-            "above all a PDF from a scanner, where the page is an image and the file "
-            "holds no text to find. Spanish and English, accents included. This is the "
-            "slow one \u2014 about half a second per picture, so a hundred thousand of "
-            "them is an overnight job rather than a coffee break. It stops and resumes "
-            "safely at any point."
+            "Reads writing off the pixels: photographed receipts, screenshots, and "
+            "scanned PDFs whose pages are images holding no text. Spanish and English. "
+            "Slow, about half a second per picture, and safe to interrupt."
         ),
         required=False,
         stages=("text",),

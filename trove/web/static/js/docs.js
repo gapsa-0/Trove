@@ -58,10 +58,24 @@ const DOCS = {
   spy: null,
 };
 
+// Asked of the DOM rather than of the modules that own these screens, so that
+// this one can be imported by all of them without importing any of them back.
 function currentScreen() {
+  // Before the archive shell, not after: the Features sheet is a layer over an
+  // open archive, so "app" is true underneath it and would win.
+  if (document.getElementById("features-sheet").classList.contains("open")) return "features";
   if (document.getElementById("setup").style.display === "block") return "setup";
   if (document.getElementById("app").classList.contains("on")) return "app";
   return "picker";
+}
+// The sheet is a fixed overlay, so hiding the archive beneath it does not hide
+// it: without this, a feature's documentation would open underneath its own
+// sheet. Closed rather than destroyed, exactly like the setup screen, so what
+// was switched is still switched on the way back.
+function setFeatureSheetShown(on) {
+  document.getElementById("features-sheet").classList.toggle("open", on);
+  document.getElementById("features-backdrop").classList.toggle("open", on);
+  document.getElementById("features-sheet").setAttribute("aria-hidden", on ? "false" : "true");
 }
 
 // The mark a screen carries to its own documentation. Quiet on purpose: it is
@@ -85,6 +99,7 @@ export async function openDocs(slug) {
   document.getElementById("picker").style.display = "none";
   document.getElementById("setup").style.display = "none";
   document.getElementById("app").classList.remove("on");
+  setFeatureSheetShown(false);
   const screen = document.getElementById("docs");
   // Both fetches below are local, so this is on screen for a frame or two --
   // but showing the app's own background rather than nothing is what stops the
@@ -117,9 +132,10 @@ export function closeDocs() {
     location.hash = "";
     return;
   }
-  if (screen === "app" && S.arch) {
+  if ((screen === "app" || screen === "features") && S.arch) {
     document.getElementById("app").classList.add("on");
     location.hash = back || `/archive/${S.arch.id}/${S.section}`;
+    if (screen === "features") setFeatureSheetShown(true);
     return;
   }
   document.getElementById("picker").style.display = "";
@@ -135,6 +151,7 @@ export function featureDocsLink(featureId) {
   return `<button type="button" class="set-flip doc-more" onclick="openDocs('${slug}')">
       How it works</button>`;
 }
+
 // `#/docs`, `#/docs/duplicates` -> the slug ("index" when none is named), or
 // null when this hash names something else. The router asks before it tries to
 // resolve an archive, and closeDocs asks so it never "returns" to itself.

@@ -181,14 +181,45 @@ button.stat:hover {
   font-size: 11px
 }
 
+/* Held to the trailing edge of the heading, away from the title it acts on. */
 .panel-heading .pause-btn {
   margin-left: auto
 }
 
-.pause-note {
-  margin: -12px 0 16px;
+/* The way into the Features sheet: under the chain, at the trailing edge of the
+   panel.
+
+   Not a node on the rail, where it was first drawn. Everything on that rail is
+   a stage that is running, queued or done, and a node that is none of those
+   reads as one more thing the archive is doing. Not in the heading either --
+   that is where "Pause all" lives, which acts on work happening right now,
+   and a second button beside it would make a toolbar out of a title.
+
+   So: after the report, out of the way, where a reader ends up once they have
+   read what the panel came to say. Quiet by default, since it is an offer
+   rather than something the panel wants pressed. */
+.panel-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px
+}
+
+.manage-features {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--muted);
-  font-size: 11px
+  font: inherit;
+  font-size: 12px;
+  font-weight: 620;
+  cursor: pointer;
+  transition: background .14s, color .14s
+}
+
+.manage-features:hover {
+  background: var(--accent-soft);
+  color: var(--accent)
 }
 
 .panel-symbol {

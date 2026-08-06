@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/static/css/theme.css">
   <link rel="stylesheet" href="/static/css/archive-select.css">
   <link rel="stylesheet" href="/static/css/settings.css">
+  <link rel="stylesheet" href="/static/css/features.css">
   <link rel="stylesheet" href="/static/css/sidebar.css">
   <link rel="stylesheet" href="/static/css/overview.css">
   <link rel="stylesheet" href="/static/css/library.css">
@@ -230,6 +231,38 @@
     </div>
   </div>
 
+  <!-- FEATURES SHEET: what this archive runs, changed from inside it.
+       Reached from the foot of the Library health chain, which is the one place
+       in the app that already lists these features by name. Centred over the
+       archive rather than replacing it, and deliberately not the right-hand
+       drawer below: that edge means app-wide settings here, and this belongs to
+       one archive. The footer's three lines are filled by static/js/features.js;
+       the buttons are static so that saving cannot move the button being
+       pressed. -->
+  <div class="fsheet-backdrop" id="features-backdrop" onclick="closeFeatureSheet()"></div>
+  <aside class="fsheet" id="features-sheet" role="dialog" aria-modal="true" tabindex="-1"
+    aria-labelledby="fsheet-title" aria-hidden="true">
+    <div class="fsheet-head">
+      <div>
+        <h2 id="fsheet-title">Features</h2>
+        <p>What Trove does with this archive.</p>
+      </div>
+      <button class="drawer-close" type="button" onclick="closeFeatureSheet()"
+        aria-label="Close features">×</button>
+    </div>
+    <div class="fsheet-body" id="fsheet-body"></div>
+    <div class="fsheet-foot">
+      <p class="fsheet-note" id="fsheet-pair" hidden></p>
+      <p class="fsheet-note" id="fsheet-kept" hidden></p>
+      <div class="fsheet-actions">
+        <span class="fsheet-total" id="fsheet-total"></span>
+        <button class="btn sec" type="button" onclick="closeFeatureSheet()">Cancel</button>
+        <button class="btn" type="button" id="fsheet-save" onclick="saveFeatureSheet()"
+          disabled>Save changes</button>
+      </div>
+    </div>
+  </aside>
+
   <!-- SETTINGS DRAWER -->
   <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeSettings()"></div>
   <aside class="drawer" id="settings-drawer" aria-hidden="true" aria-label="Settings" role="dialog"
@@ -239,22 +272,6 @@
       <button class="drawer-close" type="button" onclick="closeSettings()" aria-label="Close settings">×</button>
     </div>
     <div class="drawer-body">
-      <section class="drawer-section">
-        <div class="drawer-section-head">
-          <h3>Search by description</h3>
-          <p>Nothing to set up. Everything runs on this computer.</p>
-        </div>
-        <div class="keycard">
-          <div class="keycard-top">
-            <div>
-              <div class="keycard-name">On-device search model</div>
-              <div class="keycard-desc">Finding photos by what’s in them uses a model that runs here, so no
-                photo and no search you type ever leaves this computer. It downloads itself once
-                (about 690&nbsp;MB) the first time an archive is indexed.</div>
-            </div>
-          </div>
-        </div>
-      </section>
       <section class="drawer-section">
         <div class="drawer-section-head">
           <h3>Appearance</h3>

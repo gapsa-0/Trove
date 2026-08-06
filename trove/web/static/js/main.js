@@ -57,6 +57,10 @@ import {
   closeArchiveSetup, flipFeature, removeFeature, setArchiveName, submitArchiveSetup, toggleFeature,
 } from "./setup.js";
 import {
+  closeFeatureSheet, featureSheetOpen, flipSheetFeature, openFeatureSheet, saveFeatureSheet,
+  toggleSheetFeature,
+} from "./features.js";
+import {
   closeDocs, docsHashSlug, docsOpen, docsSlug, openDocs, showDoc,
 } from "./docs.js";
 
@@ -122,6 +126,9 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
     closeSettings(); return;
   }
+  // Before the reference pages and the viewer: the sheet sits over the archive,
+  // so it is the topmost thing Escape can mean while it is open.
+  if (e.key === "Escape" && featureSheetOpen()) { closeFeatureSheet(); return; }
   if (e.key === "Escape" && docsOpen()) { closeDocs(); return; }
   // closeModal() leaves the document first when one has the keyboard, and only
   // closes the viewer on a second press.
@@ -156,20 +163,24 @@ loadPicker().then(applyHash);
 Object.assign(window, {
   addArchiveFromForm, answerSuggest, applyFilters,
   applyDupFilters, applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
-  closeArchiveSetup, closeDocs, closeModal, closePick, closePlaceCluster, closeSettings,
+  closeArchiveSetup, closeDocs, closeFeatureSheet, closeModal, closePick, closePlaceCluster,
+  closeSettings,
   copyText,
-  editClusterName, editDate, editPersonName, editPlace, flipFeature, hidePerson, highlightFace,
+  editClusterName, editDate, editPersonName, editPlace, flipFeature, flipSheetFeature, hidePerson,
+  highlightFace,
   mergeAskCancel,
   newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
-  openCopy, openDocs, openDupCopy, openFileLocation, openItem, openRelated, openSettings,
+  openCopy, openDocs, openDupCopy, openFeatureSheet, openFileLocation, openItem, openRelated,
+  openSettings,
   reassignFace,
   removeFeature, removeManualPerson,
   removeManualPet,
-  renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setArchiveName, setMapView,
+  renamePet, renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
+  setMapView,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
-  toggleBoxes, toggleFeature, toggleInspector, toggleNav,
+  toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
   togglePipelinePause,
   toggleStagePause, toggleTheme, undoMerge, zoomReset, zoomStep, zoomToSlider,

@@ -76,8 +76,14 @@ some of them cost a large one-time download:
 | [Search by description](search.md) | Typing "a dog on the beach" and finding it | 689 MB |
 
 A feature you leave switched off downloads nothing, runs nothing and shows no
-section. You can change your mind later from the same screen, and switching one
-off never deletes what it already found.
+section.
+
+You can change your mind at any point, from inside the archive: **Manage
+features**, at the foot of the Library health panel on the Overview, lists every
+feature with what it has found here, or what it would cost to switch on.
+Switching one off never deletes what it already found — its stage stops being
+scheduled and its section disappears, and switching it back on picks up where it
+left off.
 
 ## What happens next
 

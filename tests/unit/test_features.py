@@ -222,6 +222,13 @@ def test_the_panel_copy_is_actually_there():
         assert f.label and f.tagline and f.detail
         assert len(f.detail) > 80, f.id
         assert not f.tagline.endswith("."), f.id
+        # Long enough to be worth reading, short enough to be read without
+        # scrolling the card it is printed on -- see DETAIL_MAX_WORDS, which is
+        # a property of that card and not a matter of taste.
+        assert len(f.detail.split()) <= features.DETAIL_MAX_WORDS, (
+            f"{f.id}: {len(f.detail.split())} words, over the "
+            f"{features.DETAIL_MAX_WORDS}-word budget for a card"
+        )
         # The running line is composed, so the halves have to stay halves: a
         # verb that has swallowed its object composes into nonsense on the one
         # card that joins two of them.

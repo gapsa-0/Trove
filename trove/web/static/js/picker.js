@@ -9,7 +9,7 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
-  esc, fmtBytes,
+  esc, fmtBytes, toast,
 } from "./dom.js";
 import {
   S,
@@ -58,15 +58,16 @@ export async function loadPicker() {
     c.innerHTML = pickerCover(a) +
       `<div class="p-meta">
              <button class="p-remove" type="button" aria-label="Remove archive">Remove</button>
-             <button class="p-configure" type="button" aria-label="Set up ${esc(a.name)}">Set up</button>
+             <button class="p-rename" type="button" aria-label="Rename ${esc(a.name)}">Rename</button>
              <div class="nm">${esc(a.name)}</div>
              <div class="st">${a.files.toLocaleString()} files${warn}</div>
            </div>`;
     c.querySelector(".p-remove").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
-    // Adding a feature months later is the same screen as choosing one on day
-    // one, so it is the same code path — not a second, thinner settings pane
-    // that would drift from it.
-    c.querySelector(".p-configure").onclick = (event) => { event.stopPropagation(); openArchiveSetup(a, a.path, afterSetup); };
+    // What this card used to offer was "Set up", which reopened the whole
+    // creation screen to change one of two unrelated things. What an archive
+    // *runs* is now changed from inside it, where its results are, and what is
+    // left here is the one property that belongs to a folder in a list.
+    c.querySelector(".p-rename").onclick = (event) => { event.stopPropagation(); startRename(a, c); };
     el.appendChild(c);
   });
   const add = document.createElement("button");
@@ -74,6 +75,37 @@ export async function loadPicker() {
   add.innerHTML = `<span>+</span>${archives.length ? "Add another folder" : "Add your first folder"}`;
   add.onclick = () => startAddArchive();
   el.appendChild(add);
+}
+// Renamed in place, the way a person and a place are renamed, rather than on a
+// screen of its own: the name is one field, and it is already on screen.
+function startRename(a, card) {
+  const box = card.querySelector(".nm");
+  if (!box || box.querySelector("input")) return;
+  box.innerHTML = `<input class="p-name-input" value="${esc(a.name)}" maxlength="80"
+      aria-label="Archive name">`;
+  const input = box.querySelector("input");
+  let finished = false;
+  // The card behind this field is itself a button that opens the archive, and
+  // both clicks and keys bubble to it: without these, selecting a word would
+  // open the archive and typing a space would too.
+  input.onclick = event => event.stopPropagation();
+  input.onkeydown = event => {
+    event.stopPropagation();
+    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+    if (event.key === "Escape") { finished = true; loadPicker(); }
+  };
+  input.onblur = () => { if (!finished) { finished = true; saveArchiveName(a, input.value); } };
+  input.focus(); input.select();
+}
+async function saveArchiveName(a, value) {
+  const name = value.trim();
+  // An empty field is a cancelled rename, not a request for a nameless
+  // archive: the server would take it and the card would lose its title.
+  if (!name || name === a.name) { loadPicker(); return; }
+  const r = await jpost("/api/archive/configure", { root_id: a.id, name })
+    .catch(() => ({ error: "Couldn’t rename this archive." }));
+  if (!r || r.error) toast((r && r.error) || "Couldn’t rename this archive.", true);
+  loadPicker();
 }
 async function startAddArchive() {
   const field = document.getElementById("archive-path"); let p = field.value.trim();
@@ -87,14 +119,13 @@ async function startAddArchive() {
   // created, because the features chosen there decide what gets downloaded and
   // an archive that existed first would already be scanning under the default.
   field.value = "";
-  await openArchiveSetup(null, p, afterSetup);
+  await openArchiveSetup(p, afterSetup);
   return false;
 }
 // What happens once setup saves. Passed in rather than imported back, so the
 // dependency between these two modules stays one-way.
 async function afterSetup(created) {
   await loadPicker();
-  if (!created) return;
   const a = ARCHIVES.find(x => x.id === created.id)
     || { ...created, files: 0, size: 0, exists: true, covers: [] };
   openArchive(a, "overview");

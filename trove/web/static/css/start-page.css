@@ -343,10 +343,9 @@
   background: color-mix(in srgb, var(--bad) 10%, transparent)
 }
 
-/* Reopens the same setup screen the archive was created with, which is where a
-   feature is added months later. Sits beside Remove, in the app's own accent
-   rather than the destructive red. */
-.p-configure {
+/* Turns the name below it into a field. Sits beside Remove, in the app's own
+   accent rather than the destructive red. */
+.p-rename {
   float: right;
   border: 0;
   border-radius: 7px;
@@ -357,8 +356,24 @@
   cursor: pointer
 }
 
-.p-configure:hover {
+.p-rename:hover {
   background: var(--accent-soft)
+}
+
+/* Sized and weighted like the name it replaces, so the card does not change
+   shape when the field appears in its place. */
+.p-name-input {
+  width: 100%;
+  padding: 1px 6px;
+  margin: -2px -7px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -.01em
 }
 
 .p-card.add {

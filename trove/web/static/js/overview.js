@@ -57,8 +57,10 @@ export async function renderOverview(m) {
     </div>
     <div class="overview-grid">
       <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Progress on everything this archive runs</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>
-        <p class="pause-note" id="pause-note" style="display:none">Paused — background processing is stopped.</p>
         <div id="syncstatus"></div><div id="jobarea"></div>
+        <div class="panel-foot">
+          <button type="button" class="manage-features" onclick="openFeatureSheet()">Manage features</button>
+        </div>
       </div>
       <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage</h3><p id="ov-storage-caption">${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div><div class="metric-switch" id="storage-switch"></div></div>
         <div class="storage-bar" id="typebar"></div><table class="types" id="typetbl"></table>
@@ -314,24 +316,39 @@ function renderHealthCards() {
 // the scheduler simply stops starting new ones until resumed. Individual
 // stages have their own buttons on the cards (stagePauseButton); this one
 // outranks them, which is why it disables them while it is on.
+//
+// Three states, not two. Until the first snapshot lands there is no answer to
+// report: `paused` is per-archive and persisted (config/archives.py), so an
+// archive that was paused when it was last closed opens paused, and a button
+// that read the missing snapshot as `false` announced "Pause all" over a
+// pipeline that was already stopped -- and, pressed, posted `paused: true` to
+// stop it again, which is why the "Checking for work…" window has to be a
+// state of its own rather than a shrug that lands on "not paused".
+// There is no banner under this any more. A line reading "Paused — background
+// processing is stopped" said a third time what the button already says and
+// what every card below it already says ("Paused", on each one, with the dot to
+// match), and it moved the chain down a row to do it.
 function renderPauseControl() {
   const btn = document.getElementById("pause-btn");
-  const note = document.getElementById("pause-note");
+  if (!btn) return;
+  const known = !!S.pipeline;
   const paused = !!(S.pipeline && S.pipeline.paused);
-  if (btn) { btn.textContent = paused ? "Resume all" : "Pause all"; btn.disabled = !!S.pausing; }
-  if (note) note.style.display = paused ? "" : "none";
+  btn.textContent = known ? (paused ? "Resume all" : "Pause all") : "Checking…";
+  btn.disabled = !known || !!S.pausing;
 }
 export async function togglePipelinePause() {
-  if (!S.arch || S.pausing) return;
-  const next = !(S.pipeline && S.pipeline.paused);
+  // Not until the snapshot says what is being toggled. The button is disabled
+  // through that window, so this is the belt to its braces: without it, a
+  // keyboard activation that beat the first poll would compute "the opposite of
+  // false" and pause a pipeline that was already paused.
+  if (!S.arch || S.pausing || !S.pipeline) return;
+  const next = !S.pipeline.paused;
   S.pausing = true;
   // Same instant repaint as the per-stage button: every still-running card
   // turns into "Pausing…" now rather than at the next poll.
-  if (S.pipeline) {
-    S.pipeline.paused = next;
-    for (const s of S.pipeline.stages || []) s.pausing = next && s.state === "running";
-    for (const e of S.pipeline.extra || []) e.pausing = next;
-  }
+  S.pipeline.paused = next;
+  for (const s of S.pipeline.stages || []) s.pausing = next && s.state === "running";
+  for (const e of S.pipeline.extra || []) e.pausing = next;
   renderHealthCards();
   renderGstat(S.pipeline);
   try {

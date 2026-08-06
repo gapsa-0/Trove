@@ -99,7 +99,9 @@ grandfathered.
 | when a pipeline stage runs | `trove/pipeline/stages.py` |
 | what an archive can be asked to do, and the words describing it | `trove/features.py` (see ADR 0015) |
 | which model weights a feature needs, and when they are downloaded | `trove/services/models.py` + `trove/pipeline/runners/models.py` |
-| how the archive setup screen looks and behaves | `trove/web/static/js/setup.js` + `web/static/css/setup.css` |
+| how the archive setup screen looks and behaves (creating one) | `trove/web/static/js/setup.js` + `web/static/css/setup.css` |
+| how a live archive's features are changed (the Features sheet) | `trove/web/static/js/features.js` + `web/static/css/features.css` |
+| the rules a feature set obeys, shared by both of those | `trove/web/static/js/feature-rules.js` |
 | what a status card *says* (its wording, its bar, the pause overlay) | `trove/pipeline/status.py` |
 | how a job does its work | `trove/pipeline/runners/<kind>.py` (e.g. `scan.py`, `enrich.py`, `dedup.py`, `detect.py`, `face_cluster.py`, `pet_cluster.py`, `places.py`, `semantic.py`, `text.py`) |
 | a new API endpoint | `trove/web/routes/<domain>.py`, then add it to the route tables in `trove/web/routes/__init__.py` — see below |
@@ -225,8 +227,9 @@ own previous `user_version` so it cannot fire twice.
   existed has no `features` key and gets the full set, so an upgrade never
   switches off work already in progress.
 - **A feature is named and marked once, in `features.py`, for every surface
-  that shows it.** The setup card, the pipeline chip, the Overview health card
-  and the sidebar status line all resolve through `card_label`, `card_running`
+  that shows it.** The setup card, the pipeline chip, the Features sheet card, the
+  Overview health card and the sidebar status line all resolve through
+  `card_label`, `card_running`
   and `card_icon`; none of them keeps a wording or an icon of its own. Three
   such tables used to live in `pipeline/stages.py` and the frontend, and all
   three named the same five things differently from the panel that offered
