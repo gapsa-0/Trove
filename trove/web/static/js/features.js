@@ -75,8 +75,9 @@ export async function openFeatureSheet() {
   // Both fetched on every open rather than cached for the session. `ready` is
   // the one catalogue field that goes stale behind your back -- a download
   // finishing while the app is open flips it -- and it is the field the
-  // footer's figure is built from. The text index is the one summary the
-  // Overview does not already hold.
+  // footer's figure is built from. The text count the Overview holds is read
+  // again for the same reason: it climbs while the pass runs, and this is the
+  // screen where someone decides whether to let it finish.
   const [answer, text] = await Promise.all([
     jget("/api/features").catch(() => null),
     jget("/api/browse/text/status?root=" + S.arch.id).catch(() => null),

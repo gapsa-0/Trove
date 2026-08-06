@@ -33,17 +33,19 @@ function statTile(section, colour, label, id, value) {
 
 export async function renderOverview(m) {
   const gen = S.nav, root = S.arch.id;
-  const [s, ds, fs, ps, ss] = await Promise.all([
+  const [s, ds, fs, ps, ss, ts] = await Promise.all([
     jget("/api/summary?root=" + root),
     jget("/api/dups/summary?root=" + root),
     jget("/api/faces/summary?root=" + root),
     jget("/api/pets/summary?root=" + root).catch(() => null),
-    jget("/api/browse/semantic/status?root=" + root).catch(() => null)]);
+    jget("/api/browse/semantic/status?root=" + root).catch(() => null),
+    jget("/api/browse/text/status?root=" + root).catch(() => null)]);
   if (gen !== S.nav) return;   // user switched sections while these were loading
   S.dupsum = ds;
   S.facesum = fs;
   S.petsum = ps;
   S.semanticsum = ss;
+  S.textsum = ts;
   m.innerHTML = `<div class="pagehead">
       <div><h2 class="sec">Library overview</h2>
       <p>Everything important about this archive, at a glance.</p></div>
@@ -174,6 +176,7 @@ function healthDoneMessage(id) {
   // The "done" (up_to_date) line reuses the per-domain summary numbers the
   // Overview already holds, so it reads as a result, not a bare "done".
   const s = S.summary, ds = S.dupsum, fs = S.facesum, ps = S.petsum, ss = S.semanticsum;
+  const ts = S.textsum;
   switch (id) {
     case "scan": return `${(s && s.total || 0).toLocaleString()} files catalogued`;
     case "dedup": return ds && ds.duplicates
@@ -192,6 +195,12 @@ function healthDoneMessage(id) {
     case "semantic": return ss && ss.indexed
       ? `${ss.indexed.toLocaleString()} item${ss.indexed === 1 ? "" : "s"} indexed`
       : (ss && ss.configured ? "Ready to index" : "Not configured");
+    // Both halves of the text card fill one index from one pass, so there is
+    // no per-half count to quote and this figure is the honest answer whichever
+    // of them is on: what the archive can now search by what it says.
+    case "text": return ts && ts.read
+      ? `${ts.read.toLocaleString()} file${ts.read === 1 ? "" : "s"} read`
+      : "Nothing read yet";
     default: return "";
   }
 }

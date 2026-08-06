@@ -94,6 +94,64 @@ def test_a_health_row_without_a_rail_still_gets_the_full_width(open_app):
         assert app.errors() == []
 
 
+# A pipeline snapshot with every stage finished, served in place of the real
+# one. The browser fixture keeps the pipeline paused -- stages must not start
+# behind a test -- and a paused card reports "Paused" whatever it has done, so
+# the finished wording is unreachable without standing in for the server. Stubbing
+# `fetch` for this one URL is how the pause test above reaches its own window too.
+_ALL_DONE_JS = """(() => {
+  const snap = {
+    paused: false, overall: 'idle', extra: [],
+    stages: [...document.querySelectorAll('.health-task')].map((e, i) => ({
+      id: ['scan', 'dedup', 'places', 'detect', 'semantic', 'text'][i],
+      label: e.querySelector('.health-task-head').textContent.trim(),
+      icon: '', state: 'up_to_date', message: null, progress: null,
+      pending: 0, counted: true, always_runs: i < 2, next: false,
+      pausing: false, paused: false, stalled: false, waiting_on: null,
+    })),
+  };
+  window.__realFetch = window.fetch;
+  window.fetch = (...args) => String(args[0]).includes('/api/pipeline?')
+    ? Promise.resolve(new Response(JSON.stringify(snap),
+      { headers: { 'Content-Type': 'application/json' } }))
+    : window.__realFetch(...args);
+})()"""
+
+
+def test_every_finished_health_row_says_what_its_stage_found(open_app):
+    """A stage's row is a mark, a name and one line of state. The finished line
+    is a per-card sentence quoting the numbers the Overview already holds -- so
+    a card added to the pipeline without one shows a dot and nothing at all,
+    which is what the text card did for as long as it has existed.
+
+    Asserted across every row rather than for that card by name, so the next
+    card added cannot arrive silent in the same way.
+    """
+    with open_app("overview") as app:
+        app.wait_for(".health-task .health-node")
+        app.tab.evaluate(_ALL_DONE_JS)
+        app.tab.evaluate("import('/static/js/overview.js').then(m => m.startPoll())")
+        app.tab.wait_for(
+            "!document.querySelector('.health-task-state .spin')"
+            " && ![...document.querySelectorAll('.health-task-state')]"
+            "   .some(e => e.textContent.includes('Paused'))",
+            what="the finished snapshot to land",
+        )
+        rows = app.tab.evaluate(
+            "[...document.querySelectorAll('.health-task')].map(e => ["
+            " e.querySelector('.health-task-head').textContent.trim(),"
+            " e.querySelector('.health-task-state').textContent.trim()])"
+        )
+        app.tab.evaluate("window.fetch = window.__realFetch")
+
+        silent = [name for name, state in rows if not state]
+        assert not silent, f"finished health rows with nothing to say: {silent}"
+        # The one this was written for: both text features fill one index, so
+        # what it reports is how much of the archive it has read.
+        assert any("read" in state for name, state in rows if "text" in name)
+        assert app.errors() == []
+
+
 def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
     """The window between opening an archive and its first pipeline snapshot.
 
