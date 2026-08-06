@@ -107,8 +107,8 @@ stages no longer depend on each other:
 
 ```text
 scan ┐
-     ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
-metadata ┘                   ├─→ places
+     ├─→ duplicate grouping ─┬─→ places
+metadata ┘                   ├─→ people & pets (one detection pass)
                              ├─→ description index (optional)
                              └─→ reading document + picture text (optional)
 ```

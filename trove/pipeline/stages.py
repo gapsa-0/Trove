@@ -94,7 +94,7 @@ STAGES: tuple[StageDef, ...] = (
 # Display cards, in the order the Overview renders them. Dependency-ordered,
 # which _mark_stalled's single forward walk relies on, and the same order the
 # setup panel draws its chain in (``tests/unit/test_features.py``).
-CARD_ORDER = ("scan", "dedup", "detect", "places", "semantic", "text")
+CARD_ORDER = ("scan", "dedup", "places", "detect", "semantic", "text")
 # What each card is *called*, what it says while it runs and which mark it
 # carries all come from ``features.py``, composed per card from the features
 # the archive actually enabled -- there is deliberately no table of card names

@@ -35,12 +35,12 @@ image/frame and immediately clusters them into people and pets. This is the
 real dependency graph, from `trove/pipeline/stages.py`:
 
 ```text
-  scan ────┐                  ┌──▶ detect ──▶ cluster ──▶ persons / pets
-  (walk +  │                  │    (faces + pets, one decode pass;
-   hash)   ├──▶ dedup ────────┤     re-clusters after every chunk)
-           │                  │
-  enrich ──┘                  ├──▶ places ────────────▶ place_clusters
-  (exif, Takeout sidecar,     │    (GPS clustering)
+  scan ────┐                  ┌──▶ places ────────────▶ place_clusters
+  (walk +  │                  │    (GPS clustering)
+   hash)   ├──▶ dedup ────────┤
+           │                  ├──▶ detect ──▶ cluster ──▶ persons / pets
+  enrich ──┘                  │    (faces + pets, one decode pass;
+  (exif, Takeout sidecar,     │     re-clusters after every chunk)
    filename parse, mtime)     │
                               ├──▶ semantic ──────────▶ embeddings
                               │    (optional, SigLIP 2)
@@ -60,7 +60,7 @@ real dependency graph, from `trove/pipeline/stages.py`:
 ```
 
 `README.md` carries a shorter version of the same graph (scan/metadata →
-dedup → {people & pets, places, semantic}); this is that graph with hashing,
+dedup → {places, people & pets, semantic}); this is that graph with hashing,
 the metadata sub-sources, and clustering made explicit — the two are not in
 tension.
 

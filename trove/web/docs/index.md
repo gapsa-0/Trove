@@ -70,9 +70,9 @@ some of them cost a large one-time download:
 
 | Feature | Gives you | Downloads |
 | --- | --- | --- |
+| [Places](places.md) | A map of where you have been | Nothing |
 | [People](people.md) | A page per person, from faces | 275 MB |
 | [Pets](pets.md) | A page per animal | 35 MB |
-| [Places](places.md) | A map of where you have been | Nothing |
 | [Search by description](search.md) | Typing "a dog on the beach" and finding it | 689 MB |
 
 A feature you leave switched off downloads nothing, runs nothing and shows no
@@ -99,9 +99,9 @@ of those rewrites the catalogue wholesale.
 | --- | --- | --- |
 | [Indexing](indexing.md) | One row per file, with a date | Everything |
 | [Duplicates](duplicates.md) | Groups of copies, one kept | Not processing the same photo eight times |
+| [Places](places.md) | Coordinates, grouped into places | Nothing |
 | [People](people.md) | Faces, grouped into people | Nothing |
 | [Pets](pets.md) | Animals, grouped into individuals | Vetoing animal faces in People |
-| [Places](places.md) | Coordinates, grouped into places | Nothing |
 | [Search by description](search.md) | One vector per photo | Answering a typed description |
 
 The **Library health** panel on the Overview shows what each stage is doing,

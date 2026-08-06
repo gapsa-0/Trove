@@ -42,9 +42,9 @@ ORDER: tuple[str, ...] = (
     "index",
     "indexing",
     "duplicates",
+    "places",
     "people",
     "pets",
-    "places",
     # Not a stage, and deliberately ahead of the search features rather than
     # among them: it is the screen they all feed, and what it says is how to
     # read a result that could have come from any of them.

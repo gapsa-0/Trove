@@ -160,6 +160,23 @@ FEATURES: tuple[Feature, ...] = (
         sections=("dups",),
     ),
     Feature(
+        id="places",
+        label="Places",
+        icon="places",
+        tagline="Find the places you go and put them on a map",
+        verb="Mapping",
+        noun="locations",
+        detail=(
+            "Gathers photos that carry GPS coordinates into the places you keep going "
+            "back to, so you can name, pin and correct them. Photos without coordinates "
+            "can be added to a place by hand."
+        ),
+        required=False,
+        stages=("places",),
+        card="places",
+        sections=("places",),
+    ),
+    Feature(
         id="people",
         label="People",
         icon="people",
@@ -197,23 +214,6 @@ FEATURES: tuple[Feature, ...] = (
         download_mb=35,
         pairs_with="people",
         detector="pet",
-    ),
-    Feature(
-        id="places",
-        label="Places",
-        icon="places",
-        tagline="Find the places you go and put them on a map",
-        verb="Mapping",
-        noun="locations",
-        detail=(
-            "Gathers photos that carry GPS coordinates into the places you keep going "
-            "back to, so you can name, pin and correct them. Photos without coordinates "
-            "can be added to a place by hand."
-        ),
-        required=False,
-        stages=("places",),
-        card="places",
-        sections=("places",),
     ),
     Feature(
         id="semantic",
