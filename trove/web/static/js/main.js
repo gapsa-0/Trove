@@ -27,7 +27,7 @@ import {
   editPlace, isReading, newPlace, onAddPerson, onAddPet, openCopy, openFileLocation, onPlaceSelect,
   openItem, openRelated, reassignFace,
   removeManualPerson, removeManualPet, renderInfo, saveDate, saveNewPlace, setReading, showRelated,
-  stepItem, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
+  stepItem, stepOutOfDocument, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
 } from "./item.js";
 import {
   highlightFace, toggleBoxes,
@@ -117,10 +117,26 @@ applyNavCollapsed();
    inside. */
 window.addEventListener("blur", () => {
   if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
-  // The focused element is the <iframe>; `.docstage` is the box around it.
-  const el = document.activeElement;
-  if (el && el.tagName === "IFRAME" && el.closest(".docstage")) setReading(true);
+  if (inDocument()) setReading(true);
 });
+
+/* ...and the page getting the keyboard back is what ends it. Stepping out of a
+   document is a thing the user already does physically -- they click back onto
+   the app -- and that click is the only signal this page gets, because the Esc
+   the pill used to promise is delivered to the frame and never leaves it.
+
+   The check is what stops alt-tabbing back to the browser from counting: the
+   window has focus again, but it is still the document that has it. */
+window.addEventListener("focus", () => {
+  if (isReading() && !inDocument()) setReading(false);
+});
+
+// Whether the keyboard is currently inside an embedded document. The focused
+// element is the <iframe>; `.docstage` is the box the viewer puts around it.
+function inDocument() {
+  const el = document.activeElement;
+  return !!el && el.tagName === "IFRAME" && !!el.closest(".docstage");
+}
 
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
@@ -130,8 +146,11 @@ document.addEventListener("keydown", e => {
   // so it is the topmost thing Escape can mean while it is open.
   if (e.key === "Escape" && featureSheetOpen()) { closeFeatureSheet(); return; }
   if (e.key === "Escape" && docsOpen()) { closeDocs(); return; }
-  // closeModal() leaves the document first when one has the keyboard, and only
-  // closes the viewer on a second press.
+  // Reaching this at all means the keyboard is ours, so the document is not
+  // holding it and Escape means what it says. It used to step out of a document
+  // first and close on a second press, which made the one button labelled
+  // "Close (Esc)" a button that did not close -- and the press that was
+  // supposed to do the stepping out could never arrive here anyway.
   if (e.key === "Escape") { closeModal(); document.getElementById("viewer").focus(); return; }
   if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
   // While the document is being read, every key below belongs to it.
@@ -179,7 +198,8 @@ Object.assign(window, {
   removeManualPet,
   renamePet, renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
   setMapView,
-  setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
+  setStorageMetric, showDoc, showRelated, showSection, stepItem, stepOutOfDocument,
+  submitArchiveSetup, toPicker,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
   togglePipelinePause,

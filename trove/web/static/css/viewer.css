@@ -164,7 +164,33 @@
    so rather than letting them silently stop working. */
 .vpos.reading {
   background: rgba(255, 255, 255, .93);
-  color: #1d1d1f
+  color: #1d1d1f;
+  padding: 0
+}
+
+/* The pill is the way back as well as the notice, so the whole of it is the
+   button -- it fills the pill rather than sitting inside it, or there would be
+   a rim of notice around a control and only part of what you read would be
+   pressable. */
+.vpos-out {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 13px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer
+}
+
+.vpos-out:hover {
+  background: rgba(0, 0, 0, .07)
 }
 
 .vround {

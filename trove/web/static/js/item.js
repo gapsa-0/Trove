@@ -368,8 +368,16 @@ function renderChrome() {
   const ids = S.gallery || [], at = galleryAt();
   const pos = document.getElementById("vpos");
   if (READING) {
+    // A button, not a label. Esc cannot reach this page while the document
+    // holds the keyboard -- the keys go to the browser's own PDF viewer inside
+    // the frame, and nothing in there bubbles out -- so the pill named the one
+    // way out that could never work. Clicking anywhere on the page is what
+    // really steps out (see main.js), and this is that click with a label on
+    // it, for anyone who does not think to try it.
     pos.className = "vpos reading";
-    pos.innerHTML = `<b>Reading</b><span class="in">· the arrows belong to the document — Esc to step out</span>`;
+    pos.innerHTML = `<button type="button" class="vpos-out" onclick="stepOutOfDocument()">
+      <b>Reading</b><span class="in">· the arrows belong to the document — take them back</span>
+    </button>`;
   } else {
     pos.className = "vpos";
     // Position only when we know it. Opened from somewhere with no gallery
@@ -738,8 +746,8 @@ export function saveNewPlace() {
     toast("Couldn’t create the place: connection error", true);
   });
 }
-/* Whether the document currently owns the keyboard. main.js asks, because Esc
-   has to mean "leave the document" before it can mean "close the viewer". */
+/* Whether the document currently owns the keyboard. main.js asks, because it
+   is the one that can see focus arrive and leave the frame. */
 export function isReading() { return READING; }
 export function setReading(on) {
   if (READING === on) return;
@@ -748,8 +756,16 @@ export function setReading(on) {
   renderChrome();
 }
 
+/* Take the keyboard back from the document, said as a button on the pill that
+   announces the state. Focus has to move for it to be true: leaving it inside
+   the frame would put the arrows back under this page's control while the
+   browser's viewer was still the thing receiving them. */
+export function stepOutOfDocument() {
+  setReading(false);
+  viewer().focus();
+}
+
 export function closeModal() {
-  if (READING) { setReading(false); return; }   // Esc leaves the document first
   closePick();
   disposeItemMap();
   TRAIL = [];
