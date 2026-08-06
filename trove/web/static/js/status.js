@@ -16,8 +16,11 @@ import {
    The pipeline runs itself; this ambient chip is the only status the user
    needs and it carries no controls. */
 // The sidebar chip and the Overview health cards read the SAME pipeline
-// snapshot, so they can never tell the user two different things.
-export const CARD_KIND = { scan: "scan", dedup: "dedup", detect: "detect", places: "places", semantic: "semantic" };
+// snapshot, so they can never tell the user two different things. There is
+// deliberately no table of card ids here to go with it: this file kept one for
+// a while, the sixth card was added to pipeline/stages.py without it, and the
+// only thing reading it -- the per-stage pause button -- silently refused to
+// draw itself for a stage it had never heard of.
 // Percentages arrive with one decimal; whole numbers read calmer in an
 // ambient chip, and "<1%" beats a "0%" that looks stalled.
 function gstatPct(pct) {

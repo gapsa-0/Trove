@@ -152,6 +152,28 @@ def test_every_finished_health_row_says_what_its_stage_found(open_app):
         assert app.errors() == []
 
 
+def test_every_stage_can_be_stopped_on_its_own(open_app):
+    """Each card carries its own pause button, on top of the whole-pipeline
+    switch: the point of it is stopping one stage and letting the rest run.
+
+    The button used to be gated on a hardcoded list of card ids kept in the
+    frontend, which nobody updated when the text stage was added -- so the
+    slowest stage in the pipeline, the one most worth stopping on its own, was
+    the one card that could not be. Asserted across every row for that reason.
+    """
+    with open_app("overview") as app:
+        app.wait_for(".health-task .health-node")
+        rows = app.tab.evaluate(
+            "[...document.querySelectorAll('.health-task')].map(e => ["
+            " e.querySelector('.health-task-head').textContent.trim(),"
+            " !!e.querySelector('.health-task-btn')])"
+        )
+        assert rows, "no health rows to check"
+        mute = [name for name, has in rows if not has]
+        assert not mute, f"health rows with no way to pause them: {mute}"
+        assert app.errors() == []
+
+
 def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
     """The window between opening an archive and its first pipeline snapshot.
 

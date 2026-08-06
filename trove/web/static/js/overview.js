@@ -4,7 +4,7 @@
 // the always-visible sidebar chip is status polling of its own.
 
 import {
-  CARD_KIND, renderGstat,
+  renderGstat,
 } from "./status.js";
 import {
   jget, jpost,
@@ -276,9 +276,17 @@ function healthCard(stage) {
 const PAUSE_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>';
 const PLAY_GLYPH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z" fill="currentColor"/></svg>';
 function stagePauseButton(stage) {
-  // An unavailable stage has no work to pause (its backend isn't installed),
-  // and the non-stage jobs in `extra` are user-kicked one-offs, not stages.
-  if (stage.state === "unavailable" || !CARD_KIND[stage.id]) return "";
+  // An unavailable stage has no work to pause: its backend isn't installed, so
+  // there is nothing running to stop. That is the only card without a button.
+  //
+  // There used to be a second condition, a hardcoded list of the five card ids
+  // that were stages -- meant to keep the button off the non-stage jobs in
+  // `extra`, which are user-kicked one-offs. Those never reach this function
+  // (the sidebar chip draws them; this panel only ever maps `snap.stages`), and
+  // the list was never told about the sixth card, so the text stage quietly had
+  // no way to be paused on its own. What decides this is the state, not a list
+  // of names that has to be maintained beside the one in pipeline/stages.py.
+  if (stage.state === "unavailable") return "";
   const globallyPaused = !!(S.pipeline && S.pipeline.paused);
   const off = !!stage.paused;
   const label = off ? `Resume ${stage.label}` : `Pause ${stage.label}`;

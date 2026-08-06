@@ -407,13 +407,19 @@ def test_post_archive_remove_deletes_the_registered_archive(live_server):
 
 
 def test_post_pipeline_pause_supports_pausing_a_single_stage(live_server):
-    status, body = _post(
-        live_server.base_url, "/api/pipeline/pause", {"paused": True, "stage": "scan"}
-    )
-    payload = json.loads(body)
-    assert status == 200, payload
-    assert payload.keys() >= {"paused", "paused_stages"}
-    assert "scan" in payload["paused_stages"]
+    """Every card the health panel draws a pause button for, not just one of
+    them: the panel offers the button per card, so a card the route refuses is
+    a button that reports failure when pressed."""
+    from trove.pipeline import stages
+
+    for card in stages.CARD_ORDER:
+        status, body = _post(
+            live_server.base_url, "/api/pipeline/pause", {"paused": True, "stage": card}
+        )
+        payload = json.loads(body)
+        assert status == 200, (card, payload)
+        assert payload.keys() >= {"paused", "paused_stages"}
+        assert card in payload["paused_stages"]
 
 
 def test_post_item_place_clears_an_assignment(live_server):
