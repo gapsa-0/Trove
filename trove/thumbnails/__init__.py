@@ -9,7 +9,11 @@ present on the system. Read-only over originals.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -34,6 +38,40 @@ VIDEO_EXTS = {".mp4", ".mov", ".avi", ".wmv", ".3gp", ".mkv", ".m4v", ".mpg", ".
 # cache key embeds it, so old thumbnails made by earlier logic are ignored and
 # regenerated instead of being served forever — a fid-only key never could.
 THUMB_VER = 1
+
+
+@contextmanager
+def _atomic(tp: Path) -> Iterator[Path]:
+    """Yield a scratch path to write, then publish it at ``tp`` by rename.
+
+    Every cache file here is published rather than written where readers look
+    for it, and that is not fastidiousness. "Already cached?" is answered by
+    ``tp.exists()``, a hit is handed straight to the server's ``_send_file``,
+    and that stats the file for ``Content-Length`` -- so a thumbnail written in
+    place is visible, and servable, from its first zero-length byte. A second
+    request arriving in that window answered ``200`` with a truncated body,
+    which the browser then cached as a perfectly good image; only a hard reload
+    cleared it. The window is wide open in practice: the server is threaded,
+    and the cache key is content-addressed, so every byte-identical copy in a
+    duplicate group asks for the same file at the same moment.
+
+    ``os.replace`` is atomic on POSIX and Windows, so ``tp`` either does not
+    exist or is complete. The scratch name carries pid and thread id, so two
+    workers racing on one cache key write to separate files and the later
+    rename simply wins -- they produce identical bytes either way.
+
+    An empty scratch file is never published: a writer that failed leaves no
+    cache entry at all, rather than a zero-byte one that would be served
+    forever as a valid hit.
+    """
+    tp.parent.mkdir(parents=True, exist_ok=True)
+    tmp = tp.with_name(f".{tp.name}.{os.getpid()}-{threading.get_ident()}.tmp")
+    try:
+        yield tmp
+        if tmp.exists() and tmp.stat().st_size > 0:
+            os.replace(tmp, tp)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _cache_key(fid: int, sha256: str | None, rotate: int = 0) -> str:
@@ -99,45 +137,46 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
         # no ffmpeg is a supported configuration, not an extraction failure.
         logger.warning("ffmpeg not found; no video thumbnail for %s", src)
         return False
-    try:
-        subprocess.run(
-            [
-                ffmpeg,
-                "-y",
-                "-ss",
-                offset,
-                "-i",
-                str(src),
-                "-frames:v",
-                "1",
-                "-vf",
-                f"scale={size}:-1:force_original_aspect_ratio=decrease",
-                "-q:v",
-                "4",
-                str(tp),
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=20,
-            # The bundled ffmpeg is a shared build and cannot find its own
-            # libav* without this; see runtime.tool_env. Harmless for a PATH
-            # ffmpeg, which ignores a library path it does not need.
-            env=tool_env(),
-            **no_window(),
-        )
-    except Exception as exc:
-        # Mostly subprocess.TimeoutExpired (the 20s timeout above), plus
-        # whatever a codec ffmpeg cannot read raises. Either way there is no
-        # frame. One line, no exc_info: frames_for() calls this once per offset
-        # per video, so a bad codec would otherwise write a traceback for every
-        # offset of every affected video.
-        logger.warning("ffmpeg frame extraction failed for %s at %s: %s", src, offset, exc)
-        return False
-    return tp.exists() and tp.stat().st_size > 0
+    extracted = False
+    with _atomic(tp) as tmp:
+        try:
+            subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-ss",
+                    offset,
+                    "-i",
+                    str(src),
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    f"scale={size}:-1:force_original_aspect_ratio=decrease",
+                    "-q:v",
+                    "4",
+                    str(tmp),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+                # The bundled ffmpeg is a shared build and cannot find its own
+                # libav* without this; see runtime.tool_env. Harmless for a PATH
+                # ffmpeg, which ignores a library path it does not need.
+                env=tool_env(),
+                **no_window(),
+            )
+            extracted = tmp.exists() and tmp.stat().st_size > 0
+        except Exception as exc:
+            # Mostly subprocess.TimeoutExpired (the 20s timeout above), plus
+            # whatever a codec ffmpeg cannot read raises. Either way there is no
+            # frame. One line, no exc_info: frames_for() calls this once per
+            # offset per video, so a bad codec would otherwise write a traceback
+            # for every offset of every affected video.
+            logger.warning("ffmpeg frame extraction failed for %s at %s: %s", src, offset, exc)
+    return extracted
 
 
 def _thumb_video(tp: Path, src: Path, size: int) -> Path | None:
-    tp.parent.mkdir(parents=True, exist_ok=True)
     # Try a frame a second in first (skips black opening frames on many
     # clips); very short videos have no frame there, so fall back to t=0.
     if _video_frame(tp, src, size, "00:00:01") or _video_frame(tp, src, size, "00:00:00"):
@@ -182,7 +221,6 @@ def video_frames_for(
             / "semantic_frames"
             / f"{_semantic_frame_key(fid, sha256, i, rotate)}_{size}.jpg"
         )
-        tp.parent.mkdir(parents=True, exist_ok=True)
         if tp.exists() or _video_frame(tp, src, size, offset):
             out.append(tp)
     return out
@@ -221,7 +259,6 @@ def detect_frame_for(
         / "detect_frames"
         / f"{base}_{_sanitize_offset(offset)}_v{DETECT_FRAME_VER}_{size}.jpg"
     )
-    tp.parent.mkdir(parents=True, exist_ok=True)
     if tp.exists():
         return tp
     return tp if _video_frame(tp, src, size, offset) else None
@@ -271,8 +308,7 @@ def face_thumb_for(
         return None
     Image, ImageOps = pil
     try:
-        tp.parent.mkdir(parents=True, exist_ok=True)
-        with Image.open(src) as im:
+        with _atomic(tp) as tmp, Image.open(src) as im:
             im = _apply_rotation(ImageOps.exif_transpose(im), rotate).convert("RGB")
             W, H = im.size
             x, y, w, h = box
@@ -289,7 +325,7 @@ def face_thumb_for(
             crop = im.crop((left, top, right, bottom))
             resampling = getattr(Image, "Resampling", Image).LANCZOS
             crop = crop.resize((size, size), resampling)
-            crop.save(tp, "JPEG", quality=82)
+            crop.save(tmp, "JPEG", quality=82)
         return tp
     except Exception:
         logger.warning("face thumbnail failed for face_id=%s src=%s", face_id, src, exc_info=True)
@@ -315,7 +351,6 @@ def _thumb_pdf(tp: Path, src: Path, size: int) -> Path | None:
     try:
         import pypdfium2 as pdfium
 
-        tp.parent.mkdir(parents=True, exist_ok=True)
         doc = pdfium.PdfDocument(src)
         try:
             if len(doc) == 0:
@@ -328,7 +363,8 @@ def _thumb_pdf(tp: Path, src: Path, size: int) -> Path | None:
             scale = max(0.1, min(4.0, size / max(box[0], box[1])))
             bitmap = page.render(scale=scale)
             image = bitmap.to_pil()
-            image.convert("RGB").save(tp, "JPEG", quality=80)
+            with _atomic(tp) as tmp:
+                image.convert("RGB").save(tmp, "JPEG", quality=80)
         finally:
             doc.close()
         return tp
@@ -352,11 +388,10 @@ def thumb_for(
         return None
     Image, ImageOps = pil
     try:
-        tp.parent.mkdir(parents=True, exist_ok=True)
-        with Image.open(src) as im:
+        with _atomic(tp) as tmp, Image.open(src) as im:
             im = _apply_rotation(ImageOps.exif_transpose(im), rotate)
             im.thumbnail((size, size))
-            im.convert("RGB").save(tp, "JPEG", quality=80)
+            im.convert("RGB").save(tmp, "JPEG", quality=80)
         return tp
     except Exception:
         logger.warning("thumbnail failed for fid=%s src=%s", fid, src, exc_info=True)
@@ -386,10 +421,9 @@ def upright_for(
         return None
     Image, ImageOps = pil
     try:
-        tp.parent.mkdir(parents=True, exist_ok=True)
-        with Image.open(src) as im:
+        with _atomic(tp) as tmp, Image.open(src) as im:
             im = _apply_rotation(ImageOps.exif_transpose(im), rotate)
-            im.convert("RGB").save(tp, "JPEG", quality=90)
+            im.convert("RGB").save(tmp, "JPEG", quality=90)
         return tp
     except Exception:
         logger.warning("upright render failed for fid=%s src=%s", fid, src, exc_info=True)

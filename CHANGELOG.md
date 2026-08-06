@@ -139,6 +139,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   matched on their contents like videos are, and this is decided by looking
   inside the file, so a GIF saved as a `.png` is handled correctly too. Anything
   wrongly hidden comes back at the next automatic rebuild.
+- **Thumbnails no longer come up blank until you force a reload.** A thumbnail
+  is generated the first time it is asked for, and a second request arriving
+  while the first was still writing it was answered with the half-written file —
+  which the browser then remembered as a broken picture. Grids of copies were
+  worst hit, since identical files share one thumbnail and ask for it at the same
+  moment. Every generated thumbnail, video frame and face crop is now published
+  in one step, so it is either absent or whole and never something in between.
 - **A photograph found by its writing no longer swallows the results beside
   it.** Text-search results hold two kinds of file — documents read from their
   own text, and pictures read off the pixels — and a picture's thumbnail had
