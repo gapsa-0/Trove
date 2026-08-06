@@ -177,9 +177,9 @@ export async function renderPhotos(m) {
   /* The placeholder is an invitation, not a label, which is why it is the one
      line here that does not take the features' own names. Stringing them
      together grants the box a whole line of prose -- "Search by filename, by
-     extracted text, or by description" -- and the panel directly below
-     already lists them properly, one row each with what it matches. So the box
-     says the short true thing and leaves the naming to the rows.
+     extracted text, or by description" -- and the panel directly below already
+     lists them properly, one row each with what it matches. So the box says the
+     short true thing and leaves the naming to the rows.
 
      The one-way archive is the exception, since there the placeholder is the
      only thing on the screen that can say what the box will do. */
@@ -546,17 +546,10 @@ function renderGroupLabels() {
     line.append(item);
   });
 }
-/* Every way is called "Search by ‹what you type against›" (ADR 0021), so the
-   line says "found by" once and names each way by the half that tells it from
-   the others. Printing the labels whole read "Nothing found in Search by
-   filename or Search by description" -- the same two words twice, in a line of
-   nine.
-
-   Nothing is lowercased on the way and nothing is retyped: what is left is the
-   common noun the feature was already named for, so the words still match the
-   ones on the setup card, the Overview card and the page documenting it, minus
-   a prefix this sentence has already supplied. A label that is not phrased that
-   way keeps all of itself rather than being cut somewhere arbitrary. */
+/* Every way is called "Search by <what you type against>" (ADR 0021), so the
+   line above says that once and names each by the half that tells it from the
+   others. Nothing is lowercased and nothing retyped: what is left is the noun
+   the feature was named for, minus a prefix the sentence has supplied. */
 function wayNoun(label) { return label.replace(/^Search by /, ""); }
 /* Whether the media grid can rank a typed query at all.
 
