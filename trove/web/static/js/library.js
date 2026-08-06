@@ -177,7 +177,7 @@ export async function renderPhotos(m) {
   /* The placeholder is an invitation, not a label, which is why it is the one
      line here that does not take the features' own names. Stringing them
      together grants the box a whole line of prose -- "Search by filename, by
-     document or picture text, or by description" -- and the panel directly below
+     extracted text, or by description" -- and the panel directly below
      already lists them properly, one row each with what it matches. So the box
      says the short true thing and leaves the naming to the rows.
 

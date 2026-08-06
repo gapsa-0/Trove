@@ -140,17 +140,22 @@ def test_the_shared_card_is_named_after_whichever_half_is_on():
     assert features.card_label("places", ["places"]) == "Places"
 
 
-def test_a_stated_fused_label_still_names_both_halves():
+def test_a_stated_fused_label_is_reached_only_with_both_halves_live():
     """Two labels sharing a prefix and a noun cannot be joined into a title, so
-    the text card's fused wording is stated rather than derived. That is the one
-    place a name can drift from the labels it stands for, which is what this
-    holds shut: rename a half and the word it contributed has to survive."""
+    the text card's fused wording is stated rather than derived. That makes it
+    the one name in the table with nothing holding it to the halves it stands
+    for, so what is checked is where it is allowed to appear: with both halves
+    on, and never in place of a half that is running alone."""
     for card, fused in features._FUSED_LABELS.items():
         owners = features.owners(card)
         assert len(owners) > 1, card
         assert features.card_label(card, [f.id for f in owners]) == fused
+        for f in owners:
+            assert features.card_label(card, [f.id]) == f.label
     fused = features.card_label("text", ["documents", "ocr"])
-    assert "document" in fused and "picture" in fused
+    # It names what the two halves have in common rather than listing them, but
+    # it is still one of the ways you can search, in the grammar of the rest.
+    assert fused.startswith("Search by ")
 
 
 def test_a_card_is_called_what_the_setup_panel_called_it():
@@ -277,8 +282,9 @@ def test_the_two_readers_share_one_way():
     assert [w.id for w in ways] == ["name", "text"]
     text = ways[1]
     assert text.readers == ("documents", "ocr")
-    # One way, named for both halves rather than for whichever was listed first.
-    assert text.label == "Search by document or picture text"
+    # One way, named for what both halves do rather than for whichever of them
+    # happened to be listed first.
+    assert text.label == "Search by text extracted"
 
 
 def test_a_way_never_promises_files_its_readers_cannot_open():

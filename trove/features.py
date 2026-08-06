@@ -387,7 +387,14 @@ def _joined(parts: Iterable[str]) -> str:
 # places it looks. The joined form is a third wording however it is produced, so
 # this states it instead of deriving it, next to the two labels it has to stay
 # faithful to. ``tests/unit/test_features.py`` holds it to that.
-_FUSED_LABELS = {"text": "Search by document or picture text"}
+#
+# It names what the two halves have in common rather than listing them. Listing
+# them was the first answer -- "Search by document or picture text" -- and it is
+# five words on a card whose name also has to fit a chip in the setup chain, a
+# nav-width row and a result heading. What is actually true of both is that the
+# text was pulled out of the file rather than being the file, which is also the
+# one thing that tells this way apart from the other two.
+_FUSED_LABELS = {"text": "Search by text extracted"}
 
 
 def card_label(card: str, enabled: Iterable[str]) -> str:

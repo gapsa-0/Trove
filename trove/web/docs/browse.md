@@ -25,8 +25,8 @@ feature: it is the one way every archive has, whatever else it runs, and the
 part of the name that matched is marked on the result.
 
 **Search by document text** and **Search by picture text** share one way, headed
-with whichever of them you have on — or *Search by document or picture text* when
-both are. [The first](documents.md) reads the characters a file already stores —
+with whichever of them you have on — or *Search by text extracted* when both
+are. [The first](documents.md) reads the characters a file already stores —
 Word, Excel, PowerPoint, OpenDocument, plain text, CSV, web pages, notebooks and
 PDFs with a text layer; [the second](ocr.md) reads the writing off screenshots,
 photos and scanned PDFs. They write into the same passages, so either one alone

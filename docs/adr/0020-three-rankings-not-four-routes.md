@@ -29,7 +29,7 @@ same list, and the screen says so:
 | Group | Endpoint | Fed by |
 | --- | --- | --- |
 | Search by filename | `/api/media?name=` | the name Indexing recorded |
-| Search by document or picture text | `/api/browse/text/search` | both text features |
+| Search by text extracted | `/api/browse/text/search` | both text features |
 | Search by description | `/api/browse/semantic/search` | Search by description |
 
 `features.search_ways` is that table, and the labels in it are not new strings:

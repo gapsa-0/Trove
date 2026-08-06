@@ -68,7 +68,10 @@ for the running line, and the ADRs for the reasoning.
 prefix and a noun, so joining gives "Search by document text & search by picture
 text" — three words of it redundant, and an "&" where what is true is "or", one
 box looking in two places. `_FUSED_LABELS` holds the one string that cannot be
-built, `Search by document or picture text`, next to the labels it stands for.
+built, next to the labels it stands for. It names what the two halves have in
+common — `Search by text extracted` — rather than listing them, which was the
+first answer here and cost five words on a name that also has to fit a chip in
+the setup chain and a result heading.
 
 ## Consequences
 

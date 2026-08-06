@@ -225,7 +225,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **The two text features are named after what you can search, not the files they
   read.** *Documents* and *Pictures of text* are now **Search by document text**
-  and **Search by picture text**, headed as *Search by document or picture text*
+  and **Search by picture text**, headed as *Search by text extracted*
   where both are on. The old names described their input, which read as a promise
   about a kind of file rather than a way of finding one — and *Documents* was
   actively misleading, since a scanned contract is a document and is precisely
