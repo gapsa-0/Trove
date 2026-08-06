@@ -134,15 +134,18 @@ function dupCount(shown) {
 // no progress bar, no emoji, exactly one row so the panel never reserves
 // empty space. Dedup is started by the scheduler alone -- there is nothing
 // to press here -- so this only reports how much of the archive the last
-// successful grouping run has already accounted for. "Unique files" is the
-// same population the tile above counts: a group's copies are compared once,
-// as one file, not once each.
+// successful grouping run has already accounted for. The pending count is in
+// unique files, the same population the tile above counts: a group's copies
+// are compared once, as one file, not once each. The finished line drops the
+// word -- once nothing is pending there is no distinction left to draw, and
+// "all unique files compared" invited the reading that some other files were
+// not.
 function dedupStatusRow(ds) {
   const pending = ds.pending || 0;
   if (pending > 0) {
     return `<div class="d pending"><span class="dot pending"></span>${pending.toLocaleString()} unique file${pending === 1 ? "" : "s"} pending; duplicate detection runs automatically.</div>`;
   }
-  return `<div class="d ok"><span class="dot ok"></span>All unique files compared.</div>`;
+  return `<div class="d ok"><span class="dot ok"></span>All files compared.</div>`;
 }
 // What the redundant copies actually ARE. "27,318
 // duplicates" hides two things worth knowing: how many are byte-identical
