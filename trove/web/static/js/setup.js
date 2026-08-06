@@ -20,6 +20,11 @@
 // description of what it does. Cards are a fixed height and turn in place, so
 // reading one never moves the others.
 //
+// The shelf holds the whole catalogue, the two undeclinable stages included --
+// they carry "Always runs" where the others carry Add. A shelf of only the
+// choices described six of the eight things the archive was about to do, and
+// left out the two the other six are built on.
+//
 // Dragging a card onto the chain is the same action as pressing Add, and
 // dragging a link back down to the shelf is the same as pressing its remove
 // button, because a drag-only interface is unusable with a keyboard and
@@ -149,9 +154,7 @@ const HEAD = `<svg viewBox="0 0 30 22" aria-hidden="true"><circle cx="15" cy="7"
 const CAT = `<svg viewBox="0 0 30 22" aria-hidden="true"><path d="M7.6 9.4 6.2 2.4l5.9 3.6a11.6 11.6 0 0 1 5.8 0l5.9-3.6-1.4 7a9.2 9.2 0 0 1 1.7 5.3c0 4.5-4.5 8.1-9.1 8.1s-9.1-3.6-9.1-8.1a9.2 9.2 0 0 1 1.7-5.3Z"/></svg>`;
 const DOG = `<svg viewBox="0 0 30 22" aria-hidden="true"><ellipse cx="5.9" cy="14.1" rx="3.6" ry="6.6" transform="rotate(-13 5.9 14.1)"/><ellipse cx="24.1" cy="14.1" rx="3.6" ry="6.6" transform="rotate(13 24.1 14.1)"/><path d="M15 5.6c4.2 0 7.5 3.2 7.5 7.4 0 4.9-3.4 8.8-7.5 8.8s-7.5-3.9-7.5-8.8c0-4.2 3.3-7.4 7.5-7.4Z"/></svg>`;
 
-// Keyed by feature id, and only the optional ones have an entry: the two that
-// always run are links in the chain and never get a card, so a drawing for
-// them would be dead. A feature with no drawing gets no cover rather than a
+// Keyed by feature id. A feature with no drawing gets no cover rather than a
 // grey box, so adding one to features.py cannot break this screen.
 const PREVIEWS = {
   people: () => `<span class="set-pv-stage">
@@ -200,38 +203,36 @@ function chipItem(f) {
       ${mark(f)}${esc(f.label)}${out}</span>`;
 }
 
-// What the two stages an archive cannot decline actually do.
+// The line that says which of the three kinds of card this is: one you can
+// press, one you cannot decline, one this build cannot run.
 //
-// They are the only features with nowhere else to say it: a card is what
-// carries a tagline, and only the optional features get one -- these two are
-// links in the chain instead. So the screen named them ("Indexing and
-// Duplicates always run") without ever saying what either one was for, which is
-// a poor deal on the one screen whose whole job is deciding what runs.
-//
-// Deliberately not extended to the optional features. Theirs is on their own
-// card a few inches below, and printing it twice would make this a legend for
-// a chain that is already labelled.
-function fixedNote() {
-  const fixed = SETUP.catalogue.filter(f => f.required);
-  if (!fixed.length) return "";
-  return `<dl class="set-fixed"><dt class="set-fixed-head">Always runs</dt>
-    ${fixed.map(f => `<dd class="set-fixed-row">
-      <span class="set-fixed-name">${mark(f)}${esc(f.label)}</span>
-      <span class="set-fixed-line">${esc(f.tagline)}</span></dd>`).join("")}</dl>`;
+// The required features are on the shelf like everything else. They used to be
+// links in the chain and a small note under it, which left the one screen whose
+// job is deciding what runs describing six of the eight things it was about to
+// do -- and the two it skipped are the two the rest is built on. A card each
+// says what they are for in the same place, and in the same words, as the six.
+function pill(f) {
+  if (f.required) return `<span class="set-always">Always runs</span>`;
+  if (!f.available) return `<span class="set-unavailable">Not in this build</span>`;
+  const chosen = SETUP.chosen.has(f.id);
+  return `<button class="set-add" type="button" aria-pressed="${chosen}">${chosen
+    ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 5 5L19 7"/></svg>On`
+    : "Add"}</button>`;
 }
+
+// Whether pressing this card would do anything. False for the two nobody may
+// switch off and for anything this build cannot run, and it decides all three
+// of the ways a card offers itself: the click, the drag, and the lift under the
+// pointer that promises both.
+function pressable(f) { return !f.required && f.available; }
 
 function cardItem(f) {
   const chosen = SETUP.chosen.has(f.id);
   const back = SETUP.flipped.has(f.id);
   const { text } = cost(f);
-  const pill = f.available
-    ? `<button class="set-add" type="button" aria-pressed="${chosen}">${chosen
-      ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 5 5L19 7"/></svg>On`
-      : "Add"}</button>`
-    : `<span class="set-unavailable">Not in this build</span>`;
-  return `<li class="set-card${chosen ? " on" : ""}${f.available ? "" : " off"}"
-      data-feature="${f.id}" draggable="${f.available}">
-      <div class="set-face"${back ? " hidden" : ""}${f.available
+  return `<li class="set-card${chosen ? " on" : ""}${f.available ? "" : " off"}${f.required
+    ? " fixed" : ""}" data-feature="${f.id}" draggable="${pressable(f)}">
+      <div class="set-face"${back ? " hidden" : ""}${pressable(f)
     ? ` onclick="toggleFeature('${f.id}')"` : ""}>
         <span class="set-cover">${preview(f)}</span>
         <div class="set-meta">
@@ -241,7 +242,7 @@ function cardItem(f) {
             onclick="event.stopPropagation();flipFeature('${f.id}')">More info</button>
           <div class="set-card-foot">
             <span class="${costClass(f)}">${text}</span>
-            ${pill}
+            ${pill(f)}
           </div>
         </div>
       </div>
@@ -282,6 +283,22 @@ function pairNote() {
     The two check each other's work, so having both makes each of them more accurate.</p>`;
 }
 
+// The chain's one line of explanation: which links cannot be taken out, and
+// what that buys the rest. Composed from the catalogue rather than typed, so a
+// third undeclinable stage would be named here instead of being quietly left
+// out of a sentence about two. What each of them actually does is on its own
+// card, in the same words as the six beside it.
+function trunkNote() {
+  const fixed = SETUP.catalogue.filter(f => f.required).map(f => esc(f.label));
+  if (!fixed.length) return "";
+  const named = fixed.length > 1
+    ? `${fixed.slice(0, -1).join(", ")} and ${fixed[fixed.length - 1]}`
+    : fixed[0];
+  const many = fixed.length > 1;
+  return `<p class="set-pipe-note">${named} always ${many ? "run" : "runs"}.
+    Every other stage reads what ${many ? "they produce" : "it produces"}.</p>`;
+}
+
 function totalLine() {
   const mb = pendingDownloadMb();
   return mb
@@ -291,8 +308,7 @@ function totalLine() {
 
 function renderSetup(landed) {
   const live = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id));
-  const optional = SETUP.catalogue.filter(f => !f.required);
-  const waiting = optional.filter(f => !SETUP.chosen.has(f.id) && f.available);
+  const waiting = SETUP.catalogue.filter(f => pressable(f) && !SETUP.chosen.has(f.id));
   document.getElementById("setup-body").innerHTML = `
     <div class="set-head">
       <div>
@@ -316,8 +332,7 @@ function renderSetup(landed) {
         <span class="set-pipe-mb">${pendingDownloadMb()} MB</span>
       </header>
       <div class="set-flow" id="set-flow">${pipeline(live, waiting)}</div>
-      ${fixedNote()}
-      <p class="set-pipe-note">Every other stage reads what they produce.</p>
+      ${trunkNote()}
       ${pairNote()}
     </section>
 
@@ -327,7 +342,7 @@ function renderSetup(landed) {
     ? "Add to the pipeline" : "Everything is switched on"}</span>
         <em>${waiting.length ? "Drag a card onto the pipeline, or press Add" : ""}</em>
       </header>
-      <ul class="set-cards">${optional.map(cardItem).join("")}</ul>
+      <ul class="set-cards">${SETUP.catalogue.map(cardItem).join("")}</ul>
       <p class="set-privacy">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.7 4.8 5.8v5.3c0 4.5 3 8.6 7.2 9.9 4.2-1.3 7.2-5.4 7.2-9.9V5.8Z"/></svg>
         <span>Every stage runs on this machine: no photo, no face and nothing you type ever

@@ -98,10 +98,43 @@ def test_the_pipeline_starts_with_only_the_features_that_cannot_be_removed(open_
         )
         assert in_chain == ["index", "duplicates"]
         assert app.count(".set-chip.fixed .set-chip-out") == 0, "neither may be removed"
-        # Every optional feature keeps a card, chosen or not: the card is the
-        # catalogue entry, and the chain is what was picked from it.
+        # Every feature keeps a card, chosen or not and declinable or not: the
+        # card is the catalogue entry, and the chain is what was picked from it.
         assert app.count(".set-card") >= 3
+        assert app.count(".set-card.fixed") == 2
         assert "0 MB" in app.text(".set-total")
+        assert app.errors() == []
+
+
+def test_the_stages_that_always_run_have_a_card_that_cannot_be_switched_off(open_app):
+    """They used to be links in the chain and a two-row note under it, so the
+    one screen whose job is deciding what runs described six of the eight
+    things it was about to do -- leaving out the two the other six read from.
+
+    A card each, with "Always runs" where the others carry Add, and nothing on
+    it that offers to change that.
+    """
+    with open_app() as app:
+        _open_setup(app)
+
+        assert app.text('.set-card[data-feature="index"] .set-always') == "Always runs"
+        assert app.count('.set-card[data-feature="index"] .set-add') == 0
+        # The tagline is the point of giving them a card at all.
+        assert "metadata" in app.text('.set-card[data-feature="index"] .set-card-line')
+
+        # Pressing it is not a way to remove it, and neither is dragging it.
+        app.click('.set-card[data-feature="duplicates"] .set-face')
+        assert app.count('#set-flow .set-chip[data-feature="duplicates"]') == 1
+        assert (
+            app.tab.evaluate(
+                "document.querySelector('.set-card[data-feature=\"duplicates\"]').draggable"
+            )
+            is False
+        )
+        # It turns over like any other card: what a stage does is worth reading
+        # whether or not it is yours to decline.
+        app.click('.set-card[data-feature="duplicates"] .set-flip')
+        app.wait_for('.set-card[data-feature="duplicates"] .set-back:not([hidden])')
         assert app.errors() == []
 
 

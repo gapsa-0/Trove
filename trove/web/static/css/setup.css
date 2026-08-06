@@ -290,65 +290,14 @@
   color: var(--accent);
 }
 
-/* What the two undeclinable stages do. Sits under the chain rather than in it:
-   a chip is a link in a chain and has room for a name, so a sentence written
-   inside one would turn every other link into a different shape. */
-.set-fixed {
-  margin: 12px 0 0;
-  padding: 0;
-}
-
-.set-fixed-head {
-  margin-bottom: 6px;
-  color: var(--faint);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.set-fixed-row {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin: 0;
-  padding: 3px 0;
-}
-
-.set-fixed-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  width: 104px;
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 620;
-  letter-spacing: -.012em;
-}
-
-.set-fixed-line {
-  min-width: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
+/* Which links cannot be taken out, in one line under the chain. What each of
+   them does is on its own card, in the same words as every other feature's --
+   this used to be a two-row table saying it here instead, because those two
+   were the only features on the screen with no card to say it on. */
 .set-pipe-note {
   margin: 12px 0 0;
   color: var(--faint);
   font-size: 11.5px;
-}
-
-@media (max-width: 640px) {
-  .set-fixed-row {
-    flex-direction: column;
-    gap: 1px;
-    padding: 5px 0;
-  }
-
-  .set-fixed-name {
-    width: auto;
-  }
 }
 
 /* Half of a pair running without the other. Both halves name each other, and
@@ -435,6 +384,20 @@
 .set-card.off {
   cursor: default;
   opacity: .6;
+}
+
+/* A stage nobody may switch off. It keeps the ring every chosen card has --
+   it *is* chosen, and always will be -- but not the lift under the pointer,
+   which on a card that cannot be pressed is a promise of a click that would do
+   nothing. Not dimmed like .off either: this one is running, and the two
+   states mean opposite things. */
+.set-card.fixed {
+  cursor: default;
+}
+
+.set-card.fixed:hover {
+  transform: none;
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
 }
 
 /* Both faces fill the card, so whichever is up is exactly the same size. */
@@ -621,7 +584,11 @@
   stroke-linejoin: round;
 }
 
-.set-unavailable {
+/* The two feet that are statements rather than controls, in the caption face
+   the pill would otherwise fill: one stage this build cannot run, one nobody
+   may stop. The Features sheet says both in the same words (features.css). */
+.set-unavailable,
+.set-always {
   color: var(--faint);
   font-size: 11.5px;
 }
