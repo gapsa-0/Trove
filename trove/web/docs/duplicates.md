@@ -83,7 +83,15 @@ is a judgement, and it is the one worth glancing at.
 
 Then one row per group, biggest saving first. Each row shows every copy with
 the folder it lives in, and the one Trove keeps is tagged with a green check.
-Click any copy to open it.
+Click any copy to open it; the viewer's arrows then step through that group and
+stop at its edges, so a comparison never wanders into the next group's photos.
+
+Two controls sit above the list. The first narrows it to groups holding at
+least one identical copy, or at least one visual match — and a group can answer
+to both, since a group matched visually often also holds a byte-identical copy.
+The second orders by how many copies a group holds, either way, in place of the
+biggest-saving order. When a filter is on, the count beside the controls says
+how much of the archive is being shown.
 
 **Trove will not delete them for you.** There is no delete button, here or
 anywhere else. The screen exists to tell you what is redundant and where it

@@ -292,11 +292,16 @@ def _seed(conn, root_id: int, source_dir: Path) -> dict:
     ids["place"] = factories.add_place(conn, name="Bariloche", root_id=root_id, file_ids=geotagged)
 
     # One duplicate group, so Duplicates has a row rather than its empty state.
+    # A visual match rather than a byte-identical pair -- distinct sha256s, so
+    # the copy's tile renders the "Visual match" tag, which is the case with
+    # something to draw.
     canonical, copy = file_ids[4], file_ids[5]
+    for fid, sha in ((canonical, "d" * 64), (copy, "e" * 64)):
+        conn.execute("UPDATE files SET sha256=? WHERE id=?", (sha, fid))
     cur = conn.execute(
         """INSERT INTO dup_groups(method, canonical_file_id, member_count,
                                   size_each, redundant_bytes, created_at)
-           VALUES('exact', ?, 2, 4, 4, ?)""",
+           VALUES('perceptual', ?, 2, 4, 4, ?)""",
         (canonical, factories.FIXED_TIME),
     )
     ids["dup_group"] = cur.lastrowid

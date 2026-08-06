@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**73 routes**: 33 GET (exact) + 12 GET (prefix) + 28 POST.
+**74 routes**: 34 GET (exact) + 12 GET (prefix) + 28 POST.
 
 ## GET -- exact path
 
@@ -27,14 +27,15 @@ build if this file has drifted from the route tables.
 | `/api/timeline` | Counts of matching, non-hidden media bucketed by month or year, for the timeline chart. | `trove/web/routes/overview.py::timeline` |
 | `/api/dates/sources` | How many files' dates came from Takeout JSON vs EXIF vs filename vs mtime vs none. | `trove/web/routes/overview.py::date_sources` |
 | `/api/dups/summary` | Unique-file, duplicate-group, pending and reclaimable-byte counts, broken down by match type and media type. | `trove/web/routes/dups.py::summary` |
-| `/api/dups` | Duplicate groups, largest reclaimable bytes first, with each member's role. | `trove/web/routes/dups.py::groups` |
+| `/api/dups` | Duplicate groups with each member's role, optionally narrowed to those holding an identical copy or a visual match, and ordered by member count or (the default) by largest reclaimable bytes. | `trove/web/routes/dups.py::groups` |
 | `/api/media` | The media grid: filtered, sorted and paginated files for the archive. | `trove/web/routes/browse.py::media` |
 | `/api/browse/filters` | The distinct filter values (years, types, folders...) the Browse UI offers. | `trove/web/routes/browse.py::filters` |
 | `/api/folders` | The folder tree with per-folder file counts. | `trove/web/routes/browse.py::folders` |
 | `/api/browse/semantic/status` | Semantic index state, and whether this archive can search by description. | `trove/web/routes/search.py::semantic_status` |
 | `/api/browse/semantic/search` | Free-text semantic search over the archive's media, ranked by embedding similarity. | `trove/web/routes/search.py::semantic_search` |
-| `/api/browse/text/status` | Document-text index state, and whether this archive can search inside documents. | `trove/web/routes/search.py::text_status` |
-| `/api/browse/text/search` | Full-text search over the text read out of documents, ranked by BM25. | `trove/web/routes/search.py::text_search_route` |
+| `/api/similar` | Files whose picture looks like the one named by ``id``. | `trove/web/routes/search.py::similar` |
+| `/api/browse/text/status` | Text-index state, and whether this archive can search what its files say. | `trove/web/routes/search.py::text_status` |
+| `/api/browse/text/search` | Search the text read out of documents and off the writing in pictures. | `trove/web/routes/search.py::text_search_route` |
 | `/api/map/clusters` | Place clusters (grouped geotagged files) with at least the configured minimum media. | `trove/web/routes/places.py::clusters` |
 | `/api/map/points` | Every geotagged file as a single un-clustered map point. | `trove/web/routes/places.py::points` |
 | `/api/map/cluster/merge-preview` | How spread out a prospective cluster merge would be, so the GUI can warn before it's confirmed. | `trove/web/routes/places.py::merge_preview` |

@@ -19,6 +19,9 @@ import {
 import {
   setGallery,
 } from "./gallery.js";
+import {
+  openItem,
+} from "./item.js";
 
 const DUP_PAGE_SIZE = 40;
 // What an archive with nothing grouped yet gets in place of the list: the
@@ -27,6 +30,14 @@ const DUP_PAGE_SIZE = 40;
 // centred emoji the moment there is nothing to show.
 const DUP_EMPTY = `<div class="muted">No duplicate groups yet.</div>
   <div class="muted" style="margin-top:6px">Groups byte-identical copies and visually identical image exports (such as re-compressed JPG/PNG/HEIC files); nothing is ever deleted, extra copies are just hidden from browsing.</div>`;
+// The filter matched nothing. Says which filter, because the archive plainly
+// does have groups -- the tiles above are still counting them -- so "no
+// groups" alone would read as a screen that had lost them.
+const DUP_FILTERED_EMPTY = `<div class="muted">No groups hold a copy of that kind. Switch the filter back to <b>All groups</b> to see the rest.</div>`;
+// How many groups the archive holds, unfiltered: the denominator the filtered
+// count is read against. Set once per render from the summary, which is the
+// same number the "Duplicate groups" tile shows.
+let dupTotalGroups = 0;
 export async function renderDedup(m) {
   const gen = S.nav, root = S.arch.id;
   const ds = await jget("/api/dups/summary?root=" + root);
@@ -40,29 +51,84 @@ export async function renderDedup(m) {
     </div>
     <div class="panel">${dedupStatusRow(ds)}</div>
     ${dupBreakdownPanel(ds)}
-    ${ds.groups ? `<div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted). Biggest space first.</div>` : ""}
+    ${ds.groups ? `<div class="muted" style="margin-bottom:12px">Exact copies and visually identical image exports. The <span style="color:var(--good)">✓ kept</span> copy stays in Browse; the rest are hidden (never deleted).</div>
+    ${dupControls()}` : ""}
     <div id="dupgroups">${ds.groups ? "" : DUP_EMPTY}</div>
     <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
   if (!ds.groups) return;
+  dupTotalGroups = ds.groups;
+  loadDupGroups();
+}
+/* The listing's two controls, in the vocabulary every other screen uses for
+   the same job: plain selects on a filterbar (Timeline's year/month/place row
+   is the same markup), not a bespoke set of toggles.
+
+   Reading order follows what they do to the list -- which groups, then in what
+   order -- and both are one control each, so neither has to be read twice to
+   find out what it currently says. The counter sits after them because it
+   describes their result, and it is the only thing here that changes on its
+   own. */
+function dupControls() {
+  return `<div class="filterbar dup-filterbar">
+      <select class="fsel" id="dup-match" aria-label="Filter duplicate groups" onchange="applyDupFilters()">
+        <option value="">All groups</option>
+        <option value="identical">With identical copies</option>
+        <option value="visual">With visual matches</option>
+      </select>
+      <select class="fsel" id="dup-sort" aria-label="Sort duplicate groups" onchange="applyDupFilters()">
+        <option value="">Biggest saving first</option>
+        <option value="count_desc">Most copies first</option>
+        <option value="count_asc">Fewest copies first</option>
+      </select>
+      <span class="muted dup-count" id="dup-count" aria-live="polite"></span>
+    </div>`;
+}
+/* Re-run the listing under whatever the two controls now say.
+
+   A fresh startInfiniteList rather than a filtered redraw of what is loaded:
+   the list is paged, so the groups matching a filter are mostly still on the
+   server. Restarting resets the observer and offset together -- the old state
+   object is dropped, and its in-flight page is discarded by the identity check
+   in loadMore rather than appended under the new filter. */
+export function applyDupFilters() {
+  loadDupGroups();
+}
+function loadDupGroups() {
+  const query = () => {
+    const p = new URLSearchParams({ root: S.arch.id, limit: DUP_PAGE_SIZE });
+    const match = document.getElementById("dup-match")?.value;
+    const sort = document.getElementById("dup-sort")?.value;
+    if (match) p.set("match", match);
+    if (sort) p.set("sort", sort);
+    return p;
+  };
   startInfiniteList("dupList", {
     sentinelId: "dup-sentinel", pageSize: DUP_PAGE_SIZE,
     fetchPage: async offset => {
-      const res = await jget(`/api/dups?root=${S.arch.id}&offset=${offset}&limit=${DUP_PAGE_SIZE}`);
+      const p = query(); p.set("offset", offset);
+      const res = await jget("/api/dups?" + p);
+      dupCount(res.total);
       return res.groups;
     },
     onPage: (groups, { first }) => {
       const wrap = document.getElementById("dupgroups");
-      if (first) wrap.innerHTML = "";
+      if (first) wrap.innerHTML = groups.length ? "" : DUP_FILTERED_EMPTY;
       groups.forEach(g => wrap.appendChild(dupGroupRow(g)));
-      // Every copy on screen, group by group, in the order they are drawn --
-      // so the arrows step from one copy of a photo straight to the next,
-      // which is the comparison this screen exists for.
-      setGallery(
-        [...wrap.querySelectorAll("[data-file-id]")].map(el => Number(el.dataset.fileId)),
-        "in the duplicate groups"
-      );
     },
   });
+}
+/* What the filter is showing, in the same words as the tile above it.
+
+   Only when a filter is on: unfiltered, this would repeat the "Duplicate
+   groups" tile back at the reader, and a number that never disagrees with
+   another number on the same screen is not worth the row it sits in. */
+function dupCount(shown) {
+  const el = document.getElementById("dup-count");
+  if (!el) return;
+  const filtered = !!document.getElementById("dup-match")?.value;
+  el.textContent = filtered
+    ? `${(shown || 0).toLocaleString()} of ${dupTotalGroups.toLocaleString()} group${dupTotalGroups === 1 ? "" : "s"}`
+    : "";
 }
 // One-line status, the same shape People and Pets get from detectStatusRow:
 // no progress bar, no emoji, exactly one row so the panel never reserves
@@ -108,6 +174,27 @@ function dupBreakdownPanel(ds) {
       <h3>What the copies are</h3><p>Every redundant copy, split two ways</p></div></div>
     ${rows.map(section).join("")}</div>`;
 }
+/* Open a copy with the arrows bounded by ITS group.
+
+   The viewer walks S.gallery, so what goes in it is a claim about what "next"
+   means. Every copy on the screen was the wrong claim: the arrows ran off the
+   end of the group you were comparing and into the next group's photographs,
+   which are a different picture entirely. A group is the set this screen exists
+   to compare, so it is the set the arrows should stay inside.
+
+   Read off the group's own tiles rather than passed in as ids, for the reason
+   galleryFromGrid gives: the list pages and rebuilds, and a parallel list would
+   drift the first time a redraw was missed. */
+export function openDupCopy(id) {
+  const group = document.querySelector(`.duptile[data-file-id="${id}"]`)?.closest(".dupgroup");
+  if (group) {
+    setGallery(
+      [...group.querySelectorAll("[data-file-id]")].map(el => Number(el.dataset.fileId)),
+      "in this duplicate group"
+    );
+  }
+  openItem(id);
+}
 function dupGroupRow(g) {
   const row = document.createElement("div"); row.className = "dupgroup";
   const head = `<div class="dghead"><b>${g.count}×</b> · ${fmtBytes(g.size_each)} each ·
@@ -119,7 +206,7 @@ function dupGroupRow(g) {
         : '<span class="duptag visual">Visual match</span>';
     const thumb = (mm.type === "image" || mm.type === "video") ? `<img src="/thumb/${mm.id}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'${TYPE_ICON[mm.type] || "📦"}'}))">`
       : `<div class="ph">${TYPE_ICON[mm.type] || "📦"}</div>`;
-    return `<div class="duptile ${kept ? 'kept' : ''}" data-file-id="${mm.id}" title="${mm.folder}" onclick="openItem(${mm.id})">
+    return `<div class="duptile ${kept ? 'kept' : ''}" data-file-id="${mm.id}" title="${mm.folder}" onclick="openDupCopy(${mm.id})">
         ${thumb}<div class="dtcap">${tag}</div>
         <div class="dtpath">${mm.folder || '/'}</div></div>`;
   }).join("");

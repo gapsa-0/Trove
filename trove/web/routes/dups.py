@@ -13,6 +13,15 @@ def summary(req: Request) -> dict:
 
 
 def groups(req: Request) -> dict:
-    """Duplicate groups, largest reclaimable bytes first, with each member's role."""
+    """Duplicate groups with each member's role, optionally narrowed to those
+    holding an identical copy or a visual match, and ordered by member count or
+    (the default) by largest reclaimable bytes."""
     rid = req.root_id
-    return dups.dup_groups(req.db(rid), rid, limit=req.limit(60, 200), offset=req.offset())
+    return dups.dup_groups(
+        req.db(rid),
+        rid,
+        limit=req.limit(60, 200),
+        offset=req.offset(),
+        match=req.one("match"),
+        sort=req.one("sort"),
+    )

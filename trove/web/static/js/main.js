@@ -36,6 +36,9 @@ import {
   renamePet,
 } from "./pets.js";
 import {
+  applyDupFilters, openDupCopy,
+} from "./dups.js";
+import {
   answerSuggest, backToPeople, editPersonName, hidePerson,
 } from "./people.js";
 import {
@@ -152,7 +155,7 @@ loadPicker().then(applyHash);
 // `tools/dev/check_handlers.py` fails the build if the two ever disagree.
 Object.assign(window, {
   addArchiveFromForm, answerSuggest, applyFilters,
-  applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
+  applyDupFilters, applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
   closeArchiveSetup, closeDocs, closeModal, closePick, closePlaceCluster, closeSettings,
   copyText,
   editClusterName, editDate, editPersonName, editPlace, flipFeature, hidePerson, highlightFace,
@@ -160,7 +163,8 @@ Object.assign(window, {
   newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
-  openDocs, openFileLocation, openItem, openRelated, openSettings, reassignFace, removeFeature, removeManualPerson,
+  openDocs, openDupCopy, openFileLocation, openItem, openRelated, openSettings, reassignFace,
+  removeFeature, removeManualPerson,
   removeManualPet,
   renamePet, renderInfo, saveDate, saveNewPlace, semanticSubmit, setArchiveName, setMapView,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,

@@ -1,4 +1,19 @@
 /* duplicates */
+
+/* The listing's controls. A plain .filterbar of .fsel selects, the same row
+   Timeline and Browse use, so a control that filters a list looks and behaves
+   the same wherever it is met. The one addition is the count, pushed to the far
+   end: it reports on the controls rather than being one, and separating them
+   across the row is what says so without a label. */
+.dup-filterbar {
+  margin-bottom: 14px;
+}
+
+.dup-filterbar .dup-count {
+  margin-left: auto;
+  font-size: 12px;
+}
+
 .dupgroup {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -12,15 +27,20 @@
   margin-bottom: 10px;
 }
 
+/* Wraps rather than scrolls sideways: a group is a set of copies to compare
+   against each other, and a copy parked off the right edge cannot be compared
+   with anything. Fixed 120px tracks rather than 1fr, so a thumbnail is the
+   same size in a group of three as in a group of thirty -- comparing pictures
+   across groups is the whole activity here, and tiles that resize with the
+   group's member count would defeat it. */
 .duprow {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 120px);
   gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 4px;
+  justify-content: start;
 }
 
 .duptile {
-  flex: none;
   width: 120px;
   cursor: pointer;
 }

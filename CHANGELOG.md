@@ -122,6 +122,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Duplicates page breaks the redundant-copies total down by what the copies
   actually are: byte-identical versus only visually the same, and photos versus
   videos.
+- A duplicate group's copies now wrap onto as many lines as they need instead of
+  scrolling sideways, so a group of twenty can actually be compared against
+  itself.
+- The Duplicates page can be narrowed to groups holding an identical copy or a
+  visual match, and ordered by how many copies a group holds as well as by how
+  much space it would give back.
 - The Duplicates page leads with how many unique files the archive holds — every
   file, with each set of copies counted once — and says how much of it is still
   waiting to be compared, the same way People and Pets report their own progress.

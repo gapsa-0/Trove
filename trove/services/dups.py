@@ -118,19 +118,72 @@ def _pending(conn: sqlite3.Connection, root_id: int | None) -> int:
     return int(max(0, present - covered))
 
 
+# How the listing can be ordered. Keyed by what the screen's control sends,
+# valued as SQL fragments rather than built from the parameter, so no caller can
+# reach the ORDER BY clause. Every ordering ends on `g.id` so paging is stable:
+# member counts tie constantly, and a tie broken differently between two page
+# requests drops or repeats groups at the seam.
+_SORTS = {
+    "": "g.redundant_bytes DESC, g.id",
+    "count_desc": "g.member_count DESC, g.id",
+    "count_asc": "g.member_count ASC, g.id",
+}
+
+# Groups holding at least one copy of a given kind. Decided per MEMBER from its
+# sha256, the same rule the tiles and the breakdown panel use -- a perceptual
+# group routinely also holds byte-identical copies, so a filter reading the
+# group's own `method` would disagree with the tags on the tiles it returned.
+_MATCH_HAVING = {
+    "identical": "d.sha256 IS NOT NULL AND d.sha256 = f.sha256",
+    "visual": "d.sha256 IS NULL OR d.sha256 <> f.sha256",
+}
+
+
+def _match_clause(match: str | None) -> str:
+    """An EXISTS restricting the listing to groups holding such a copy."""
+    test = _MATCH_HAVING.get(match or "")
+    if test is None:
+        return ""
+    return (
+        " AND EXISTS (SELECT 1 FROM dup_members m JOIN files d ON d.id=m.file_id"
+        f"            WHERE m.group_id=g.id AND m.role='duplicate' AND ({test}))"
+    )
+
+
 @reading
 def dup_groups(
-    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 60, offset: int = 0
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    limit: int = 60,
+    offset: int = 0,
+    match: str | None = None,
+    sort: str | None = None,
 ) -> dict[str, Any]:
-    """A page of duplicate groups, largest reclaimable-bytes first, each with
-    its canonical and duplicate members (name, folder, role, match type)."""
+    """A page of duplicate groups, each with its canonical and duplicate members
+    (name, folder, role, match type).
+
+    ``match`` keeps only groups holding at least one identical copy, or at least
+    one visual match; ``sort`` orders by member count either way. Both fall back
+    to the unfiltered, biggest-saving-first listing on any value the screen does
+    not offer, so a hand-edited URL narrows nothing and reveals nothing.
+
+    ``total`` counts the groups the filter matches, not the page -- the screen's
+    tiles describe the whole archive, and a filtered list needs to be able to say
+    how much of it is being shown without contradicting them.
+    """
     rc, rp = _root_clause(root_id)
+    where = f"WHERE 1=1{rc}{_match_clause(match)}"
+    order = _SORTS.get(sort or "", _SORTS[""])
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM dup_groups g JOIN files f ON f.id=g.canonical_file_id {where}",
+        rp,
+    ).fetchone()[0]
     groups = conn.execute(
         f"""SELECT g.id, g.method, g.member_count, g.size_each, g.redundant_bytes,
                    g.canonical_file_id
             FROM dup_groups g JOIN files f ON f.id=g.canonical_file_id
-            WHERE 1=1{rc}
-            ORDER BY g.redundant_bytes DESC, g.id
+            {where}
+            ORDER BY {order}
             LIMIT ? OFFSET ?""",
         (*rp, limit, offset),
     ).fetchall()
@@ -171,4 +224,4 @@ def dup_groups(
                 ],
             }
         )
-    return {"groups": out, "offset": offset, "count": len(out)}
+    return {"groups": out, "offset": offset, "count": len(out), "total": total}
