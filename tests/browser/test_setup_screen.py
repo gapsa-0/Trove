@@ -105,6 +105,44 @@ def test_the_pipeline_starts_with_only_the_features_that_cannot_be_removed(open_
         assert app.errors() == []
 
 
+_ADD_EVERYTHING = """(() => {
+  let pill, guard = 20;
+  while (guard-- && (pill = document.querySelector(
+      '#set-shelf .set-card:not(.on):not(.off) .set-add'))) pill.click();
+  const flow = document.getElementById('set-flow');
+  const box = e => e.getBoundingClientRect();
+  const chips = [...flow.querySelectorAll('.set-chip')].map(box);
+  // A link is 2px tall against a 28px chip, so "same row" is the chip's band
+  // containing the link's middle -- not two equal tops.
+  const orphans = [...flow.querySelectorAll('.set-link')].map(box).filter(link =>
+    !chips.some(chip => chip.left < link.left
+      && chip.top <= link.top + link.height / 2 && chip.bottom >= link.top));
+  return [flow.scrollWidth <= flow.clientWidth,
+    new Set(chips.map(c => Math.round(c.top))).size, orphans.length];
+})()"""
+
+
+def test_the_full_chain_wraps_instead_of_scrolling_sideways(open_app):
+    """A pipeline with everything switched on is wider than the panel. It used
+    to scroll, which put the far end of the chain behind an edge on the one
+    summary of what the archive is about to do -- and asked someone to scroll a
+    strip that is not the thing they operate.
+
+    The second assertion is the reason a link is glued to the chip before it:
+    a connector that wraps on its own opens a row with a dash pointing at
+    nothing.
+    """
+    with open_app() as app:
+        _open_setup(app)
+
+        fits, rows, orphans = app.tab.evaluate(_ADD_EVERYTHING)
+
+        assert fits, "the chain still overflows its own width"
+        assert rows > 1, "the whole catalogue fitted on one row; nothing was proved"
+        assert orphans == 0, f"{orphans} connectors opened a row"
+        assert app.errors() == []
+
+
 def test_dragging_a_card_onto_the_pipeline_adds_it(open_app):
     with open_app() as app:
         _open_setup(app)

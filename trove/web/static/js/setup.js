@@ -258,10 +258,18 @@ function cardItem(f) {
 
 // The chain, plus the open end that invites the first drop. The figure is the
 // only part set as data; the prose around it is a sentence, not a measurement.
+//
+// Each link carries the connector that *follows* it rather than the two being
+// laid out as siblings, because the chain wraps (see .set-flow). Wrapping
+// between a chip and its own connector is what would put a dash at the start of
+// a row, reading as a chain that begins with nothing; kept together, a row ends
+// "chip —" and the next begins with a chip, which reads as the continuation it
+// is. The last one has nothing after it and so carries no connector.
 function pipeline(live, waiting) {
   const links = live.map(chipItem);
   if (waiting.length) links.push(`<span class="set-slot">Drop a feature here</span>`);
-  return links.join(`<span class="set-link" aria-hidden="true"></span>`);
+  return links.map((link, at) => `<span class="set-step">${link}${at < links.length - 1
+    ? `<span class="set-link" aria-hidden="true"></span>` : ""}</span>`).join("");
 }
 
 // Half of a pair running without the other half. Both halves name each other,

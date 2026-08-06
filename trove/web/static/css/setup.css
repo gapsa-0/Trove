@@ -164,12 +164,26 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* A chain reads as a chain, so it scrolls sideways rather than wrapping. */
+/* A full pipeline is wider than this panel -- eight links, two of them named
+   "Search by document text" -- so the chain wraps onto a second row rather than
+   scrolling sideways inside a card nobody would think to scroll. A scrollbar
+   here also hid the far end of the chain behind an edge, which on the one
+   summary of what the archive will do is the wrong half to hide.
+
+   It wraps between steps, never inside one: see pipeline() in setup.js for why
+   each link carries its own connector. */
 .set-flow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  overflow-x: auto;
-  padding-bottom: 3px;
+  row-gap: 8px;
+}
+
+.set-step {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
 }
 
 .set-chip {
@@ -276,9 +290,9 @@
   color: var(--accent);
 }
 
-/* What the two undeclinable stages do. Sits under the chain rather than in it,
-   because the chain scrolls sideways (see .set-flow) and anything written
-   inside a chip would be off the edge of the panel on a full pipeline. */
+/* What the two undeclinable stages do. Sits under the chain rather than in it:
+   a chip is a link in a chain and has room for a name, so a sentence written
+   inside one would turn every other link into a different shape. */
 .set-fixed {
   margin: 12px 0 0;
   padding: 0;
