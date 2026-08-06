@@ -39,7 +39,6 @@ import {
 
 export let MITEM = null;                 // the currently-open item, mutated in place on edit
 let RAIL_OPEN = true;                    // the inspector, remembered across items
-let READING = false;                     // the document has the keyboard
 let RELATED = null;                      // ids fetched by "Show related files", for this item only
 /* Where a jump came from, so it can be undone.
 
@@ -68,7 +67,6 @@ export async function openItem(id, opts = {}) {
   // are somewhere you navigated to yourself, not somewhere you jumped from.
   if (!opts.keepTrail) TRAIL = [];
   RELATED = opts.related || null;
-  READING = false;
   renderStage();
   renderInfo();
   renderChrome();
@@ -131,7 +129,6 @@ export function viewerBack() {
 }
 
 export function stepItem(delta) {
-  if (READING) return;                   // the document owns the arrows
   const ids = S.gallery || [], at = galleryAt();
   if (at < 0) return;
   const next = ids[at + delta];
@@ -160,7 +157,6 @@ function prefetchNeighbours() {
 function renderStage() {
   const it = MITEM, m = document.getElementById("mmedia");
   const v = viewer();
-  v.classList.remove("reading");
   m.className = "stage";
   m.innerHTML = "";
   if (!m.dataset.zoomMounted) { mountZoom(m); m.dataset.zoomMounted = "1"; }
@@ -367,26 +363,12 @@ function renderChrome() {
   v.classList.toggle("rail-on", RAIL_OPEN);
   const ids = S.gallery || [], at = galleryAt();
   const pos = document.getElementById("vpos");
-  if (READING) {
-    // A button, not a label. Esc cannot reach this page while the document
-    // holds the keyboard -- the keys go to the browser's own PDF viewer inside
-    // the frame, and nothing in there bubbles out -- so the pill named the one
-    // way out that could never work. Clicking anywhere on the page is what
-    // really steps out (see main.js), and this is that click with a label on
-    // it, for anyone who does not think to try it.
-    pos.className = "vpos reading";
-    pos.innerHTML = `<button type="button" class="vpos-out" onclick="stepOutOfDocument()">
-      <b>Reading</b><span class="in">· the arrows belong to the document — take them back</span>
-    </button>`;
-  } else {
-    pos.className = "vpos";
-    // Position only when we know it. Opened from somewhere with no gallery
-    // (a map pin, say), the name is the honest thing to show instead of a
-    // made-up "1 of 1".
-    pos.innerHTML = at >= 0 && ids.length > 1
-      ? `<b>${at + 1}</b><span class="sep">of</span><b>${ids.length.toLocaleString()}</b><span class="in">· ${esc(gallerySource())}</span>`
-      : `<span class="in">${esc(it.name)}</span>`;
-  }
+  // Position only when we know it. Opened from somewhere with no gallery
+  // (a map pin, say), the name is the honest thing to show instead of a
+  // made-up "1 of 1".
+  pos.innerHTML = at >= 0 && ids.length > 1
+    ? `<b>${at + 1}</b><span class="sep">of</span><b>${ids.length.toLocaleString()}</b><span class="in">· ${esc(gallerySource())}</span>`
+    : `<span class="in">${esc(it.name)}</span>`;
   const back = document.getElementById("vback");
   back.hidden = !TRAIL.length;
   const prev = document.getElementById("vprev"), next = document.getElementById("vnext");
@@ -746,25 +728,6 @@ export function saveNewPlace() {
     toast("Couldn’t create the place: connection error", true);
   });
 }
-/* Whether the document currently owns the keyboard. main.js asks, because it
-   is the one that can see focus arrive and leave the frame. */
-export function isReading() { return READING; }
-export function setReading(on) {
-  if (READING === on) return;
-  READING = on;
-  viewer().classList.toggle("reading", on);
-  renderChrome();
-}
-
-/* Take the keyboard back from the document, said as a button on the pill that
-   announces the state. Focus has to move for it to be true: leaving it inside
-   the frame would put the arrows back under this page's control while the
-   browser's viewer was still the thing receiving them. */
-export function stepOutOfDocument() {
-  setReading(false);
-  viewer().focus();
-}
-
 export function closeModal() {
   closePick();
   disposeItemMap();

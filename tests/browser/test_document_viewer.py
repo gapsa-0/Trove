@@ -64,73 +64,48 @@ def test_a_document_is_put_on_the_stage_clear_of_the_chrome(open_app, archive):
         assert app.errors() == []
 
 
-# Reading mode as the browser really delivers it: focus lands in the frame and
-# the window loses it, which is the only signal this page gets -- an iframe's
-# focus does not bubble and the document inside it is the browser's own.
+# Focus inside the frame, as the browser really delivers it: the window loses
+# focus and nothing else is reported, since an iframe's focus does not bubble
+# and the document inside it is the browser's own.
 _INTO_DOCUMENT = """(() => {
   document.querySelector('.docstage iframe').focus();
   window.dispatchEvent(new Event('blur'));
 })()"""
 
-_BACK_TO_THE_PAGE = """(() => {
-  document.getElementById('viewer').focus();
-  window.dispatchEvent(new Event('focus'));
-})()"""
 
-
-def test_clicking_back_onto_the_page_takes_the_keyboard_back(open_app, archive):
+def test_a_document_holding_the_keyboard_puts_nothing_on_the_screen(open_app, archive):
     """Clicking into an embedded PDF hands the arrows to the browser's own
-    viewer, and the pill says so. Getting them back was advertised as Esc --
-    a key that is delivered to the frame and never leaves it, so the one way
-    out the viewer named was the one it could not receive.
+    viewer. There is nothing this app can do about that -- the keys go to a
+    document in an iframe that is not ours -- and it briefly announced the fact
+    with a pill over the stage, which was the only mode the app had, could not
+    deliver the Esc it advertised, and left the Close button not closing.
 
-    What the page can see is focus coming home, which is the same gesture
-    anyone would make anyway. So that is what ends it.
+    Explaining a browser behaviour is not worth a mode. The chrome says the
+    same thing it says for any other file, and clicking back on the page gives
+    the keys back without anything having to be dismissed.
     """
     with open_app("library", wait_for=".tile") as app:
         _open_document(app, archive)
         app.wait_for(".docstage iframe")
+        readout = app.text(".vpos")
 
         app.tab.evaluate(_INTO_DOCUMENT)
-        app.wait_for(".vpos.reading")
-        assert "arrows belong to the document" in app.text(".vpos.reading")
-
-        app.tab.evaluate(_BACK_TO_THE_PAGE)
-
-        assert app.count(".vpos.reading") == 0, "the page took the keyboard back and said nothing"
-        assert app.errors() == []
-
-
-def test_the_pill_is_itself_the_way_out_of_a_document(open_app, archive):
-    """For anyone who reads the notice rather than clicking past it: the
-    sentence describing the state is the control that ends it."""
-    with open_app("library", wait_for=".tile") as app:
-        _open_document(app, archive)
-        app.wait_for(".docstage iframe")
-        app.tab.evaluate(_INTO_DOCUMENT)
-        app.wait_for(".vpos-out")
-
-        app.click(".vpos-out")
 
         assert app.count(".vpos.reading") == 0
-        # ...and the viewer is still open, because stepping out of a document
-        # is not leaving the file.
-        assert app.count("#viewer .docstage") == 1
+        assert app.count(".vpos-out") == 0
+        assert app.text(".vpos") == readout, "the chrome changed under the document"
         assert app.errors() == []
 
 
-def test_the_close_button_closes_even_after_a_document_had_the_keyboard(open_app, archive):
-    """It is labelled "Close (Esc)". It used to step out of reading mode
-    instead and leave the viewer standing, which made the one button on the
-    screen that promises to close the one that would not."""
+def test_the_close_button_closes_a_document(open_app, archive):
+    """It is labelled "Close (Esc)". While there was a reading mode it stepped
+    out of that first and left the viewer standing, which made the one button
+    on the screen promising to close the one that would not."""
     with open_app("library", wait_for=".tile") as app:
         _open_document(app, archive)
         app.wait_for(".docstage iframe")
         app.tab.evaluate(_INTO_DOCUMENT)
-        app.wait_for(".vpos.reading")
 
-        # Pressing it is a click on the page, so focus comes home with it.
-        app.tab.evaluate(_BACK_TO_THE_PAGE)
         app.tab.evaluate("closeModal()")
 
         assert app.count("#modal.open") == 0, "the close button did not close"

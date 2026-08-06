@@ -24,10 +24,10 @@ import {
 
 import {
   MITEM, closeModal, closePick, copyText, editDate,
-  editPlace, isReading, newPlace, onAddPerson, onAddPet, openCopy, openFileLocation, onPlaceSelect,
+  editPlace, newPlace, onAddPerson, onAddPet, openCopy, openFileLocation, onPlaceSelect,
   openItem, openRelated, reassignFace,
-  removeManualPerson, removeManualPet, renderInfo, saveDate, saveNewPlace, setReading, showRelated,
-  stepItem, stepOutOfDocument, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
+  removeManualPerson, removeManualPet, renderInfo, saveDate, saveNewPlace, showRelated,
+  stepItem, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
 } from "./item.js";
 import {
   highlightFace, toggleBoxes,
@@ -108,35 +108,18 @@ window.addEventListener("pagehide", () => {
 applyNavCollapsed();
 
 /* Clicking into an embedded PDF hands the keyboard to the browser's own viewer,
-   which uses the arrows to page and swallows them before this listener ever
-   runs. That is the bug where arrows mysteriously stop moving between files, so
-   it is made explicit instead: the frame taking focus puts the viewer into
-   reading mode, which says so on screen and gives Esc the job of stepping back
-   out. The window's blur is the only signal we get -- an iframe's focus does
-   not bubble, and its content is a browser-internal document we cannot listen
-   inside. */
-window.addEventListener("blur", () => {
-  if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
-  if (inDocument()) setReading(true);
-});
+   which pages with the arrows and swallows them before the listener below ever
+   runs. Nothing here can change that: the keys are delivered to a document
+   inside an iframe that is the browser's, not ours, and nothing in it bubbles
+   out. The viewer's own arrow buttons are unaffected, and clicking anywhere
+   back on the page gives the keys back, so the way out is the way anyone would
+   already take.
 
-/* ...and the page getting the keyboard back is what ends it. Stepping out of a
-   document is a thing the user already does physically -- they click back onto
-   the app -- and that click is the only signal this page gets, because the Esc
-   the pill used to promise is delivered to the frame and never leaves it.
-
-   The check is what stops alt-tabbing back to the browser from counting: the
-   window has focus again, but it is still the document that has it. */
-window.addEventListener("focus", () => {
-  if (isReading() && !inDocument()) setReading(false);
-});
-
-// Whether the keyboard is currently inside an embedded document. The focused
-// element is the <iframe>; `.docstage` is the box the viewer puts around it.
-function inDocument() {
-  const el = document.activeElement;
-  return !!el && el.tagName === "IFRAME" && !!el.closest(".docstage");
-}
+   This used to be announced -- a pill over the stage saying the arrows belonged
+   to the document. The announcement cost more than the confusion it replaced:
+   it was the only mode the app had, its advertised way out (Esc) could not
+   reach the page that promised it, and it left the button labelled "Close" not
+   closing. Explaining a browser behaviour is not worth a mode. */
 
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && document.getElementById("settings-drawer").classList.contains("open")) {
@@ -146,15 +129,8 @@ document.addEventListener("keydown", e => {
   // so it is the topmost thing Escape can mean while it is open.
   if (e.key === "Escape" && featureSheetOpen()) { closeFeatureSheet(); return; }
   if (e.key === "Escape" && docsOpen()) { closeDocs(); return; }
-  // Reaching this at all means the keyboard is ours, so the document is not
-  // holding it and Escape means what it says. It used to step out of a document
-  // first and close on a second press, which made the one button labelled
-  // "Close (Esc)" a button that did not close -- and the press that was
-  // supposed to do the stepping out could never arrive here anyway.
   if (e.key === "Escape") { closeModal(); document.getElementById("viewer").focus(); return; }
   if (!MITEM || !document.getElementById("modal").classList.contains("open")) return;
-  // While the document is being read, every key below belongs to it.
-  if (isReading()) return;
   // Not while a field is being typed into: the date editor and the place
   // name live inside this panel.
   const el = document.activeElement, tag = el ? el.tagName : "";
@@ -198,8 +174,7 @@ Object.assign(window, {
   removeManualPet,
   renamePet, renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
   setMapView,
-  setStorageMetric, showDoc, showRelated, showSection, stepItem, stepOutOfDocument,
-  submitArchiveSetup, toPicker,
+  setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
   togglePipelinePause,
