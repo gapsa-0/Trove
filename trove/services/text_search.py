@@ -11,8 +11,8 @@ pretending to a shared scale. The same goes for the third, which is a plain
 filter on file names.
 
 What a hit *is* labelled with is the reader that produced its text
-(``reader``), because Documents and Pictures of text write into this one index and
-a passage read off a photograph is a best guess where a file's own text is not.
+(``reader``), because both text features write into this one index and a passage
+read off a photograph is a best guess where a file's own text is not.
 That is a fact about one result rather than about the ranking, which is why it
 rides on the row instead of splitting the group.
 """
@@ -75,17 +75,17 @@ def text_summary(
     """How much of this archive can be searched by what it says.
 
     ``total`` counts the files the switched-on halves could actually read, not
-    every file: an archive of 150k photos and 300 PDFs has 300 things Documents
-    could ever open, and reporting the 150k as a denominator would make a
-    finished stage look 0.2% done.
+    every file: an archive of 150k photos and 300 PDFs has 300 things the
+    document half could ever open, and reporting the 150k as a denominator would
+    make a finished stage look 0.2% done.
 
     Which is why it is ``readable_exts`` rather than ``media_type='document'``.
-    Those two agreed only for as long as Documents was the only reader. Text in
-    images reads *pictures*, so an archive that chose it and not Documents used
-    to be told it had nothing to read and nothing pending, forever, while the
-    pass filled the index behind it. The denominator has to be built from the
-    same set the backlog is (``services/documents.py:_candidate_exts``), or the
-    two answer different questions.
+    Those two agreed only for as long as document text was the only reader. The
+    picture half reads *pictures*, so an archive that chose it alone used to be
+    told it had nothing to read and nothing pending, forever, while the pass
+    filled the index behind it. The denominator has to be built from the same set
+    the backlog is (``services/documents.py:_candidate_exts``), or the two answer
+    different questions.
     """
     rc, rp = _root_clause(root_id)
     exts = sorted(extract.readable_exts(extractors))
@@ -226,9 +226,9 @@ _PIXEL_EXTRACTORS = frozenset({IMAGE_OCR, PDF_OCR})
 def reader_of(extractor: str | None) -> str:
     """The feature whose reader produced this text: ``ocr`` or ``documents``.
 
-    Falls back to Documents for an unrecognised or missing value, which is what
-    a row written before this distinction existed looks like -- and the older
-    behaviour, since Documents was the only reader there was.
+    Falls back to ``documents`` for an unrecognised or missing value, which is
+    what a row written before this distinction existed looks like -- and the
+    older behaviour, since document text was the only reader there was.
     """
     return "ocr" if extractor in _PIXEL_EXTRACTORS else "documents"
 
@@ -284,9 +284,9 @@ def text_search(
                 "snippet": r["snip"],
                 "page": r["page_first"],
                 "page_last": r["page_last"],
-                # Which reader produced this text. Documents and Pictures of text
-                # write into one index, so a hit's reader is a property of the
-                # file's ``doc_text`` row rather than of a separate search.
+                # Which reader produced this text. Both text features write into
+                # one index, so a hit's reader is a property of the file's
+                # ``doc_text`` row rather than of a separate search.
                 "reader": reader_of(r["extractor"]),
             },
         )

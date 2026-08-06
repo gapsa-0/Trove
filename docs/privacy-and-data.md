@@ -9,7 +9,7 @@ models that execute on this machine. There is no API key to set anywhere in the
 app, and no configuration that would send archive content to a service.
 
 **Reading the text inside your documents needs no model and no download.** The
-Documents feature parses files that already carry their own text — a PDF's text
+document-text feature parses files that already carry their own text — a PDF's text
 layer, a Word document's body, a spreadsheet's cells — and parsing is not
 recognition: the readers are the Python standard library and the PDF library
 already inside the app. The text it finds is stored in the same per-archive
@@ -17,8 +17,8 @@ SQLite catalogue as everything else, and searching it is a SQLite query. No part
 of a document, and no phrase you search for, is sent anywhere or written outside
 that catalogue.
 
-**Reading the writing in pictures downloads nothing at all.** Pictures of text is
-the one feature whose model weights ship inside the application, so it starts
+**Reading the writing in pictures downloads nothing at all.** Search by picture
+text is the one feature whose weights ship inside the application, so it starts
 work immediately with no connection and never fetches anything. It opens your
 original files rather than the thumbnails — writing is unreadable at thumbnail
 size — and what it produces goes into the same per-archive catalogue as

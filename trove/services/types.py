@@ -55,9 +55,9 @@ class MediaItem(_MediaItemBase, total=False):
     page: int | None
     page_last: int | None
     # The feature whose reader produced the text a hit matched in, "documents"
-    # or "ocr". Documents and Pictures of text write into one index, so this is a
-    # property of the file rather than of the search, and Browse labels a result
-    # with it wherever both readers are on.
+    # or "ocr". Both text features write into one index, so this is a property of
+    # the file rather than of the search, and Browse labels a result with it
+    # wherever both readers are on.
     reader: str
 
 

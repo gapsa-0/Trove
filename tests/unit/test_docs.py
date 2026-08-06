@@ -123,6 +123,20 @@ def test_every_feature_gets_a_page_and_every_page_names_a_real_feature():
     assert covered == set(features.ids())
 
 
+def test_a_feature_page_is_titled_with_the_feature_it_documents():
+    """The rail is a fifth surface naming this work, and the only one whose words
+    are typed rather than composed: ``docs.py`` serves ``feature_label`` from the
+    catalogue for the heading but takes ``title`` from the frontmatter verbatim.
+    Both text pages were still titled "Documents" and "Pictures of text" after the
+    features were renamed, which is exactly the drift ADR 0021 forbids -- so this
+    is the check that a hand-typed title cannot outlive the label it copies."""
+    for entry in docs.catalogue():
+        if not entry.feature:
+            continue
+        feature = features.by_id(entry.feature)
+        assert entry.title == feature.label, entry.slug
+
+
 def test_a_page_that_documents_a_feature_reports_whether_it_is_optional():
     entries = {e.slug: e for e in docs.catalogue()}
     assert entries["duplicates"].always_runs is True

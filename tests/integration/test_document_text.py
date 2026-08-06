@@ -110,7 +110,8 @@ def test_a_pass_reads_every_document_and_indexes_its_passages(archive):
 
 
 def test_a_scan_is_recorded_as_skipped_rather_than_failed(archive):
-    """An archive of scans running Documents alone must not show an error count.
+    """An archive of scans running the document half alone must not show an error
+    count.
     Nothing is wrong; the files need the other half of the pass."""
     cfg, aid, db_path, _ = archive
     _run(cfg, aid)
@@ -167,7 +168,7 @@ def test_switching_the_other_half_on_brings_the_scans_back(archive):
     _run(cfg, aid)
     assert documents.text_pending(db_path, aid, WANTED) == 0
 
-    # Pictures of text switched on: every file was read under a different set of
+    # The picture half switched on: every file was read under a different set of
     # halves, so every file is owed another look.
     assert documents.text_pending(db_path, aid, BOTH) == 4
 
@@ -258,7 +259,7 @@ def test_the_index_never_outlives_the_chunks_it_addresses(archive):
         conn.close()
 
 
-# --- reading pictures, once Pictures of text is on ----------------------------
+# --- reading pictures, once the picture half is on ----------------------------
 
 needs_ocr = pytest.mark.skipif(
     not __import__("trove.text.ocr", fromlist=["ocr"]).available(),
@@ -320,7 +321,7 @@ def test_documents_alone_leaves_the_scan_and_never_sees_the_photo(scanned_archiv
     assert rows["contrato.pdf"]["status"] == "extracted"
     assert rows["escaneo.pdf"]["status"] == "skipped"
     assert "pictures of text" in rows["escaneo.pdf"]["error"]
-    assert "paisaje.jpg" not in rows, "a picture is not work until Pictures of text is on"
+    assert "paisaje.jpg" not in rows, "a picture is not work until its half is on"
 
 
 @needs_ocr

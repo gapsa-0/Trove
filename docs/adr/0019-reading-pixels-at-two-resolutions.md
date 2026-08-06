@@ -1,11 +1,12 @@
-# 0019. Text in images reads at two resolutions, and arbitrates per page
+# 0019. Reading picture text runs at two resolutions, and arbitrates per page
 
 - **Status:** Accepted
 - **Date:** 2026-08-05
 
 ## Context
 
-Documents (ADR 0017) reads files that carry their own text. It finds nothing in
+Search by document text (ADR 0017) reads files that carry their own text. It
+finds nothing in
 a scan, because a scan has no text in it — it is a picture of a page. That is the
 archive the feature system was built for, so the remaining half was always going
 to be needed.
@@ -133,5 +134,6 @@ feature can least afford, and the trade was made deliberately.
 - Two bounds keep one file from holding the stage: 64 MB, and 200 pages. A
   2,000-page scanned book is an hour of OCR on its own.
 - `doc_text.wanted` (ADR 0017) is what makes switching this on re-read every
-  scan Documents had to pass over. Without it those files carry a current hash
+  scan the document half had to pass over. Without it those files carry a current
+  hash
   and a current version and would never be looked at again.

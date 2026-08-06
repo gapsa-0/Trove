@@ -1,6 +1,6 @@
 """Document files built in-test, so no binary fixtures live in the repository.
 
-Every format the Documents feature reads is either a ZIP of XML or plain bytes,
+Every format the document-text half reads is either a ZIP of XML or plain bytes,
 and a PDF with a text layer is short enough to write by hand. Building them here
 means a fixture is readable in the diff that changes it, and that adding a case
 costs a function rather than a checked-in blob nobody can inspect.
@@ -150,8 +150,8 @@ def pdf(path: Path, pages: list[str]) -> Path:
 def scanned_pdf(path: Path, pages: int = 1) -> Path:
     """A PDF carrying no text layer at all -- what a scan actually looks like.
 
-    Pages with a content stream that draws nothing. Pictures of text is the reader
-    for these; Documents has to report that honestly rather than as a failure.
+    Pages with a content stream that draws nothing. The picture half is the reader
+    for these; it has to report that honestly rather than as a failure.
     """
     return pdf(path, [""] * pages)
 

@@ -180,8 +180,8 @@ def _seed_documents(conn, root_id: int, source_dir: Path, photo_id: int) -> int:
     has a second result group and that group holds more than one kind of file.
     Returns the first document's id.
 
-    The photograph is not decoration. Documents and Pictures of text write into
-    the same passages, so this group is mixed on any archive running both -- and
+    The photograph is not decoration. Both text features write into the same
+    passages, so this group is mixed on any archive running both -- and
     while the fixture held documents alone, a thumbnail with nothing bounding its
     height went unseen here: it grew to fill the column and stretched every
     document beside it into a cell four times the size of its own text.

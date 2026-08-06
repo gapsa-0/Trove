@@ -157,19 +157,19 @@ def text_status(req: Request) -> dict:
     covers the one dependency that can genuinely be missing -- a SQLite without
     FTS5 -- which is a property of the build rather than of the choice.
 
-    ``readers`` is the third fact, and the new one: *which* halves are on.
-    Documents and Pictures of text write into one index, so a count of what has
-    been read means nothing without saying what was being read.
+    ``readers`` is the third fact, and the new one: *which* halves are on. Both
+    text features write into one index, so a count of what has been read means
+    nothing without saying what was being read.
     """
     from ... import features
     from ...services import documents
 
     rid = req.root_id
     # Which readers this archive switched on, which is both what the summary
-    # counts against and what decides the feature is live at all. Documents and
-    # Pictures of text are chosen separately and either one alone fills the same
-    # index, so asking only about Documents told an OCR-only archive its text
-    # search did not exist while the pass was filling it.
+    # counts against and what decides the feature is live at all. The two halves
+    # are chosen separately and either one alone fills the same index, so asking
+    # only about the document half told a picture-only archive its text search did
+    # not exist while the pass was filling it.
     extractors = features.extractors(req.cfg.archive_features(rid))
     status = text_search.text_summary(req.db(rid), rid, extractors=extractors)
     status["readers"] = sorted(extractors)

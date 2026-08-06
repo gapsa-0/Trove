@@ -6,8 +6,9 @@
 ## Context
 
 Four separate things can put a file in front of a typed query. Indexing records
-every file's **name**. Search by description embeds every **photo**. Documents
-reads a file's **text layer**; and Text in images reads **writing off pixels**.
+every file's **name**. Search by description embeds every **photo**. Search by
+document text reads a file's **text layer**; and Search by picture text reads
+**writing off pixels**.
 
 Browse's copy had not kept up with any of it. It described itself in one of four
 hand-written sentences ("Look through every item, by filter or by description"),
@@ -28,7 +29,7 @@ same list, and the screen says so:
 | Group | Endpoint | Fed by |
 | --- | --- | --- |
 | Search by filename | `/api/media?name=` | the name Indexing recorded |
-| Documents & text in images | `/api/browse/text/search` | Documents, Text in images |
+| Search by document or picture text | `/api/browse/text/search` | both text features |
 | Search by description | `/api/browse/semantic/search` | Search by description |
 
 `features.search_ways` is that table, and the labels in it are not new strings:
@@ -55,7 +56,7 @@ missing three features.
 
 ### Why the text group cannot be split
 
-Documents and Text in images write into the *same* `doc_chunks` and the same
+The two text features write into the *same* `doc_chunks` and the same
 FTS5 index. There is one ranking over those passages, and a hit's reader is a
 property of the file's `doc_text` row rather than of a separate search — so
 splitting them into two groups would mean running the one query twice and
@@ -105,4 +106,4 @@ that did land is worse than the missing label it replaced.
   features feed.
 - `text_summary` needs the live reader set to mean anything, so it takes
   `extractors` rather than defaulting. Counting `media_type='document'` was only
-  ever right while Documents was the only reader.
+  ever right while document text was the only reader.

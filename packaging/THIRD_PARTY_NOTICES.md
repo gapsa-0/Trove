@@ -53,7 +53,8 @@ Do not publish a release while any entry is incomplete.
   prebuilt PDFium, BSD-3-Clause — https://github.com/pypdfium2-team/pypdfium2
   Bundled in the installer, not downloaded: the wheel carries the PDFium shared
   library with it, which is why the desktop build needs no compiler for it. Used
-  to read a PDF's text layer, and later to rasterise pages for Pictures of text.
+  to read a PDF's text layer, and later to rasterise pages for reading the writing
+  in them.
   Note this is a *binary* redistribution of PDFium — the BSD-3-Clause notice
   belongs in any release that ships it, not only the Python-side licence.
 - Bundled Python packages — [generated package/version/licence inventory from

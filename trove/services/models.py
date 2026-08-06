@@ -83,10 +83,9 @@ def _table(cfg: Config) -> dict[str, Weights]:
         "semantic": Weights(
             embed_backend.available, lambda: embed_backend.models_ready(cache), semantic
         ),
-        # Documents and Pictures of text are deliberately absent: a feature with
-        # no entry here needs nothing downloaded, which is what makes their "no
-        # download" honest -- one parses, and the other's weights ship inside
-        # the wheel.
+        # The two text features are deliberately absent: a feature with no entry
+        # here needs nothing downloaded, which is what makes their "no download"
+        # honest -- one parses, and the other's weights ship inside the wheel.
     }
 
 

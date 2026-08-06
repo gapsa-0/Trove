@@ -207,9 +207,9 @@ def _migrate_text_index(conn: sqlite3.Connection) -> None:
     Deliberately not in ``schema.sql``. ``executescript`` runs that file at every
     job start on every archive, and one unsupported statement fails the whole
     script -- so a SQLite without FTS5 would break archives that never asked to
-    read a document. Here, such a build simply leaves the index absent and the
-    Documents feature reports itself unavailable, in the same words the setup
-    panel already uses for a missing dependency.
+    read a document. Here, such a build simply leaves the index absent and the text
+    features report themselves unavailable, in the same words the setup panel
+    already uses for a missing dependency.
 
     **Contentful, not external-content.** An external-content index has to be
     kept in step with ``doc_chunks`` by delete triggers, and SQLite fires AFTER

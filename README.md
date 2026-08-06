@@ -26,8 +26,8 @@ library.*
 - Adds one or more archive folders and keeps a separate catalogue for each one.
 - Asks each archive what it should do with the folder. Indexing and duplicates
   always run — everything else reads what they produce — and the rest are
-  chosen on a setup screen: People, Pets, Places, Search by description. A
-  feature you leave off never runs and never downloads its models, which is the
+  chosen on a setup screen: People, Pets, Places, Search by description, Search
+  by document text, and Search by picture text. A feature you leave off never runs and never downloads its models, which is the
   difference between an archive that starts working immediately and one that
   fetches 689 MB first. The choice can be changed at any time, and switching a
   feature off keeps whatever it already found.
@@ -72,20 +72,20 @@ library.*
   detected — a back-of-the-head shot, a photo too dark to detect, a scanned print.
   Manual tags reference people and pets by name, so they survive the automatic
   re-clustering that runs as the catalogue grows.
-- Searches the library by description when optional semantic indexing is enabled
+- Searches the library by description when that optional feature is enabled
   (see below).
-- Reads the text inside documents, when the optional Documents feature is enabled,
-  so a phrase finds the file: PDFs that carry a text layer, Word, Excel and
+- Reads the text inside documents, when the optional Search by document text
+  feature is enabled, so a phrase finds the file: PDFs that carry a text layer, Word, Excel and
   PowerPoint files, OpenDocument files, plain text, Markdown, CSV, web pages and
   notebooks. Results show the passage that matched and the page it was on, and a
   search for `peticion` finds `petición`. Nothing is downloaded for it — every
   reader is the Python standard library or the PDF library the app already
   bundles. Two limits are worth knowing: a scanned PDF is pictures of a page with
   no text in the file at all, so this finds nothing in it (that is what the
-  Pictures of text feature below is for), and pre-2007 `.doc`, `.xls` and `.ppt`
+  feature below is for), and pre-2007 `.doc`, `.xls` and `.ppt`
   files cannot be read.
-- Reads the writing in pictures, when the optional Pictures of text feature is
-  enabled: photographed receipts, screenshots, and PDFs that are scans rather
+- Reads the writing in pictures, when the optional Search by picture text feature
+  is enabled: photographed receipts, screenshots, and PDFs that are scans rather
   than documents. A PDF is decided page by page, so a contract with a scanned
   appendix is read both ways and comes back as one document. Spanish and English,
   accents included, with nothing to download — these are the only model weights
@@ -109,8 +109,8 @@ stages no longer depend on each other:
 scan ┐
      ├─→ duplicate grouping ─┬─→ people & pets (one detection pass)
 metadata ┘                   ├─→ places
-                             ├─→ semantic indexing (optional)
-                             └─→ reading documents + text in images (optional)
+                             ├─→ description index (optional)
+                             └─→ reading document + picture text (optional)
 ```
 
 Long stages commit progress in batches. Closing or switching archives asks current

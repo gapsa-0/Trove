@@ -1,5 +1,5 @@
 ---
-title: Pictures of text
+title: Search by picture text
 summary: Reading the writing in screenshots, photos and scanned PDFs.
 feature: ocr
 ---
@@ -9,9 +9,9 @@ your scanner turned into a picture of a page — all of them hold words that
 nothing else in Trove can see, because as far as the file is concerned they are
 not text at all. They are pixels arranged to look like text.
 
-This is what **Documents** cannot do, and the two work together: Documents reads
-the files that carry their own text, this one reads the files that only look
-like they do.
+This is what **Search by document text** cannot do, and the two work together:
+that one reads the files carrying text of their own, this one reads the files
+that only look as though they do.
 
 ## What it reads
 

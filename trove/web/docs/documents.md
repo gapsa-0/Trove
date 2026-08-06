@@ -1,5 +1,5 @@
 ---
-title: Documents
+title: Search by document text
 summary: Reading the words inside PDFs and office files, so a phrase finds the file.
 feature: documents
 ---
@@ -32,10 +32,10 @@ is exactly the sort of thing you go looking for in a folder of paperwork.
 **A scan is not a document.** A PDF produced by a scanner or a phone camera has
 no text layer at all: it is a picture of a page, and there is nothing in the
 file for a reader to read. Those show as skipped, with that reason, and they are
-what **Pictures of text** is for. If your archive is mostly scanned paperwork,
-this feature alone will find very little in it — that is not a fault, it is the
-wrong half. Switching the other one on later re-reads every file this one
-had to pass over.
+what **Search by picture text** is for. If your archive is mostly scanned
+paperwork, this feature alone will find very little in it — that is not a fault,
+it is the wrong half. Switching the other one on later re-reads every file this
+one had to pass over.
 
 **Older Office files cannot be read.** `.doc`, `.xls` and `.ppt` — the formats
 from before 2007 — are a completely different kind of file inside, and there is
@@ -76,8 +76,8 @@ Only when something has actually changed:
 
 - the file's contents changed on disk;
 - Trove's readers changed in a way that would produce different text;
-- you switched **Pictures of text** on or off, which changes what can be got out
-  of the files this one skipped.
+- you switched **Search by picture text** on or off, which changes what can be
+  got out of the files this one skipped.
 
-Switching Documents off does not delete anything. The text already read stays in
-the catalogue, and switching it back on resumes rather than restarts.
+Switching this off does not delete anything. The text already read stays in the
+catalogue, and switching it back on resumes rather than restarts.

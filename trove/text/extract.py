@@ -3,8 +3,8 @@
 Everything above this module -- the service that stores an outcome, the runner
 that schedules the pass -- goes through ``read``. That is deliberate: whether a
 PDF's text layer was worth anything, and therefore whether the file still needs
-Pictures of text, is one decision, and it belongs in one place rather than being
-re-derived by each caller from a block count.
+reading off its pixels, is one decision, and it belongs in one place rather than
+being re-derived by each caller from a block count.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from .results import (
     Extraction,
 )
 
-# Every extension the Documents half can read, whatever the outcome. A file
+# Every extension the document-text half can read, whatever the outcome. A file
 # outside this set never enters the backlog, so it is never counted as work and
 # never gets a row saying it was skipped -- the same way an audio file is simply
 # not a candidate for face detection.
@@ -74,13 +74,13 @@ class Limits:
 def available(extractors: frozenset[str]) -> bool:
     """Whether this build can run at least one of the halves it was asked for.
 
-    Documents is available on any build: everything except PDF is standard
-    library, so a missing ``pypdfium2`` costs PDFs a per-file skip rather than
-    the whole feature -- the shape a missing ffmpeg has for videos.
+    Reading document text is available on any build: everything except PDF is
+    standard library, so a missing ``pypdfium2`` costs PDFs a per-file skip
+    rather than the whole feature -- the shape a missing ffmpeg has for videos.
 
-    Pictures of text is different, because there is no partial state to degrade
-    to. Its models live inside its package, so the engine either imports with
-    everything it needs or is absent entirely.
+    Reading picture text is different, because there is no partial state to
+    degrade to. Its models live inside its package, so the engine either imports
+    with everything it needs or is absent entirely.
 
     Either half being runnable is enough for the stage, since they share it.
     """
@@ -149,9 +149,10 @@ def _read_pdf(path: Path, wanted: frozenset[str], limits: Limits) -> Extraction:
     scanned = [
         s for s in stats if pdf.looks_scanned(s, limits.min_chars_per_page, limits.min_image_cover)
     ]
-    # Documents alone, and nothing came out of the text layer. If the pages look
-    # like pictures, say so specifically -- that reason is what explains the file
-    # to its owner and what makes switching Pictures of text on come back for it.
+    # Document text alone, and nothing came out of the text layer. If the pages
+    # look like pictures, say so specifically -- that reason is what explains the
+    # file to its owner and what makes switching the picture half on come back
+    # for it.
     if not layer and OCR not in wanted:
         if scanned:
             raise ValueError(f"{NO_TEXT_LAYER}: this PDF is pictures of text, not text")

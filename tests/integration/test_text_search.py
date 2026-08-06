@@ -196,10 +196,11 @@ def indexed_with_a_photo(indexed):
 
 
 def test_the_summary_counts_only_what_the_live_readers_could_open(indexed_with_a_photo):
-    """An archive of 150k photos and 300 PDFs has 300 things Documents can read.
+    """An archive of 150k photos and 300 PDFs has 300 things a document reader can
+    read.
     Reporting the 150k would make a finished stage look 0.2% done."""
     summary = text_search.text_summary(indexed_with_a_photo, 1, extractors=frozenset({"documents"}))
-    assert summary["total"] == 3, "the photograph is not work Documents will ever do"
+    assert summary["total"] == 3, "the photograph is not work a document reader does"
     assert summary["read"] == 3
     assert summary["pending"] == 0
     assert summary["passages"] == 4

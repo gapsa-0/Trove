@@ -17,12 +17,12 @@ different amounts: parsing files that carry their own text (minutes, no model)
 and reading text out of pixels (hours, ~13 MB of weights). ADR 0015 built the
 feature system for exactly this, and named this work in its closing paragraph.
 
-This ADR records the decisions behind the first of the two, **Documents**, and
-the ones that shape what comes after it.
+This ADR records the decisions behind the first of the two, **Search by document
+text**, and the ones that shape what comes after it.
 
 ## Decision
 
-### One fused `text` stage, owned by Documents and Text in images
+### One fused `text` stage, owned by both text features
 
 Both features read files, and the same file can need both: a PDF's pages may
 carry a text layer, be scans, or be a mix. **Whether a PDF needs reading as
@@ -32,11 +32,11 @@ share one open of the file, as People and Pets share one image decode (ADR 0004)
 Splitting them gives one of two bad outcomes. Either OCR opens and parses every
 PDF's text layer itself to decide whether to work — the expensive parse twice
 over, and `pypdfium2` becomes a hard dependency of the OCR extra as well — or
-OCR reads the Documents stage's *output* to decide, which makes it depend on an
+OCR reads the document reader's *output* to decide, which makes it depend on an
 optional stage. That dependency is forbidden (`tests/unit/test_features.py`:
 a disabled stage is dropped from the list entirely, so anything waiting on it
 waits for a state that can never arrive), and the data-level version of it is
-worse than the declared one: on an archive running OCR with Documents off, a
+worse than the declared one: on an archive running OCR with the document half off, a
 scanned PDF would simply never be read, with nothing anywhere saying why.
 
 `tests/unit/test_features.py` previously hardcoded `assert sd.kind ==
@@ -47,9 +47,9 @@ claims have been made.
 
 **The consequence a fused stage cannot avoid**: `doc_text.wanted` records which
 halves were switched on when a file was read, and the resumability predicate has
-a fourth leg for it. Without that, a scan read once with only Documents on
-carries a current hash and a current version, is therefore never pending, and
-switching Text in images on afterwards would never bring it back. `pet_scan.
+a fourth leg for it. Without that, a scan read once with only the document half
+on carries a current hash and a current version, is therefore never pending, and
+switching the picture half on afterwards would never bring it back. `pet_scan.
 model_source` exists for the same reason on the other fused pass.
 
 ### The extraction stack: one dependency, and the four it rules out
@@ -178,16 +178,16 @@ vector space, or it needs not to exist.
   match is a match, with no cut to relax), and the 23 MB translator is not
   fetched — it exists to help a model trained overwhelmingly on English, and the
   text index matches whatever language the documents are in.
-- **Documents and Text in images are not a `pairs_with` pair.** That field means
+- **The two text features are not a `pairs_with` pair.** That field means
   "each is more accurate for the other being on", which is true of People and
   Pets and is what the panel's note about a lonely half says. These two read
   *different files* — one the text layer, one the pixels — and neither improves
-  the other. The feature's own detail text says which is which instead. A test
+  the other. Their labels say which is which instead. A test
   now also refuses a `pairs_with` naming a feature that does not exist, since the
   panel resolves it by id and a dangling one degrades silently to no note at all.
 - **A scan is a skip, not an error.** A PDF with no text layer is not a broken
   file; it needs the other reader. Recording it as an error would put a red count
-  on the Documents card for an archive behaving exactly as designed. The status
+  on the text card for an archive behaving exactly as designed. The status
   decides only what the card says — an outcome row is written either way, which
   is what stops an unreadable file being re-derived on every pass forever.
 - **The FTS5 query is sanitised, not escaped.** `MATCH` takes a query *language*,

@@ -24,12 +24,12 @@ export const ICONS = {
   // it needs a mark on the same footing as the two that are. A luggage tag:
   // the name a thing was given, as opposed to anything inside it.
   filename: '<svg viewBox="0 0 24 24"><path d="M20.6 12.7 12.7 20.6a2 2 0 0 1-2.8 0l-6.5-6.5a2 2 0 0 1-.6-1.6l.5-6a2 2 0 0 1 1.8-1.8l6-.5a2 2 0 0 1 1.6.6l6.5 6.5a2 2 0 0 1 0 2.8Z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>',
-  // Documents unlocks no nav section either: it widens what the one search box
-  // reaches. A page with lines of writing on it, which is what the feature is
-  // about -- the words inside the file rather than the file itself.
+  // Search by document text unlocks no nav section either: it widens what the
+  // one search box reaches. A page with lines of writing on it, which is what the
+  // feature is about -- the words inside the file rather than the file itself.
   documents: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>',
-  // Pictures of text: a picture frame with writing inside it, sibling to the
-  // documents page mark -- the same words, found somewhere else.
+  // Search by picture text: a picture frame with writing inside it, sibling to
+  // the documents page mark -- the same words, found somewhere else.
   ocr: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10h10M7 14h6"/><circle cx="17.5" cy="14.5" r="1"/></svg>',
   settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
   sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',

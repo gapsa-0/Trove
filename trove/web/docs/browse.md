@@ -22,12 +22,12 @@ somewhere in the file's own name, in any order, so "beach 2019" finds
 one way every archive has, whatever else it runs, and the part of the name that
 matched is marked on the result.
 
-**Documents** and **Pictures of text** share one way, headed with whichever of
-them you have on — or *Documents & pictures of text* when both are. Documents
-reads the characters a file already stores — Word, Excel, PowerPoint,
-OpenDocument, plain text, CSV, web pages, notebooks and PDFs with a text layer;
-[Pictures of text](ocr.md) reads the writing off screenshots, photos and
-scanned PDFs. They write into the same passages, so either one alone
+**Search by document text** and **Search by picture text** share one way, headed
+with whichever of them you have on — or *Search by document or picture text* when
+both are. [The first](documents.md) reads the characters a file already stores —
+Word, Excel, PowerPoint, OpenDocument, plain text, CSV, web pages, notebooks and
+PDFs with a text layer; [the second](ocr.md) reads the writing off screenshots,
+photos and scanned PDFs. They write into the same passages, so either one alone
 gives you this group, and a result says which of the two found it. What it
 matches is the words themselves: every word you type has to appear in the
 passage, so typing more narrows it.

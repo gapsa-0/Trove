@@ -169,8 +169,8 @@ migrations it runs live beside it in `trove/db/migrations.py`.
 virtual table, and `executescript` runs that file at every job start on every
 archive -- so an unsupported statement there would fail archives that never
 asked to read a document. `migrations._migrate_text_index` creates it where
-FTS5 exists and leaves it absent where it does not, and the Documents feature
-reports itself unavailable in that case (ADR 0017).
+FTS5 exists and leaves it absent where it does not, and the text features report
+themselves unavailable in that case (ADR 0017).
 `init_db` is close to additive-only: on every run it creates any missing
 table/index (`CREATE ... IF NOT EXISTS`) and adds any missing column
 (`_add_column_if_missing`), never drops or renames one. The one exception is

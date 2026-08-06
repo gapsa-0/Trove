@@ -1,4 +1,4 @@
-"""Reading the text out of each format the Documents feature claims to handle.
+"""Reading the text out of each format the document-text half claims to handle.
 
 One fixture per format, built in-test (``tests/docfixtures.py``). The claim
 being checked is narrow and worth stating: the words come out, in reading order,
@@ -169,7 +169,7 @@ def test_a_legacy_office_file_is_refused_by_name(tmp_path, ext):
 def test_a_pdf_with_no_text_layer_is_a_skip_and_not_a_failure(tmp_path):
     """This is what a scan is, and it is the single most important distinction
     this module draws: nothing is wrong with the file, it just needs the other
-    reader. Reporting it as an error would put a red count on the Documents card
+    reader. Reporting it as an error would put a red count on the text card
     for an archive working exactly as intended."""
     path = fx.scanned_pdf(tmp_path / "scan.pdf", pages=2)
     with pytest.raises(ValueError, match=NO_TEXT_LAYER):
@@ -203,7 +203,7 @@ def test_an_empty_document_is_a_skip_rather_than_an_empty_index_entry(tmp_path):
 def test_only_documents_are_eligible_while_only_documents_is_on(tmp_path):
     assert extract.eligible("pdf", "document", WANTED) is True
     assert extract.eligible("docx", "document", WANTED) is True
-    # An image is work for Pictures of text, which is not switched on here.
+    # An image is work for the picture half, which is not switched on here.
     assert extract.eligible("jpg", "image", WANTED) is False
     # Nothing is work when neither half is on.
     assert extract.eligible("pdf", "document", frozenset()) is False

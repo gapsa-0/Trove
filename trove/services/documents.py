@@ -8,12 +8,13 @@ resumable knows how this one does, because it is the same four pieces --
 ``save_outcome`` closing the loop, and a version constant that re-queues the
 archive when the algorithm changes.
 
-**One leg is new, and it is the one the fused stage needs.** Documents and Text
-in images share a pass, so a file's row records which halves were switched on
-when it was read (``doc_text.wanted``). Without that, a scan read once with only
-Documents on carries a current hash and a current version, is therefore never
-pending, and switching Pictures of text on afterwards would never bring it back --
-the file would simply never be read, silently, forever.
+**One leg is new, and it is the one the fused stage needs.** Search by document
+text and Search by picture text share a pass, so a file's row records which
+halves were switched on when it was read (``doc_text.wanted``). Without that, a
+scan read once with only the document half on carries a current hash and a
+current version, is therefore never pending, and switching the picture half on
+afterwards would never bring it back -- the file would simply never be read,
+silently, forever.
 """
 
 from __future__ import annotations
@@ -60,8 +61,8 @@ def _pending_clause(wanted: str) -> tuple[str, list[Any]]:
 
     Never read; read at different bytes; read by an older version of this
     algorithm; or read while a different set of halves was switched on. The
-    fourth is what makes enabling Pictures of text actually revisit the scans that
-    Documents could not read.
+    fourth is what makes enabling the picture half actually revisit the scans
+    that the document half could not read.
     """
     return (
         """(t.file_id IS NULL

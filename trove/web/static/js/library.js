@@ -172,12 +172,11 @@ export async function renderPhotos(m) {
   S.textGrid = runs("text") ? (restored && S.textGrid ? S.textGrid : newGrid("text")) : null;
   refreshGallery();
   /* The placeholder is an invitation, not a label, which is why it is the one
-     line here that does not take the features' own names: "Search by
-     Documents, or by Search by description" is not a sentence anyone would
-     write. Enumerating the ways in answer-shaped language instead would put a
-     line of prose inside a text box, and the panel directly below already lists
-     them properly -- so the box says the short true thing and leaves the
-     naming to the rows.
+     line here that does not take the features' own names. Stringing them
+     together grants the box a whole line of prose -- "Search by filename, by
+     document or picture text, or by description" -- and the panel directly below
+     already lists them properly, one row each with what it matches. So the box
+     says the short true thing and leaves the naming to the rows.
 
      The one-way archive is the exception, since there the placeholder is the
      only thing on the screen that can say what the box will do. */
@@ -381,8 +380,8 @@ export function renderSortOptions(g) {
 /* What a group's count reads. "Matches" everywhere a query ran, and files only
    for the plain listing.
 
-   The text group used to count "documents", which stopped being true the day
-   Pictures of text was added: a hit there can be a photographed receipt. Counting
+   The text group used to count "documents", which stopped being true the day the
+   picture half was added: a hit there can be a photographed receipt. Counting
    matches says the same thing about the search without claiming anything about
    what was matched. */
 function gridCountLabel(g) {
@@ -540,8 +539,8 @@ function renderGroupLabels() {
     glyph.setAttribute("aria-hidden", "true");
     glyph.innerHTML = ICONS[r.icon];
     // Not lowercased. These are the names the features were chosen under, and
-    // "documents & pictures of text" is a different string from the one on the
-    // setup panel, the Overview card and the page documenting it.
+    // "search by document or picture text" is a different string from the one on
+    // the setup panel, the Overview card and the page documenting it.
     item.append(glyph, document.createTextNode(r.label));
     line.append(item);
   });

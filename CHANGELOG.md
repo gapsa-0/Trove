@@ -15,8 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Trove can read the writing in your pictures.** Switch on *Pictures of text*
-  and photographed receipts, screenshots and scanned paperwork become as
+- **Trove can read the writing in your pictures.** Switch on *Search by picture
+  text* and photographed receipts, screenshots and scanned paperwork become as
   searchable as anything else. A PDF is decided page by page, so a contract with
   a scanned appendix is read both ways and comes back as one document, with the
   page each passage came from. Spanish and English, accents included.
@@ -32,8 +32,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   browsing, and stops and resumes safely, so leaving it overnight is the
   intended way to use it. A result read from a picture is marked as such,
   because unlike a document's own text it is a best guess.
-- **Trove can read what is inside your documents.** Switch on *Documents* when
-  you set up an archive, and the search box also looks inside the files rather
+- **Trove can read what is inside your documents.** Switch on *Search by document
+  text* when you set up an archive, and the search box looks inside the files rather
   than only at their names: type a phrase from a contract and the contract comes
   back, showing the passage that matched and the page it was on. It reads PDFs
   that carry a text layer, Word, Excel and PowerPoint files, OpenDocument files,
@@ -48,7 +48,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
   Two limits. A scanned PDF is a picture of a page with no text in the file at
   all, so this finds nothing in one — the feature's card says so before you
-  switch it on, that is what *Pictures of text* is for, and switching it on
+  switch it on, that is what *Search by picture text* is for, and switching it on
   later re-reads every file this feature had to pass over. And pre-2007 `.doc`,
   `.xls` and `.ppt` files cannot be read at all; they are listed and dated like
   any other file and reported as an unsupported format, rather than half-read
@@ -63,8 +63,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
   Every way is named after the feature you switched on to get it, so a group of
   results is headed with the same words as the card you chose it from, the card
-  reporting its progress and the page explaining it — *Documents & text in
-  images*, *Search by description*. The one way no feature produces, searching
+  reporting its progress and the page explaining it — *Search by document or
+  picture text*, *Search by description*. The one way no feature produces, searching
   filenames, is named to read alongside them.
 
   When you search, those same rows become the headings over their own results,
@@ -142,8 +142,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sits above the passage rather than under a shadow meant for laying text over a
   photo.
 - **An archive that only reads the writing in pictures can now search it.**
-  Switching on *Pictures of text* without *Documents* filled the index exactly as
-  it should, and Browse never showed the group that searches it — so the work
+  Switching on *Search by picture text* without its document half filled the index
+  exactly as it should, and Browse never showed the group that searches it — so the work
   was done, the passages were there, and there was nowhere to look. The same
   archive was also told it had nothing to read and nothing queued, because
   coverage counted documents rather than the files its readers actually open.
@@ -151,8 +151,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the count with it.
 - **Browse's "How this works" opened the page about scanning folders**, which
   answered a question nobody pressing it had. It now opens a page about
-  searching — and Documents and Pictures of text have one to link to from the
-  setup screen, which they did not before, so choosing them was the one decision
+  searching — and both text features have one to link to from the setup screen,
+  which they did not before, so choosing them was the one decision
   made with no way to read what it does first.
 - **Browse opens on a finished-looking screen, and opens far faster.** It used
   to wait for the filter bar's options — which years, which people, which
@@ -192,6 +192,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The two text features are named after what you can search, not the files they
+  read.** *Documents* and *Pictures of text* are now **Search by document text**
+  and **Search by picture text**, headed as *Search by document or picture text*
+  where both are on. The old names described their input, which read as a promise
+  about a kind of file rather than a way of finding one — and *Documents* was
+  actively misleading, since a scanned contract is a document and is precisely
+  what that half cannot read. Both now sit in one grammar with *Search by
+  description* and *Search by filename*: every way of searching is named for what
+  you type against. Nothing about what they do has changed, and an archive already
+  running them keeps everything it has read.
 - **The command is now `trove`, not `oa`.** The rename to Trove previously
   stopped at what you could see; the package, the command and the data folder
   were all still called `organize_archive` underneath. They are not any more —

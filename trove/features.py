@@ -225,7 +225,7 @@ FEATURES: tuple[Feature, ...] = (
     ),
     Feature(
         id="documents",
-        label="Documents",
+        label="Search by document text",
         icon="documents",
         tagline="Find a document by a phrase inside it",
         verb="Reading",
@@ -233,27 +233,27 @@ FEATURES: tuple[Feature, ...] = (
         detail=(
             "Reads the text a file already carries: Word, Excel and PowerPoint, "
             "OpenDocument, plain text, Markdown, CSV, web pages, notebooks, and PDFs "
-            "that store their characters rather than a picture of them. A PDF that is "
-            "only pictures of a page holds nothing for this to read — that one is "
-            "Pictures of text."
+            "that store their characters rather than a picture of them. A scanned PDF "
+            "stores no such text, however much writing is on the page; that one is "
+            "Search by picture text."
         ),
         required=False,
         stages=("text",),
         card="text",
         sections=(),
-        # Deliberately no ``pairs_with``. Documents and Pictures of text share a
-        # stage, but they are not a pair in this field's sense: People and Pets
-        # check each other's work and each is more accurate for the other being
-        # on, which is what the panel's note about a lonely half actually says.
+        # Deliberately no ``pairs_with``. The two text features share a stage,
+        # but they are not a pair in this field's sense: People and Pets check
+        # each other's work and each is more accurate for the other being on,
+        # which is what the panel's note about a lonely half actually says.
         # These two read *different text* -- one the characters a file stores,
-        # one the pixels -- and neither improves the other. The detail above says
+        # one the pixels -- and neither improves the other. Their labels say
         # which is which, where a note claiming they verify each other would be
         # wrong.
         extractor="documents",
     ),
     Feature(
         id="ocr",
-        label="Pictures of text",
+        label="Search by picture text",
         icon="ocr",
         tagline="Read the writing in screenshots, photos and scanned PDFs",
         verb="Reading",
@@ -366,12 +366,23 @@ def _live(card: str, enabled: Iterable[str]) -> tuple[Feature, ...]:
 
 
 def _joined(parts: Iterable[str]) -> str:
-    """Sentence-case join, for the one card two features share.
+    """Sentence-case join, for a card two features share.
 
     The first part keeps its capital and the rest lose theirs, so People and
     Pets read as "People & pets" rather than as two titles bolted together.
     """
     return " & ".join(p if i == 0 else p[:1].lower() + p[1:] for i, p in enumerate(parts))
+
+
+# What a shared card is called when both of its halves are live, for the card
+# whose halves cannot simply be joined. "People" and "Pets" fuse by joining, but
+# the two text labels share both a prefix and a noun, so joining them gives
+# "Search by document text & search by picture text" -- three words of it
+# redundant, and an "&" where the way it reads is "or": one search box, two
+# places it looks. The joined form is a third wording however it is produced, so
+# this states it instead of deriving it, next to the two labels it has to stay
+# faithful to. ``tests/unit/test_features.py`` holds it to that.
+_FUSED_LABELS = {"text": "Search by document or picture text"}
 
 
 def card_label(card: str, enabled: Iterable[str]) -> str:
@@ -386,9 +397,14 @@ def card_label(card: str, enabled: Iterable[str]) -> str:
     A card whose owning features are not all switched on is named after the
     ones that are — "People" rather than "People & pets" — because a card
     naming work the archive was never asked to do is a card the user cannot act
-    on.
+    on. Which is also why the fused wording is only reached with several halves
+    live: an archive that reads nothing but its scans is offered "Search by
+    picture text", not the pair.
     """
-    return _joined(f.label for f in _live(card, enabled))
+    live = _live(card, enabled)
+    if len(live) > 1 and card in _FUSED_LABELS:
+        return _FUSED_LABELS[card]
+    return _joined(f.label for f in live)
 
 
 def card_running(card: str, enabled: Iterable[str]) -> str:
@@ -436,9 +452,9 @@ class SearchWay:
     A *way* is not a feature and there are fewer of them than there are
     features. Four readers fill indexes -- a file's name, a photo, a document's
     text layer, writing read off pixels -- but only three rankings can answer a
-    query, because Documents and Pictures of text both feed one of them (ADR
-    0020). So this composes the three, and ``readers`` is what says which
-    features got you each one.
+    query, because the two text features both feed one of them (ADR 0020). So
+    this composes the three, and ``readers`` is what says which features got you
+    each one.
 
     It lives here for the same reason ``card_label`` does. Browse is the fourth
     surface to name this work, after the setup panel, the Overview card and the
@@ -511,8 +527,8 @@ def search_ways(enabled: Iterable[str]) -> tuple[SearchWay, ...]:
     """
     on = set(enabled)
     ways = [_NAME_WAY]
-    # Documents and Pictures of text share the `text` card, so its label and mark
-    # already compose the way either one alone -- or both -- should be called.
+    # The two text features share the `text` card, so its label and mark already
+    # compose the way either one alone -- or both -- should be called.
     # They are one way rather than two because they write into the *same*
     # passages and the same index: a hit's reader is a property of the file's
     # ``doc_text`` row, not of a separate search (ADR 0020).

@@ -316,8 +316,8 @@ def test_a_way_links_to_the_page_that_documents_it(open_app):
         links = app.tab.evaluate(
             "[...document.querySelectorAll('.way .way-doc')].map(e => e.title)"
         )
-        assert "How Documents works" in links
-        assert "How Pictures of text works" in links
+        assert "How Search by document text works" in links
+        assert "How Search by picture text works" in links
         assert "How Search by description works" in links
         assert app.errors() == []
 
@@ -350,8 +350,8 @@ def test_a_search_finds_a_word_inside_a_document(open_app):
 
 
 def test_a_photograph_and_a_document_are_the_same_size_in_the_text_group(open_app, archive):
-    """Documents and Pictures of text write into the same passages, so this group
-    holds both kinds of file -- and a result should look like a result whichever
+    """Both text features write into the same passages, so this group holds both
+    kinds of file -- and a result should look like a result whichever
     it is.
 
     It did not. A thumbnail is `height: 100%`, which the square tile bounds

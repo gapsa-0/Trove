@@ -134,8 +134,23 @@ def test_the_shared_card_is_named_after_whichever_half_is_on():
     assert features.card_label("detect", ["people", "pets"]) == "People & pets"
     assert features.card_label("detect", ["people"]) == "People"
     assert features.card_label("detect", ["pets"]) == "Pets"
+    assert features.card_label("text", ["documents"]) == "Search by document text"
+    assert features.card_label("text", ["ocr"]) == "Search by picture text"
     # A card with a single owner is simply named after it.
     assert features.card_label("places", ["places"]) == "Places"
+
+
+def test_a_stated_fused_label_still_names_both_halves():
+    """Two labels sharing a prefix and a noun cannot be joined into a title, so
+    the text card's fused wording is stated rather than derived. That is the one
+    place a name can drift from the labels it stands for, which is what this
+    holds shut: rename a half and the word it contributed has to survive."""
+    for card, fused in features._FUSED_LABELS.items():
+        owners = features.owners(card)
+        assert len(owners) > 1, card
+        assert features.card_label(card, [f.id for f in owners]) == fused
+    fused = features.card_label("text", ["documents", "ocr"])
+    assert "document" in fused and "picture" in fused
 
 
 def test_a_card_is_called_what_the_setup_panel_called_it():
@@ -234,7 +249,7 @@ def test_a_way_takes_the_mark_of_a_reader_that_is_actually_on():
     only_pictures = features.search_ways(["index", "ocr"])
     text = next(w for w in only_pictures if w.id == "text")
     assert text.icon == features.by_id("ocr").icon
-    assert text.label == "Pictures of text"
+    assert text.label == "Search by picture text"
 
 
 def test_file_names_are_a_way_no_feature_owns():
@@ -256,7 +271,7 @@ def test_the_two_readers_share_one_way():
     text = ways[1]
     assert text.readers == ("documents", "ocr")
     # One way, named for both halves rather than for whichever was listed first.
-    assert text.label == "Documents & pictures of text"
+    assert text.label == "Search by document or picture text"
 
 
 def test_a_way_never_promises_files_its_readers_cannot_open():
