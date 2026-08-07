@@ -149,6 +149,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The start page no longer keeps you waiting for its cards.** Opening the app
+  drew everything but the archives instantly, and then sat there — three
+  quarters of a second on a 97,000-file archive, longer on a slow disk. Working
+  out one number for each card, the total size of the folder, meant reading the
+  whole catalogue off disk; and a second number was being worked out beside it
+  that nothing has ever displayed. The unused one is gone and the size is now
+  looked up rather than recounted, which takes the same page from 738 ms to
+  21 ms. Your archives pick this up the first time each one is opened.
 - **Animated pictures are no longer grouped as copies of each other.** A GIF was
   compared on its first frame alone, so two unrelated animations that open the
   same way — a shared title card, a fade in from white — were treated as one

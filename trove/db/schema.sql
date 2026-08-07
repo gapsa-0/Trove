@@ -46,6 +46,18 @@ CREATE INDEX IF NOT EXISTS idx_files_mtime      ON files(mtime);
 -- serves everything that one served (see _drop_covered_files_index).
 CREATE INDEX IF NOT EXISTS idx_files_browse ON files(present, hidden, root_id, media_type);
 
+-- The start page adds up one archive's bytes for the badge on its card, and
+-- `size` is not in any other index -- so summing it meant reading every row of
+-- the files table, which is the whole 263 MB of a 97k-file archive. Cold, which
+-- is the state the app opens in, that was 714 ms *before the first card could be
+-- drawn*; from this index it is 8 ms, for 1.2 MB of pages.
+--
+-- Deliberately its own narrow index rather than `size` appended to
+-- idx_files_browse: widening that one makes every entry bigger and so every
+-- Browse query read more pages, and its 2.4s-to-0.2s measurement is not worth
+-- disturbing to save a megabyte here.
+CREATE INDEX IF NOT EXISTS idx_files_size ON files(present, size);
+
 CREATE TABLE IF NOT EXISTS scan_runs (
     id             INTEGER PRIMARY KEY,
     started_at     TEXT NOT NULL,

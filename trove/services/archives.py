@@ -31,9 +31,17 @@ logger = logging.getLogger(__name__)
 
 
 def archives(cfg: Config) -> list[dict[str, Any]]:
-    """Every registered archive with its picker-page stats: file/byte/hashed
+    """Every registered archive with its picker-page stats: file and byte
     counts, last scan time and cover thumbnails, or zeroed stats when its
-    database hasn't been created yet."""
+    database hasn't been created yet.
+
+    Nothing here may read a column no index covers. This runs for every archive
+    before the start page can draw a single card, with the page cache cold --
+    the state the app opens in -- so a column fetched from the table means
+    reading the whole table, which on a 97k-file archive is 263 MB and was
+    0.7 seconds of staring at an empty page. Both figures below are answered
+    from an index and never touch it (idx_files_browse, idx_files_size).
+    """
     out: list[dict[str, Any]] = []
     for entry in sorted(cfg.archives, key=lambda a: a["id"]):
         rid, path = entry["id"], entry["path"]
@@ -46,7 +54,6 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
             "added_at": entry["added_at"],
             "files": 0,
             "size": 0,
-            "hashed": 0,
             "exists": Path(path).is_dir(),
             "last_scan": None,
             "covers": [],
@@ -54,9 +61,12 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
         if Path(db_path).is_file():
             conn = db.open_readonly(db_path)
             try:
+                # Two aggregates, two indexes. A third once counted how many
+                # files had been hashed, which nothing on the start page or
+                # anywhere else ever showed -- and `sha256` is in no index, so
+                # that unread number was what pulled the entire table off disk.
                 stats = conn.execute(
-                    f"""SELECT COUNT(*) c, COALESCE(SUM(size),0) s,
-                               SUM(sha256 IS NOT NULL) hashed
+                    f"""SELECT COUNT(*) c, COALESCE(SUM(size),0) s
                         FROM files f WHERE {_VISIBLE}"""
                 ).fetchone()
                 last = conn.execute(
@@ -76,7 +86,6 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
                 row.update(
                     files=stats["c"],
                     size=stats["s"],
-                    hashed=stats["hashed"] or 0,
                     covers=covers,
                     last_scan=(last["finished_at"] or last["started_at"]) if last else None,
                 )
