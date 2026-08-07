@@ -51,11 +51,23 @@ function notYet(line, sub) {
 
 /* The date as a row of Details rather than a section of its own. It is a fact
    about the file like its size, not the headline the panel opens with -- and
-   the editor still lands in #dateval, so `editDate()` is unchanged. */
+   the editor still lands in #dateval, so `editDate()` is unchanged.
+
+   All three parts on one line: the date, where it came from, and the way to
+   change it. They are one fact and its provenance, and the row used to break
+   them across three places -- "Edit" up in the label column beside the word
+   "Date", the date on the right, and the source dropping to a line of its own
+   underneath, which made a two-line row out of six words.
+
+   `.dateline` is what keeps the editor working: #dateval stays the container
+   editDate() replaces wholesale, and only its contents sit in a row. */
 function dateRow(it) {
-  return `<div class="kv"><span class="k">Date <button class="linkbtn" onclick="editDate()">Edit</button></span>
-    <span class="v" id="dateval">${fmtDate(it.date)}${dateProv(it)}</span></div>`;
+  return `<div class="kv datekv"><span class="k">Date</span>
+    <span class="v" id="dateval"><span class="dateline">${fmtDate(it.date)}${dateProv(it)}</span></span>
+    <button class="iconbtn" type="button" onclick="editDate()" title="Edit date"
+      aria-label="Edit date">${PENCIL}</button></div>`;
 }
+const PENCIL = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M14.5 6.5 17 9"/></svg>`;
 /* The date's source, in words. It was always resolved and always sent; the
    panel simply printed the raw column ("mtime") in grey and left the user to
    know what that meant. Next to an Edit button, how much the date can be
@@ -66,19 +78,24 @@ function dateRow(it) {
    CreateDate -- Word, a scanner, a bank's statement generator -- and the enrich
    stage files both under the one key (metadata/resolver.py). So the words are
    about the *file*, not the instrument: this said "From the camera" over every
-   contract in the archive. */
+   contract in the archive.
+
+   Three words each, because the badge now shares a line with the date it
+   qualifies. The sentence each one shortens is on the badge's tooltip, and the
+   part that cannot be shortened -- how far the date can be trusted -- is the
+   coloured dot, which says it without spending a word. */
 const DATE_SOURCE = {
-  exif: ["From file metadata", ""],
-  takeout_json: ["From the Google Takeout sidecar", ""],
-  filename: ["Guessed from the file name", "guess"],
-  mtime: ["From the file's own timestamp", "weak"],
-  manual: ["You set this", ""],
+  exif: ["From metadata", "", "The timestamp the file carries about itself"],
+  takeout_json: ["From Takeout", "", "From the Google Takeout sidecar"],
+  filename: ["From filename", "guess", "Guessed from the file's own name"],
+  mtime: ["From timestamp", "weak", "The file's modification time, which is often wrong"],
+  manual: ["You set this", "", "Set by hand, and never overwritten"],
 };
 function dateProv(it) {
   if (!it.date) return "";
-  const [words, tone] = DATE_SOURCE[it.date_source] || [it.date_source || "", ""];
+  const [words, tone, full] = DATE_SOURCE[it.date_source] || [it.date_source || "", "", ""];
   if (!words) return "";
-  return `<div class="prov ${tone}">${esc(words)}</div>`;
+  return `<span class="prov ${tone}" title="${esc(full || words)}">${esc(words)}</span>`;
 }
 
 /* Coordinates and places are not the same feature. `geo` is written by the

@@ -300,6 +300,34 @@ def _panel_overflows(app):
     )
 
 
+def test_the_date_its_source_and_its_edit_control_share_one_line(open_app, archive):
+    """One fact and its provenance. The row used to break them across three
+    places: "Edit" up in the label column beside the word "Date", the date on
+    the right, and where it came from dropping to a second line underneath --
+    two lines and a filled chip for six words.
+
+    Asserted as the height of the row, because that is the thing that was
+    wrong: any wording that fits stays one line, and any that does not is back
+    where this started.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        _open_first_photo(app)
+
+        row = app.tab.evaluate(
+            "(r => Math.round(r.height))(document.querySelector('.datekv').getBoundingClientRect())"
+        )
+        line = app.text(".datekv")
+
+        assert row < 40, f"the date row is {row}px, so something wrapped"
+        assert "From metadata" in line, line
+        # The way in is a control at the end of the row, not a word in front of
+        # the label -- and it still opens the same editor.
+        assert app.count(".datekv .k .linkbtn") == 0
+        app.click(".datekv .iconbtn")
+        app.wait_for("#dateval .dtrow")
+        assert app.errors() == []
+
+
 def test_the_date_editor_stays_inside_the_panel(open_app, archive):
     """The editor is three fields and two buttons. Sized to its content inside
     a right-aligned half-row it pushed a horizontal scrollbar onto the whole

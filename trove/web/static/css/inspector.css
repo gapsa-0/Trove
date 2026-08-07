@@ -190,17 +190,31 @@
   justify-content: flex-end
 }
 
+/* The date, where it came from and the way to change it, on one line: one fact
+   and its provenance, where the row used to put "Edit" in the label column and
+   drop the source onto a second line under the date. */
+.kv.datekv .v {
+  flex: 1
+}
+
+.dateline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px
+}
+
+/* An annotation on the date, not a second value beside it: a dot and three
+   quiet words. It used to be a filled chip, which at this size was heavier than
+   the date it qualifies and wide enough to push itself onto a line of its own
+   -- the two things wrong with it were the same thing. */
 .prov {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 5px;
-  padding: 2px 8px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, .1);
+  gap: 5px;
   font-size: 11.5px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, .72)
+  color: rgba(255, 255, 255, .5)
 }
 
 .prov::before {
@@ -217,6 +231,41 @@
 
 .prov.weak::before {
   background: var(--bad)
+}
+
+/* An edit control small enough to sit at the end of a row of facts. The panel's
+   other ways in are `.linkbtn` words -- "Set", "Change" -- and they head a
+   section, where a word has room and something to head. This one belongs to a
+   single line in a table, and a word there pushed the value it edits off to
+   its own row. */
+.iconbtn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: -2px -3px -2px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, .55);
+  cursor: pointer
+}
+
+.iconbtn:hover {
+  background: rgba(255, 255, 255, .12);
+  color: #fff
+}
+
+.iconbtn svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round
 }
 
 /* "Nothing found" and "not looked at yet" must not look alike: the second is
