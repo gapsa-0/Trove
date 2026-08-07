@@ -154,6 +154,13 @@ button.stat:hover {
   letter-spacing: 0
 }
 
+/* A figure the archive has not answered yet. Muted so the tile reads as
+   waiting rather than as reporting, and left in the same tabular-nums line as
+   the number it stands in for, so nothing shifts when that arrives. */
+.stat .v .stat-unknown {
+  color: var(--muted)
+}
+
 .overview-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(330px, .85fr);

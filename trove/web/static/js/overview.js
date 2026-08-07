@@ -19,6 +19,13 @@ import {
   ICONS, S, TYPE_COL, archiveSections, typeLabel,
 } from "./state.js";
 
+// A number we do not have yet. Not "0" — that is a different claim, and this
+// screen's whole job is to say what the archive actually contains. The dash
+// sits in the same tabular-nums slot the real figure will take, so nothing
+// moves when it arrives.
+const UNKNOWN = `<span class="stat-unknown">—</span>`;
+const statValue = v => (v == null ? UNKNOWN : v.toLocaleString());
+
 // One headline stat, and the screen it opens. Every tile in this row is a
 // doorway, so a tile whose screen this archive does not run is not rendered at
 // all — leaving it would be a button that silently does nothing, which is the
@@ -28,24 +35,60 @@ function statTile(section, colour, label, id, value) {
   return `<button class="stat" onclick="showSection('${section}')">
       <span class="metric-icon ${colour}">${ICONS[section]}</span>
       <div><div class="k">${label}</div>
-      <div class="v" id="${id}">${(value || 0).toLocaleString()}</div></div></button>`;
+      <div class="v" id="${id}">${statValue(value)}</div></div></button>`;
+}
+
+// What the picker already handed us, shaped as a partial /api/summary.
+//
+// The card the user just clicked showed these two figures, and /api/summary
+// answers them with the same two aggregates over the same rows — COUNT(*) and
+// SUM(size) under _VISIBLE, the root clause being a no-op given the one root
+// per archive database that db.reconcile_root enforces. So this is not an
+// estimate that the real answer might contradict a moment later: it is the same
+// number, arriving sooner. Everything else is null, and draws as unknown.
+function seededSummary() {
+  return {
+    total: S.arch ? S.arch.files : null,
+    size: S.arch ? S.arch.size : null,
+    types: null,
+    enriched: null,
+    with_gps: null,
+  };
 }
 
 export async function renderOverview(m) {
   const gen = S.nav, root = S.arch.id;
-  const [s, ds, fs, ps, ss, ts] = await Promise.all([
+  // Asked for before the first paint and awaited after it: the six requests are
+  // in flight while the page draws, rather than the page waiting on all six.
+  const pending = Promise.all([
     jget("/api/summary?root=" + root),
     jget("/api/dups/summary?root=" + root),
     jget("/api/faces/summary?root=" + root),
     jget("/api/pets/summary?root=" + root).catch(() => null),
     jget("/api/browse/semantic/status?root=" + root).catch(() => null),
     jget("/api/browse/text/status?root=" + root).catch(() => null)]);
+  paintOverview(m, seededSummary());
+  const [s, ds, fs, ps, ss, ts] = await pending;
   if (gen !== S.nav) return;   // user switched sections while these were loading
   S.dupsum = ds;
   S.facesum = fs;
   S.petsum = ps;
   S.semanticsum = ss;
   S.textsum = ts;
+  S.summary = s;
+  // The shell is already on screen and its ids are stable, so the numbers are
+  // filled in where they stand rather than by rebuilding the page under the
+  // user — the same way refreshPipeline keeps them climbing while work runs.
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerHTML = statValue(v); };
+  set("ov-total", s.total);
+  set("ov-enriched", s.enriched);
+  set("ov-gps", s.with_gps);
+  set("ov-dups", ds ? ds.duplicates : null);
+  renderStoragePanel(s);
+  renderHealthCards();   // its "done" lines quote the summaries that just landed
+}
+
+function paintOverview(m, s) {
   m.innerHTML = `<div class="pagehead">
       <div><h2 class="sec">Library overview</h2>
       <p>Everything important about this archive, at a glance.</p></div>
@@ -55,7 +98,7 @@ export async function renderOverview(m) {
       ${statTile("library", "blue", "All files", "ov-total", s.total)}
       ${statTile("timeline", "violet", "With a date", "ov-enriched", s.enriched)}
       ${statTile("places", "green", "With a location", "ov-gps", s.with_gps)}
-      ${statTile("dups", "orange", "Duplicate copies", "ov-dups", ds.duplicates)}
+      ${statTile("dups", "orange", "Duplicate copies", "ov-dups", s.duplicates)}
     </div>
     <div class="overview-grid">
       <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Progress on everything this archive runs</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>
@@ -64,7 +107,7 @@ export async function renderOverview(m) {
           <button type="button" class="manage-features" onclick="openFeatureSheet()">Manage features</button>
         </div>
       </div>
-      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage</h3><p id="ov-storage-caption">${fmtBytes(s.size)} across ${s.total.toLocaleString()} items</p></div><div class="metric-switch" id="storage-switch"></div></div>
+      <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage</h3><p id="ov-storage-caption">${storageCaption(s)}</p></div><div class="metric-switch" id="storage-switch"></div></div>
         <div class="storage-bar" id="typebar"></div><table class="types" id="typetbl"></table>
       </div>
     </div>`;
@@ -73,6 +116,11 @@ export async function renderOverview(m) {
   renderHealthCards();   // paint immediately from the last snapshot (if any)
   startPoll();           // single poller: /api/pipeline drives every status surface
 }
+// The archive's own totals, or what to say before they are known. Both figures
+// come from the same payload, so there is no half-known case to word.
+const storageCaption = s => (s.size == null || s.total == null
+  ? "Reading the catalogue…"
+  : `${fmtBytes(s.size)} across ${s.total.toLocaleString()} items`);
 // Fills the "Storage" panel (byte total + one bar + table) from an
 // /api/summary payload. Called from renderOverview on first paint AND from
 // refreshPipeline on every poll tick while the pipeline is busy, so bytes
@@ -106,7 +154,11 @@ export function setStorageMetric(metric) {
 }
 function renderStoragePanel(s) {
   const cap = document.getElementById("ov-storage-caption");
-  if (cap) cap.textContent = `${fmtBytes(s.size)} across ${s.total.toLocaleString()} items`;
+  if (cap) cap.textContent = storageCaption(s);
+  // The caption above is answerable from the picker's payload; the breakdown
+  // below is not, and an empty bar is the honest thing to show until it lands.
+  // Drawing one segment for "everything" would be inventing a shape.
+  if (!s.types) return;
   const key = storageMetric(), metric = STORAGE_METRICS[key];
   const colour = t => TYPE_COL[t.type] || TYPE_COL.other;
   // Sorted by the metric on screen, so the bar and the table below it read
