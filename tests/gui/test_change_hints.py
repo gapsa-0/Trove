@@ -136,3 +136,87 @@ def test_the_watcher_follows_the_open_archive(tmp_path, monkeypatch):
     assert w._root_id == 2
     w.stop()
     assert w._root_id is None
+
+
+# -- the watch waits for the walk --------------------------------------------
+#
+# Placing a recursive watch walks the tree and stats every file, inside Rust,
+# holding the GIL: ~20 s of a wholly unresponsive app on a 150k-file archive on
+# a spinning disk. Opening an archive must not wait for it, and neither must
+# anything else the server is being asked for. See _watch_when_walked.
+
+
+def _watching(jm, monkeypatch):
+    """Record what the manager asks the watcher to watch, without watching."""
+    placed: list[tuple[int, str]] = []
+    monkeypatch.setattr(jm._watcher, "start", lambda rid, path: placed.append((rid, path)))
+    return placed
+
+
+def test_opening_an_archive_does_not_place_the_watch(tmp_path, monkeypatch):
+    """The expensive part is not merely moved off the request thread -- it holds
+    the GIL, so a background thread would stall the app just the same. It waits
+    for a walk instead."""
+    jm = _job_manager(tmp_path, monkeypatch)
+    placed = _watching(jm, monkeypatch)
+    monkeypatch.setattr(Config, "archive_path", lambda self, aid: str(tmp_path))
+    monkeypatch.setattr(jm.scheduler, "nudge", lambda: None)
+    monkeypatch.setattr(jm, "_open_db", lambda rid: __import__("sqlite3").connect(":memory:"))
+
+    jm.open_archive(1)
+
+    assert placed == []
+    assert jm._watch_owed == (1, str(tmp_path))
+
+
+def test_the_walk_places_the_watch(tmp_path, monkeypatch):
+    """Once a count comes back the tree's metadata is cached, which is the whole
+    point of waiting: the same setup costs ~0.3 s instead of ~20 s."""
+    jm = _job_manager(tmp_path, monkeypatch)
+    placed = _watching(jm, monkeypatch)
+    jm._watch_when_walked(1, str(tmp_path))
+
+    assert jm.disk_count(1, str(tmp_path)) is not None
+    assert placed == [(1, str(tmp_path))]
+
+
+def test_the_watch_is_placed_once_however_many_walks_report_in(tmp_path, monkeypatch):
+    """The scheduler's tick and the status endpoint's snapshot both call
+    disk_count and routinely overlap; the debt is claimed under a lock."""
+    jm = _job_manager(tmp_path, monkeypatch)
+    placed = _watching(jm, monkeypatch)
+    jm._watch_when_walked(1, str(tmp_path))
+
+    for _ in range(5):
+        jm.disk_count(1, str(tmp_path))
+
+    assert placed == [(1, str(tmp_path))]
+
+
+def test_a_missing_folder_places_no_watch(tmp_path, monkeypatch):
+    """disk_count answers None for a folder that is gone -- an unplugged drive
+    is not something to start watching, and the debt stays owed for when it
+    comes back."""
+    jm = _job_manager(tmp_path, monkeypatch)
+    placed = _watching(jm, monkeypatch)
+    gone = str(tmp_path / "unplugged")
+    jm._watch_when_walked(1, gone)
+
+    assert jm.disk_count(1, gone) is None
+    assert placed == []
+    assert jm._watch_owed == (1, gone)
+
+
+def test_closing_the_archive_cancels_a_watch_not_yet_placed(tmp_path, monkeypatch):
+    """A walk already in flight can finish after the close. Without cancelling
+    the debt it would start watching an archive the user has just left."""
+    jm = _job_manager(tmp_path, monkeypatch)
+    placed = _watching(jm, monkeypatch)
+    jm._open_root_id = 1
+    jm._watch_when_walked(1, str(tmp_path))
+
+    jm.close_archive(1)
+    jm.disk_count(1, str(tmp_path))
+
+    assert placed == []
+    assert jm._watch_owed is None

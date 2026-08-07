@@ -130,6 +130,12 @@ class JobManager:
         # looked at is watched -- the same rule the scheduler follows, which
         # also keeps the inotify watches held down to one tree.
         self._watcher = watcher.ArchiveWatcher(self.note_files_changed)
+        # The root whose watch is owed but not yet placed, and the lock that
+        # makes claiming it a single decision. open_archive records the debt
+        # here rather than paying it on the spot; disk_count settles it once
+        # the tree has been walked. See _watch_when_walked.
+        self._watch_owed: tuple[int, str] | None = None
+        self._watch_lock = threading.Lock()
 
     def shutdown(self, timeout: float = 8.0) -> bool:
         """Cancel all work and stop the scheduler before the HTTP server exits."""
@@ -204,8 +210,15 @@ class JobManager:
 
         Kept on the manager because ``stages._pending`` reads it off whatever
         object it is handed, and that object is this one.
+
+        Also where a deferred filesystem watch gets placed: a count came back,
+        so this root's tree has been walked and the watch can be set up over
+        warm metadata instead of cold. See ``_watch_when_walked``.
         """
-        return self._disk.count(root_id, root_path, max_age=max_age, allow_walk=allow_walk)
+        count = self._disk.count(root_id, root_path, max_age=max_age, allow_walk=allow_walk)
+        if count is not None:
+            self._place_owed_watch(root_id, root_path)
+        return count
 
     def dedup_needed(self, root_id: int) -> bool:
         """Whether a duplicate rebuild is outstanding. See ``archives``.
@@ -396,8 +409,46 @@ class JobManager:
         self._paused_stages = set(stages_off)
         path = self.cfg.archive_path(root_id)
         if path is not None:
-            self._watcher.start(root_id, path)
+            self._watch_when_walked(root_id, path)
         self.nudge()
+
+    def _watch_when_walked(self, root_id: int, path: str) -> None:
+        """Owe this root a filesystem watch, to be placed after the next walk.
+
+        Setting a recursive watch is not the cheap call it looks like. It walks
+        the whole tree and stats every entry to find the directories it needs a
+        watch on -- 151,310 ``statx`` calls for 595 watches on a 150k-file
+        archive -- and ``watchfiles`` does that inside Rust, holding the GIL for
+        its whole duration. Cold, that is one 1 KB metadata record per file off
+        the disk: ~150 MB, and ~20 seconds on a spinning drive. Held GIL means
+        those seconds are not slow, they are *stopped* -- no request of any kind
+        is served while it runs, and opening an archive used to wait out all of
+        it before the first screen could be drawn.
+
+        So the watch is owed here and paid in ``disk_count``. The scheduler
+        already walks this tree to decide what is pending, in Python, where
+        every ``scandir`` releases the GIL and the app stays responsive
+        throughout. Once that walk has been through, the same metadata is in the
+        page cache and setting the watch over it costs ~0.3 s instead of ~20.
+
+        Nothing is lost by waiting: this is a hint, and the poll behind it is
+        what is actually correct -- see ``watcher``'s module docstring.
+        """
+        with self._watch_lock:
+            self._watch_owed = (root_id, path)
+
+    def _place_owed_watch(self, root_id: int, root_path: str) -> None:
+        """Start the watch this root was owed, now that its tree is walked.
+
+        Claimed under the lock so a burst of concurrent ``disk_count`` calls --
+        the scheduler's tick and the status endpoint's snapshot routinely
+        overlap -- places it exactly once.
+        """
+        with self._watch_lock:
+            if self._watch_owed != (root_id, root_path):
+                return
+            self._watch_owed = None
+        self._watcher.start(root_id, root_path)
 
     def close_archive(self, root_id: int | None = None) -> None:
         """Stop work when the currently viewed archive is closed."""
@@ -415,6 +466,13 @@ class JobManager:
         # archive being closed: a mismatched root_id returns above without
         # touching anything, and stopping the watch there would leave the
         # archive that is still open unwatched.
+        #
+        # The debt goes first. A watch owed but not yet placed is settled by
+        # whichever thread next finishes a walk, and a walk already in flight
+        # can land after this returns -- forgetting to cancel here would start
+        # watching an archive the user has just closed.
+        with self._watch_lock:
+            self._watch_owed = None
         self._watcher.stop()
 
     def _persist_pause(self) -> None:
