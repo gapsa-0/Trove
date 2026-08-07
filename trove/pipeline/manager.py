@@ -467,6 +467,54 @@ class JobManager:
         except Exception:
             logger.debug("warm: gave up", exc_info=True)
 
+    def _refresh_planner_stats(self, root_id: int) -> None:
+        """Keep SQLite's query planner supplied with table statistics.
+
+        Without ``sqlite_stat1`` the planner guesses at how selective each index
+        is, and on this schema it guesses badly: the Overview's semantic
+        breakdown chose to walk 97k files and fetch each one's row out of the
+        169 MB embeddings table, taking 1218 ms to count three integers. With
+        statistics it reads the index instead and takes 6 ms. Nothing about the
+        query changed -- only what the planner knew.
+
+        ``PRAGMA optimize`` rather than a bare ``ANALYZE``: it re-analyses only
+        the tables whose contents have moved far enough from the recorded stats
+        to matter. On a 97k-file archive that is ~660 ms the first time and
+        ~1 ms on every job completion after it, which is what makes it
+        affordable here rather than on some schedule nobody would tune.
+
+        The two constants are measured, not folklore:
+
+        * ``0x10002`` adds the "consider every table" bit to the usual analyse
+          flag. Without it ``optimize`` only looks at tables *this connection*
+          has queried, and this connection is opened to do nothing else -- it
+          produced 17 of the 22 stat rows a full ANALYZE writes, missing the
+          ones this is for. Older SQLite ignores the unknown bit and behaves as
+          it does today.
+        * ``analysis_limit`` bounds how much of each index ANALYZE reads.
+          SQLite's suggested 400 is cheap but too coarse here: it costs the
+          semantic count its good plan (356 ms instead of 258 ms, driving from
+          `files` and doing 97k row lookups rather than reading 41k index
+          entries). 50000 buys the right plan and still bounds the work on an
+          archive much larger than this one.
+
+        Best-effort, like the disk-count invalidation beside it. A job has
+        already done its work and reported by the time this runs; a locked
+        writer or a read-only file must not turn that into a failure.
+        """
+        try:
+            conn = db.connect(self.cfg.archive_db_path(root_id))
+        except sqlite3.Error:
+            return
+        try:
+            conn.execute("PRAGMA analysis_limit=50000")
+            conn.execute("PRAGMA optimize=0x10002")
+            conn.commit()
+        except sqlite3.Error:
+            logger.debug("could not refresh planner stats for root=%s", root_id, exc_info=True)
+        finally:
+            conn.close()
+
     def _watch_when_walked(self, root_id: int, path: str) -> None:
         """Owe this root a filesystem watch, to be placed after the next walk.
 
@@ -697,6 +745,10 @@ class JobManager:
             # walk so freshness reflects it immediately.
             if job.kind == "scan" and job.root_id is not None:
                 self._disk.invalidate(job.root_id)
+            # A stage that just rewrote a table changed the shape of what the
+            # planner has to reason about, and this is the moment to tell it.
+            if job.root_id is not None:
+                self._refresh_planner_stats(job.root_id)
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()

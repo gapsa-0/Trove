@@ -58,6 +58,28 @@ CREATE INDEX IF NOT EXISTS idx_files_browse ON files(present, hidden, root_id, m
 -- disturbing to save a megabyte here.
 CREATE INDEX IF NOT EXISTS idx_files_size ON files(present, size);
 
+-- The Overview asks the same two questions the start page does, but for one
+-- archive: how many files and how many bytes, and the same split by media type.
+-- The `?root=` is what makes it a different query -- idx_files_size has no
+-- root_id, so adding that predicate drops the covering and reads the table
+-- again, and the by-type split needs `media_type` and `size` together, which
+-- no other index carries. Measured on a 97k-file archive, cold: the totals
+-- 1.3s -> 10ms, the type breakdown 2.4s -> 15ms, for 1.9 MB of pages.
+--
+-- Column order is the predicate's, then the two aggregated columns, so all
+-- three queries are answered from the index without touching the table.
+CREATE INDEX IF NOT EXISTS idx_files_stats ON files(present, root_id, media_type, size);
+
+-- The other half of the same problem, from the other end. Several counts join
+-- a per-file table (geo, dates, semantic_embeddings) back to `files` by id, and
+-- `id` is the rowid -- so the planner reaches for the table itself, which on a
+-- 274 MB archive means reading rows to learn a media type. Spelling `id` out as
+-- an indexed column gives those joins somewhere covering to land: the GPS count
+-- 156ms -> 37ms, and the semantic breakdown stops dragging in 169 MB of
+-- embedding vectors to count three integers.
+CREATE INDEX IF NOT EXISTS idx_files_by_id
+    ON files(id, media_type, present, hidden, root_id);
+
 CREATE TABLE IF NOT EXISTS scan_runs (
     id             INTEGER PRIMARY KEY,
     started_at     TEXT NOT NULL,
@@ -519,6 +541,23 @@ CREATE TABLE IF NOT EXISTS semantic_embeddings (
 );
 CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_status
     ON semantic_embeddings(status);
+
+-- Counting what is indexed must not read what was indexed. `embedding` is a
+-- 3072-byte vector stored inline, which makes this table 169 MB of the 274 MB
+-- an archive of 41k vectors occupies -- and `file_id` is the rowid, so the
+-- obvious plan for "join each file to its embedding row" fetches those vectors
+-- off disk to look at four narrow columns beside them. The Overview's semantic
+-- card cost 1.2-2.7s that way, to report three integers.
+--
+-- Every column semantic_summary reads, in the order it constrains them, so the
+-- count is answered from this index and the vectors are never touched: 1218ms
+-- -> 6ms. The leading term is an expression because the query is written
+-- against COALESCE(indexer_version,'') -- a plain column index cannot serve it.
+--
+-- Needs table statistics to be chosen (see JobManager._refresh_planner_stats);
+-- without them the planner still prefers the rowid lookup into the vectors.
+CREATE INDEX IF NOT EXISTS idx_semantic_summary ON semantic_embeddings(
+    COALESCE(indexer_version, ''), status, file_id, source_sha256);
 
 -- ---- Phase 8: text inside documents and pictures --------------------------
 
