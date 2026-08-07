@@ -16,9 +16,9 @@
 // summary of what was chosen and not the thing you operate.
 //
 // What you operate is the shelf of cards below it. Each cover shows what its
-// feature produces rather than describing it, and each card turns over to a
-// description of what it does. Cards are a fixed height and turn in place, so
-// reading one never moves the others.
+// feature produces rather than describing it, and resting the pointer on a card
+// turns it over to a description of what it does. Cards are a fixed height and
+// turn in place, so reading one never moves the others.
 //
 // The shelf holds the whole catalogue, the two undeclinable stages included --
 // they carry "Always runs" where the others carry Add. A shelf of only the
@@ -52,14 +52,13 @@ import {
 } from "./state.js";
 
 // The catalogue is app-wide and immutable within a session; the rest is this
-// visit's work in progress. `flipped` and `name` live here rather than in the
-// DOM so that adding a feature, which rebuilds the whole shelf, does not turn
-// back a card that was turned over or discard a name that was half typed.
-// Reading them back off the DOM instead is what used to carry the last
-// archive's name into the next one: the panel's markup outlives the visit that
-// built it.
+// visit's work in progress. `name` lives here rather than in the DOM so that
+// adding a feature, which rebuilds the whole shelf, does not discard a name
+// that was half typed. Reading it back off the DOM instead is what used to
+// carry the last archive's name into the next one: the panel's markup outlives
+// the visit that built it.
 const SETUP = {
-  catalogue: [], chosen: new Set(), flipped: new Set(),
+  catalogue: [], chosen: new Set(),
   path: "", name: "", busy: false, done: null,
 };
 
@@ -85,7 +84,6 @@ export async function openArchiveSetup(path, done) {
   }
   SETUP.done = done || null;
   SETUP.path = path;
-  SETUP.flipped = new Set();
   // Empty, with the folder's own name as the placeholder it falls back to.
   SETUP.name = "";
   // A new archive starts with only the two features it cannot do without, and
@@ -105,7 +103,6 @@ export async function openArchiveSetup(path, done) {
 
 export function closeArchiveSetup() {
   SETUP.path = ""; SETUP.name = ""; SETUP.busy = false; SETUP.done = null;
-  SETUP.flipped = new Set();
   document.getElementById("setup").style.display = "none";
   document.getElementById("picker").style.display = "";
 }
@@ -114,34 +111,23 @@ export function addFeature(id) {
   const f = feature(id);
   if (!f || !f.available || SETUP.chosen.has(id)) return;
   SETUP.chosen.add(id);
-  renderSetup(id);
+  syncSetup(id);
 }
 
 export function removeFeature(id) {
   const f = feature(id);
   if (!f || f.required || !SETUP.chosen.has(id)) return;
   SETUP.chosen.delete(id);
-  renderSetup();
+  syncSetup();
 }
 
 // Every keystroke in the name field, so that what has been typed survives the
 // re-render adding a feature performs. Nothing else is re-rendered for it.
 export function setArchiveName(value) { SETUP.name = value; }
 
-// Clicking a card's front is the same as pressing its pill.
+// Clicking a card is the same as pressing its pill, on either of its faces.
 export function toggleFeature(id) {
   if (SETUP.chosen.has(id)) removeFeature(id); else addFeature(id);
-}
-
-// Turned over in place rather than by re-rendering the shelf, so focus can be
-// handed straight to the button that replaces the one just pressed.
-export function flipFeature(id) {
-  const card = document.querySelector(`.set-card[data-feature="${id}"]`);
-  if (!card) return;
-  card.querySelectorAll(".set-face").forEach(face => { face.hidden = !face.hidden; });
-  if (SETUP.flipped.has(id)) SETUP.flipped.delete(id); else SETUP.flipped.add(id);
-  const flip = card.querySelector(".set-face:not([hidden]) .set-flip");
-  if (flip) flip.focus();
 }
 
 // ---- previews --------------------------------------------------------------
@@ -224,7 +210,7 @@ function preview(f) {
 function chipItem(f) {
   const out = f.required ? "" : `<button class="set-chip-out" type="button"
         onclick="removeFeature('${f.id}')"
-        aria-label="Remove ${esc(f.label)} from this archive">
+        aria-label="Remove ${esc(f.label)} from this archive" title="Remove ${esc(f.label)} from this archive">
         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.4 3.4 8.6 8.6M8.6 3.4 3.4 8.6"/></svg>
       </button>`;
   return `<span class="set-chip${f.required ? " fixed" : ""}" data-feature="${f.id}"
@@ -244,7 +230,13 @@ function pill(f) {
   if (f.required) return `<span class="set-always">Always runs</span>`;
   if (!f.available) return `<span class="set-unavailable">Not in this build</span>`;
   const chosen = SETUP.chosen.has(f.id);
-  return `<button class="set-add" type="button" aria-pressed="${chosen}">${chosen
+  // Its own handler rather than a click left to reach the face beneath it. The
+  // pill is printed on the description too, and that face is not a switch --
+  // pressing the prose you are reading must not add a feature -- so a pill
+  // relying on the front's click did nothing there. Stopped, or the one on the
+  // front would fire twice and land back where it started.
+  return `<button class="set-add" type="button" aria-pressed="${chosen}"
+      onclick="event.stopPropagation();toggleFeature('${f.id}')">${chosen
     ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 5 5L19 7"/></svg>On`
     : "Add"}</button>`;
 }
@@ -255,33 +247,50 @@ function pill(f) {
 // pointer that promises both.
 function pressable(f) { return !f.required && f.available; }
 
+// The price and the pill, which both faces of a card carry. The description
+// covers the card rather than sitting beside it, so a foot printed only on the
+// front would mean that reading what a feature does takes away the control for
+// choosing it -- on the one screen whose whole job is choosing.
+function cardFoot(f) {
+  return `<div class="set-card-foot">${footInner(f)}</div>`;
+}
+
+// Its contents alone, because syncSetup refills the foot in place rather than
+// rebuilding the card around it -- and a second copy of this here would be the
+// one that goes stale.
+function footInner(f) {
+  return `<span class="${costClass(f)}">${cost(f).text}</span>${pill(f)}`;
+}
+
+/* A card is its front until the pointer rests on it, and its description for as
+   long as the pointer stays. No control for it at all: the reveal is CSS on
+   `:hover` (see .set-back in setup.css, which owns the delay that keeps a
+   pointer merely crossing the shelf from turning every card it passes).
+
+   Both faces are always in the document. Nothing here tracks which card is
+   showing what, which is what used to make re-rendering the shelf -- something
+   pressing Add does -- a risk of turning back a card someone was reading. */
 function cardItem(f) {
   const chosen = SETUP.chosen.has(f.id);
-  const back = SETUP.flipped.has(f.id);
-  const { text } = cost(f);
+  // Both faces, not just the front. The description covers the card, so a
+  // handler on the front alone means the card stops being a switch the moment
+  // you point at it -- which is every moment you might press it.
+  const press = pressable(f) ? ` onclick="toggleFeature('${f.id}')"` : "";
   return `<li class="set-card${chosen ? " on" : ""}${f.available ? "" : " off"}${f.required
     ? " fixed" : ""}" data-feature="${f.id}" draggable="${pressable(f)}">
-      <div class="set-face"${back ? " hidden" : ""}${pressable(f)
-    ? ` onclick="toggleFeature('${f.id}')"` : ""}>
+      <div class="set-face"${press}>
         <span class="set-cover">${preview(f)}</span>
         <div class="set-meta">
           <span class="set-card-name">${mark(f)}${esc(f.label)}</span>
           <p class="set-card-line">${esc(f.tagline)}</p>
-          <button class="set-flip" type="button"
-            onclick="event.stopPropagation();flipFeature('${f.id}')">More info</button>
-          <div class="set-card-foot">
-            <span class="${costClass(f)}">${text}</span>
-            ${pill(f)}
-          </div>
+          ${cardFoot(f)}
         </div>
       </div>
-      <div class="set-face set-back"${back ? "" : " hidden"}>
+      <div class="set-face set-back"${press}>
         <span class="set-card-name">${mark(f)}${esc(f.label)}</span>
         <p class="set-card-detail">${esc(f.detail)}</p>
-        <div class="set-back-foot">
-          <button class="set-flip" type="button" onclick="flipFeature('${f.id}')">Back</button>
-          ${featureDocsLink(f.id)}
-        </div>
+        <div class="set-back-foot">${featureDocsLink(f.id)}</div>
+        ${cardFoot(f)}
       </div>
     </li>`;
 }
@@ -399,7 +408,7 @@ function totalLine() {
     : `<b>0 MB</b> to download. This archive starts work as soon as you create it.`;
 }
 
-function renderSetup(landed) {
+function renderSetup() {
   const live = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id));
   const waiting = SETUP.catalogue.filter(f => pressable(f) && !SETUP.chosen.has(f.id));
   document.getElementById("setup-body").innerHTML = `
@@ -425,8 +434,7 @@ function renderSetup(landed) {
         <span class="set-pipe-mb">${pendingDownloadMb()} MB</span>
       </header>
       <div class="set-flow" id="set-flow">${pipeline(live, waiting)}</div>
-      ${trunkNote()}
-      ${pairNote()}
+      <div id="set-notes">${trunkNote()}${pairNote()}</div>
     </section>
 
     <section class="set-shelf" id="set-shelf" aria-labelledby="set-shelf-h">
@@ -456,6 +464,44 @@ function renderSetup(landed) {
       </div>
     </div>`;
   wireDragAndDrop();
+  watchChain(document.getElementById("set-flow"));
+}
+
+/* What changes when a feature is added or removed: the chain, the running
+   total, the two notes about it, and one card's foot. Not the shelf.
+
+   Rebuilding the whole panel for it was destroying the card under the pointer,
+   and a card that is destroyed and rebuilt loses `:hover` until the pointer
+   moves again -- so pressing Add flashed the cover art of the card you were
+   reading before its description came back. Patching leaves every card's
+   element alive, and with it the hover the description hangs on.
+
+   The two containers keep their listeners for the same reason: `#set-pipe` and
+   `#set-shelf` are not replaced here, so wireDragAndDrop is not run again and
+   cannot stack a second copy of itself on them. */
+function syncSetup(landed) {
+  const live = SETUP.catalogue.filter(f => SETUP.chosen.has(f.id));
+  const waiting = SETUP.catalogue.filter(f => pressable(f) && !SETUP.chosen.has(f.id));
+  const set = (selector, html) => {
+    const el = document.querySelector(selector);
+    if (el) el.innerHTML = html;
+  };
+  set(".set-pipe-mb", `${pendingDownloadMb()} MB`);
+  set("#set-flow", pipeline(live, waiting));
+  set("#set-notes", `${trunkNote()}${pairNote()}`);
+  set("#set-shelf-h", waiting.length ? "Add to the pipeline" : "Everything is switched on");
+  set(".set-shelf-head em", waiting.length ? "Drag a card onto the pipeline, or press Add" : "");
+  set(".set-total", totalLine());
+  set(".set-count", `${live.length} of ${SETUP.catalogue.length} features on.`);
+  SETUP.catalogue.forEach(f => {
+    const card = document.querySelector(`.set-card[data-feature="${f.id}"]`);
+    if (!card) return;
+    card.classList.toggle("on", SETUP.chosen.has(f.id));
+    // Both feet: the front's and the description's are the same control.
+    card.querySelectorAll(".set-card-foot").forEach(foot => {
+      foot.innerHTML = footInner(f);
+    });
+  });
   watchChain(document.getElementById("set-flow"));
   if (landed) flashLanded(landed);
 }

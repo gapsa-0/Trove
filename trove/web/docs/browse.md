@@ -25,8 +25,8 @@ feature: it is the one way every archive has, whatever else it runs, and the
 part of the name that matched is marked on the result.
 
 **Search by document text** and **Search by picture text** share one way, headed
-with whichever of them you have on — or *Search by text extracted* when both
-are. [The first](documents.md) reads the characters a file already stores —
+with whichever of them you have on, or *Search by text extracted* when both
+are. [The first](documents.md) reads the characters a file already stores:
 Word, Excel, PowerPoint, OpenDocument, plain text, CSV, web pages, notebooks and
 PDFs with a text layer; [the second](ocr.md) reads the writing off screenshots,
 photos and scanned PDFs. They write into the same passages, so either one alone
@@ -50,7 +50,7 @@ feeding a way; pressing it opens that feature's page. The shared way has two,
 which is why they are marks rather than a row of link text.
 
 **A way that found nothing still reports.** It collapses into one line at the
-foot — "Nothing found by filename or description" — rather than a heading over
+foot ("Nothing found by filename or description") rather than a heading over
 an empty row. That line is there because "the documents were searched and none
 matched" is an answer, and its absence used to leave people wondering whether a
 feature had run at all.
@@ -63,7 +63,7 @@ the heading above the results has already said how they were found.
 ## What the panel says before you type
 
 With the box empty, Browse lists the ways it can answer a query, what each one
-matches, and how much of the archive it currently covers — how many files have
+matches, and how much of the archive it currently covers: how many files have
 been read, how many are still queued. It is the same list as the result
 headings, which is deliberate: a way that gains a reader gains a row, so what
 the screen promises and what it labels cannot drift apart.

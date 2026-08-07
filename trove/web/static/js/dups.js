@@ -22,6 +22,9 @@ import {
 import {
   openItem,
 } from "./item.js";
+import {
+  why,
+} from "./statwhy.js";
 
 const DUP_PAGE_SIZE = 40;
 // What an archive with nothing grouped yet gets in place of the list: the
@@ -44,10 +47,14 @@ export async function renderDedup(m) {
   if (gen !== S.nav) return;
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Review redundant copies Archive has safely hidden from your main library.</p></div>${docsButton("dups")}</div>
     <div class="statrow">
-      <div class="stat"><div class="k">Unique files</div><div class="v">${(ds.unique || 0).toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Duplicate groups</div><div class="v">${ds.groups.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Reclaimable</div><div class="v">${fmtBytes(ds.reclaimable)}</div></div>
+      <div class="stat"><div><div class="k">Unique files</div><div class="v">${(ds.unique || 0).toLocaleString()}</div></div>
+        ${why("Unique files", (ds.unique || 0).toLocaleString(), "Every file you have, counting each group of copies only once.")}</div>
+      <div class="stat"><div><div class="k">Duplicate groups</div><div class="v">${ds.groups.toLocaleString()}</div></div>
+        ${why("Duplicate groups", ds.groups.toLocaleString(), "Sets of files found to be the same picture. One is kept; the rest are copies.")}</div>
+      <div class="stat"><div><div class="k">Redundant copies</div><div class="v">${ds.duplicates.toLocaleString()}</div></div>
+        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies inside those groups. Still on disk, hidden from Browse.")}</div>
+      <div class="stat"><div><div class="k">Reclaimable</div><div class="v">${fmtBytes(ds.reclaimable)}</div></div>
+        ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together: the space deleting them would give back.")}</div>
     </div>
     <div class="panel">${dedupStatusRow(ds)}</div>
     ${dupBreakdownPanel(ds)}
@@ -154,27 +161,44 @@ function dedupStatusRow(ds) {
 // to photos or to a much smaller number of videos. Same bar/legend
 // vocabulary as the Overview's storage panel, and the media colours are the
 // shared TYPE_COL so a hue means the same thing on every screen.
+//
+// The last row is the other half of that question -- how many files of each
+// type survive deduplication -- and it is deliberately measured against its
+// OWN total. Its bar sums to `unique` (the tile above, one file per group)
+// while the two copy rows sum to `duplicates`, so segments must not be read
+// across rows; the label says "unique" and a rule separates it for exactly
+// that reason.
 const DUP_MATCH_LABEL = { identical: "Identical copies", visual: "Visual matches" };
 const DUP_MATCH_COL = { identical: "#30d158", visual: "#5b8cff" };
 function dupBreakdownPanel(ds) {
+  const mediaName = k => typeLabel(k), mediaCol = k => TYPE_COL[k] || TYPE_COL.other;
+  const copies = ds.duplicates || 1;
   const rows = [
-    { label: "By match", items: ds.by_match,
+    { label: "By match", items: ds.by_match, total: copies,
       name: k => DUP_MATCH_LABEL[k] || k, colour: k => DUP_MATCH_COL[k] || "#8e8e93" },
-    { label: "By media", items: ds.by_media,
-      name: k => typeLabel(k), colour: k => TYPE_COL[k] || TYPE_COL.other },
+    { label: "By media", items: ds.by_media, total: copies,
+      name: mediaName, colour: mediaCol },
+    { label: "By type", sub: "unique", items: ds.by_unique, total: ds.unique || 1,
+      name: mediaName, colour: mediaCol, apart: true },
   ].filter(r => (r.items || []).length);
   if (!rows.length) return "";       // older payload, or nothing to break down
-  const total = ds.duplicates || 1;
-  const section = r => `<div class="type-bar-row">
-      <span class="type-bar-label">${r.label}</span>
+  const section = r => `<div class="type-bar-row${r.apart ? " type-bar-apart" : ""}">
+      <span class="type-bar-label">${r.label}${r.sub ? `<small>${r.sub}</small>` : ""}</span>
       <div class="type-summary-bar">${r.items.map(i =>
-    `<div class="type-summary-segment" style="width:${100 * i.count / total}%;background:${r.colour(i.key)}" title="${r.name(i.key)}: ${i.count.toLocaleString()} · ${fmtBytes(i.bytes)}"></div>`
+    `<div class="type-summary-segment" style="width:${100 * i.count / r.total}%;background:${r.colour(i.key)}" title="${r.name(i.key)}: ${i.count.toLocaleString()} · ${fmtBytes(i.bytes)}"></div>`
   ).join("")}</div></div>
     <div class="type-summary-legend">${r.items.map(i =>
-    `<span><span class="type-summary-key" style="background:${r.colour(i.key)}"></span>${r.name(i.key)} <span class="muted">· ${i.count.toLocaleString()} (${(100 * i.count / total).toFixed(1)}%) · ${fmtBytes(i.bytes)}</span></span>`
+    `<span><span class="type-summary-key" style="background:${r.colour(i.key)}"></span>${r.name(i.key)} <span class="muted">· ${i.count.toLocaleString()} (${(100 * i.count / r.total).toFixed(1)}%) · ${fmtBytes(i.bytes)}</span></span>`
   ).join("")}</div>`;
+  // Headed by what the panel actually holds: with no groups yet the two copy
+  // rows are empty and only the unique breakdown is left, and calling that
+  // "what the copies are" would describe a row that is not about copies.
+  const dups = rows.some(r => !r.apart);
   return `<div class="panel dup-breakdown"><div class="panel-heading"><div>
-      <h3>What the copies are</h3><p>Every redundant copy, split two ways</p></div></div>
+      <h3>${dups ? "What the copies are" : "What the archive holds"}</h3>
+      <p>${dups
+    ? "Every redundant copy, split two ways, beside the unique files they sit among"
+    : "Unique files by type"}</p></div></div>
     ${rows.map(section).join("")}</div>`;
 }
 /* Open a copy with the arrows bounded by ITS group.

@@ -318,6 +318,22 @@ table.types .share {
   flex: none;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.3;
+}
+
+/* Which total the row is a share of, when it isn't the one above it. */
+.type-bar-label small {
+  display: block;
+  font-size: 10px;
+  opacity: .75;
+}
+
+/* A row measured against a different total: ruled off so its segments are not
+   read as another slice of the rows above. */
+.type-bar-apart {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 4px;
 }
 
 .type-bar-row .type-summary-bar {

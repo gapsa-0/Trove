@@ -211,7 +211,7 @@ class Backends:
         """
         if self.face is None and self.pet is None:
             detail = " ".join(self.problems) or "no reason was reported"
-            raise ModelUnavailableError(f"detect backend unavailable — {detail}")
+            raise ModelUnavailableError(f"detect backend unavailable: {detail}")
 
 
 def _unavailable(kind: str, exc: Exception, log: Log | None, problems: list[str]) -> None:

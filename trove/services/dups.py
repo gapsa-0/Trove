@@ -13,42 +13,47 @@ from typing import Any
 from ._common import _NOT_HIDDEN, _VISIBLE, _root_clause, reading
 
 
-@reading
-def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
-    """The Duplicates panel's summary tile: unique/group/duplicate/reclaimable
-    -bytes totals, how much is still waiting to be compared, plus the redundant
-    copies broken down by match type (identical vs visual) and by media type."""
-    rc, rp = _root_clause(root_id)
-    # The archive as the rest of the app counts it: every file, with each
-    # duplicate group contributing only its canonical. `hidden` is dedup's own
-    # column (nothing else writes it), so this is the same population People,
-    # Pets and Browse work over -- and it stays honest before dedup has ever
-    # run, when nothing is hidden and every file is still its own unique one.
-    unique = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}{rc}", rp).fetchone()[0]
-    row = conn.execute(
-        f"""SELECT COUNT(*) groups,
-                   COALESCE(SUM(g.member_count-1),0) dups,
-                   COALESCE(SUM(g.redundant_bytes),0) bytes
-            FROM dup_groups g
-            JOIN files f ON f.id=g.canonical_file_id
-            WHERE 1=1{rc}""",
-        rp,
-    ).fetchone()
-    # Breakdown of the redundant copies: "24,102
-    # duplicates" says nothing about what they are. Two cuts of the same
-    # rows, so both add up to `duplicates`/`reclaimable` exactly:
-    #
-    # * by match -- byte-identical to the kept copy, or only visually the
-    #   same (a re-compressed export). Decided per MEMBER, not by the
-    #   group's `method`: a perceptual group routinely also contains exact
-    #   copies, and this is the same rule the duplicate tiles label
-    #   themselves with, so the panel can never contradict them.
-    # * by media type -- a hundred redundant videos and a hundred redundant
-    #   thumbnails are not the same news.
-    #
-    # `f` is the canonical here, same as in the count above, so the shared
-    # _root_clause keeps filtering on the root the group belongs to; `d` is
-    # the redundant copy being described.
+def _add(bucket: dict[str, dict[str, int]], key: str | None, n: int, size: int) -> None:
+    """Fold one row into a breakdown. Accumulated rather than assigned: a NULL
+    media_type and a literal 'other' land on the same key, and the second must
+    not erase the first."""
+    acc = bucket.setdefault(key or "other", {"count": 0, "bytes": 0})
+    acc["count"] += n
+    acc["bytes"] += size
+
+
+def _ranked(
+    bucket: dict[str, dict[str, int]], order: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """A breakdown as the screen draws it: biggest first, so the bar and its
+    legend read in the same order -- or in a fixed order where one exists, which
+    is what keeps a bar's colours from swapping as the counts move."""
+    items: list[dict[str, Any]] = [{"key": k, **v} for k, v in bucket.items()]
+    if order:
+        items.sort(key=lambda i: order.index(i["key"]) if i["key"] in order else len(order))
+    else:
+        items.sort(key=lambda i: (-i["count"], i["key"]))
+    return items
+
+
+def _copy_breakdowns(
+    conn: sqlite3.Connection, rc: str, rp: list[Any]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The redundant copies, cut two ways: "24,102 duplicates" says nothing
+    about what they are. Both cuts are of the same rows, so both add up to
+    `duplicates`/`reclaimable` exactly.
+
+    * by match -- byte-identical to the kept copy, or only visually the same (a
+      re-compressed export). Decided per MEMBER, not by the group's `method`: a
+      perceptual group routinely also contains exact copies, and this is the
+      same rule the duplicate tiles label themselves with, so the panel can
+      never contradict them.
+    * by media type -- a hundred redundant videos and a hundred redundant
+      thumbnails are not the same news.
+
+    `f` is the canonical, so the shared `_root_clause` keeps filtering on the
+    root the group belongs to; `d` is the redundant copy being described.
+    """
     by_match: dict[str, dict[str, int]] = {}
     by_media: dict[str, dict[str, int]] = {}
     for r in conn.execute(
@@ -64,32 +69,58 @@ def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[st
             GROUP BY match_type, d.media_type""",
         rp,
     ):
-        for bucket, key in (
-            (by_match, r["match_type"]),
-            (by_media, r["media_type"] or "other"),
-        ):
-            acc = bucket.setdefault(key, {"count": 0, "bytes": 0})
-            acc["count"] += r["n"]
-            acc["bytes"] += r["bytes"]
+        _add(by_match, r["match_type"], r["n"], r["bytes"])
+        _add(by_media, r["media_type"], r["n"], r["bytes"])
+    return _ranked(by_match, ["identical", "visual"]), _ranked(by_media)
 
-    def _ranked(
-        bucket: dict[str, dict[str, int]], order: list[str] | None = None
-    ) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = [{"key": k, **v} for k, v in bucket.items()]
-        if order:  # fixed order where one exists (identical first)
-            items.sort(key=lambda i: order.index(i["key"]) if i["key"] in order else len(order))
-        else:
-            items.sort(key=lambda i: (-i["count"], i["key"]))
-        return items
 
+@reading
+def dup_summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
+    """The Duplicates panel's summary tile: unique/group/duplicate/reclaimable
+    -bytes totals, how much is still waiting to be compared, the redundant
+    copies broken down by match type (identical vs visual) and by media type,
+    plus the unique files themselves broken down by media type.
+
+    The three breakdowns are not one number cut three ways: `by_match` and
+    `by_media` both sum to `duplicates`, `by_unique` sums to `unique`."""
+    rc, rp = _root_clause(root_id)
+    # The archive as the rest of the app counts it: every file, with each
+    # duplicate group contributing only its canonical. `hidden` is dedup's own
+    # column (nothing else writes it), so this is the same population People,
+    # Pets and Browse work over -- and it stays honest before dedup has ever
+    # run, when nothing is hidden and every file is still its own unique one.
+    unique = conn.execute(f"SELECT COUNT(*) FROM files f WHERE {_NOT_HIDDEN}{rc}", rp).fetchone()[0]
+    # The same population cut by media type. Read against `unique`, NOT against
+    # `duplicates` like the two cuts in _copy_breakdowns -- a group's copies are
+    # one unique file here, so these are the files that survive deduplication,
+    # not the ones it hid. The screen labels the row accordingly.
+    by_unique: dict[str, dict[str, int]] = {}
+    for r in conn.execute(
+        f"""SELECT f.media_type AS media_type, COUNT(*) AS n, COALESCE(SUM(f.size), 0) AS bytes
+            FROM files f WHERE {_NOT_HIDDEN}{rc}
+            GROUP BY f.media_type""",
+        rp,
+    ):
+        _add(by_unique, r["media_type"], r["n"], r["bytes"])
+    row = conn.execute(
+        f"""SELECT COUNT(*) groups,
+                   COALESCE(SUM(g.member_count-1),0) dups,
+                   COALESCE(SUM(g.redundant_bytes),0) bytes
+            FROM dup_groups g
+            JOIN files f ON f.id=g.canonical_file_id
+            WHERE 1=1{rc}""",
+        rp,
+    ).fetchone()
+    by_match, by_media = _copy_breakdowns(conn, rc, rp)
     return {
         "unique": unique,
         "pending": _pending(conn, root_id),
         "groups": row["groups"],
         "duplicates": row["dups"],
         "reclaimable": row["bytes"],
-        "by_match": _ranked(by_match, ["identical", "visual"]),
-        "by_media": _ranked(by_media),
+        "by_match": by_match,
+        "by_media": by_media,
+        "by_unique": _ranked(by_unique),
     }
 
 

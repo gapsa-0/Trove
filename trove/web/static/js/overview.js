@@ -23,7 +23,7 @@ import {
 // screen's whole job is to say what the archive actually contains. The dash
 // sits in the same tabular-nums slot the real figure will take, so nothing
 // moves when it arrives.
-const UNKNOWN = `<span class="stat-unknown">—</span>`;
+const UNKNOWN = `<span class="stat-unknown">-</span>`;
 const statValue = v => (v == null ? UNKNOWN : v.toLocaleString());
 
 // One headline stat, and the screen it opens. Every tile in this row is a

@@ -7,8 +7,8 @@ Five things here have no other coverage and each fails silently:
 * dragging a card onto the pipeline does the same thing as pressing Add, and
   dragging a link back out does the same thing as pressing its remove button,
   which is the accessibility promise the screen is built on;
-* turning a card over to read what a feature does leaves the grid where it was,
-  which is the whole reason the two faces live in one fixed-height card;
+* resting the pointer on a card turns it over to what the feature does, without
+  moving the grid and without the description being cut off;
 * the name field belongs to this visit: what was typed survives the re-render
   adding a feature performs, and does not survive the panel being reopened for
   a different folder;
@@ -182,8 +182,8 @@ def test_the_stages_that_always_run_have_a_card_that_cannot_be_switched_off(open
         )
         # It turns over like any other card: what a stage does is worth reading
         # whether or not it is yours to decline.
-        app.click('.set-card[data-feature="duplicates"] .set-flip')
-        app.wait_for('.set-card[data-feature="duplicates"] .set-back:not([hidden])')
+        app.hover('.set-card[data-feature="duplicates"]')
+        app.wait_shown('.set-card[data-feature="duplicates"] .set-back')
         assert app.errors() == []
 
 
@@ -329,8 +329,8 @@ def test_turning_a_card_over_does_not_move_the_others(open_app):
             "[...document.querySelectorAll('.set-card')].map(e => Math.round("
             "e.getBoundingClientRect().height))"
         )
-        app.click('.set-card[data-feature="people"] .set-flip')
-        app.wait_for('.set-card[data-feature="people"] .set-back:not([hidden])')
+        app.hover('.set-card[data-feature="people"]')
+        app.wait_shown('.set-card[data-feature="people"] .set-back')
         after = app.tab.evaluate(
             "[...document.querySelectorAll('.set-card')].map(e => Math.round("
             "e.getBoundingClientRect().height))"
@@ -343,19 +343,56 @@ def test_turning_a_card_over_does_not_move_the_others(open_app):
         assert app.errors() == []
 
 
-def test_a_turned_card_stays_turned_when_the_shelf_is_rebuilt(open_app):
-    """Adding a feature re-renders every card. Losing the page someone was
-    reading because they pressed Add elsewhere is its own small betrayal."""
+def test_a_card_is_a_switch_on_whichever_face_it_is_showing(open_app):
+    """Pressing the card adds the feature, and keeps doing so while it is
+    showing its description.
+
+    The description covers the card, so anything reachable only through the
+    front is unreachable from the moment the pointer arrives -- which is every
+    moment the card could be pressed. The one control on it that is NOT this
+    decision has to stop the click, or reading "How it works" toggles the
+    feature it explains; so does the pill, or the face's handler puts the
+    feature straight back.
+    """
+    with open_app() as app:
+        _open_setup(app)
+        card = '.set-card[data-feature="places"]'
+
+        chip = '#set-flow .set-chip[data-feature="places"]'
+
+        def press(selector):
+            app.hover(card)
+            app.wait_shown(f"{card} .set-back")
+            app.click(f"{card} {selector}")
+
+        press(".set-back .set-card-detail")  # the face itself
+        app.wait_for(chip)
+        press(".set-back .set-add")  # the pill on it, exactly once
+        assert app.count(chip) == 0
+        press(".doc-more")  # the way out takes nothing with it
+        app.wait_for("#docs")
+        assert app.count(chip) == 0
+        assert app.errors() == []
+
+
+def test_only_the_card_under_the_pointer_shows_its_description(open_app):
+    """One card turns over, not the shelf. Nothing records which -- it follows
+    the pointer and is only ever CSS -- so what is worth checking is that the
+    rule is anchored to the card: one level too high turns all eight over at
+    once, and every card on the screen then says the same thing.
+    """
     with open_app() as app:
         _open_setup(app)
 
-        app.click('.set-card[data-feature="semantic"] .set-flip')
-        app.wait_for('.set-card[data-feature="semantic"] .set-back:not([hidden])')
-        app.click('.set-card[data-feature="places"] .set-add')
-        app.wait_for('#set-flow .set-chip[data-feature="places"]')
+        app.hover('.set-card[data-feature="semantic"]')
+        app.wait_shown('.set-card[data-feature="semantic"] .set-back')
 
-        assert app.count('.set-card[data-feature="semantic"] .set-back:not([hidden])') == 1
-        assert app.count('.set-card[data-feature="places"] .set-back:not([hidden])') == 0
+        shown = app.tab.evaluate(
+            "[...document.querySelectorAll('#set-shelf .set-card')]"
+            ".filter(c => getComputedStyle(c.querySelector('.set-back')).visibility"
+            " === 'visible').map(c => c.dataset.feature)"
+        )
+        assert shown == ["semantic"]
         assert app.errors() == []
 
 

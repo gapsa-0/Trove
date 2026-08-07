@@ -369,11 +369,22 @@
 }
 
 /* Fixed height, so turning a card over to read what it does leaves the grid
-   exactly where it was. An expanding panel moves everything sharing its row. */
+   exactly where it was. An expanding panel moves everything sharing its row.
+   The height is the FRONT's -- cover, name, one or two lines of tagline, and
+   the foot -- because that is the face these cards spend their life showing.
+   The description is longer than that and is not made to fit: it lifts off the
+   card instead (see .set-back), which is what lets the shelf be this short. */
 .set-card {
+  position: relative;
+  /* A stacking context per card, so the corner control's own z-index stays
+     inside it. Without one, the next card's control competes globally and
+     paints its icon over the description lifted off this one. */
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  height: 286px;
+  /* Cover, name, tagline, foot -- with room for the name to take two lines,
+     which "Search by document text" does at this column width. */
+  height: 258px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -433,11 +444,18 @@
   display: none;
 }
 
+/* Rounded for itself, not by the card clipping it. The card stops clipping
+   while its description is up -- that is what lets the description hang past
+   the bottom edge -- and a cover relying on `overflow: hidden` for its corners
+   put two square ones back outside the card's rounded top the moment it did.
+   One pixel off the card's radius, since this sits inside the card's border. */
 .set-cover {
   position: relative;
   flex: none;
   height: 106px;
   border-bottom: 1px solid var(--line);
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+  overflow: hidden;
 }
 
 .set-meta {
@@ -451,6 +469,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  /* Clear of the corner control, which sits over both faces. */
+  padding-right: 24px;
   font-size: 14.5px;
   font-weight: 660;
   letter-spacing: -.02em;
@@ -477,28 +497,107 @@
   font-size: 12.5px;
 }
 
+/* The description, which the card shows in place of its front for as long as
+   the pointer rests on it. There is no control for it: this rule is the whole
+   interaction.
+
+   It covers the card exactly and is free to run past its bottom, over whatever
+   shares the row below. That is what breaks the old bargain: the card no longer
+   has to be as tall as its longest description, so it can be as tall as the
+   front it actually shows, and the description still never has to scroll inside
+   a box. It carries its own border, radius and lift because the part hanging
+   past the card is not on the card any more.
+
+   No delay on it. A card turning over as the pointer passes is not a cost --
+   it is the shelf answering, and answering late reads as the app thinking.
+
+   Deliberately NOT behind `@media (hover: hover)`. A tap on a touch screen
+   leaves the description up until something else is tapped, which is a fair
+   reading of "show me what this does" -- and the guard would put this whole
+   behaviour beyond the browser tier, which cannot emulate the feature. */
 .set-back {
+  position: absolute;
+  /* Pulled out onto the card's own border rather than sitting inside it. An
+     absolutely positioned box is placed against the PADDING box, so `inset: 0`
+     lands this 1px in on every side -- close enough to look like a mistake at
+     the corners, where the card's radius and the panel's are then drawn as two
+     arcs 1px apart. The negative inset puts one border exactly over the other. */
+  inset: -1px -1px auto;
+  min-height: calc(100% + 2px);
   padding: 14px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  /* Opaque, and a shade off the card it covers: on a dark theme a drop shadow
+     alone is invisible, and the half of this hanging over the next card has to
+     read as being in front of it rather than as part of it. */
+  background: var(--panel2);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .3);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .12s ease, visibility 0s linear .12s;
+}
+
+.set-card:hover .set-back,
+.set-card:focus-within .set-back {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .1s ease, visibility 0s;
+}
+
+/* ...which the card must stop clipping while it is up, and must sit above its
+   neighbours, or the half hanging off the bottom is drawn under the next row. */
+.set-card:hover,
+.set-card:focus-within {
+  overflow: visible;
+  z-index: 3;
 }
 
 .set-back .set-card-name {
   margin-bottom: 9px;
 }
 
-/* Scrolls rather than stretching: the card's height is the promise here. */
 .set-card-detail {
-  flex: 1;
-  min-height: 0;
   margin: 0;
-  overflow-y: auto;
   color: var(--muted);
   font-size: 12.5px;
   line-height: 1.55;
 }
 
-.set-flip {
+/* The link to this stage's own page. The only thing on the shelf that leaves
+   it, and it belongs on the description rather than on the front -- someone
+   reading this has already asked the question it answers.
+
+   Above the foot, and pushed down to sit against it however short the
+   description runs, so the two read as one block at the bottom of the card
+   rather than the link floating wherever the prose happened to end. */
+.set-back-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+/* The description's own copy of the front's foot. The card is covered while it
+   is being read, so without this the fact and the switch would be gone for
+   exactly as long as someone is deciding whether to use them.
+
+   Three classes deep to outrank `.set-card.fcard .set-card-foot`, which pins
+   the front's foot to the bottom of the sheet's card -- here the foot follows
+   the description rather than the card. */
+.set-card .set-back .set-card-foot {
+  margin-top: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* The plain text link a card uses, worn only by "How it works". Styled by the
+   name it already had -- the second class it used to carry was named for a flip
+   that no longer happens, and renaming it collided with `.set-link` above,
+   which is the chain's connector: 15px wide and 2px tall. */
+.doc-more {
   align-self: flex-start;
-  margin-top: 10px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -509,26 +608,12 @@
   cursor: pointer;
 }
 
-.set-flip:hover {
+.doc-more:hover {
   text-decoration: underline;
 }
 
-/* The back of a card ends with two offers: turn it over again, and read what
-   this stage actually does. The second one is the only place on this screen
-   that leaves it, and it belongs here rather than on the front -- someone who
-   turned the card over has already asked the question it answers. */
-.set-back-foot {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.set-back-foot .set-flip {
-  align-self: auto;
-}
-
 .set-back-foot .doc-more {
+  align-self: auto;
   color: var(--muted);
 }
 

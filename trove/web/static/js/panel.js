@@ -129,7 +129,7 @@ function placeSection(it) {
       <div class="imapcap"><span>${name}</span>
         <span class="coords">${it.gps.lat.toFixed(5)}, ${it.gps.lon.toFixed(5)}</span></div>
       <div class="itilenote">${it.gps.alt != null ? `Altitude ${Math.round(it.gps.alt)} m · ` : ""}${esc(gpsSourceWords(it.gps.source))}.
-        Street tiles load once you stop here — coordinates only, your media stays on this computer.</div>
+        Street tiles load once you stop here: coordinates only, your media stays on this computer.</div>
     </div></div>`;
 }
 function gpsSourceWords(src) {

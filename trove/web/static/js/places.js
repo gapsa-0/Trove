@@ -28,6 +28,9 @@ import {
   docsButton,
 } from "./docs.js";
 import {
+  setStat, why,
+} from "./statwhy.js";
+import {
   esc, toast,
 } from "./dom.js";
 import {
@@ -95,9 +98,12 @@ export async function renderMap(m) {
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Places</h2>
       <p>Explore geolocated media and give meaningful names to the places you return to.</p></div>${docsButton("places")}</div>
     <div class="statrow map-stats">
-      <div class="stat"><div><div class="k">Photos in places</div><div class="v" id="map-photo-count">-</div></div></div>
-      <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">-</div></div></div>
-      <div class="stat"><div><div class="k">Named places</div><div class="v" id="map-named-count">-</div></div></div>
+      <div class="stat"><div><div class="k">Photos in places</div><div class="v" id="map-photo-count">-</div></div>
+        ${why("Photos in places", "-", "Photos carrying coordinates that fell inside one of the places below.")}</div>
+      <div class="stat"><div><div class="k">Places</div><div class="v" id="map-place-count">-</div></div>
+        ${why("Places", "-", "Groups of photos taken close together. Lone strays are left off the map.")}</div>
+      <div class="stat"><div><div class="k">Named places</div><div class="v" id="map-named-count">-</div></div>
+        ${why("Named places", "-", "Places you have given a name. The rest are shown by coordinates.")}</div>
     </div>
     <div class="mapwrap">
       <div id="lmap"></div>
@@ -221,7 +227,7 @@ function renderMapViewNote() {
 function updateMapStats() {
   const total = MAP_CLUSTERS.reduce((sum, cluster) => sum + cluster.count, 0);
   const named = MAP_CLUSTERS.filter(cluster => cluster.name && cluster.name.trim()).length;
-  const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value.toLocaleString(); };
+  const set = (id, value) => setStat(id, value.toLocaleString());
   set("map-photo-count", total); set("map-place-count", MAP_CLUSTERS.length); set("map-named-count", named);
   // The backend hides tiny one-off clusters (< 10 files, unless named/pinned) so
   // "Places" isn't dominated by single stray photos. Say so, only when it applies.
@@ -338,7 +344,7 @@ async function selectPlaceCluster(id) {
     <div class="mapside-name" id="mapsidename">
       <div class="mapside-title"><button class="person-name-button ${c.name ? "" : "un"}" onclick="editClusterName(${id},'${safeName}')">${displayName}</button>
         <span class="muted">${c.total.toLocaleString()} item${c.total === 1 ? "" : "s"}</span></div>
-      <div class="mapside-actions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place">×</button></div>
+      <div class="mapside-actions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" title="Close place">×</button></div>
     </div>
     ${mergesPanel(c.merges, "place")}
     <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>

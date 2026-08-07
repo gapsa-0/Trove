@@ -24,7 +24,10 @@ import {
   docsButton,
 } from "./docs.js";
 import {
-  esc, setText, toast,
+  setStat, why,
+} from "./statwhy.js";
+import {
+  esc, toast,
 } from "./dom.js";
 import {
   attachMergeDrag, guardCardClick, mergesPanel,
@@ -35,6 +38,13 @@ import {
 import {
   S,
 } from "./state.js";
+
+// "800 / 1,204": what has been looked at, over what there is to look at. One
+// function because it is written twice -- into the tile at render, and into
+// both copies of it on every poll.
+function scannedFigure(sum) {
+  return `${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
+}
 
 export async function renderFaces(m) {
   const gen = S.nav, root = S.arch.id;
@@ -50,10 +60,14 @@ export async function renderFaces(m) {
   S.faceSum = sum;
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">People</h2><p>Find familiar faces, review matches, and add names without leaving this page.</p></div>${docsButton("people")}</div>
     <div class="statrow">
-      <div class="stat"><div class="k">People</div><div class="v" id="fs-people">${sum.people.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Faces</div><div class="v" id="fs-faces">${sum.faces.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Photos with faces</div><div class="v" id="fs-photos">${sum.photos_with_faces.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Scanned</div><div class="v" id="fs-scanned">${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small></div></div>
+      <div class="stat"><div><div class="k">People</div><div class="v" id="fs-people">${sum.people.toLocaleString()}</div></div>
+        ${why("People", sum.people.toLocaleString(), "Groups of faces taken to be the same person, named or not yet named.")}</div>
+      <div class="stat"><div><div class="k">Faces</div><div class="v" id="fs-faces">${sum.faces.toLocaleString()}</div></div>
+        ${why("Faces", sum.faces.toLocaleString(), "Every face found, before grouping. Three people in one photo is three.")}</div>
+      <div class="stat"><div><div class="k">Photos with faces</div><div class="v" id="fs-photos">${sum.photos_with_faces.toLocaleString()}</div></div>
+        ${why("Photos with faces", sum.photos_with_faces.toLocaleString(), "Photos holding at least one face, however many that photo holds.")}</div>
+      <div class="stat"><div><div class="k">Scanned</div><div class="v" id="fs-scanned">${scannedFigure(sum)}</div></div>
+        ${why("Scanned", scannedFigure(sum), "Photos face detection has looked at, of all the photos it will look at.")}</div>
     </div>
     <div class="panel" id="facejob"></div>
     <div id="peoplewrap"><div class="muted" style="padding:20px">Loading people…</div></div>`;
@@ -91,11 +105,10 @@ async function faceTick() {
   const failedFace = facesStage && facesStage.state === "error" ? facesStage : null;
   const wasRunning = S.faceJobRunning; S.faceJobRunning = !!fj;
   const prev = S.faceSum || {}; S.faceSum = sum;
-  setText("fs-people", sum.people.toLocaleString());
-  setText("fs-faces", sum.faces.toLocaleString());
-  setText("fs-photos", sum.photos_with_faces.toLocaleString());
-  const sc = document.getElementById("fs-scanned");
-  if (sc) sc.innerHTML = `${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
+  setStat("fs-people", sum.people.toLocaleString());
+  setStat("fs-faces", sum.faces.toLocaleString());
+  setStat("fs-photos", sum.photos_with_faces.toLocaleString());
+  setStat("fs-scanned", scannedFigure(sum));
   const failed = failedFace && sum.unscanned > 0
     ? (failedFace.message || "The face worker stopped before reporting progress.") : null;
   renderFaceControls(failed);
@@ -356,7 +369,7 @@ export async function showPerson(id) {
     ? `<img class="person-header-avatar" src="/faceThumb/${avatarFace}" alt="" onerror="this.style.visibility='hidden'">`
     : `<div class="person-header-avatar" aria-hidden="true"></div>`;
   m.innerHTML = `<div class="facetopbar">
-      <button class="back back-control" type="button" onclick="backToPeople()" aria-label="Back to People">
+      <button class="back back-control" type="button" onclick="backToPeople()" aria-label="Back to People" title="Back to People">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         <span>People</span>
       </button>

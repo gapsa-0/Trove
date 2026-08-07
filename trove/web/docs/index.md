@@ -81,7 +81,7 @@ section.
 You can change your mind at any point, from inside the archive: **Manage
 features**, at the foot of the Library health panel on the Overview, lists every
 feature with what it has found here, or what it would cost to switch on.
-Switching one off never deletes what it already found — its stage stops being
+Switching one off never deletes what it already found. Its stage stops being
 scheduled and its section disappears, and switching it back on picks up where it
 left off.
 

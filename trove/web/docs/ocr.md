@@ -5,7 +5,7 @@ feature: ocr
 ---
 
 {{tagline}}. A photographed receipt, a screenshot of a confirmation, a contract
-your scanner turned into a picture of a page — all of them hold words that
+your scanner turned into a picture of a page: all of them hold words that
 nothing else in Trove can see, because as far as the file is concerned they are
 not text at all. They are pixels arranged to look like text.
 
@@ -15,14 +15,14 @@ that only look as though they do.
 
 ## What it reads
 
-Photos, screenshots and scans in the usual picture formats, and — the case it
-really exists for — **PDFs that are scans rather than documents**.
+Photos, screenshots and scans in the usual picture formats, and, the case it
+really exists for, **PDFs that are scans rather than documents**.
 
 A PDF is decided page by page. A forty-page contract with a scanned appendix
 gets both treatments: the pages with a text layer are read from it, the pages
 that are pictures of paper are read as pictures, and the result is one document
 in page order. A page is only read as a picture when it has almost no text *and*
-is mostly covered by a single image — a title page or a divider has hardly any
+is mostly covered by a single image: a title page or a divider has hardly any
 text either, and there is nothing in it for this to find.
 
 It reads Spanish and English, accents included. No language needs choosing.
@@ -31,7 +31,7 @@ It reads Spanish and English, accents included. No language needs choosing.
 
 **This is the slow one.** Every picture has to be opened and looked at, and
 unlike everything else in Trove it cannot use the small thumbnails the app
-already has — writing disappears at that size, so the original file is opened
+already has: writing disappears at that size, so the original file is opened
 each time.
 
 Roughly half a second per picture on a typical machine. That means:
@@ -43,7 +43,7 @@ Roughly half a second per picture on a typical machine. That means:
 | 100,000 | overnight |
 
 It runs alongside everything else and never blocks browsing, and it stops and
-resumes safely — closing Trove mid-run loses at most the picture being read at
+resumes safely: closing Trove mid-run loses at most the picture being read at
 that moment. But it is the one feature worth deciding about rather than
 switching on by reflex.
 
@@ -68,13 +68,13 @@ nearly three times as long for exactly the same text.
 **A confidence score per line.** The reader reports how sure it is, lines it is
 unsure of are dropped, and the average is kept with the document. That is what
 lets a search result say the text was *read from a picture* rather than quoting
-it as though it were typed — because unlike a document's own text, this is a
+it as though it were typed, because unlike a document's own text, this is a
 best guess.
 
 ## What it does not do
 
 It does not find writing that a person could not read either: too small, too
-blurred, too dark, or at an angle. And it is not a transcription service — the
+blurred, too dark, or at an angle. And it is not a transcription service: the
 words come out roughly in reading order, but the layout of a table or a form is
 not preserved.
 

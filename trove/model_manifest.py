@@ -107,9 +107,9 @@ def download_progress(
             # The last block is short, and a stray over-100% reads as a bug.
             done = min(done, expected)
             megabytes = expected / 1024 / 1024
-            message = f"downloading {label} — {done * 100 // expected}% of {megabytes:.0f} MB"
+            message = f"downloading {label}: {done * 100 // expected}% of {megabytes:.0f} MB"
         else:
-            message = f"downloading {label} — {done / 1024 / 1024:.0f} MB"
+            message = f"downloading {label}: {done / 1024 / 1024:.0f} MB"
         now = time.monotonic()
         if now - said_at < interval or message == said:
             return

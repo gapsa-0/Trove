@@ -99,17 +99,20 @@
   gap: 16px
 }
 
-/* Tall enough to hold the longest description the catalogue is allowed to
-   carry, which is what `features.DETAIL_MAX_WORDS` fixes at 33 words. At this
-   column width that is seven lines, and a card any shorter puts the end of a
-   paragraph -- the part that answers "should I turn this on" -- below a fold
-   inside its own back face. The budget is the card's, so the card is the thing
-   measured against it: if that constant is ever raised, this has to grow.
+/* Tall enough for what this card shows: its name, its tagline at up to two
+   lines, and the fact-and-switch foot. No cover art to make room for, so it is
+   shorter than its twin on the setup shelf by exactly that.
+
+   It used to be tall enough for the longest description the catalogue allows
+   (`features.DETAIL_MAX_WORDS`, 33 words -- seven lines at this width), which
+   the card paid for on every view to spend on a face most people never turn
+   to. The description now lifts off the card instead (.set-back in setup.css),
+   so it is free to be longer than the card without the card being taller.
 
    The pointer cursor and the lift on hover come from the shared card and are
    earned here: pressing the front of one switches its feature. */
 .set-card.fcard {
-  height: 236px
+  height: 142px
 }
 
 /* Except where there is nothing to switch -- a required feature, or one whose
@@ -130,12 +133,6 @@
   box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm)
 }
 
-/* The back of a card is a page to read, not a switch: turning one over should
-   not leave the whole thing armed under the pointer. */
-.set-card.fcard .set-back {
-  cursor: default
-}
-
 /* The tagline gets the room the cover art is not taking, so it runs as long as
    it needs to instead of being held to two lines. */
 .set-card.fcard .set-card-line {
@@ -143,21 +140,12 @@
   line-height: 1.5
 }
 
-/* ...which is possible because "More info" is anchored to the bottom of the
-   card rather than left to follow the tagline. The setup card reserves two
-   lines above it to keep it level across a row; here the free space is simply
-   collected above it, which levels it across the row whatever the taglines do
-   -- and stops a card with a short one reading as half empty. The foot then
-   gives up its own auto margin, or the two would share the gap between them. */
-.set-card.fcard .set-meta .set-flip {
-  margin-top: auto
-}
-
 /* As tall as the switch whether or not it holds one, so that "Always runs" and
-   "Not in this build" do not raise the card's foot -- and with it "More info" --
-   above where its neighbours' sit. */
+   "Not in this build" do not raise the card's foot above where its neighbours'
+   sit. The auto margin above it collects whatever the tagline did not use, so
+   the foot is level across a row whether the tagline ran to one line or two. */
 .set-card.fcard .set-card-foot {
-  margin-top: 0;
+  margin-top: auto;
   padding-top: 13px;
   min-height: 37px
 }

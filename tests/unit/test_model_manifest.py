@@ -131,7 +131,7 @@ def test_progress_is_reported_as_percent_while_a_download_runs(manifest, tmp_pat
     assert all("adaface model" in m for m in percents)
     # Monotonic, and never past 100 -- the last block is short, and urlretrieve
     # reports blocks * block_size, which overshoots if it is not clamped.
-    values = [int(m.split("—")[1].strip().split("%")[0]) for m in percents]
+    values = [int(m.split(":")[1].strip().split("%")[0]) for m in percents]
     assert values == sorted(values) and values[-1] == 100
 
 
@@ -153,7 +153,7 @@ def test_progress_reports_bytes_when_the_server_withholds_a_length():
 
     hook(64, 1024 * 1024, -1)
 
-    assert messages == ["downloading adaface model — 64 MB"]
+    assert messages == ["downloading adaface model: 64 MB"]
 
 
 def test_progress_reporting_is_skipped_entirely_without_a_log():

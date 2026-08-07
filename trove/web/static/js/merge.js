@@ -124,7 +124,7 @@ async function runMerge(source, target, onMerged) {
       // 9km still matters at that scale); above that, round to a whole
       // number like every other distance/count in this dialog.
       const dist = preview.span_km < 10 ? preview.span_km.toFixed(1) : Math.round(preview.span_km).toLocaleString();
-      warning = `These photos span a wide area — some sit ${dist} km from the centre of the merged place.`;
+      warning = `These photos span a wide area: some sit ${dist} km from the centre of the merged place.`;
     }
   }
   const name = await askMergeName({ title, body, options, preselect, warning });
@@ -241,7 +241,7 @@ export async function undoMerge(mergeId, kind) {
   // People/pets requeue a background recluster, so their toast says so; a place
   // merge is a direct row move/restore (places.py's unmerge_place_clusters),
   // nothing gets queued, so "Undone" alone is accurate here.
-  toast(kind === "place" ? "Undone" : "Undone — regrouping in the background…");
+  toast(kind === "place" ? "Undone" : "Undone. Regrouping in the background…");
   if (kind === "pet") { if (S.currentPet) showPet(S.currentPet.id); }
   else if (kind === "place") { refreshPlacesAfterMerge(); }
   else if (S.facePerson != null) showPerson(S.facePerson);

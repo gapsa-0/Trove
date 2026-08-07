@@ -37,6 +37,98 @@ main>.eyebrow {
   margin: 0 0 28px
 }
 
+/* The label-and-figure block, which is one item of the tile's flex row so that
+   the two never come apart: as siblings they sat side by side until a long
+   label and a six-figure number stopped fitting, and then wrapped -- on some
+   tiles of a row and not others, which is not a layout so much as an accident
+   of how wide the words were. */
+.stat>div {
+  min-width: 0
+}
+
+/* What each figure counts, in one sentence, on hover. See statwhy.js for why
+   these are read as a set: hovering anywhere in the row brings up ALL of them,
+   not the one under the pointer, because the numbers are defined against each
+   other and comparing them is the whole question.
+
+   Each one REPLACES its tile, the way a feature card's description replaces
+   the card (.set-back in setup.css). Covering the tile exactly rather than
+   hanging below it means the row does not grow, nothing on the page moves, and
+   the four sentences land where the four numbers were -- which is why each
+   carries its tile's label: the figure it belongs to is underneath it.
+
+   Pulled out onto the tile's own border, since an absolutely positioned box is
+   placed against the PADDING box and `inset: 0` would leave the tile's rounded
+   corner drawn 1px outside this one's.
+
+   Hover-capable pointers only. On a touch screen this fires on tap and sticks
+   until something else is tapped, which is not what a caption should do. */
+.stat-why {
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  /* Exactly the tile, never taller. It replaces the tile in place, so any
+     height of its own would resize the tile under the pointer and shift the
+     whole page below the row. The tile is given room for two lines of sentence
+     instead (see .stat:has(.stat-why) below), which is what the definitions are
+     written to. */
+  bottom: -1px;
+  padding: 15px 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel2);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, .24);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .1s ease, visibility 0s linear .1s;
+}
+
+/* Room for the label and two lines of definition, held whether or not the
+   definitions are showing. Reserving it here rather than letting the
+   replacement claim it is what keeps the row one height: the tiles are a
+   little taller than their figures need, and nothing moves when a pointer
+   crosses them. Only the tiles that carry a definition -- the Overview's have
+   an icon and no sentence. */
+.stat:has(.stat-why) {
+  min-height: 92px;
+}
+
+.stat-why p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* The figure the sentence is about, beside its name. Small: it is the subject
+   here, not the report -- the tile underneath is where it is announced. */
+.stat-why-v {
+  margin-left: 2px;
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-why-v small {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+@media (hover: hover) {
+  /* The tile clips its own corners, which would cut off a sentence that needs
+     more room than the number it replaced. */
+  .statrow:hover .stat:has(.stat-why) {
+    overflow: visible;
+  }
+
+  .statrow:hover .stat-why {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity .1s ease, visibility 0s;
+  }
+}
+
 .pagehead .eyebrow {
   margin-bottom: 6px;
   color: var(--muted);

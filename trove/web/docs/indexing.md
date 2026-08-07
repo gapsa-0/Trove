@@ -104,8 +104,8 @@ Trove looks in four places and takes the first that answers.
    rule found it.
 2. **The file's own metadata**, read with exiftool, which covers far more
    formats and tag dialects than an image library does. On a photo that is the
-   moment the shutter opened; on a document it is whatever wrote the file —
-   Word, a scanner, a bank — recording when it did so. Both are the file's
+   moment the shutter opened; on a document it is whatever wrote the file:
+   Word, a scanner, a bank, recording when it did so. Both are the file's
    account of itself, which is why they count as one source.
 3. **The filename.** Camera and app filenames carry dates in a few dozen
    recognisable shapes: `IMG_20190812_143045`, `WhatsApp Image 2020-05-03`, a
@@ -215,7 +215,7 @@ archive runs [Search by description](search.md), the composer at the top of
 Browse searches vectors built from the same files.
 
 **The search box works whatever else is switched off.** With no search feature
-at all it matches what you type against the names of the files themselves — the
+at all it matches what you type against the names of the files themselves: the
 names this stage recorded, which is why it needs nothing else to be enabled.
 Every word you type has to appear somewhere in the name, in any order, so
 `escritura 2019` finds `2019-escritura-casa.pdf`; only the file's own name is

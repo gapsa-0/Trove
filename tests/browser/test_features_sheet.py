@@ -111,8 +111,8 @@ def test_a_card_turns_over_to_what_the_feature_does_without_moving_the_grid(open
             "e.getBoundingClientRect().height))"
         )
 
-        app.click('.fcard[data-feature="people"] .set-flip')
-        app.wait_for('.fcard[data-feature="people"] .set-back:not([hidden])')
+        app.hover('.fcard[data-feature="people"]')
+        app.wait_shown('.fcard[data-feature="people"] .set-back')
 
         after = app.tab.evaluate(
             "[...document.querySelectorAll('.fcard')].map(e => Math.round("
@@ -184,33 +184,50 @@ def test_a_cards_fact_does_not_move_when_its_switch_is_flipped(open_app, archive
         assert app.errors() == []
 
 
-def test_every_description_fits_the_card_it_is_printed_on(open_app):
+def test_every_description_is_shown_whole(open_app):
     """The other half of ``features.DETAIL_MAX_WORDS``.
 
-    That constant caps a description at what the card can hold; nothing but this
-    checks that the card still holds it. Both sides can break the promise -- a
-    description written up to the limit, or a card made shorter, or a font that
-    sets wider than the one this was measured against -- and the failure is
-    silent either way: the paragraph scrolls inside its own face, and the part
-    that answers "should I turn this on" is the part that goes below the fold.
+    A description is longer than the card it belongs to -- deliberately, since
+    the card is sized for the face it actually shows -- so it lifts off the card
+    and runs past its bottom edge instead of being folded into it. The promise
+    that replaces "it fits" is "none of it is hidden", and it can be broken just
+    as silently: a card that clips its overflow again, or a panel pinned to the
+    card's height, cuts the end off the paragraph that answers "should I turn
+    this on".
     """
     with open_app("overview") as app:
         _open_sheet(app)
 
-        overflowing = app.tab.evaluate(
-            "(() => { const out = [];"
-            " document.querySelectorAll('.fcard').forEach(c => {"
-            "   const faces = c.querySelectorAll('.set-face');"
-            "   faces[0].hidden = true; faces[1].hidden = false;"
-            "   const d = c.querySelector('.set-card-detail');"
-            "   if (d.scrollHeight > d.clientHeight)"
-            "     out.push(c.dataset.feature + ' (+' + (d.scrollHeight - d.clientHeight) + 'px)');"
-            " }); return out; })()"
-        )
+        # One card at a time, actually hovered: the card only stops clipping
+        # while it is the one being read, so measuring them all at rest reports
+        # eight cut-off descriptions and proves nothing about any of them.
+        clipped = []
+        for feature in app.tab.evaluate(
+            "[...document.querySelectorAll('.fcard')].map(c => c.dataset.feature)"
+        ):
+            card = f'.fcard[data-feature="{feature}"]'
+            app.hover(card)
+            app.wait_shown(f"{card} .set-back")
+            cut, clip = app.tab.evaluate(
+                f"(() => {{ const c = document.querySelector({card!r});"
+                "   const back = c.querySelector('.set-back');"
+                # The panel must be as tall as its own contents (nothing
+                # scrolling away inside it) *and* the card must not be cutting
+                # it off, which a height alone cannot see.
+                "   return [back.scrollHeight - back.clientHeight,"
+                "           getComputedStyle(c).overflow !== 'visible']; })()"
+            )
+            if cut > 0 or clip:
+                clipped.append(
+                    feature
+                    + (" (clipped by the card)" if clip else "")
+                    + (f" (+{cut}px)" if cut > 0 else "")
+                )
 
-        assert overflowing == [], (
-            f"descriptions scroll inside their card: {', '.join(overflowing)}. "
-            "Either shorten them (features.DETAIL_MAX_WORDS) or make .fcard taller."
+        assert clipped == [], (
+            f"descriptions are cut off: {', '.join(clipped)}. The panel has to be free to "
+            "run past the card (see .set-back in setup.css), or the descriptions have to "
+            "shrink (features.DETAIL_MAX_WORDS)."
         )
         assert app.errors() == []
 
@@ -236,8 +253,8 @@ def test_pressing_the_card_switches_it_and_the_two_controls_on_it_do_not(open_ap
         assert _switch(app, "places") == "false"
 
         # "More info" turns the card over and leaves the feature alone.
-        app.click('.fcard[data-feature="places"] .set-flip')
-        app.wait_for('.fcard[data-feature="places"] .set-back:not([hidden])')
+        app.hover('.fcard[data-feature="places"]')
+        app.wait_shown('.fcard[data-feature="places"] .set-back')
         assert _switch(app, "places") == "false", "reading about it changed it"
         assert app.errors() == []
 
@@ -311,8 +328,8 @@ def test_reading_a_features_page_comes_back_to_the_sheet(open_app, archive):
         _open_sheet(app)
         _flip(app, "places")
 
-        app.click('.fcard[data-feature="places"] .set-flip')
-        app.wait_for('.fcard[data-feature="places"] .set-back:not([hidden])')
+        app.hover('.fcard[data-feature="places"]')
+        app.wait_shown('.fcard[data-feature="places"] .set-back')
         app.click('.fcard[data-feature="places"] .doc-more')
         app.wait_for("#docs.on .doc-body, #docs.on article, #docs.on")
         assert app.count(".fsheet.open") == 0, "the page opened under the sheet"

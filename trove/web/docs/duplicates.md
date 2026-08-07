@@ -63,7 +63,7 @@ grouped by exact content only, so two re-encodes of the same clip are two files
 as far as Trove is concerned.
 
 **Animated files are on that side of the line too.** A fingerprint can only
-describe one frame, and for an animation that frame is the first one — which
+describe one frame, and for an animation that frame is the first one, which
 says how the animation opens, not what it is. Two unrelated GIFs that share a
 title card, or both fade in from white, come out with the same fingerprint.
 So an animated file is never fingerprinted, and is grouped by its bytes alone.
@@ -76,10 +76,20 @@ Four numbers across the top: how many **unique files** the archive holds, how
 many **duplicate groups** were found, how many **redundant copies** those groups
 contain, and how much space you would get back by removing them.
 
+**Unique files** is the archive counted with each group collapsed to the one
+copy Trove kept, not the files that turned out to have no duplicates. A photo
+sitting on four hidden copies is one unique file. Before duplicate detection
+has ever run nothing is hidden, so the number is simply every file you have.
+
 Below that, a breakdown of what the copies actually are, split two ways: by
 match, separating byte-identical copies from visual matches, and by media kind.
 The distinction matters. An identical copy is safe and boring. A visual match
 is a judgement, and it is the one worth glancing at.
+
+A third bar, marked *unique*, splits the unique files themselves by kind, so
+you can read a hundred redundant videos against how many videos you actually
+have. It is a share of **unique files**, not of the redundant copies above it,
+which is why it sits below a rule: the segments of the two do not compare.
 
 Then one row per group, biggest saving first. Each row shows every copy with
 the folder it lives in, and the one Trove keeps is tagged with a green check.
@@ -87,7 +97,7 @@ Click any copy to open it; the viewer's arrows then step through that group and
 stop at its edges, so a comparison never wanders into the next group's photos.
 
 Two controls sit above the list. The first narrows it to groups holding at
-least one identical copy, or at least one visual match — and a group can answer
+least one identical copy, or at least one visual match, and a group can answer
 to both, since a group matched visually often also holds a byte-identical copy.
 The second orders by how many copies a group holds, either way, in place of the
 biggest-saving order. When a filter is on, the count beside the controls says
@@ -101,12 +111,12 @@ lives, so you can act on it with your file manager if you want to.
 
 You do not have to come to this screen to find out whether a file has copies.
 Open any file and its panel has a **Duplicates** section: the whole group as
-thumbnails, tagged the same way as here — kept, identical, looks the same —
+thumbnails, tagged the same way as here (kept, identical, looks the same)
 with the copy you are looking at marked. Pressing another copy opens it, with
 the arrows kept inside the group and a way back to the copy you came from.
 
 A file that has been compared and matched nothing says *No duplicates found*. A
-file the last grouping run has not reached — scanned since, or not hashed yet —
+file the last grouping run has not reached, scanned since or not hashed yet,
 says it has not been compared instead, because that is a different fact.
 
 ## Which copy is kept

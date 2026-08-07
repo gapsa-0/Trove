@@ -51,11 +51,11 @@ import {
 // `was` is what the server runs, `chosen` is what this visit would have it run.
 // Keeping both is what lets the sheet tell a fact from a plan: a card reports
 // against `was`, the footer totals `chosen`, and Save is inert until they
-// disagree. `flipped` lives here rather than in the DOM for the reason it does
-// on the setup screen -- so that a card someone turned over to read stays
-// turned over when something else on the sheet is rendered.
+// disagree. Nothing here records which card is showing its description: that
+// follows the pointer and is only ever CSS, so re-rendering the sheet cannot
+// take away what someone is reading.
 const SHEET = {
-  catalogue: [], chosen: new Set(), was: new Set(), flipped: new Set(),
+  catalogue: [], chosen: new Set(), was: new Set(),
   text: null, busy: false,
 };
 
@@ -87,7 +87,6 @@ export async function openFeatureSheet() {
   SHEET.text = text;
   SHEET.was = new Set(S.arch.features || SHEET.catalogue.map(f => f.id));
   SHEET.chosen = new Set(SHEET.was);
-  SHEET.flipped = new Set();
   SHEET.busy = false;
   renderSheet();
   setSheetVisible(true);
@@ -164,7 +163,7 @@ function control(f) {
   if (!canToggle(f)) return `<span class="fcard-fixed">Not in this build</span>`;
   const on = SHEET.chosen.has(f.id);
   return `<button type="button" class="fsw" role="switch" aria-checked="${on}"
-      aria-label="${esc(f.label)}"
+      aria-label="${esc(f.label)}" title="${esc(f.label)}"
       onclick="event.stopPropagation();toggleSheetFeature('${f.id}')">
       <i aria-hidden="true"></i></button>`;
 }
@@ -194,33 +193,33 @@ function factCell(f) {
 // itself and one that needs artwork commissioned before it can list anything.
 function card(f) {
   const on = SHEET.chosen.has(f.id);
-  const back = SHEET.flipped.has(f.id);
   const name = `<span class="set-card-name">${mark(f)}${esc(f.label)}</span>`;
-  // The whole front of a card switches it, the way the whole front of a setup
-  // card adds it -- a switch 40px wide is a small target for a decision this
-  // size. The two controls that are not that decision stop the click before it
-  // reaches here: "More info" turns the card over, and the switch would
-  // otherwise fire twice and land back where it started.
+  // The fact and the switch, on both faces. The description covers the card
+  // while the pointer rests on it, so a foot printed only on the front would
+  // mean that reading what a feature does takes the switch for it away.
+  const foot = `<div class="set-card-foot">${factCell(f)}${control(f)}</div>`;
+  // The whole card switches it -- a switch 40px wide is a small target for a
+  // decision this size -- and BOTH faces do, not just the front. The
+  // description covers the card, so a handler on the front alone means the card
+  // stops being a switch the moment you point at it, which is every moment you
+  // might press it. The two controls that are not this decision stop the click
+  // before it reaches here: the switch would fire twice and land back where it
+  // started, and "How it works" would toggle the feature it explains.
   const face = canToggle(f) ? ` onclick="toggleSheetFeature('${f.id}')"` : "";
   return `<li class="set-card fcard${on ? " on" : ""}${canToggle(f) ? "" : " fcard-fixed-face"}"
       data-feature="${f.id}">
-      <div class="set-face"${back ? " hidden" : ""}${face}>
+      <div class="set-face"${face}>
         <div class="set-meta">
           ${name}
           <p class="set-card-line">${esc(f.tagline)}</p>
-          <button class="set-flip" type="button"
-            onclick="event.stopPropagation();flipSheetFeature('${f.id}')">More info</button>
-          <div class="set-card-foot">${factCell(f)}${control(f)}</div>
+          ${foot}
         </div>
       </div>
-      <div class="set-face set-back"${back ? "" : " hidden"}>
+      <div class="set-face set-back"${face}>
         ${name}
         <p class="set-card-detail">${esc(f.detail)}</p>
-        <div class="set-back-foot">
-          <button class="set-flip" type="button"
-            onclick="flipSheetFeature('${f.id}')">Back</button>
-          ${featureDocsLink(f.id)}
-        </div>
+        <div class="set-back-foot">${featureDocsLink(f.id)}</div>
+        ${foot}
       </div>
     </li>`;
 }
@@ -232,18 +231,6 @@ function renderSheet() {
   document.getElementById("fsheet-body").innerHTML =
     `<ul class="set-cards fcards">${SHEET.catalogue.map(card).join("")}</ul>`;
   syncFoot();
-}
-
-// Turned over in place rather than by re-rendering the grid, so focus can be
-// handed straight to the button that replaces the one just pressed -- and so
-// that turning one card over cannot disturb another.
-export function flipSheetFeature(id) {
-  const el = document.querySelector(`.fcard[data-feature="${id}"]`);
-  if (!el) return;
-  el.querySelectorAll(".set-face").forEach(face => { face.hidden = !face.hidden; });
-  if (SHEET.flipped.has(id)) SHEET.flipped.delete(id); else SHEET.flipped.add(id);
-  const flip = el.querySelector(".set-face:not([hidden]) .set-flip");
-  if (flip) flip.focus();
 }
 
 export function toggleSheetFeature(id) {

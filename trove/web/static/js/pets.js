@@ -27,7 +27,10 @@ import {
   docsButton,
 } from "./docs.js";
 import {
-  esc, setText, toast,
+  setStat, why,
+} from "./statwhy.js";
+import {
+  esc, toast,
 } from "./dom.js";
 import {
   attachMergeDrag, guardCardClick, mergesPanel,
@@ -46,6 +49,12 @@ const PET_EMPTY = '<div class="muted">No repeated pets grouped yet.</div>',
       LOOSE_PET_EMPTY = '<div class="muted">No unassigned sightings.</div>',
       NONHUMAN_EMPTY = '<div class="muted">No pending non-human decisions.</div>';
 const petStamp = sum => [sum.pets, sum.detections, sum.nonhuman_faces].join("/");
+// As on People: one spelling of "looked at, of what there is to look at",
+// written into the tile and into the copy on its definition.
+function scannedFigure(sum) {
+  return `${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
+}
+
 export async function renderPets(m) {
   const gen = S.nav, root = S.arch.id;
   const sum = await jget("/api/pets/summary?root=" + root);
@@ -54,10 +63,14 @@ export async function renderPets(m) {
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Pets</h2>
       <p>Locally detected animals, likely identities, and non-human face review.</p></div>${docsButton("pets")}</div>
     <div class="statrow">
-      <div class="stat"><div class="k">Likely pets</div><div class="v" id="ps-pets">${sum.pets.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Animals</div><div class="v" id="ps-detections">${sum.detections.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Non-human faces</div><div class="v" id="ps-nonhuman">${sum.nonhuman_faces.toLocaleString()}</div></div>
-      <div class="stat"><div class="k">Scanned</div><div class="v" id="ps-scanned">${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small></div></div>
+      <div class="stat"><div><div class="k">Likely pets</div><div class="v" id="ps-pets">${sum.pets.toLocaleString()}</div></div>
+        ${why("Likely pets", sum.pets.toLocaleString(), "Animals seen often enough, and alike enough, to be grouped as one pet.")}</div>
+      <div class="stat"><div><div class="k">Animals</div><div class="v" id="ps-detections">${sum.detections.toLocaleString()}</div></div>
+        ${why("Animals", sum.detections.toLocaleString(), "Every animal spotted, before grouping. Two dogs in one photo count twice.")}</div>
+      <div class="stat"><div><div class="k">Non-human faces</div><div class="v" id="ps-nonhuman">${sum.nonhuman_faces.toLocaleString()}</div></div>
+        ${why("Non-human faces", sum.nonhuman_faces.toLocaleString(), "Faces the human check rejected, usually an animal's. Yours to review here.")}</div>
+      <div class="stat"><div><div class="k">Scanned</div><div class="v" id="ps-scanned">${scannedFigure(sum)}</div></div>
+        ${why("Scanned", scannedFigure(sum), "Photos animal detection has looked at, of all the photos it will look at.")}</div>
     </div>
     <div class="panel" id="petjob">${detectStatusRow(sum, null)}</div>
     <div class="place-gallery-head"><h3>Likely pet identities</h3><span class="muted">Conservative visual grouping</span></div>
@@ -247,11 +260,10 @@ async function petTick() {
     jget("/api/pets/summary?root=" + S.arch.id)]);
   const running = (snap.stages || []).some(s => s.id === "detect" && s.state === "running");
   const was = S.petJobRunning; S.petJobRunning = running;
-  setText("ps-pets", sum.pets.toLocaleString());
-  setText("ps-detections", sum.detections.toLocaleString());
-  setText("ps-nonhuman", sum.nonhuman_faces.toLocaleString());
-  const sc = document.getElementById("ps-scanned");
-  if (sc) sc.innerHTML = `${sum.scanned.toLocaleString()} <small>/ ${sum.total_images.toLocaleString()}</small>`;
+  setStat("ps-pets", sum.pets.toLocaleString());
+  setStat("ps-detections", sum.detections.toLocaleString());
+  setStat("ps-nonhuman", sum.nonhuman_faces.toLocaleString());
+  setStat("ps-scanned", scannedFigure(sum));
   area.innerHTML = detectStatusRow(sum, null);
   // Three list endpoints are worth refetching only when something actually
   // moved; the run's finishing edge always gets one last pass.

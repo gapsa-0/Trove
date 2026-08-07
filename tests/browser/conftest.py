@@ -461,6 +461,34 @@ class App:
     def click(self, selector: str) -> None:
         self.tab.evaluate(f"document.querySelector({selector!r}).click()")
 
+    def hover(self, selector: str) -> None:
+        """Put the pointer over an element, the way a pointer really goes there.
+
+        Not a dispatched ``mouseover``: what the feature cards and the stat
+        tiles answer to is CSS ``:hover``, and that follows the browser's own
+        pointer position, which an event does not move. This drives the input
+        pipeline instead, so the selector state actually changes.
+        """
+        box = self.tab.evaluate(
+            f"(() => {{ const r = document.querySelector({selector!r}).getBoundingClientRect();"
+            " return [r.x + r.width / 2, r.y + r.height / 2]; })()"
+        )
+        self.tab.call("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": box[0], "y": box[1]})
+
+    def wait_shown(self, selector: str, timeout: float = 6.0):
+        """Block until an element is actually painted, not merely present.
+
+        ``:hover`` reveals happen by ``visibility``, and they are deliberately
+        delayed (hover intent), so "the node exists" is true the whole time and
+        proves nothing.
+        """
+        return self.tab.wait_for(
+            f"(() => {{ const e = document.querySelector({selector!r});"
+            " return !!e && getComputedStyle(e).visibility === 'visible'; })()",
+            timeout=timeout,
+            what=f"{selector!r} to be shown",
+        )
+
     def show_section(self, section: str) -> None:
         """Navigate the way the nav does -- through the app's own entry point.
 

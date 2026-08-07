@@ -76,6 +76,9 @@ def test_breakdowns_reconcile_with_the_headline_numbers(tmp_path):
     for cut in ("by_match", "by_media"):
         assert sum(i["count"] for i in result[cut]) == result["duplicates"]
         assert sum(i["bytes"] for i in result[cut]) == result["reclaimable"]
+    # The third cut answers a different question and so reconciles with a
+    # different headline: the unique files, not the copies they hid.
+    assert sum(i["count"] for i in result["by_unique"]) == result["unique"]
 
 
 def test_identical_copies_inside_a_perceptual_group_count_as_identical(tmp_path):
@@ -101,6 +104,30 @@ def test_media_split_separates_the_few_heavy_videos(tmp_path):
     assert [i["key"] for i in result["by_media"]] == ["image", "video"]
 
 
+def test_unique_split_counts_a_group_once_not_once_per_copy(tmp_path):
+    """The per-type unique counts are the population the "Unique files" tile
+    shows: every group contributes only the copy dedup kept.
+
+    The fixture's own files are all still visible (nothing has been hidden),
+    so this hides the four non-canonical copies the way a real dedup run does
+    and checks the split follows -- otherwise a per-type row would quietly be
+    counting the copies the two rows above it already account for."""
+    db_path = _catalog_with_duplicates(tmp_path)
+    conn = db.connect(db_path)
+    conn.execute("UPDATE files SET hidden=1 WHERE id IN (2,4,5,7)")
+    conn.commit()
+    conn.close()
+
+    result = dups.dup_summary(str(db_path), root_id=1)
+
+    # Kept: images 1 and 3, video 6.
+    assert result["unique"] == 3
+    assert result["by_unique"] == [
+        {"key": "image", "count": 2, "bytes": 100 + 300},
+        {"key": "video", "count": 1, "bytes": 1000},
+    ]
+
+
 def test_an_archive_with_no_duplicates_reports_empty_breakdowns(tmp_path):
     db_path = tmp_path / "empty.db"
     conn = db.connect(db_path)
@@ -113,3 +140,6 @@ def test_an_archive_with_no_duplicates_reports_empty_breakdowns(tmp_path):
 
     assert result["duplicates"] == 0
     assert result["by_match"] == [] and result["by_media"] == []
+    # And no files at all, so nothing unique to split either -- the panel has
+    # nothing to draw and leaves the screen its "no groups yet" shape.
+    assert result["by_unique"] == []

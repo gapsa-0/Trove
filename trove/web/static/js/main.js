@@ -54,10 +54,10 @@ import {
   setStorageMetric, togglePipelinePause, toggleStagePause,
 } from "./overview.js";
 import {
-  closeArchiveSetup, flipFeature, removeFeature, setArchiveName, submitArchiveSetup, toggleFeature,
+  closeArchiveSetup, removeFeature, setArchiveName, submitArchiveSetup, toggleFeature,
 } from "./setup.js";
 import {
-  closeFeatureSheet, featureSheetOpen, flipSheetFeature, openFeatureSheet, saveFeatureSheet,
+  closeFeatureSheet, featureSheetOpen, openFeatureSheet, saveFeatureSheet,
   toggleSheetFeature,
 } from "./features.js";
 import {
@@ -161,7 +161,7 @@ Object.assign(window, {
   closeArchiveSetup, closeDocs, closeFeatureSheet, closeModal, closePick, closePlaceCluster,
   closeSettings,
   copyText,
-  editClusterName, editDate, editPersonName, editPlace, flipFeature, flipSheetFeature, hidePerson,
+  editClusterName, editDate, editPersonName, editPlace, hidePerson,
   highlightFace,
   mergeAskCancel,
   newPlace, onAddPerson,

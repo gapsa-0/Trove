@@ -218,7 +218,7 @@ function fileKind(it) {
    has reached this file. */
 function noPreviewReason(it) {
   if (!has("documents")) return "Nothing here can draw this file, and this archive does not read the text inside documents.";
-  if (!it.read.text) return "Nothing here can draw this file. Trove has not read it yet either, so its words are not searchable — for now.";
+  if (!it.read.text) return "Nothing here can draw this file. Trove has not read it yet either, so its words are not searchable, for now.";
   if (it.text) return `Nothing here can draw this file. Trove read ${wordish(it.text.chars)} out of it, and they are searchable.`;
   return "Nothing here can draw this file, and there was no text in it to read.";
 }

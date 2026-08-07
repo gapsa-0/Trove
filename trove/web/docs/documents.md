@@ -4,8 +4,8 @@ summary: Reading the words inside PDFs and office files, so a phrase finds the f
 feature: documents
 ---
 
-{{tagline}}. Trove already knew your documents were there — it listed them with
-a date and a folder like everything else — but what they *said* was invisible.
+{{tagline}}. Trove already knew your documents were there. It listed them with
+a date and a folder like everything else, but what they *said* was invisible.
 This reads them, so "arrendamiento" finds the contract without you remembering
 that you saved it as `scan_0043.pdf`.
 
@@ -17,14 +17,14 @@ library or one small PDF library that ships with the app.
 
 | Format | Read from |
 | --- | --- |
-| PDF | its text layer — the characters the file actually stores |
+| PDF | its text layer, the characters the file actually stores |
 | Word, Excel, PowerPoint | the document body, headers and footers, cells, and each slide |
 | OpenDocument (`.odt`, `.ods`, `.odp`) | the document body |
 | Text, Markdown, CSV | the file itself |
 | Web pages (`.html`, `.mhtml`) | what a browser would show, never scripts or styles |
 | Notebooks (`.ipynb`) | the cells you wrote, never their outputs |
 
-Spreadsheet numbers are kept, not just the words around them — an invoice total
+Spreadsheet numbers are kept, not just the words around them: an invoice total
 is exactly the sort of thing you go looking for in a folder of paperwork.
 
 ## The two things it cannot do
@@ -33,12 +33,12 @@ is exactly the sort of thing you go looking for in a folder of paperwork.
 no text layer at all: it is a picture of a page, and there is nothing in the
 file for a reader to read. Those show as skipped, with that reason, and they are
 what **Search by picture text** is for. If your archive is mostly scanned
-paperwork, this feature alone will find very little in it — that is not a fault,
+paperwork, this feature alone will find very little in it. That is not a fault,
 it is the wrong half. Switching the other one on later re-reads every file this
 one had to pass over.
 
-**Older Office files cannot be read.** `.doc`, `.xls` and `.ppt` — the formats
-from before 2007 — are a completely different kind of file inside, and there is
+**Older Office files cannot be read.** `.doc`, `.xls` and `.ppt`, the formats
+from before 2007, are a completely different kind of file inside, and there is
 no reliable way to read them without shipping a great deal of software that
 exists for nothing else. They are listed and dated like any other file, and
 reported as an unsupported format rather than half-read into something

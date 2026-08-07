@@ -148,7 +148,10 @@ export function closeDocs() {
 export function featureDocsLink(featureId) {
   const slug = DOC_FOR_FEATURE[featureId];
   if (!slug) return "";
-  return `<button type="button" class="set-flip doc-more" onclick="openDocs('${slug}')">
+  // Stopped, because this button sits on a card whose whole face is a switch:
+  // without it, reading the page also toggled the feature it describes.
+  return `<button type="button" class="doc-more"
+      onclick="event.stopPropagation();openDocs('${slug}')">
       How it works</button>`;
 }
 
