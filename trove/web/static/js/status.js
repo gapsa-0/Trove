@@ -3,7 +3,7 @@
 // stay current while the user is anywhere in the app.
 
 import {
-  jget,
+  jget, jpost,
 } from "./api.js";
 import {
   loadGrid, resetGridResults,
@@ -110,3 +110,30 @@ async function gstatTick() {
 }
 export function startGlobalStatus() { stopGlobalStatus(); S.gpoll = setInterval(gstatTick, 2000); gstatTick(); }
 export function stopGlobalStatus() { if (S.gpoll) { clearInterval(S.gpoll); S.gpoll = null; } }
+
+/* Coming back to the window is the strongest sign the app gets that files were
+   added: adding them means leaving Trove, dropping them in somewhere else and
+   returning. The server treats it as a hint and re-checks; nothing here claims
+   anything happened, and a hint that turns out to be nothing costs one walk of
+   the archive folder, which the server throttles.
+
+   This is deliberately not the only way a change is noticed -- the server also
+   watches the folder, and polls regardless -- but it is the one that works on
+   network shares, where filesystem events are not delivered at all. */
+let notedAt = 0;
+function noteReturned() {
+  if (document.visibilityState !== "visible" || !S.arch) return;
+  // visibilitychange and focus both fire on the way back to the window, and
+  // some window managers repeat focus. One return is one hint.
+  const now = Date.now();
+  if (now - notedAt < 1000) return;
+  notedAt = now;
+  // Fire and forget, including on failure: this is an optimisation, and the
+  // poll behind it is what guarantees the change is found either way.
+  jpost("/api/pipeline/changed?root=" + S.arch.id).catch(() => {});
+  // Ask for the new state at once rather than up to two seconds later, so the
+  // card starts moving as soon as the server has something to say.
+  gstatTick();
+}
+document.addEventListener("visibilitychange", noteReturned);
+window.addEventListener("focus", noteReturned);

@@ -25,6 +25,26 @@ def snapshot(req: Request) -> dict | Json:
     return status.snapshot(req.cfg, req.jobs, rid, arch["path"])
 
 
+def changed(req: Request) -> dict | Json:
+    """Files may have arrived in this archive's folder; check sooner than the
+    poll would have.
+
+    Sent by the app when its window comes back to the front, because the shape
+    of adding files is leaving Trove, dropping them in somewhere else, and
+    coming back. It carries no claim about what changed and is not believed on
+    that point: the pipeline re-walks and decides for itself.
+
+    The reason this exists alongside the filesystem watcher rather than being
+    replaced by it is that it works everywhere the watcher does not -- network
+    shares that deliver no events, an exhausted inotify budget, an installation
+    without the optional dependency. Between them, the case that is left is
+    files arriving while nobody is looking at the window, which is the poll's.
+    """
+    rid = req.require_root()
+    req.jobs.note_files_changed(rid)
+    return {"ok": True}
+
+
 def pause(req: Request) -> dict | Json:
     """Pause or resume the whole pipeline, or a single stage's card if `stage` is given."""
     # Without "stage" this is the whole-pipeline switch; with one it

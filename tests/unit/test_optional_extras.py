@@ -161,6 +161,27 @@ def test_the_pipeline_still_offers_every_stage_that_needs_no_extras(monkeypatch,
     assert all(avail[stage] for stage in (stages.SCAN, stages.ENRICH, stages.DEDUP, stages.PLACES))
 
 
+def test_watching_a_folder_degrades_to_the_sweep_that_was_always_there(monkeypatch, tmp_path):
+    """Without ``watchfiles``, files added to an archive are noticed by the
+    poll instead of at once. That is the whole consequence.
+
+    This one degrades more quietly than the ML extras, and deliberately: there
+    is no feature to mark unavailable and nothing for a card to say, because
+    what the watcher does is start a check that was going to happen anyway. The
+    thing to hold to is that asking for a watch without the package is a no-op
+    rather than an error, since the manager asks on every archive opened.
+    """
+    from trove.pipeline import watcher
+
+    hide(monkeypatch, "watchfiles")
+
+    assert watcher.available() is False
+    w = watcher.ArchiveWatcher(lambda root_id: None)
+    w.start(1, str(tmp_path))  # must not raise
+    assert w._thread is None
+    w.stop()
+
+
 def test_availability_is_decided_without_touching_the_disk(tmp_path):
     """An unavailable stage is never queued, and the stage is what downloads its
     own weights -- so gating availability on the weights being present would be

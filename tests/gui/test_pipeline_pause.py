@@ -69,7 +69,9 @@ def _rig_tick(jm, monkeypatch, started):
     monkeypatch.setattr(
         jm,
         "start",
-        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+        lambda kind, root_id=None, root_path=None, force=False, files_on_disk=None: (
+            started.append(kind) or {"id": 1}
+        ),
     )
 
 
@@ -391,7 +393,9 @@ def _rig_two_stages(jm, monkeypatch, started):
     monkeypatch.setattr(
         jm,
         "start",
-        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+        lambda kind, root_id=None, root_path=None, force=False, files_on_disk=None: (
+            started.append(kind) or {"id": 1}
+        ),
     )
 
 
@@ -441,7 +445,9 @@ def test_pausing_the_scan_card_stops_enrich_too(tmp_path, monkeypatch):
     monkeypatch.setattr(
         jm,
         "start",
-        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+        lambda kind, root_id=None, root_path=None, force=False, files_on_disk=None: (
+            started.append(kind) or {"id": 1}
+        ),
     )
 
     jm.set_stage_paused("scan", True)

@@ -70,7 +70,9 @@ def _rig(jm, monkeypatch, started, missing=("semantic",), states=()):
     monkeypatch.setattr(
         jm,
         "start",
-        lambda kind, root_id=None, root_path=None, force=False: started.append(kind) or {"id": 1},
+        lambda kind, root_id=None, root_path=None, force=False, files_on_disk=None: (
+            started.append(kind) or {"id": 1}
+        ),
     )
 
 

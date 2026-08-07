@@ -17,6 +17,19 @@ dependencies = []
 [project.optional-dependencies]
 # Nicer CLI output. Core still works without it.
 cli = ["rich>=13"]
+# Noticing that files were added without waiting for the next poll. watchfiles
+# wraps the Rust `notify` crate, so it is one prebuilt wheel per platform and no
+# compiler, and it reaches the three native APIs that differ in exactly the ways
+# that matter here: inotify needs a watch per directory (and a per-user budget
+# that a big archive can exhaust), while FSEvents and ReadDirectoryChangesW each
+# cover a whole tree from one handle.
+#
+# Deliberately optional, and deliberately only ever a hint. The pipeline's
+# freshness check is the poll, which is correct on every filesystem; this only
+# resets its backoff. So a network share that delivers no events, an exhausted
+# inotify budget, or this package simply not being installed all degrade to the
+# poll's own timing rather than to a missed file — see pipeline/watcher.py.
+watch = ["watchfiles>=1.0"]
 # Metadata + perceptual dedup (Phase 3/4).
 media = ["pyexiftool>=0.5", "Pillow>=10", "pillow-heif>=0.16", "ImageHash>=4.3"]
 # Face detection + clustering (Phase 6). Fully local: InsightFace's buffalo_l

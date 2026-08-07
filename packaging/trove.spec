@@ -31,8 +31,11 @@ hiddenimports = []
 # backend, so the native library has to be collected explicitly.
 # `pypdfium2` is here for the same reason: a bundled PDFium shared library,
 # imported lazily inside trove/text/pdf.py so PyInstaller never sees it.
+# `watchfiles` is the third of the same kind: its `_rust_notify` extension is
+# the whole package, and trove/pipeline/watcher.py imports it inside a function
+# on purpose (it is optional), so nothing static points at the native module.
 for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklearn",
-                "numpy", "tokenizers", "pypdfium2", "shapely", "pyclipper"):
+                "numpy", "tokenizers", "pypdfium2", "shapely", "pyclipper", "watchfiles"):
     hiddenimports += collect_submodules(package)
     binaries += collect_dynamic_libs(package)
 # insightface supplies the buffalo_l model-zoo loader and the face_align helpers.

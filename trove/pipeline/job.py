@@ -54,6 +54,15 @@ class Job:
     # what the run is actually doing (see stages._card). 0 means "nothing to
     # re-check", which is every other stage and a first scan.
     recheck_below: int = 0
+    # Files on disk under this root, when the caller already knows. The
+    # scheduler does: deciding to start a scan means asking whether the archive
+    # is settled, which is that same count, served from the cache the status
+    # endpoint keeps warm. Without this the scan re-walked the whole tree before
+    # hashing anything -- the second full walk of a tree the pipeline had just
+    # finished walking, and minutes of "Preparing…" on a large archive. None
+    # when nobody knows (a job started by hand, or a test), and the runner
+    # counts for itself.
+    files_on_disk: int | None = None
     # True while the runner is inside a call that cancellation cannot reach --
     # in practice, building an ONNX session. Nothing can interrupt native code,
     # so ``shutdown`` stops *waiting* on such a job instead of spending its

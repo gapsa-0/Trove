@@ -89,6 +89,7 @@ POST_EXACT = {
     "/api/archive/close",
     "/api/archive/remove",
     "/api/pipeline/pause",
+    "/api/pipeline/changed",
     "/api/map/cluster/rename",
     "/api/map/cluster/merge",
     "/api/map/cluster/unmerge",

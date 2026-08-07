@@ -118,6 +118,7 @@ POST_ROUTES: dict[str, Handler] = {
     "/api/archive/close": archives.close,
     "/api/archive/remove": archives.remove,
     "/api/pipeline/pause": pipeline.pause,
+    "/api/pipeline/changed": pipeline.changed,
     "/api/faces/person/rename": people.rename_person,
     "/api/faces/reassign": people.reassign,
     "/api/faces/merge": people.merge,

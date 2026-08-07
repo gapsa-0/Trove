@@ -66,7 +66,13 @@ CREATE TABLE IF NOT EXISTS scan_runs (
     files_seen     INTEGER DEFAULT 0,
     files_new      INTEGER DEFAULT 0,
     files_updated  INTEGER DEFAULT 0,
-    bytes_hashed   INTEGER DEFAULT 0
+    bytes_hashed   INTEGER DEFAULT 0,
+    -- Files that were still being written when this run walked past them, and
+    -- so were left for a later pass. A run that skipped one walked the whole
+    -- tree without covering it, which is why scan_settled reads this: without
+    -- it, a video that finished copying after the scan passed it would leave
+    -- the file count unchanged and the archive would look settled forever.
+    files_unstable INTEGER DEFAULT 0
 );
 
 -- ---- Phase 3: metadata & dates -------------------------------------------

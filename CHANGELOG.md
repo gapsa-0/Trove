@@ -231,6 +231,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Files you add to an archive are picked up in seconds, not minutes.** Trove
+  used to find them only on its next sweep, and those sweeps get further apart
+  the longer an archive sits quiet — up to five minutes — so dropping a folder of
+  photos in and switching back to Trove meant watching nothing happen for a
+  while. It now watches the archive folder and starts within a couple of seconds,
+  and checks immediately whenever you switch back to the window. Neither replaces
+  the old sweep, which still runs: filesystem notifications are not delivered at
+  all on some setups, network drives especially, and there the sweep is still
+  what finds your files.
+- **A file still being copied is no longer read half-finished.** A large video
+  dropped into an archive could be catalogued mid-copy — the wrong size, and a
+  thumbnail, date and search index all built from the fragment, thrown away and
+  redone once the copy finished. Trove now leaves a file that is still arriving
+  and comes back to it, so what gets read is the whole file. Photos are unaffected
+  in practice: they land in one go, and the check costs them nothing. The scan
+  summary says how many files it is still waiting on.
 - **A folder on the start page says "so far" while it is still being read.** The
   file count and size on each card are what Trove has catalogued, so during a
   first scan they are a number on its way up — and quoted plainly, they looked

@@ -36,6 +36,13 @@ pypdfium2==5.12.1
 rapidocr==3.9.2
 pyclipper==1.4.0
 shapely==2.1.2
+# Filesystem notifications, so files added to an archive are noticed in seconds
+# rather than on the next sweep. A Rust extension over the `notify` crate, with
+# cp313 wheels for both win_amd64 and manylinux x86_64, so it needs no compiler
+# on the release runners. The app runs correctly without it -- the sweep is what
+# is authoritative -- so a build that somehow lacked it would be slower to notice
+# a new folder of photos and nothing else.
+watchfiles==1.2.0
 PyInstaller==6.21.0
 # ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
 # (packaging/tools/manifest.json). ML model weights are staged separately too

@@ -193,7 +193,16 @@ class Scheduler:
                 archives_state.mark_dedup_owed(self._manager.cfg, open_root_id)
             # dedup/places operate per-root via root_id and ignore root_path.
             path = None if kind in (stages.DEDUP, stages.PLACES) else archive["path"]
-            if "error" not in self._manager.start(kind, open_root_id, path):
+            # Deciding this stage was owed meant counting the files on disk, so
+            # hand the scan the answer rather than letting it walk the tree a
+            # second time to reach the same number. Served from the cache that
+            # count went into, so this costs nothing.
+            on_disk = (
+                self._manager.disk_count(open_root_id, archive["path"], allow_walk=False)
+                if kind == stages.SCAN
+                else None
+            )
+            if "error" not in self._manager.start(kind, open_root_id, path, files_on_disk=on_disk):
                 acted = True
                 if kind in stages.LOCK_KINDS:
                     started_lock = True

@@ -98,6 +98,10 @@ def _report(totals: ScanStats, interrupted: bool) -> None:
     print(f"  unchanged        : {totals.skipped}")
     print(f"  ignored (junk)   : {totals.ignored}")
     print(f"  hashed this run  : {_fmt_bytes(totals.bytes_hashed)}")
+    if totals.unstable:
+        # Not an error and not a skip: these were being written while the scan
+        # walked past them, and re-running picks them up once they have landed.
+        print(f"  still being copied: {totals.unstable} (re-run to pick these up)")
     if totals.errors:
         print(f"  errors           : {totals.errors}")
         for s in totals.error_samples:

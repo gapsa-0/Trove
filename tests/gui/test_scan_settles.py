@@ -17,7 +17,7 @@ from trove.pipeline import stages as stages_mod
 
 
 class _Stats:
-    seen = new = updated = bytes_hashed = 0
+    seen = new = updated = bytes_hashed = unstable = 0
 
 
 def _job_manager(tmp_path, monkeypatch):

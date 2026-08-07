@@ -425,6 +425,25 @@ def test_post_archive_remove_deletes_the_registered_archive(live_server):
     assert json.loads(body)["archives"] == []
 
 
+def test_post_pipeline_changed_is_accepted_as_a_hint(live_server):
+    """The app sends this when its window comes back to the front, on the
+    chance that files were dropped in while it was away. It claims nothing and
+    is not believed on anything -- the pipeline re-walks and decides -- so the
+    only contract is that it is accepted and answers at once."""
+    root_id = live_server.ids["root_id"]
+
+    status, body = _post(live_server.base_url, f"/api/pipeline/changed?root={root_id}", {})
+
+    assert status == 200, body
+    assert json.loads(body) == {"ok": True}
+
+
+def test_post_pipeline_changed_needs_to_know_which_archive(live_server):
+    status, body = _post(live_server.base_url, "/api/pipeline/changed", {})
+
+    assert status == 400, body
+
+
 def test_post_pipeline_pause_supports_pausing_a_single_stage(live_server):
     """Every card the health panel draws a pause button for, not just one of
     them: the panel offers the button per card, so a card the route refuses is

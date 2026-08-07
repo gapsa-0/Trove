@@ -61,6 +61,10 @@ def _migrate_files_and_runs(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_files_dupgroup ON files(dup_group_id)")
     _add_column_if_missing(conn, "scan_runs", "root_id", "INTEGER")
     _add_column_if_missing(conn, "scan_runs", "files_on_disk", "INTEGER")
+    # Runs recorded before this column existed read as 0 unstable, which is the
+    # right default: they were written by a scanner that catalogued whatever it
+    # found, so there is nothing they were waiting to come back for.
+    _add_column_if_missing(conn, "scan_runs", "files_unstable", "INTEGER DEFAULT 0")
 
 
 def _drop_covered_files_index(conn: sqlite3.Connection) -> None:

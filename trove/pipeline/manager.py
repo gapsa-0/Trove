@@ -68,7 +68,7 @@ from contextlib import nullcontext
 
 from ..config import Config
 from ..db import database as db
-from . import archives
+from . import archives, watcher
 from .job import Job, JobContext, Runner
 from .runners import RUNNERS
 from .scheduler import Scheduler
@@ -116,14 +116,31 @@ class JobManager:
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
+        # When a hint that files changed was last acted on, per root, and the
+        # timer that will act on one that arrived too soon after it. See
+        # note_files_changed for why a hint is throttled and never dropped.
+        self._hint_at: dict[int, float] = {}
+        self._hint_timer: dict[int, threading.Timer] = {}
+        self._hint_lock = threading.Lock()
         # Public, because it is a collaborator rather than an implementation
         # detail: tests drive tick() by hand instead of waiting on the timer.
         self.scheduler = Scheduler(self)
         self.scheduler.start()
+        # Started and stopped with the open archive, so only the archive being
+        # looked at is watched -- the same rule the scheduler follows, which
+        # also keeps the inotify watches held down to one tree.
+        self._watcher = watcher.ArchiveWatcher(self.note_files_changed)
 
     def shutdown(self, timeout: float = 8.0) -> bool:
         """Cancel all work and stop the scheduler before the HTTP server exits."""
         self.scheduler.stop()
+        self._watcher.stop()
+        # A hint deferred behind its floor has nothing left to wake: the
+        # scheduler is stopping and note_files_changed would decline anyway.
+        with self._hint_lock:
+            for timer in self._hint_timer.values():
+                timer.cancel()
+            self._hint_timer.clear()
         with self._lock:
             # Set every cancel directly rather than going through
             # _cancel_running: on the way out, jobs of every kind and root stop.
@@ -252,6 +269,7 @@ class JobManager:
         root_id: int | None = None,
         root_path: str | None = None,
         force: bool = False,
+        files_on_disk: int | None = None,
     ) -> dict:
         if self.scheduler.stopping():
             return {"error": "application is shutting down"}
@@ -264,7 +282,14 @@ class JobManager:
             return {"error": f"a {kind} job is already running"}
         with self._lock:
             self._seq += 1
-            job = Job(id=self._seq, kind=kind, root_id=root_id, root_path=root_path, force=force)
+            job = Job(
+                id=self._seq,
+                kind=kind,
+                root_id=root_id,
+                root_path=root_path,
+                force=force,
+                files_on_disk=files_on_disk,
+            )
             self._jobs[job.id] = job
             cancel = threading.Event()
             self._cancels[job.id] = cancel
@@ -312,6 +337,46 @@ class JobManager:
             raise
         return conn
 
+    def note_files_changed(self, root_id: int) -> None:
+        """Something has changed on disk under this root; find out sooner.
+
+        The one entry point for every hint, whichever direction it came from --
+        the filesystem watcher, or the window regaining focus after someone
+        dropped files in. Neither is trusted to say *what* changed: both do the
+        same two things, drop the cached disk count and wake the scheduler, and
+        the tick that follows re-walks and decides. That is why a hint being
+        wrong, duplicated or absent costs nothing but timing.
+
+        Throttled per root, because acting on a hint costs a walk of the whole
+        tree and files can arrive one at a time for as long as someone is
+        dragging them in. A hint inside the floor is not dropped -- it is
+        deferred to the end of it, so the last file of a slow trickle is still
+        noticed without every file in the trickle costing a walk.
+        """
+        if self.scheduler.stopping():
+            return
+        with self._hint_lock:
+            now = time.monotonic()
+            last = self._hint_at.get(root_id)
+            wait = 0.0 if last is None else watcher.WALK_FLOOR - (now - last)
+            if wait > 0:
+                if root_id not in self._hint_timer:
+                    timer = threading.Timer(wait, self._fire_deferred_hint, args=(root_id,))
+                    timer.daemon = True
+                    self._hint_timer[root_id] = timer
+                    timer.start()
+                return
+            self._hint_at[root_id] = now
+        logger.debug("files changed under root=%s; re-checking", root_id)
+        self._disk.invalidate(root_id)
+        self.nudge()
+
+    def _fire_deferred_hint(self, root_id: int) -> None:
+        """The tail of a throttled hint, once its floor has passed."""
+        with self._hint_lock:
+            self._hint_timer.pop(root_id, None)
+        self.note_files_changed(root_id)
+
     def open_archive(self, root_id: int) -> None:
         """Allow automatic work for this archive while it is being viewed."""
         self._open_db(root_id).close()
@@ -329,6 +394,9 @@ class JobManager:
         # the *previous* archive was left on is replaced by this one's own state.
         self._paused, stages_off = self.cfg.archive_pause(root_id)
         self._paused_stages = set(stages_off)
+        path = self.cfg.archive_path(root_id)
+        if path is not None:
+            self._watcher.start(root_id, path)
         self.nudge()
 
     def close_archive(self, root_id: int | None = None) -> None:
@@ -343,6 +411,11 @@ class JobManager:
             for jid, job in self._jobs.items():
                 if job.status == "running" and job.root_id == closing:
                     self._cancels[jid].set()
+        # Outside the registry lock, and only once this really was the open
+        # archive being closed: a mismatched root_id returns above without
+        # touching anything, and stopping the watch there would leave the
+        # archive that is still open unwatched.
+        self._watcher.stop()
 
     def _persist_pause(self) -> None:
         """Record the open archive's pause state, so reopening it restores it.

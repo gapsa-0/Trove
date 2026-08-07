@@ -62,6 +62,13 @@ SCAN, ENRICH, DEDUP, PLACES, DETECT, SEMANTIC, TEXT = (
 LOCK_KINDS = frozenset({DEDUP, PLACES, DETECT})
 PARALLEL_KINDS = frozenset({SCAN, ENRICH, SEMANTIC, TEXT})
 
+# How long to leave a file that was still being copied before walking the tree
+# again to see whether it has finished. Long enough that a big video does not
+# cost a walk every few seconds for the length of its copy, short enough that
+# nobody watches a finished copy sit there. The event from the filesystem
+# watcher does not wait for it -- this is the floor for noticing unaided.
+SETTLE_RECHECK = 30.0
+
 # Stages where one pass serves two features an archive chooses separately.
 # Fusing is a decision about the *work* -- detect opens an image once and lets
 # the face and animal detectors arbitrate; text opens a PDF once because whether
@@ -192,6 +199,9 @@ def _pending(
     conn = db.open_readonly(db_path)
     try:
         settled = db.scan_settled(conn, root_id, on_disk)
+        # Asked here rather than beside the branch that reads it, because that
+        # branch runs after this connection is closed.
+        awaiting_settle = db.scan_awaiting_settle(conn, root_id, SETTLE_RECHECK)
         indexed = conn.execute(
             "SELECT COUNT(*) FROM files f WHERE f.present=1 AND f.root_id=?", (root_id,)
         ).fetchone()[0]
@@ -220,7 +230,13 @@ def _pending(
     # Kept as a block rather than the ternary ruff suggests: as one line it ends
     # in `... or 1`, where `or` is a default and the `or` in the condition is a
     # boolean, and the floor stops looking deliberate.
-    if settled or on_disk is None:  # noqa: SIM108
+    if settled or on_disk is None:
+        new_files = 0
+    elif awaiting_settle:
+        # A run just left a file still being copied. It is genuinely owed work,
+        # so the archive is not settled -- but the only way to act on it is to
+        # walk the tree again, and a 40 GB copy would have us doing that every
+        # tick for the length of it. Wait, then ask again.
         new_files = 0
     else:
         new_files = max(0, on_disk - indexed) or 1

@@ -58,6 +58,7 @@ class _ScanStatsLike(Protocol):
     new: int
     updated: int
     bytes_hashed: int
+    unstable: int
 
 
 def now_iso() -> str:
@@ -299,7 +300,8 @@ def scan_run_finish(
     mistaken for full coverage."""
     conn.execute(
         """UPDATE scan_runs SET finished_at=?, files_seen=?, files_new=?,
-           files_updated=?, bytes_hashed=?, files_on_disk=? WHERE id=?""",
+           files_updated=?, bytes_hashed=?, files_on_disk=?, files_unstable=?
+           WHERE id=?""",
         (
             now_iso(),
             stats.seen,
@@ -307,10 +309,23 @@ def scan_run_finish(
             stats.updated,
             stats.bytes_hashed,
             files_on_disk,
+            stats.unstable,
             run_id,
         ),
     )
     conn.commit()
+
+
+def _last_completed_scan(conn: sqlite3.Connection, root_id: int) -> sqlite3.Row | None:
+    """The most recent scan run that walked this root end to end."""
+    row = conn.execute(
+        """SELECT finished_at, files_on_disk, COALESCE(files_unstable,0) AS files_unstable
+           FROM scan_runs
+           WHERE root_id=? AND finished_at IS NOT NULL AND files_on_disk IS NOT NULL
+           ORDER BY id DESC LIMIT 1""",
+        (root_id,),
+    ).fetchone()
+    return cast("sqlite3.Row | None", row)
 
 
 def scan_settled(conn: sqlite3.Connection, root_id: int, files_on_disk: int | None) -> bool:
@@ -319,16 +334,39 @@ def scan_settled(conn: sqlite3.Connection, root_id: int, files_on_disk: int | No
     ``files_on_disk`` is the current count; comparing it with the one the last
     completed scan saw also catches deletions, which a backlog subtraction
     silently floors at zero.
+
+    A count match is not enough on its own. A run that walked past a file still
+    being copied counted it on disk and deliberately did not catalogue it, so
+    the counts agree while the archive is genuinely short of one file — and
+    since finishing a copy changes no count, nothing would ever ask again.
+    ``files_unstable`` is what keeps that run from passing for coverage.
     """
     if files_on_disk is None:
         return False
-    row = conn.execute(
-        """SELECT files_on_disk FROM scan_runs
-           WHERE root_id=? AND finished_at IS NOT NULL AND files_on_disk IS NOT NULL
-           ORDER BY id DESC LIMIT 1""",
-        (root_id,),
-    ).fetchone()
-    return row is not None and row["files_on_disk"] == files_on_disk
+    row = _last_completed_scan(conn, root_id)
+    return row is not None and row["files_on_disk"] == files_on_disk and not row["files_unstable"]
+
+
+def scan_awaiting_settle(conn: sqlite3.Connection, root_id: int, cooldown: float) -> bool:
+    """Whether the last completed run left files still arriving, recently enough
+    that asking again now would only find them still arriving.
+
+    The scan is the one stage whose backlog is answered by walking the whole
+    tree, so "not settled" is an expensive question to keep asking. Without this
+    the scheduler would re-walk every tick for the entire length of a large
+    copy — which is the same hot loop ``scan_settled`` exists to prevent, just
+    reached from the other side.
+    """
+    row = _last_completed_scan(conn, root_id)
+    if row is None or not row["files_unstable"]:
+        return False
+    try:
+        finished = datetime.fromisoformat(row["finished_at"])
+    except ValueError:
+        # An unparseable timestamp must not wedge the stage off: fall through
+        # and let the scan run, which is the behaviour without this check.
+        return False
+    return (datetime.now(UTC) - finished).total_seconds() < cooldown
 
 
 # ---- Dedup rebuild coverage (catalog-derived "is a rebuild owed") ----------

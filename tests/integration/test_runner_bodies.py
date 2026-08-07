@@ -51,9 +51,15 @@ from trove.scan import walker
 _ROOT = 1
 
 
-def _context(cfg: Config, conn: sqlite3.Connection, kind: str, root_path: str | None = None):
+def _context(
+    cfg: Config,
+    conn: sqlite3.Connection,
+    kind: str,
+    root_path: str | None = None,
+    files_on_disk: int | None = None,
+):
     """A real JobContext, as the manager builds one -- minus the thread."""
-    job = Job(id=1, kind=kind, root_id=_ROOT, root_path=root_path)
+    job = Job(id=1, kind=kind, root_id=_ROOT, root_path=root_path, files_on_disk=files_on_disk)
     ctx = JobContext(
         cfg=cfg,
         job=job,
@@ -124,6 +130,40 @@ def test_the_scan_runner_counts_the_disk_before_it_claims_any_progress(archive, 
 
     assert seen == [("preparing", "counting files on disk")]
     assert job.phase == "working", "the bar has to come back for the walk itself"
+    assert job.total > 0
+
+
+def test_the_scan_does_not_count_the_disk_a_second_time(archive, monkeypatch):
+    """The scheduler cannot decide a scan is owed without counting the files on
+    disk, so by the time the runner starts, the number it used to spend a full
+    walk establishing is already known. Walking for it again was the second
+    complete pass over a tree the pipeline had just finished walking -- and on a
+    large archive, minutes of "Preparing…" before the first file was read.
+    """
+    cfg, conn, source = archive
+    ctx, job = _context(cfg, conn, "scan", root_path=source, files_on_disk=3)
+    monkeypatch.setattr(
+        walker, "count_files", lambda p: pytest.fail("the runner counted the disk again")
+    )
+
+    scan_runner.run(ctx)
+
+    assert job.total == 3
+    assert conn.execute("SELECT COUNT(*) FROM files WHERE root_id=?", (_ROOT,)).fetchone()[0] > 0
+
+
+def test_the_scan_still_counts_for_itself_when_nobody_supplied_one(archive, monkeypatch):
+    """A job started by hand, or from a test, has nobody to have counted for
+    it. The walk it used to always do is still there for that case."""
+    cfg, conn, source = archive
+    ctx, job = _context(cfg, conn, "scan", root_path=source)
+    counted = []
+    real_count = walker.count_files
+    monkeypatch.setattr(walker, "count_files", lambda p: counted.append(p) or real_count(p))
+
+    scan_runner.run(ctx)
+
+    assert counted, "nothing supplied the count and the runner did not take it"
     assert job.total > 0
 
 
