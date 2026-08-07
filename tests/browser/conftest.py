@@ -370,6 +370,9 @@ def archive(tmp_path, cdp_port):
         conn.commit()
     finally:
         conn.close()
+    # The folder this archive *is*, for the start page's own question: whether a
+    # chosen folder could become one.
+    ids["archive_path"] = str(source_dir)
 
     with serve_in_thread(cfg) as httpd:
         host, port = httpd.server_address[:2]

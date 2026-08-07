@@ -60,6 +60,7 @@ Handler = Callable[[Request], object]
 GET_ROUTES: dict[str, Handler] = {
     "/api/health": static.health,
     "/api/archives": archives.archive_list,
+    "/api/archives/check": archives.check,
     "/api/features": archives.feature_list,
     "/api/settings": static.settings,
     "/api/docs": docs.catalogue,

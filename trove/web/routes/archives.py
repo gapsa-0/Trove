@@ -93,6 +93,17 @@ def _answered_with_ways(result: dict[str, Any]) -> Json:
     return ok_or_error(result)
 
 
+def check(req: Request) -> dict[str, Any]:
+    """Whether a folder could become an archive, asked before setup opens.
+
+    The picker asks as soon as a folder is chosen, so "that folder is already
+    an archive" arrives instead of the setup screen rather than after someone
+    has configured one. Same function the creation path runs, so the two
+    answers cannot come apart.
+    """
+    return archives.check_folder(req.cfg, req.one("path") or "")
+
+
 def add(req: Request) -> Json:
     """Register a new archive by folder path, preparing its private database."""
     name = req.body.get("name")

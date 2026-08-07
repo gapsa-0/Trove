@@ -147,6 +147,29 @@ def configure_archive(
     return {"ok": True, "name": cfg.archive_name(root_id), "features": list(enabled)}
 
 
+def check_folder(cfg: Config, path: str) -> dict[str, Any]:
+    """Whether this folder could become an archive, without creating anything.
+
+    Everything ``add_archive`` can refuse a folder *for* before it starts work,
+    asked as its own question so the picker can ask it when the folder is
+    chosen rather than after someone has configured an archive that was never
+    going to be created. It is the same function both times, not a second
+    opinion: the check that runs at creation is this one.
+
+    ``archive_id`` comes back with the "already an archive" answer, because at
+    that point the useful thing to know is which of the folders already on the
+    start page this is.
+    """
+    p = Path(path).expanduser()
+    if not p.is_dir():
+        return {"error": f"Not a directory: {path}"}
+    resolved = str(p.resolve())
+    existing = next((a for a in cfg.archives if a["path"] == resolved), None)
+    if existing is not None:
+        return {"error": "That folder is already an archive.", "archive_id": existing["id"]}
+    return {"ok": True, "path": resolved}
+
+
 def add_archive(
     cfg: Config, path: str, name: str | None = None, chosen: list[str] | None = None
 ) -> dict[str, Any]:
@@ -154,12 +177,10 @@ def add_archive(
     first. Returns ``{"id": ..., "path": ...}`` on success; an ``{"error":
     ...}`` dict if the path isn't a directory, is already registered, or the
     catalog can't be prepared."""
-    p = Path(path).expanduser()
-    if not p.is_dir():
-        return {"error": f"Not a directory: {path}"}
-    resolved = str(p.resolve())
-    if any(a["path"] == resolved for a in cfg.archives):
-        return {"error": "That folder is already an archive."}
+    refused = check_folder(cfg, path)
+    if "error" in refused:
+        return {"error": refused["error"]}
+    resolved = refused["path"]
     # Build the private store first and register it only once it is usable, so a
     # failure here cannot leave a half-added archive in config.json that appears
     # out of nowhere on the next page load.

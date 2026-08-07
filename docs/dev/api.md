@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**74 routes**: 34 GET (exact) + 12 GET (prefix) + 28 POST.
+**75 routes**: 35 GET (exact) + 12 GET (prefix) + 28 POST.
 
 ## GET -- exact path
 
@@ -18,6 +18,7 @@ build if this file has drifted from the route tables.
 | --- | --- | --- |
 | `/api/health` | Liveness plus the build this process is running, which is what the desktop shell polls for before showing a window. | `trove/web/routes/static.py::health` |
 | `/api/archives` | Every registered archive, for the picker. | `trove/web/routes/archives.py::archive_list` |
+| `/api/archives/check` | Whether a folder could become an archive, asked before setup opens. | `trove/web/routes/archives.py::check` |
 | `/api/features` | Every feature an archive can be given, for the setup panel. | `trove/web/routes/archives.py::feature_list` |
 | `/api/settings` | No user-configurable settings exist yet; always answers with an empty object. | `trove/web/routes/static.py::settings` |
 | `/api/docs` | Every reference page in reading order, for the index rail. | `trove/web/routes/docs.py::catalogue` |

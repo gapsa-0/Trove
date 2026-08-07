@@ -46,6 +46,15 @@ from live_archive import _get, _post
 API_GET_CASES = [
     pytest.param("/api/health", {"ok", "version", "commit"}, id="GET /api/health"),
     pytest.param("/api/archives", {"archives"}, id="GET /api/archives"),
+    # Asked of the archive's own folder, which is the answer the picker acts on
+    # and the one no other case can disturb: the unregistered directory beside
+    # it is what POST /api/archives registers, so a case using that would pass
+    # or fail depending on which ran first.
+    pytest.param(
+        "/api/archives/check?path={archive_path}",
+        {"error", "archive_id"},
+        id="GET /api/archives/check",
+    ),
     pytest.param("/api/features", {"features"}, id="GET /api/features"),
     pytest.param(
         "/api/summary?root={root_id}",

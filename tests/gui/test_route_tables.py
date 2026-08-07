@@ -33,6 +33,7 @@ from trove.web import server
 GET_EXACT = {
     "/api/health",
     "/api/archives",
+    "/api/archives/check",
     "/api/features",
     "/api/settings",
     "/api/docs",

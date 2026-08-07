@@ -87,6 +87,55 @@ def _drag(app, source, target):
     )
 
 
+def _choose_folder(app, path):
+    """Type a folder into the start page's field and submit it, the way the
+    form is used when there is no desktop folder chooser."""
+    app.tab.evaluate(
+        f"(field => {{ field.value = {path!r};"
+        " field.closest('form').requestSubmit(); })"
+        "(document.getElementById('archive-path'))"
+    )
+
+
+def test_a_folder_that_is_already_an_archive_never_reaches_setup(open_app, archive):
+    """The refusal used to arrive at the end: choose a folder, configure eight
+    features, press Create, and only then hear that the folder was already an
+    archive. Nothing about that answer depends on what was configured -- it is
+    true the moment the folder is chosen -- so it is asked there.
+
+    And it names the archive rather than the fact, since at that point what you
+    want to know is which of the folders on this page you just picked again.
+    """
+    with open_app() as app:
+        app.wait_for(".p-card[data-archive]")
+
+        _choose_folder(app, archive.ids["archive_path"])
+        app.wait_for("#toast.show")
+
+        assert "already an archive" in app.text("#toast")
+        assert app.count(f'.p-card[data-archive="{archive.root_id}"].found') == 1
+        assert (
+            app.tab.evaluate("getComputedStyle(document.getElementById('setup')).display") == "none"
+        ), "setup opened for a folder that could never be created"
+        assert app.errors() == []
+
+
+def test_a_folder_that_is_not_a_folder_never_reaches_setup(open_app, archive):
+    """The other half of the same question, and the other thing add_archive
+    used to refuse only at the end."""
+    with open_app() as app:
+        app.wait_for(".p-card[data-archive]")
+
+        _choose_folder(app, archive.ids["archive_path"] + "/nothing-here")
+        app.wait_for("#toast.show")
+
+        assert "Not a directory" in app.text("#toast")
+        assert (
+            app.tab.evaluate("getComputedStyle(document.getElementById('setup')).display") == "none"
+        )
+        assert app.errors() == []
+
+
 def test_the_pipeline_starts_with_only_the_features_that_cannot_be_removed(open_app):
     """Everything else waits on the shelf: pre-ticking them would pre-select
     about a gigabyte of downloads on the one screen meant to prevent that."""

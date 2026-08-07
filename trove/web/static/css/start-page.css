@@ -242,6 +242,14 @@
   box-shadow: 0 12px 30px rgba(0, 0, 0, .1)
 }
 
+/* The card a folder turned out to already be, when one is chosen twice. Held
+   for a moment rather than animated: the answer to "which of these is it" is
+   the card, and the outline is only there to say which one to look at. */
+.p-card.found {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm)
+}
+
 .p-cover {
   position: relative;
   height: 132px;

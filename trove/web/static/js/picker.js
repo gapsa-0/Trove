@@ -52,6 +52,10 @@ export async function loadPicker() {
   archives.forEach(a => {
     const c = document.createElement("div");
     c.className = "p-card"; c.setAttribute("role", "button"); c.tabIndex = 0;
+    // So a folder that is refused for already being an archive can point at
+    // the card it is: knowing which of these it already is beats being told
+    // that it is one of them.
+    c.dataset.archive = a.id;
     c.onclick = () => openArchive(a);
     c.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArchive(a); } };
     const warn = a.exists ? "" : ` · <span class="warn">not mounted</span>`;
@@ -115,6 +119,23 @@ async function startAddArchive() {
     p = picked.path || ""; field.value = p;
   }
   if (!p) { highlightAddArchiveField(); return false; }
+  // Asked here, where the folder is chosen, rather than left to the save at the
+  // end of setup. Both refusals -- not a folder, already an archive -- are
+  // true the moment it is picked and have nothing to do with what gets
+  // configured, so finding out after choosing eight features is being sent
+  // back to the start for something that was knowable before it began.
+  //
+  // The server answers, not this list: which folder a path really is depends on
+  // symlinks and on how it resolves, and comparing the strings here would let
+  // the same folder in twice by a different name.
+  const answer = await jget("/api/archives/check?path=" + encodeURIComponent(p))
+    .catch(() => ({ error: "Couldn’t check that folder." }));
+  if (!answer || answer.error) {
+    toast((answer && answer.error) || "Couldn’t check that folder.", true);
+    if (answer && answer.archive_id) flashArchiveCard(answer.archive_id);
+    else highlightAddArchiveField();
+    return false;
+  }
   // The folder is not registered here any more: setup is where the archive is
   // created, because the features chosen there decide what gets downloaded and
   // an archive that existed first would already be scanning under the default.
@@ -129,6 +150,17 @@ async function afterSetup(created) {
   const a = ARCHIVES.find(x => x.id === created.id)
     || { ...created, files: 0, size: 0, exists: true, covers: [] };
   openArchive(a, "overview");
+}
+/* The card for a folder that turned out to be one of these already. Scrolled to
+   and outlined for a moment, so the answer is the archive itself rather than a
+   sentence about it. */
+function flashArchiveCard(id) {
+  const card = document.querySelector(`.p-card[data-archive="${id}"]`);
+  if (!card) return;
+  card.scrollIntoView({ block: "center", behavior: "smooth" });
+  card.classList.add("found");
+  clearTimeout(card._foundTimer);
+  card._foundTimer = setTimeout(() => card.classList.remove("found"), 1600);
 }
 function highlightAddArchiveField() {
   const field = document.getElementById("archive-path"); const wrap = field.closest(".p-add");

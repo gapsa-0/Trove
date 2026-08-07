@@ -289,6 +289,9 @@ def live_server(tmp_path, monkeypatch):
     finally:
         conn.close()
     ids["root_id"] = root_id
+    # The registered archive's own folder, for the routes that answer questions
+    # *about* a path rather than about what is catalogued under it.
+    ids["archive_path"] = str(source_dir)
 
     # A second, unregistered real directory for the one POST route that
     # registers a *new* archive (/api/archives) without disturbing the one
