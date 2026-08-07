@@ -231,6 +231,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A folder on the start page says "so far" while it is still being read.** The
+  file count and size on each card are what Trove has catalogued, so during a
+  first scan they are a number on its way up — and quoted plainly, they looked
+  like the size of the folder. They now read *12,040 files so far* until a scan
+  has been all the way through the folder, and drop the qualifier once one has.
+  An archive whose scan was interrupted keeps it, because its card is genuinely
+  still short of the folder.
 - **The two text features are named after what you can search, not the files they
   read.** *Documents* and *Pictures of text* are now **Search by document text**
   and **Search by picture text**, headed as *Search by text extracted*

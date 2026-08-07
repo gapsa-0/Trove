@@ -59,12 +59,19 @@ export async function loadPicker() {
     c.onclick = () => openArchive(a);
     c.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openArchive(a); } };
     const warn = a.exists ? "" : ` · <span class="warn">not mounted</span>`;
+    // What the card counts is what has been catalogued, and a scan that has not
+    // finished has more of it to come -- so until one has, the count and the
+    // byte badge beside it are a floor rather than the size of the archive.
+    // Said once, on the sentence, since it governs both figures; the badge
+    // stays a quantity. It covers an interrupted scan as honestly as a running
+    // one, which is why it is not "still scanning".
+    const sofar = a.partial ? " so far" : "";
     c.innerHTML = pickerCover(a) +
       `<div class="p-meta">
              <button class="p-remove" type="button" aria-label="Remove archive">Remove</button>
              <button class="p-rename" type="button" aria-label="Rename ${esc(a.name)}">Rename</button>
              <div class="nm">${esc(a.name)}</div>
-             <div class="st">${a.files.toLocaleString()} files${warn}</div>
+             <div class="st">${a.files.toLocaleString()} files${sofar}${warn}</div>
            </div>`;
     c.querySelector(".p-remove").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
     // What this card used to offer was "Set up", which reopened the whole
@@ -148,7 +155,7 @@ async function startAddArchive() {
 async function afterSetup(created) {
   await loadPicker();
   const a = ARCHIVES.find(x => x.id === created.id)
-    || { ...created, files: 0, size: 0, exists: true, covers: [] };
+    || { ...created, files: 0, size: 0, partial: true, exists: true, covers: [] };
   openArchive(a, "overview");
 }
 /* The card for a folder that turned out to be one of these already. Scrolled to

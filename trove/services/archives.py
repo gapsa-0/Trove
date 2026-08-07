@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 def archives(cfg: Config) -> list[dict[str, Any]]:
     """Every registered archive with its picker-page stats: file and byte
-    counts, last scan time and cover thumbnails, or zeroed stats when its
-    database hasn't been created yet.
+    counts, whether those counts are the whole archive yet, last scan time and
+    cover thumbnails, or zeroed stats when its database hasn't been created yet.
 
     Nothing here may read a column no index covers. This runs for every archive
     before the start page can draw a single card, with the page cache cold --
@@ -55,6 +55,12 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
             "files": 0,
             "size": 0,
             "exists": Path(path).is_dir(),
+            # Both figures above are what has been catalogued, not what is in
+            # the folder -- a scan still walking has more of both to come. Until
+            # one has finished, they are a floor, and the card says "so far"
+            # rather than quoting them as the size of the archive. An archive
+            # with no database yet has never scanned at all, so it starts here.
+            "partial": True,
             "last_scan": None,
             "covers": [],
         }
@@ -83,10 +89,18 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
                         ORDER BY f.id DESC LIMIT 5"""
                     ).fetchall()
                 ]
+                # An open `finished_at` is already the catalog's word for "this
+                # walk is not full coverage": scan_run_finish is reached only
+                # when every root was walked end to end, so a running scan and
+                # one that was cancelled or died both leave it NULL. That is
+                # exactly the question the card is asking, and it is answered
+                # off a row this was fetching anyway -- no second query, and
+                # nothing here reads a column an index does not cover.
                 row.update(
                     files=stats["c"],
                     size=stats["s"],
                     covers=covers,
+                    partial=last is None or last["finished_at"] is None,
                     last_scan=(last["finished_at"] or last["started_at"]) if last else None,
                 )
             finally:

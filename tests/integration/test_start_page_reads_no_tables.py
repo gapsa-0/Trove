@@ -88,6 +88,7 @@ def test_the_start_page_asks_for_nothing_it_does_not_show(monkeypatch, tmp_path)
         "files",
         "size",
         "exists",
+        "partial",
         "last_scan",
         "covers",
     }
