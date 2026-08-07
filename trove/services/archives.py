@@ -56,10 +56,11 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
             "size": 0,
             "exists": Path(path).is_dir(),
             # Both figures above are what has been catalogued, not what is in
-            # the folder -- a scan still walking has more of both to come. Until
-            # one has finished, they are a floor, and the card says "so far"
-            # rather than quoting them as the size of the archive. An archive
-            # with no database yet has never scanned at all, so it starts here.
+            # the folder -- an archive still being walked for the first time has
+            # more of both to come. Until one walk has been all the way through,
+            # they are a floor, and the card says "so far" rather than quoting
+            # them as the size of the archive. An archive with no database yet
+            # has never scanned at all, so it starts here.
             "partial": True,
             "last_scan": None,
             "covers": [],
@@ -89,18 +90,25 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
                         ORDER BY f.id DESC LIMIT 5"""
                     ).fetchall()
                 ]
-                # An open `finished_at` is already the catalog's word for "this
-                # walk is not full coverage": scan_run_finish is reached only
-                # when every root was walked end to end, so a running scan and
-                # one that was cancelled or died both leave it NULL. That is
-                # exactly the question the card is asking, and it is answered
-                # off a row this was fetching anyway -- no second query, and
-                # nothing here reads a column an index does not cover.
+                # "Has this archive ever been walked end to end", asked through
+                # the same function the pipeline asks it with. It is emphatically
+                # not "is the newest scan_runs row still open": backing out of an
+                # archive cancels its scan and leaves a row that stays open
+                # forever, because an archive already covered never queues
+                # another scan to replace it. Reading that as "still being read"
+                # made a fully catalogued 97k-file archive say "so far"
+                # permanently, while the pipeline had it settled and was three
+                # stages further on.
+                #
+                # A run that skipped a file still being copied does not count
+                # either -- it walked the whole tree without covering it, which
+                # is the same thing scan_settled refuses to settle on.
+                covered = db.last_completed_scan(conn, rid)
                 row.update(
                     files=stats["c"],
                     size=stats["s"],
                     covers=covers,
-                    partial=last is None or last["finished_at"] is None,
+                    partial=covered is None or bool(covered["files_unstable"]),
                     last_scan=(last["finished_at"] or last["started_at"]) if last else None,
                 )
             finally:

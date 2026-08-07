@@ -316,15 +316,37 @@ def scan_run_finish(
     conn.commit()
 
 
-def _last_completed_scan(conn: sqlite3.Connection, root_id: int) -> sqlite3.Row | None:
-    """The most recent scan run that walked this root end to end."""
-    row = conn.execute(
-        """SELECT finished_at, files_on_disk, COALESCE(files_unstable,0) AS files_unstable
-           FROM scan_runs
-           WHERE root_id=? AND finished_at IS NOT NULL AND files_on_disk IS NOT NULL
-           ORDER BY id DESC LIMIT 1""",
-        (root_id,),
-    ).fetchone()
+_LAST_COMPLETED = """SELECT finished_at, files_on_disk, {unstable} AS files_unstable
+    FROM scan_runs
+    WHERE root_id=? AND finished_at IS NOT NULL AND files_on_disk IS NOT NULL
+    ORDER BY id DESC LIMIT 1"""
+
+
+def last_completed_scan(conn: sqlite3.Connection, root_id: int) -> sqlite3.Row | None:
+    """The most recent scan run that walked this root end to end.
+
+    Public because more than one thing needs to know it, and they must not each
+    decide it for themselves. The start page once asked its own version of this
+    question -- "is the newest run still open" -- which is a different question
+    with a different answer: a scan cancelled by closing the archive leaves an
+    open row that no later run replaces, because an archive that is already
+    covered never queues another scan. The card read that as "still being read"
+    and said so forever, about an archive the pipeline had long since finished.
+    """
+    try:
+        row = conn.execute(
+            _LAST_COMPLETED.format(unstable="COALESCE(files_unstable,0)"), (root_id,)
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        # The start page is the one caller that can meet a database this build
+        # has never migrated: it reads every registered archive read-only,
+        # without opening it, and opening is what runs init_db. So on the first
+        # launch after an upgrade -- for every archive at once -- this column
+        # does not exist yet. Older runs pre-date the question anyway, and the
+        # answer for them is the column's own default.
+        if "files_unstable" not in str(exc):
+            raise
+        row = conn.execute(_LAST_COMPLETED.format(unstable="0"), (root_id,)).fetchone()
     return cast("sqlite3.Row | None", row)
 
 
@@ -343,7 +365,7 @@ def scan_settled(conn: sqlite3.Connection, root_id: int, files_on_disk: int | No
     """
     if files_on_disk is None:
         return False
-    row = _last_completed_scan(conn, root_id)
+    row = last_completed_scan(conn, root_id)
     return row is not None and row["files_on_disk"] == files_on_disk and not row["files_unstable"]
 
 
@@ -357,7 +379,7 @@ def scan_awaiting_settle(conn: sqlite3.Connection, root_id: int, cooldown: float
     copy — which is the same hot loop ``scan_settled`` exists to prevent, just
     reached from the other side.
     """
-    row = _last_completed_scan(conn, root_id)
+    row = last_completed_scan(conn, root_id)
     if row is None or not row["files_unstable"]:
         return False
     try:
