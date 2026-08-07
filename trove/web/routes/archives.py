@@ -61,8 +61,15 @@ def _with_ways(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def archive_list(req: Request) -> dict:
-    """Every registered archive, for the picker."""
-    return {"archives": [_with_ways(a) for a in archives.archives(req.cfg)]}
+    """Every registered archive, for the picker.
+
+    Drawing this list is also the signal that an archive is about to be opened,
+    so it is where the pre-open warm is kicked off -- see
+    ``JobManager.warm_for_open`` for what that buys and why here.
+    """
+    listed = [_with_ways(a) for a in archives.archives(req.cfg)]
+    req.jobs.warm_for_open()
+    return {"archives": listed}
 
 
 def feature_list(req: Request) -> dict:

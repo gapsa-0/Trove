@@ -136,6 +136,9 @@ class JobManager:
         # the tree has been walked. See _watch_when_walked.
         self._watch_owed: tuple[int, str] | None = None
         self._watch_lock = threading.Lock()
+        # Whether the one-shot pre-open warm has been kicked off. See warm_for_open.
+        self._warmed = False
+        self._warm_lock = threading.Lock()
 
     def shutdown(self, timeout: float = 8.0) -> bool:
         """Cancel all work and stop the scheduler before the HTTP server exits."""
@@ -411,6 +414,58 @@ class JobManager:
         if path is not None:
             self._watch_when_walked(root_id, path)
         self.nudge()
+
+    def warm_for_open(self) -> None:
+        """Pull what opening an archive is about to need into cache, in the background.
+
+        Called when the picker is served, which is the one idle moment this
+        process reliably gets: the list is on screen and the user is seconds
+        from clicking a card. Opening an archive is only ~175 ms of *work*, but
+        on a cold cache it is several seconds of small reads to reach it -- the
+        ``trove.faces`` import ``_open_db`` defers is 845 ms by itself (124 ms
+        once loaded), and the schema check behind it walks every archive's
+        ``sqlite_master``.
+
+        Read-only and idempotent by construction: it opens nothing for writing
+        and calls nothing that migrates. ``_open_db`` still does all of that for
+        real when the archive is opened -- the only difference is that it finds
+        the pages already in memory when it does.
+
+        Once per process. The picker is redrawn whenever an archive is added or
+        removed, and there is nothing to warm a second time.
+        """
+        with self._warm_lock:
+            if self._warmed:
+                return
+            self._warmed = True
+        threading.Thread(target=self._warm, name="warm-open", daemon=True).start()
+
+    def _warm(self) -> None:
+        """The warm itself. Every failure here is swallowed: this has no result
+        a caller is waiting for, so anything that goes wrong must cost only the
+        speed it was trying to buy."""
+        from pathlib import Path
+
+        try:
+            from ..faces import migrate_adaface  # noqa: F401  (imported for its cost)
+
+            for entry in self.cfg.archives:
+                if self.scheduler.stopping():
+                    return
+                db_path = self.cfg.archive_db_path(entry["id"])
+                if not Path(db_path).is_file():
+                    continue
+                conn = db.open_readonly(db_path)
+                try:
+                    # Reading the catalogue of tables and indexes is what pulls
+                    # in the pages init_db's forty CREATE ... IF NOT EXISTS
+                    # statements are about to check, one at a time.
+                    conn.execute("SELECT type, name FROM sqlite_master").fetchall()
+                    conn.execute("PRAGMA user_version").fetchone()
+                finally:
+                    conn.close()
+        except Exception:
+            logger.debug("warm: gave up", exc_info=True)
 
     def _watch_when_walked(self, root_id: int, path: str) -> None:
         """Owe this root a filesystem watch, to be placed after the next walk.
