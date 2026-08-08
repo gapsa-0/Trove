@@ -227,3 +227,66 @@ def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
 
         app.tab.evaluate("window.fetch = window.__realFetch")
         assert app.errors() == []
+
+
+def test_unanswered_status_polls_do_not_stack_up(open_app):
+    """A poll tick that outlasts its interval must be waited for, not piled on.
+
+    The first `/api/pipeline` after an archive is opened waits for its tree to
+    be counted -- about 20s for 97k files on a cold cache -- and the two pollers
+    that ask for it run on 1.2s and 2s intervals. Each interval that passed
+    added another request. The duplicated work is not the damage (the server
+    collapses those onto one walk); the damage is that a browser allows about
+    six connections per origin, so a handful of stacked polls is the whole
+    budget and every other request the page makes -- thumbnails, library pages,
+    search -- queues behind them. That is what turned a slow health panel into
+    an archive where nothing at all worked.
+
+    Asserted as "the count stops growing" rather than on an exact number,
+    because there are two independent pollers and the point is that neither
+    accumulates -- not which of them got a request away first.
+
+    Driven by a snapshot that never answers, because that is the real condition:
+    the polls stacked for exactly as long as the first one was outstanding.
+    """
+    with open_app("overview") as app:
+        app.wait_for("#pause-btn")
+        app.tab.evaluate("""
+          (() => {
+            window.__realFetch = window.fetch;
+            window.__pipeCalls = 0;
+            window.fetch = (...args) => {
+              const url = String(args[0]);
+              // Never answers, so every later tick meets a poll still in flight.
+              if (url.includes('/api/pipeline?')) {
+                window.__pipeCalls++;
+                return new Promise(() => {});
+              }
+              return window.__realFetch(...args);
+            };
+          })()
+        """)
+        # Restart the Overview poller so its next tick is a stubbed request; the
+        # sidebar chip's poller has been running since the archive was opened.
+        app.tab.evaluate("import('/static/js/overview.js').then(m => m.startPoll())")
+        app.tab.wait_for("window.__pipeCalls >= 1", what="a poller to issue its first request")
+        # Let both pollers get one request away and reach their guard, then take
+        # the baseline. Timed in the page: `wait_for` re-evaluates its expression
+        # on every poll, so a fresh promise per call would never be the same
+        # promise twice -- a flag a timer sets once is.
+        app.tab.evaluate("setTimeout(() => { window.__settled = true; }, 2500)")
+        app.tab.wait_for("window.__settled === true", timeout=20.0, what="both pollers to tick")
+        before = app.tab.evaluate("window.__pipeCalls")
+        # ...and now several more intervals of both, with nothing answered.
+        app.tab.evaluate("setTimeout(() => { window.__waited = true; }, 6000)")
+        app.tab.wait_for("window.__waited === true", timeout=20.0, what="five more poll intervals")
+        after = app.tab.evaluate("window.__pipeCalls")
+
+        app.tab.evaluate("import('/static/js/overview.js').then(m => m.stopPoll())")
+        app.tab.evaluate("window.fetch = window.__realFetch")
+        assert after == before, (
+            f"{after - before} more polls stacked on snapshots that never answered"
+        )
+        # One in flight per poller, and there are two of them.
+        assert after <= 2, f"{after} polls outstanding at once"
+        assert app.errors() == []

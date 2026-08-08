@@ -7,7 +7,7 @@ import {
   renderGstat,
 } from "./status.js";
 import {
-  jget, jpost,
+  jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   docsButton,
@@ -429,7 +429,11 @@ export async function togglePipelinePause() {
 }
 // The one poller behind every status surface: fetch the snapshot, render the
 // cards + sidebar chip, and keep the top stat numbers climbing while active.
-async function refreshPipeline() {
+//
+// Wrapped so a tick that outlasts its 1.2s interval is waited for rather than
+// piled on -- see `oneAtATime`, which is where the reason lives. The snapshot
+// this fetches is the slow one it was written for.
+const refreshPipeline = oneAtATime(async () => {
   if (!S.arch) { stopPoll(); return; }
   let snap;
   try { snap = await jget("/api/pipeline?root=" + S.arch.id); }
@@ -464,6 +468,6 @@ async function refreshPipeline() {
   if (wasBusy && !busy && S.section === "overview") {
     renderOverview(document.getElementById("main"));
   }
-}
+});
 export function startPoll() { stopPoll(); S.poll = setInterval(refreshPipeline, 1200); refreshPipeline(); }
 export function stopPoll() { if (S.poll) { clearInterval(S.poll); S.poll = null; } }

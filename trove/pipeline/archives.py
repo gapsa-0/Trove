@@ -43,6 +43,10 @@ class DiskCounts:
         # Roots with a background refresh walk in flight (see count()).
         self._inflight: set[int] = set()
         self._lock = threading.Lock()
+        # One per root, held for the length of a blocking walk so that
+        # concurrent cold callers share one walk instead of racing several.
+        # See _walk. Never pruned: one lock per archive is not worth reclaiming.
+        self._walks: dict[int, threading.Lock] = {}
         # Asked before starting a walk: on the way out there is no point
         # beginning one, and the thread would outlive the app.
         self._stopping = stopping
@@ -67,25 +71,54 @@ class DiskCounts:
         count is served instead and a refresh runs in the background. The very
         first walk still blocks: there is nothing to serve yet, and answering
         "no idea" would show every stage as up to date on the first paint.
+        Blocking it is, but only once per root -- see ``_walk``.
+        """
+        ttl = WALK_TTL if max_age is None else max_age
+        hit = self._cache.get(root_id)
+        if hit and time.monotonic() - hit[0] < ttl:
+            return hit[1]
+        if hit and not allow_walk:
+            self._refresh(root_id, root_path)
+            return hit[1]
+        return self._walk(root_id, root_path, ttl)
+
+    def _walk(self, root_id: int, root_path: str, ttl: float) -> int | None:
+        """Count the tree, one walk at a time per root.
+
+        Opening an archive finds this cache empty, and three callers reach a
+        cold root at once: the polled status endpoint, the scheduler tick
+        (which passes ``allow_walk=True``), and every further poll that fires
+        while the first is still counting. Without this lock each starts its
+        own ``count_files`` over the same tree -- 97k files takes ~20s from a
+        cold inode cache -- and walks contending for one disk make each other
+        slower, so the pile drains more slowly the bigger it gets.
+
+        The lock is held across the walk rather than around the cache writes:
+        the point is for the second caller to *wait for the first walk's
+        answer*, not to start a second one safely. Whoever takes it walks;
+        whoever waits re-reads the cache and finds it filled. A caller with a
+        fresh-enough count never reaches here, so a warm root is never made to
+        queue behind a walk.
         """
         from pathlib import Path
 
         from ..scan.walker import count_files
 
-        ttl = WALK_TTL if max_age is None else max_age
-        hit = self._cache.get(root_id)
-        now = time.monotonic()
-        if hit and now - hit[0] < ttl:
-            return hit[1]
-        if hit and not allow_walk:
-            self._refresh(root_id, root_path)
-            return hit[1]
-        if not Path(root_path).is_dir():
-            self._cache.pop(root_id, None)
-            return None
-        count = count_files(Path(root_path))
-        self._cache[root_id] = (now, count)
-        return count
+        with self._walk_lock(root_id):
+            hit = self._cache.get(root_id)
+            if hit and time.monotonic() - hit[0] < ttl:
+                return hit[1]
+            if not Path(root_path).is_dir():
+                self._cache.pop(root_id, None)
+                return None
+            count = count_files(Path(root_path))
+            self._cache[root_id] = (time.monotonic(), count)
+            return count
+
+    def _walk_lock(self, root_id: int) -> threading.Lock:
+        """This root's walk lock, created on first use."""
+        with self._lock:
+            return self._walks.setdefault(root_id, threading.Lock())
 
     def _refresh(self, root_id: int, root_path: str) -> None:
         """Re-walk this root off the caller's thread, one walk at a time."""

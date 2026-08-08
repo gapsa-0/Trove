@@ -3,7 +3,7 @@
 // stay current while the user is anywhere in the app.
 
 import {
-  jget, jpost,
+  jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   loadGrid, resetGridResults,
@@ -81,7 +81,11 @@ export function renderGstat(snap) {
     el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Working…</span></div>`;
   }
 }
-async function gstatTick() {
+// Wrapped for the same reason the Overview's poller is, and it matters more
+// here: this one runs on every section for the whole session, so on a slow
+// snapshot it is the Library and the viewer that lose their connections, not
+// just the health panel nobody is looking at. See `oneAtATime`.
+const gstatTick = oneAtATime(async () => {
   if (!S.arch) { stopGlobalStatus(); return; }
   try {
     const snap = await jget("/api/pipeline?root=" + S.arch.id);
@@ -107,7 +111,7 @@ async function gstatTick() {
     // and the chip simply keeps its last value. Reporting it would fill the
     // console every time the server restarts under the user.
   }
-}
+});
 export function startGlobalStatus() { stopGlobalStatus(); S.gpoll = setInterval(gstatTick, 2000); gstatTick(); }
 export function stopGlobalStatus() { if (S.gpoll) { clearInterval(S.gpoll); S.gpoll = null; } }
 

@@ -16,3 +16,23 @@ export function qpost(u, b) {
   _wq = p.catch(() => { });            // a rejection must not break the chain
   return p;
 }
+// The same budget, from the read side: wrap a poll tick so a slow answer is
+// waited for rather than piled on. A tick on a fixed interval assumes it
+// finishes within one -- and the pipeline snapshot does not, because the first
+// one after an archive is opened waits for its tree to be counted (~20s for 97k
+// files on a cold cache). Every interval that passes meanwhile used to add
+// another request, and a handful of those is the whole connection budget, so
+// thumbnails, library pages and search stopped being answered too: the archive
+// looked frozen rather than merely slow to say what it was doing.
+//
+// Skips the tick outright instead of queueing it, which is what separates this
+// from `qpost`: a status poll carries no user intent, and the run already in
+// flight is about to return the same answer a queued one would.
+export function oneAtATime(tick) {
+  let running = false;
+  return async (...args) => {
+    if (running) return;
+    running = true;
+    try { return await tick(...args); } finally { running = false; }
+  };
+}
