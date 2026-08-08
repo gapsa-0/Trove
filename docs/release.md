@@ -64,6 +64,22 @@ same tag produces the same bytes:
 `tools-build-info.json` marker, so a build can never silently omit them. Model
 weights are not a build input at all — see below.
 
+**BtbN's autobuild releases are deleted after a few weeks, so this pin rots.**
+It is the opposite of the model assets above, which are permanent by policy, and
+it fails the same way every time: `stage-tools.py` gets a 404, both build jobs
+die before compiling anything, and the tag you just pushed produces no
+installers. It has happened once (v0.2.0, first attempt) and it will happen
+again, because nothing warns until a release is attempted.
+
+To repin: find a current `autobuild-*` tag with the same `gpl-shared-7.1`
+variant, download the `linux64` and `win64` archives, and put their tag, version
+and SHA-256 into `packaging/tools/manifest.json` and the FFmpeg entry in
+`THIRD_PARTY_NOTICES.md`. Confirm with `stage-tools.py --target linux-x64` and
+run the staged `ffmpeg -version` — the staged tree should come to ~162 MB.
+Mirroring the two archives as release assets, the way the weights are, would end
+this for good; it has not been done because it makes this project a distributor
+of GPL binaries in its own right rather than a consumer of someone else's.
+
 FFmpeg is staged from BtbN's **shared** build rather than the static one: two
 small executables plus the `libav*` libraries they share, instead of two binaries
 that each embed the entire codec set. That is 162 MB instead of 266 MB on Linux,
