@@ -127,7 +127,7 @@ class Scheduler:
         """
         from ..services import archives
 
-        if self._manager._paused:
+        if self._manager.paused():
             logger.debug("tick: skipped, pipeline is paused")
             return None
         open_root_id = self._manager._open_root_id

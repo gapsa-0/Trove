@@ -166,7 +166,7 @@ def test_opening_an_archive_does_not_place_the_watch(tmp_path, monkeypatch):
     jm.open_archive(1)
 
     assert placed == []
-    assert jm._watch_owed == (1, str(tmp_path))
+    assert jm._watch_owed._owed == (1, str(tmp_path))
 
 
 def test_the_walk_places_the_watch(tmp_path, monkeypatch):
@@ -204,7 +204,7 @@ def test_a_missing_folder_places_no_watch(tmp_path, monkeypatch):
 
     assert jm.disk_count(1, gone) is None
     assert placed == []
-    assert jm._watch_owed == (1, gone)
+    assert jm._watch_owed._owed == (1, gone)
 
 
 def test_closing_the_archive_cancels_a_watch_not_yet_placed(tmp_path, monkeypatch):
@@ -219,4 +219,4 @@ def test_closing_the_archive_cancels_a_watch_not_yet_placed(tmp_path, monkeypatc
     jm.disk_count(1, str(tmp_path))
 
     assert placed == []
-    assert jm._watch_owed is None
+    assert jm._watch_owed._owed is None

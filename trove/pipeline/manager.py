@@ -31,11 +31,11 @@ proves the rule -- they are one-shot jobs with no dependencies.
   most one of them holds SQLite's writer at a time. A runner declares whether
   it needs this (``Runner.takes_write_lock``); the manager, not the runner,
   takes it.
-* ``_paused``, ``_paused_stages`` and ``_error_at`` are plain attributes read
-  and written without ``_lock``. That is deliberate and safe here: each is a
-  single atomic rebind or a ``dict`` mutation under the GIL, and no invariant
-  spans two of them. The first two describe the archive that is currently
-  open, and ``open_archive`` reloads them from it.
+* ``_error_at`` and the two switches inside ``_pause`` are read and written
+  without ``_lock``. That is deliberate and safe here: each is a single atomic
+  rebind or a ``dict``/``set`` mutation under the GIL, and no invariant spans
+  two of them. The pause describes the archive that is currently open, and
+  ``open_archive`` reloads it from that archive (see ``pausing``).
 * The disk-count cache has moved to ``archives.DiskCounts``, which owns a lock
   of its own -- it never needed ordering against the job registry.
 
@@ -68,7 +68,7 @@ from contextlib import nullcontext
 
 from ..config import Config
 from ..db import database as db
-from . import archives, watcher
+from . import archives, pausing, upkeep, watcher
 from .job import Job, JobContext, Runner
 from .runners import RUNNERS
 from .scheduler import Scheduler
@@ -102,26 +102,15 @@ class JobManager:
         # When a stage's job errors, hold off auto-restarting that kind for a
         # cooldown so a hard failure can't hot-loop through the nudge path.
         self._error_at: dict[tuple[int, str], float] = {}
-        # Pause state for the archive currently open -- both the whole-pipeline
-        # switch and the per-stage set, which is separate from it and only
-        # consulted while it is off (pausing one stage is about letting the
-        # others keep going). They belong to the archive, not to the app:
-        # open_archive loads the archive's own, and set_paused /
-        # set_stage_paused write it back (cfg.archive_pause), so a pause is
-        # remembered per archive across a restart and never follows the user to
-        # a different one. Until an archive is open, the app-wide defaults
-        # stand -- normally "not paused".
-        self._paused, stages_off = cfg.archive_pause(None)
-        self._paused_stages: set[str] = set(stages_off)
+        # Pause belongs to the archive, not to the app -- see pausing.py.
+        self._pause = pausing.ArchivePause(cfg)
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
-        # When a hint that files changed was last acted on, per root, and the
-        # timer that will act on one that arrived too soon after it. See
-        # note_files_changed for why a hint is throttled and never dropped.
-        self._hint_at: dict[int, float] = {}
-        self._hint_timer: dict[int, threading.Timer] = {}
-        self._hint_lock = threading.Lock()
+        # The four bits of housekeeping that are not jobs, each owning its own
+        # lock or timer -- see upkeep.py for what they buy and why they are not
+        # part of this module's threading contract.
+        self._hints = upkeep.HintThrottle(self._act_on_hint, lambda: watcher.WALK_FLOOR)
         # Public, because it is a collaborator rather than an implementation
         # detail: tests drive tick() by hand instead of waiting on the timer.
         self.scheduler = Scheduler(self)
@@ -130,12 +119,9 @@ class JobManager:
         # looked at is watched -- the same rule the scheduler follows, which
         # also keeps the inotify watches held down to one tree.
         self._watcher = watcher.ArchiveWatcher(self.note_files_changed)
-        # The root whose watch is owed but not yet placed, and the lock that
-        # makes claiming it a single decision. open_archive records the debt
-        # here rather than paying it on the spot; disk_count settles it once
-        # the tree has been walked. See _watch_when_walked.
-        self._watch_owed: tuple[int, str] | None = None
-        self._watch_lock = threading.Lock()
+        # open_archive records the debt rather than paying it on the spot;
+        # disk_count settles it once the tree has been walked.
+        self._watch_owed = upkeep.OwedWatch()
         # Whether the one-shot pre-open warm has been kicked off. See warm_for_open.
         self._warmed = False
         self._warm_lock = threading.Lock()
@@ -146,10 +132,7 @@ class JobManager:
         self._watcher.stop()
         # A hint deferred behind its floor has nothing left to wake: the
         # scheduler is stopping and note_files_changed would decline anyway.
-        with self._hint_lock:
-            for timer in self._hint_timer.values():
-                timer.cancel()
-            self._hint_timer.clear()
+        self._hints.cancel()
         with self._lock:
             # Set every cancel directly rather than going through
             # _cancel_running: on the way out, jobs of every kind and root stop.
@@ -240,13 +223,13 @@ class JobManager:
         return self._open_root_id
 
     def paused(self) -> bool:
-        return self._paused
+        return self._pause.paused
 
     def paused_stages(self) -> set[str]:
-        return set(self._paused_stages)
+        return set(self._pause.stages)
 
     def stage_paused(self, card: str) -> bool:
-        return card in self._paused_stages
+        return self._pause.stage_paused(card)
 
     def stop_archive(self, root_id: int, timeout: float = 10.0) -> bool:
         """Cancel this archive's work and wait briefly for safe DB quiescence.
@@ -363,35 +346,18 @@ class JobManager:
         the tick that follows re-walks and decides. That is why a hint being
         wrong, duplicated or absent costs nothing but timing.
 
-        Throttled per root, because acting on a hint costs a walk of the whole
-        tree and files can arrive one at a time for as long as someone is
-        dragging them in. A hint inside the floor is not dropped -- it is
-        deferred to the end of it, so the last file of a slow trickle is still
-        noticed without every file in the trickle costing a walk.
+        Throttled per root -- see ``upkeep.HintThrottle`` for why a hint is
+        deferred rather than dropped.
         """
         if self.scheduler.stopping():
             return
-        with self._hint_lock:
-            now = time.monotonic()
-            last = self._hint_at.get(root_id)
-            wait = 0.0 if last is None else watcher.WALK_FLOOR - (now - last)
-            if wait > 0:
-                if root_id not in self._hint_timer:
-                    timer = threading.Timer(wait, self._fire_deferred_hint, args=(root_id,))
-                    timer.daemon = True
-                    self._hint_timer[root_id] = timer
-                    timer.start()
-                return
-            self._hint_at[root_id] = now
+        self._hints.note(root_id, time.monotonic())
+
+    def _act_on_hint(self, root_id: int) -> None:
+        """What a hint does once the throttle lets it through."""
         logger.debug("files changed under root=%s; re-checking", root_id)
         self._disk.invalidate(root_id)
         self.nudge()
-
-    def _fire_deferred_hint(self, root_id: int) -> None:
-        """The tail of a throttled hint, once its floor has passed."""
-        with self._hint_lock:
-            self._hint_timer.pop(root_id, None)
-        self.note_files_changed(root_id)
 
     def open_archive(self, root_id: int) -> None:
         """Allow automatic work for this archive while it is being viewed."""
@@ -408,8 +374,7 @@ class JobManager:
         # Before the nudge, so a nudge cannot start work this archive is paused
         # on. This is also what stops a pause from following the user: whatever
         # the *previous* archive was left on is replaced by this one's own state.
-        self._paused, stages_off = self.cfg.archive_pause(root_id)
-        self._paused_stages = set(stages_off)
+        self._pause.load(root_id)
         path = self.cfg.archive_path(root_id)
         if path is not None:
             self._watch_when_walked(root_id, path)
@@ -441,117 +406,25 @@ class JobManager:
         threading.Thread(target=self._warm, name="warm-open", daemon=True).start()
 
     def _warm(self) -> None:
-        """The warm itself. Every failure here is swallowed: this has no result
-        a caller is waiting for, so anything that goes wrong must cost only the
-        speed it was trying to buy."""
-        from pathlib import Path
-
-        try:
-            from ..faces import migrate_adaface  # noqa: F401  (imported for its cost)
-
-            for entry in self.cfg.archives:
-                if self.scheduler.stopping():
-                    return
-                db_path = self.cfg.archive_db_path(entry["id"])
-                if not Path(db_path).is_file():
-                    continue
-                conn = db.open_readonly(db_path)
-                try:
-                    # Reading the catalogue of tables and indexes is what pulls
-                    # in the pages init_db's forty CREATE ... IF NOT EXISTS
-                    # statements are about to check, one at a time.
-                    conn.execute("SELECT type, name FROM sqlite_master").fetchall()
-                    conn.execute("PRAGMA user_version").fetchone()
-                finally:
-                    conn.close()
-        except Exception:
-            logger.debug("warm: gave up", exc_info=True)
-
-    def _refresh_planner_stats(self, root_id: int) -> None:
-        """Keep SQLite's query planner supplied with table statistics.
-
-        Without ``sqlite_stat1`` the planner guesses at how selective each index
-        is, and on this schema it guesses badly: the Overview's semantic
-        breakdown chose to walk 97k files and fetch each one's row out of the
-        169 MB embeddings table, taking 1218 ms to count three integers. With
-        statistics it reads the index instead and takes 6 ms. Nothing about the
-        query changed -- only what the planner knew.
-
-        ``PRAGMA optimize`` rather than a bare ``ANALYZE``: it re-analyses only
-        the tables whose contents have moved far enough from the recorded stats
-        to matter. On a 97k-file archive that is ~660 ms the first time and
-        ~1 ms on every job completion after it, which is what makes it
-        affordable here rather than on some schedule nobody would tune.
-
-        The two constants are measured, not folklore:
-
-        * ``0x10002`` adds the "consider every table" bit to the usual analyse
-          flag. Without it ``optimize`` only looks at tables *this connection*
-          has queried, and this connection is opened to do nothing else -- it
-          produced 17 of the 22 stat rows a full ANALYZE writes, missing the
-          ones this is for. Older SQLite ignores the unknown bit and behaves as
-          it does today.
-        * ``analysis_limit`` bounds how much of each index ANALYZE reads.
-          SQLite's suggested 400 is cheap but too coarse here: it costs the
-          semantic count its good plan (356 ms instead of 258 ms, driving from
-          `files` and doing 97k row lookups rather than reading 41k index
-          entries). 50000 buys the right plan and still bounds the work on an
-          archive much larger than this one.
-
-        Best-effort, like the disk-count invalidation beside it. A job has
-        already done its work and reported by the time this runs; a locked
-        writer or a read-only file must not turn that into a failure.
-        """
-        try:
-            conn = db.connect(self.cfg.archive_db_path(root_id))
-        except sqlite3.Error:
-            return
-        try:
-            conn.execute("PRAGMA analysis_limit=50000")
-            conn.execute("PRAGMA optimize=0x10002")
-            conn.commit()
-        except sqlite3.Error:
-            logger.debug("could not refresh planner stats for root=%s", root_id, exc_info=True)
-        finally:
-            conn.close()
+        """The warm itself, over every archive that has a database yet."""
+        upkeep.warm_archives(
+            lambda: [self.cfg.archive_db_path(e["id"]) for e in self.cfg.archives],
+            self.scheduler.stopping,
+        )
 
     def _watch_when_walked(self, root_id: int, path: str) -> None:
-        """Owe this root a filesystem watch, to be placed after the next walk.
+        """Owe this root a filesystem watch, paid once its tree is walked.
 
-        Setting a recursive watch is not the cheap call it looks like. It walks
-        the whole tree and stats every entry to find the directories it needs a
-        watch on -- 151,310 ``statx`` calls for 595 watches on a 150k-file
-        archive -- and ``watchfiles`` does that inside Rust, holding the GIL for
-        its whole duration. Cold, that is one 1 KB metadata record per file off
-        the disk: ~150 MB, and ~20 seconds on a spinning drive. Held GIL means
-        those seconds are not slow, they are *stopped* -- no request of any kind
-        is served while it runs, and opening an archive used to wait out all of
-        it before the first screen could be drawn.
-
-        So the watch is owed here and paid in ``disk_count``. The scheduler
-        already walks this tree to decide what is pending, in Python, where
-        every ``scandir`` releases the GIL and the app stays responsive
-        throughout. Once that walk has been through, the same metadata is in the
-        page cache and setting the watch over it costs ~0.3 s instead of ~20.
-
-        Nothing is lost by waiting: this is a hint, and the poll behind it is
-        what is actually correct -- see ``watcher``'s module docstring.
+        Setting one costs ~20 s of held GIL on a cold 150k-file archive and
+        ~0.3 s once the scheduler's own walk has warmed the metadata, which is
+        the whole reason for the delay -- see ``upkeep.OwedWatch``.
         """
-        with self._watch_lock:
-            self._watch_owed = (root_id, path)
+        self._watch_owed.owe(root_id, path)
 
     def _place_owed_watch(self, root_id: int, root_path: str) -> None:
-        """Start the watch this root was owed, now that its tree is walked.
-
-        Claimed under the lock so a burst of concurrent ``disk_count`` calls --
-        the scheduler's tick and the status endpoint's snapshot routinely
-        overlap -- places it exactly once.
-        """
-        with self._watch_lock:
-            if self._watch_owed != (root_id, root_path):
-                return
-            self._watch_owed = None
-        self._watcher.start(root_id, root_path)
+        """Start the watch this root was owed, now that its tree is walked."""
+        if self._watch_owed.claim(root_id, root_path):
+            self._watcher.start(root_id, root_path)
 
     def close_archive(self, root_id: int | None = None) -> None:
         """Stop work when the currently viewed archive is closed."""
@@ -574,41 +447,17 @@ class JobManager:
         # whichever thread next finishes a walk, and a walk already in flight
         # can land after this returns -- forgetting to cancel here would start
         # watching an archive the user has just closed.
-        with self._watch_lock:
-            self._watch_owed = None
+        self._watch_owed.forget()
         self._watcher.stop()
-
-    def _persist_pause(self) -> None:
-        """Record the open archive's pause state, so reopening it restores it.
-
-        Deliberately not fatal: the in-memory flags are what gate the scheduler
-        and they are already set by the time this runs, so a disk hiccup must
-        not leave a user who just asked to stop the CPU load still running. It
-        is logged because the consequence is silent and surprising -- the pause
-        is honoured now but forgotten on restart.
-
-        Nothing to record while no archive is open: pause is a property of the
-        archive (see cfg.archive_pause), and the GUI can only reach these
-        controls from an open one anyway.
-        """
-        if self._open_root_id is None:
-            return
-        try:
-            self.cfg.set_archive_pause(self._open_root_id, self._paused, self._paused_stages)
-        except OSError:
-            logger.warning("could not persist the pause state", exc_info=True)
 
     def set_paused(self, value: bool) -> None:
         """Toggle the whole-pipeline pause, for the archive that is open.
 
         The in-memory flag is what actually gates the scheduler and cancels
-        running jobs, so it's set first and stays authoritative even if the
-        config write fails (see _persist_pause).
+        running jobs, so it is set first and stays authoritative even if the
+        config write fails (see ``pausing``).
         """
-        self._paused = bool(value)
-        logger.info("pipeline %s", "paused" if self._paused else "resumed")
-        self._persist_pause()
-        if self._paused:
+        if self._pause.set_paused(value):
             # This is what actually stops the CPU load; jobs resume from
             # their last committed batch, same mechanism as close_archive.
             self._cancel_running()
@@ -619,19 +468,13 @@ class JobManager:
         """Pause/resume ONE stage card, leaving every other stage running.
 
         Same mechanism as the whole-pipeline pause, scoped to the kinds that
-        card represents (``stages.kinds_of``): the in-memory set gates the
-        scheduler and is authoritative even if persisting it fails, and pausing
-        cancels that stage's running job at its next batch checkpoint so the
-        CPU actually frees up instead of only the *next* run being skipped.
+        card represents (``stages.kinds_of``): pausing cancels that stage's
+        running job at its next batch checkpoint so the CPU actually frees up
+        instead of only the *next* run being skipped.
         """
         from . import stages
 
-        if value:
-            self._paused_stages.add(card)
-        else:
-            self._paused_stages.discard(card)
-        logger.info("stage %s %s", card, "paused" if value else "resumed")
-        self._persist_pause()
+        self._pause.set_stage(card, value)
         if value:
             self._cancel_running(stages.kinds_of(card))
         else:
@@ -748,7 +591,7 @@ class JobManager:
             # A stage that just rewrote a table changed the shape of what the
             # planner has to reason about, and this is the moment to tell it.
             if job.root_id is not None:
-                self._refresh_planner_stats(job.root_id)
+                upkeep.refresh_planner_stats(self.cfg.archive_db_path(job.root_id))
             # React to completion at once: the next ready stage starts in
             # milliseconds instead of waiting out the idle poll interval.
             self.nudge()

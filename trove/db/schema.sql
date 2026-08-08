@@ -554,7 +554,7 @@ CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_status
 -- -> 6ms. The leading term is an expression because the query is written
 -- against COALESCE(indexer_version,'') -- a plain column index cannot serve it.
 --
--- Needs table statistics to be chosen (see JobManager._refresh_planner_stats);
+-- Needs table statistics to be chosen (see pipeline/upkeep.refresh_planner_stats);
 -- without them the planner still prefers the rowid lookup into the vectors.
 CREATE INDEX IF NOT EXISTS idx_semantic_summary ON semantic_embeddings(
     COALESCE(indexer_version, ''), status, file_id, source_sha256);
