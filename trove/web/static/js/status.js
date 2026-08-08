@@ -3,7 +3,7 @@
 // stay current while the user is anywhere in the app.
 
 import {
-  jget, jpost, oneAtATime,
+  isCurrentSnapshot, jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   loadGrid, resetGridResults,
@@ -89,6 +89,7 @@ const gstatTick = oneAtATime(async () => {
   if (!S.arch) { stopGlobalStatus(); return; }
   try {
     const snap = await jget("/api/pipeline?root=" + S.arch.id);
+    if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
     S.pipeline = snap;
     renderGstat(snap);
     // A library opened just before the scanner commits its first batch used to

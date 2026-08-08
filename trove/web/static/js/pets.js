@@ -21,7 +21,7 @@ import {
   openItem,
 } from "./item.js";
 import {
-  jget, jpost,
+  isCurrentSnapshot, jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   docsButton,
@@ -252,12 +252,16 @@ export function startPetPoll() { stopPoll(); S.poll = setInterval(petTick, 1800)
 // resets under the user -- scroll position, the pages the infinite lists
 // have already loaded and any half-finished non-human review all survive,
 // and only cards whose data actually changed are touched.
-async function petTick() {
+// Guarded like faceTick, and for the same reason: two requests per tick on a
+// fixed interval is what empties the connection budget while a snapshot is
+// slow. See `oneAtATime`.
+const petTick = oneAtATime(async () => {
   if (ACTIVE_SECTION !== "pets") { stopPoll(); return; }
   const area = document.getElementById("petjob"); if (!area) { stopPoll(); return; }
   const [snap, sum] = await Promise.all([
     jget("/api/pipeline?root=" + S.arch.id),
     jget("/api/pets/summary?root=" + S.arch.id)]);
+  if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
   const running = (snap.stages || []).some(s => s.id === "detect" && s.state === "running");
   const was = S.petJobRunning; S.petJobRunning = running;
   setStat("ps-pets", sum.pets.toLocaleString());
@@ -270,7 +274,7 @@ async function petTick() {
   const stamp = petStamp(sum);
   if (running ? stamp !== S.petStamp : was) syncPetGrids();
   S.petStamp = stamp;
-}
+});
 async function reviewNonhuman(id, verdict, card) {
   const result = await jpost("/api/nonhuman/review", { detection_id: id, verdict });
   if (result.error) { toast(result.error, true); return; }

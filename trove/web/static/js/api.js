@@ -36,3 +36,20 @@ export function oneAtATime(tick) {
     try { return await tick(...args); } finally { running = false; }
   };
 }
+// Whether a pipeline snapshot is about the archive that is open *now*.
+//
+// A poll started before the user switched archives still lands afterwards, and
+// nothing checked whose answer it was: the cards, the sidebar chip and the
+// people/pets progress panels would all take it, so the archive you had just
+// opened reported the one you left -- its stages, its counts, its pause state.
+// Rare while the snapshot was fast, but the walk this budget is all about makes
+// the window 20s wide, and switching away from a slow archive is exactly what
+// someone does about one.
+//
+// Asked of the payload's own `root_id` rather than an id captured before the
+// await, because that is the server saying which archive it answered about --
+// the captured-id version cannot tell a stale reply from a current one when the
+// same archive is reopened.
+export function isCurrentSnapshot(snap, arch) {
+  return !!(snap && arch && snap.root_id === arch.id);
+}

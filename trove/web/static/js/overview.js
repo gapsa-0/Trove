@@ -7,7 +7,7 @@ import {
   renderGstat,
 } from "./status.js";
 import {
-  jget, jpost, oneAtATime,
+  isCurrentSnapshot, jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   docsButton,
@@ -438,6 +438,7 @@ const refreshPipeline = oneAtATime(async () => {
   let snap;
   try { snap = await jget("/api/pipeline?root=" + S.arch.id); }
   catch { return; }   // transient; the next tick retries
+  if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
   S.pipeline = snap;
   renderHealthCards();
   renderGstat(snap);

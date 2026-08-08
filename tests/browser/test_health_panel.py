@@ -75,6 +75,10 @@ def test_a_health_row_without_a_rail_still_gets_the_full_width(open_app):
 # `fetch` for this one URL is how the pause test above reaches its own window too.
 _ALL_DONE_JS = """(() => {
   const snap = {
+    // The client checks a snapshot is about the archive that is open before it
+    // takes it, so standing in for the server means answering that too. Read
+    // off the hash rather than hardcoded: the fixture's root id is its own.
+    root_id: +location.hash.match(/archive\\/(\\d+)/)[1],
     paused: false, overall: 'idle', extra: [],
     stages: [...document.querySelectorAll('.health-task')].map((e, i) => ({
       id: ['scan', 'dedup', 'places', 'detect', 'semantic', 'text'][i],
@@ -289,4 +293,62 @@ def test_unanswered_status_polls_do_not_stack_up(open_app):
         )
         # One in flight per poller, and there are two of them.
         assert after <= 2, f"{after} polls outstanding at once"
+        assert app.errors() == []
+
+
+def test_a_snapshot_for_another_archive_is_not_taken(open_app):
+    """A poll started before the user switched archives lands afterwards, and
+    the client used to take it whatever it was about -- so the archive just
+    opened reported the stages, counts and pause state of the one left behind.
+
+    Rare while the snapshot was fast. What makes it worth guarding is that the
+    first snapshot of an archive waits for its tree to be counted, ~20s on a
+    large one, and switching away from an archive that is thinking about it is
+    exactly what someone does. The window is the whole of that wait.
+
+    Driven by a snapshot that names a different root rather than by really
+    switching archives, because the payload's `root_id` is what the guard reads
+    and a second seeded archive would prove nothing more.
+    """
+    with open_app("overview") as app:
+        app.wait_for(".health-task .health-node")
+        # Let the real first snapshot land, then stop the poller so nothing
+        # overwrites what this test is about to inspect.
+        app.tab.wait_for(
+            "!(document.getElementById('syncstatus') || {}).textContent"
+            ".includes('Checking for work')",
+            what="the first pipeline snapshot to land",
+        )
+        app.tab.evaluate("import('/static/js/overview.js').then(m => m.stopPoll())")
+        # Stashed on window rather than returned from the import: `evaluate`
+        # does not await promises, so reading through one yields {}.
+        app.tab.evaluate("import('/static/js/state.js').then(m => { window.__S = m.S; })")
+        app.tab.wait_for("!!window.__S", what="the state module")
+        mine = app.tab.evaluate("window.__S.pipeline.root_id")
+        assert isinstance(mine, int), f"no root_id on the snapshot the client took: {mine!r}"
+
+        # A snapshot about some other archive: paused, and with no stages at all,
+        # so taking it would be plain on the panel as well as in the state.
+        app.tab.evaluate(f"""
+          (() => {{
+            window.__realFetch = window.fetch;
+            const alien = {{ root_id: {mine + 999}, overall: 'paused', paused: true,
+                            stages: [], extra: [], paused_stages: [] }};
+            window.fetch = (...args) => String(args[0]).includes('/api/pipeline?')
+              ? Promise.resolve(new Response(JSON.stringify(alien),
+                {{ headers: {{ 'Content-Type': 'application/json' }} }}))
+              : window.__realFetch(...args);
+          }})()
+        """)
+        app.tab.evaluate("import('/static/js/overview.js').then(m => m.startPoll())")
+        app.tab.evaluate("setTimeout(() => { window.__waited = true; }, 3000)")
+        app.tab.wait_for("window.__waited === true", timeout=20.0, what="several polls to land")
+
+        kept = app.tab.evaluate("window.__S.pipeline.root_id")
+        app.tab.evaluate("import('/static/js/overview.js').then(m => m.stopPoll())")
+        app.tab.evaluate("window.fetch = window.__realFetch")
+
+        assert kept == mine, f"took a snapshot about root {kept} while root {mine} was open"
+        # ...and the panel still draws this archive's chain rather than emptying.
+        assert app.count(".health-task .health-node") > 0, "the alien snapshot emptied the panel"
         assert app.errors() == []

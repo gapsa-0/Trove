@@ -18,7 +18,7 @@ import {
   startInfiniteList,
 } from "./infinite.js";
 import {
-  jget, jpost,
+  isCurrentSnapshot, jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   docsButton,
@@ -93,11 +93,19 @@ export function startFacePoll() { stopPoll(); S.poll = setInterval(faceTick, 150
 // page never resets under the user -- scroll position, the pages the
 // infinite list has already loaded and the "Same person?" review queue all
 // survive, and only cards whose data actually changed are touched.
-async function faceTick() {
+//
+// Guarded like the other two pipeline pollers, and this one starves the page
+// fastest of the three: it asks for two things per tick on a 1.5s interval, so
+// a snapshot that takes its time -- the first one of an archive waits for the
+// tree to be counted -- spends the whole connection budget in about four
+// seconds, and the grid it is meant to keep fresh stops loading at all. See
+// `oneAtATime`.
+const faceTick = oneAtATime(async () => {
   const area = document.getElementById("facejob"); if (!area) { stopPoll(); return; }
   const [snap, sum] = await Promise.all([
     jget("/api/pipeline?root=" + S.arch.id),
     jget("/api/faces/summary?root=" + S.arch.id)]);
+  if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
   const facesStage = (snap.stages || []).find(s => s.id === "detect");
   const fj = facesStage && facesStage.state === "running" ? facesStage.progress : null;
   // Keep a failed attempt visible during the scheduler's retry cooldown
@@ -117,7 +125,7 @@ async function faceTick() {
   } else if (wasRunning) {
     syncPeopleGrid();   // final pass finished → reconcile once more
   }
-}
+});
 const PEOPLE_PAGE_SIZE = 120;
 async function fetchPeoplePage(offset) {
   const res = await jget(`/api/faces/persons?root=${S.arch.id}&offset=${offset}&limit=${PEOPLE_PAGE_SIZE}`);
