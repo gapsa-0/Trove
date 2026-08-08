@@ -21,8 +21,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a scanned appendix is read both ways and comes back as one document, with the
   page each passage came from. Spanish and English, accents included.
 
-  Nothing downloads: this is the only model that ships inside the application,
-  so it starts work straight away even with no connection.
+  It downloads 30 MB the first time you switch it on, once per computer rather
+  than once per archive.
 
   **It is the slow one, and worth deciding about rather than switching on by
   reflex.** Every picture has to be opened and looked at — it cannot use the
@@ -146,6 +146,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   replacing the page with an empty-state box.
 - `trove logs` prints the application log, or `trove logs --path` its location, so a
   bug report can carry the evidence needed to act on it.
+
+### Changed
+
+- **The installer is about 46 MB smaller**, and no feature you leave switched
+  off costs you anything to have installed. Three things were travelling inside
+  the download that did not need to: the models that read writing in pictures,
+  the Spanish translator the search box uses before a description search, and a
+  library nothing ever called. The first two are now fetched the first time you
+  switch their feature on — the translator arrives with the search model it
+  belongs to, so nothing new appears on screen — and the third is simply gone.
 
 ### Fixed
 
