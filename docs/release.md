@@ -14,6 +14,13 @@ is then silently rewritten by whoever next runs `npm install`. Candidate builds 
 In order. Each step is here because skipping it has produced, or would produce,
 a release that is wrong in a way nobody notices until it is published.
 
+0. **If this release adds or changes a `manifest.json` entry, publish its model
+   release first.** The weights are not in the installer, so a version tagged
+   before its assets exist ships an app whose feature cards quote a download
+   that 404s — and the failure lands on the user's first run, not on any build.
+   Publish the `models-vN` release, confirm one asset actually downloads at the
+   URL the manifest spells, and only then tag. The reverse order cannot be
+   fixed by a patch release, because the broken installers are already out.
 1. **Move `CHANGELOG.md`'s `[Unreleased]` section into a new dated version
    section.** That section's body is also the GitHub release's body: paste it in
    as-is when creating the release. Do this before the version bump, so the
