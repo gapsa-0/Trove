@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-08
+
 ### Fixed
 
 - **The installed app does its work again.** In 0.2.0 an installed Trove could
@@ -533,7 +535,8 @@ including inside video keyframes; merge, unmerge, and manually tag people and
 pets; search the library by description when semantic indexing was enabled;
 and correct photo orientation for display without touching the file on disk.
 
-[Unreleased]: https://github.com/gapsa-0/Trove/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/gapsa-0/Trove/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/gapsa-0/Trove/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gapsa-0/Trove/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gapsa-0/Trove/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gapsa-0/Trove/compare/v0.1.0...v0.1.1
