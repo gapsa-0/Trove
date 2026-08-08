@@ -17,7 +17,7 @@ numpy==2.5.1
 # If a cv2.imshow/VideoCapture ever lands in trove/, this pin has to go
 # back to opencv-python; tests/unit/test_opencv_headless.py fails the build if it does.
 opencv-python-headless==5.0.0.93
-onnxruntime==1.27.0
+onnxruntime==1.28.0
 scikit-learn==1.9.0
 # Face detection/recognition backend (SCRFD det_10g + ArcFace w600k_r50 from the
 # buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
