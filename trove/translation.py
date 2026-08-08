@@ -60,6 +60,18 @@ def resolve(filename: str, cache_dir: str) -> Path | None:
     turns either into a 404, which is the answer the page already knows how to
     take: translation improves recall and is never required, so a missing
     translator costs a Spanish query its expansion and nothing else.
+
+    All four or none here too, for a reason that belongs to the page rather than
+    to this module. The search box decides whether a translator exists on this
+    machine by asking for one byte of the model file (``search.js``,
+    ``translatorPresent``), and then hands the loader a fifteen-second download
+    timeout. Serving each file on its own merits would let an interrupted fetch
+    answer "yes, the model is here" and then stall every search for the whole of
+    that timeout on the runtime that is not -- so a half-downloaded translator
+    would be slower than no translator at all. A set that is not complete is not
+    a translator, and this says so on the first byte.
     """
     name = BY_FILENAME.get(filename)
-    return model_manifest.present(name, cache_dir) if name else None
+    if not name or not ready(cache_dir):
+        return None
+    return model_manifest.present(name, cache_dir)

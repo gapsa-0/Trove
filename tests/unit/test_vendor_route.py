@@ -40,20 +40,50 @@ def test_a_package_file_is_served_from_the_package(tmp_path):
     assert result.path.is_file()
 
 
+def _cache_the_translator(tmp_path, monkeypatch, *, only=None):
+    """Put the translator's files in the cache at their manifest sizes.
+
+    ``only`` writes a subset, which is what an interrupted download leaves. Also
+    blanks the other two resolver tiers, or a developer machine with a staged
+    copy answers from there and the tests below pass without the cache tier
+    working at all.
+    """
+    monkeypatch.setattr(model_manifest, "STAGED_DIR", tmp_path / "nothing-staged")
+    monkeypatch.delenv("ARCHIVE_MODELS_DIR", raising=False)
+    written = {}
+    for name, filename in translation.MODELS.items():
+        if only is not None and filename not in only:
+            continue
+        item = model_manifest.entry(name)
+        cached = tmp_path / "models" / item["file"]
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(b"x" * item["size"])
+        written[filename] = cached
+    return written
+
+
 def test_a_fetched_file_is_served_from_the_model_cache(tmp_path, monkeypatch):
     """The four large ones are not in the package at all, so if this resolved
     against the vendor directory it would 404 on a correctly installed app."""
-    cached = tmp_path / "models" / "bergamot" / FETCHED
-    cached.parent.mkdir(parents=True)
-    cached.write_bytes(b"x" * model_manifest.entry("bergamot_es_en_model")["size"])
-    # Otherwise a developer machine with a staged copy answers from there and
-    # the test would pass without the cache tier working at all.
-    monkeypatch.setattr(model_manifest, "STAGED_DIR", tmp_path / "nothing-staged")
-    monkeypatch.delenv("ARCHIVE_MODELS_DIR", raising=False)
+    cached = _cache_the_translator(tmp_path, monkeypatch)
 
     result = static.vendor(_request(FETCHED, tmp_path))
     assert isinstance(result, FileBody)
-    assert result.path == cached
+    assert result.path == cached[FETCHED]
+
+
+def test_a_half_downloaded_translator_serves_nothing(tmp_path, monkeypatch):
+    """The model without the runtime that reads it is not a translator.
+
+    The page probes one byte of the model file to decide whether a translator
+    exists here, then gives the loader a 15-second download timeout. Answering
+    for the file that did arrive would buy that probe a "yes" and spend the whole
+    timeout on the file that did not -- a stall in front of every search, on
+    exactly the machine whose download was interrupted.
+    """
+    _cache_the_translator(tmp_path, monkeypatch, only={FETCHED})
+
+    assert static.vendor(_request(FETCHED, tmp_path)) is NOT_FOUND
 
 
 def test_a_fetched_file_that_is_not_here_yet_is_a_plain_404(tmp_path, monkeypatch):

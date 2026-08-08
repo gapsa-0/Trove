@@ -214,8 +214,21 @@ def present(name: str, cache_dir: str) -> Path | None:
     truncated file must not be mistaken for a usable one. The full SHA-256 is
     verified when a file is *downloaded*, not on every startup -- hashing 350 MB
     to answer "is the model there" would cost seconds on every run.
+
+    An unreadable manifest answers None rather than raising, because None is the
+    honest answer to the question actually being asked: with no manifest there is
+    no path to check, so this weight is certainly not here. Every caller asks it
+    as a yes/no -- ``models.missing``, each backend's ``models_ready``,
+    ``translation.resolve`` -- and one that raised turned a build shipped without
+    its manifest into a dead scheduler rather than a feature reporting that it
+    needs a download. The error is not swallowed, only deferred to the place that
+    can act on it: ``ensure`` re-reads the entry and raises there, on a job whose
+    failure lands on a card with the message in it.
     """
-    item = entry(name)
+    try:
+        item = entry(name)
+    except ModelUnavailableError:
+        return None
     candidates = (
         runtime.bundled_model(item["file"]),
         STAGED_DIR / item["file"],

@@ -230,6 +230,21 @@ def test_an_unreadable_manifest_is_a_user_facing_error(tmp_path, monkeypatch):
     assert not mm.obtainable("adaface", str(tmp_path))
 
 
+def test_an_unreadable_manifest_leaves_present_answering_no(tmp_path, monkeypatch):
+    """Whether a weight is here has an answer without a manifest, and it is no.
+
+    It used to raise, and every caller asks it as a yes/no from somewhere that
+    could not take a raise: the scheduler asks before considering any stage, so a
+    build shipped without its manifest ran nothing at all rather than reporting a
+    download it owed. ``ensure`` still raises -- that is a job, with a card to
+    fail on.
+    """
+    monkeypatch.setattr(mm, "MANIFEST_PATH", tmp_path / "nowhere.json")
+    assert mm.present("adaface", str(tmp_path)) is None
+    with pytest.raises(ModelUnavailableError, match="ARCHIVE_MODELS_DIR"):
+        mm.ensure("adaface", str(tmp_path))
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

@@ -13,6 +13,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The installed app does its work again.** In 0.2.0 an installed Trove could
+  scan nothing, index nothing and download no models: it opened an archive,
+  showed it, and then quietly did no work at all, on any archive, for any
+  feature. One small file describing the models — not the models themselves —
+  was left out of the installer when they stopped being bundled, and the first
+  thing the scheduler does each round is ask that file whether anything needs
+  downloading. The question raised instead of answering, and the rest of the
+  round never ran.
+
+  It also cost Spanish searches their results. Typing *bosque* looks inside the
+  same English translation *forest* would, and the translator is one of the
+  things the missing file describes, so it could neither be downloaded nor
+  served: the search ran on the Spanish words, which — as the 0.2.0 notes
+  explain — is the case that returns screenshots of Spanish text instead of
+  photographs. Searching in Spanish is as good as searching in English again.
+
+  Nothing needs reinstalling beyond the new version, and no archive needs
+  rebuilding: work that never happened simply starts happening, and an archive
+  part-way through picks up where it stopped.
+- **A translator that half-downloaded no longer stalls every search.** The
+  search box asked one of the four files whether translation was available here,
+  so an interrupted download could answer yes on behalf of files that had not
+  arrived — and every search then waited fifteen seconds for them before showing
+  anything. An incomplete set now reports itself as what it is, which costs a
+  Spanish query its translation and no time at all.
+
 ## [0.2.0] - 2026-08-08
 
 ### Added

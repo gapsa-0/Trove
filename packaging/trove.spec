@@ -25,6 +25,22 @@ target = os.environ.get("ARCHIVE_TOOL_TARGET", "")
 tools = root / "packaging" / "tools" / "staged" / target
 if tools.is_dir():
     datas.append((str(tools), "tools"))
+# The manifest itself, which is not a weight but the description of every weight:
+# sizes, SHA-256s, and the release-asset URLs the app downloads from. It is the
+# one file that must travel even though none of the models do, and it was the one
+# file nobody added when they stopped travelling -- `collect_data_files("trove")`
+# sweeps the package, and this lives outside it.
+#
+# The destination is not free-form. `trove/model_manifest.py` resolves the
+# manifest relative to the package's own parent, which in a frozen build is the
+# bundle root, so it has to land at exactly `packaging/models/` for the same
+# expression to answer in a checkout and in a build. Without it every lookup
+# raised, and because `present()` is asked "is this weight here" from the
+# scheduler's first step, every tick died before a single stage was considered:
+# no scan, no indexing, no downloads, and a translator the /vendor route could
+# not serve. tests/unit/test_no_bundled_models.py pins the destination against
+# the path that module computes.
+datas.append((str(root / "packaging" / "models" / "manifest.json"), "packaging/models"))
 # No model weights are bundled.  Every one of them -- including the two in
 # packaging/models/manifest.json, which have no upstream URL and are therefore
 # re-published as release assets on this repository -- is fetched once into the

@@ -48,11 +48,13 @@ def test_the_spec_stages_no_model_weights():
     )
 
 
-def test_the_spec_appends_only_the_tools_datas_entry():
-    """The stronger form: enumerate what actually gets appended to ``datas``.
+def _appended_destinations() -> list[str]:
+    """Every destination the spec appends to ``datas``, sorted, read from source.
 
-    A future weights directory under some other name would slip past the string
-    check above, so read the appends themselves.
+    The spec is not importable (see the module docstring), so the appends are
+    read as AST rather than executed. Sorted because ``ast.walk`` yields by
+    breadth rather than by line, and what these tests are about is *which*
+    destinations exist, never the order they are written in.
     """
     tree = ast.parse(_spec_source(), filename=str(SPEC))
     destinations = []
@@ -69,11 +71,44 @@ def test_the_spec_appends_only_the_tools_datas_entry():
             and isinstance(node.args[0].elts[1], ast.Constant)
         ):
             destinations.append(node.args[0].elts[1].value)
+    return sorted(destinations)
 
-    assert destinations == ["tools"], (
-        "packaging/trove.spec should append exactly one datas entry, the "
-        f"native tools tree. It appends: {destinations}. Anything else is new payload "
-        "in every installer -- confirm that is intended before changing this test."
+
+def test_the_spec_appends_only_the_tools_tree_and_the_manifest():
+    """The stronger form: enumerate what actually gets appended to ``datas``.
+
+    A future weights directory under some other name would slip past the string
+    check above, so read the appends themselves. Two are expected and neither is
+    a weight: the native tools tree, and the manifest that *describes* the
+    weights (6 KB of JSON, and the file the next test pins the location of).
+    """
+    assert _appended_destinations() == ["packaging/models", "tools"], (
+        "packaging/trove.spec should append exactly two datas entries, the native "
+        f"tools tree and the model manifest. It appends: {_appended_destinations()}. "
+        "Anything else is new payload in every installer -- confirm that is intended "
+        "before changing this test."
+    )
+
+
+def test_the_spec_puts_the_manifest_where_the_app_looks_for_it():
+    """The manifest's destination in the bundle is not a free choice.
+
+    ``model_manifest`` resolves it relative to the package's own parent, which is
+    the checkout root in a source tree and the bundle root in a frozen build --
+    one expression that has to answer in both, so the spec's destination must be
+    the manifest's own path relative to that root.
+
+    Shipped without it, every weight lookup raised instead of answering "not
+    here", and since the scheduler asks that on its first step, no build ever ran
+    a stage or downloaded a model. The two halves are edited in different files,
+    which is why this test holds them together rather than trusting a comment.
+    """
+    from trove import model_manifest
+
+    expected = model_manifest.MANIFEST_PATH.parent.relative_to(model_manifest.PROJECT_ROOT)
+    assert str(expected) in _appended_destinations(), (
+        f"model_manifest reads its manifest from {expected}/ inside the bundle, but "
+        f"packaging/trove.spec stages datas into {_appended_destinations()}."
     )
 
 
