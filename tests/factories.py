@@ -16,8 +16,10 @@ from all three tiers via pytest's `pythonpath` setting (see pyproject.toml).
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import struct
+import time
 from pathlib import Path
 
 from trove.db import database as db
@@ -320,11 +322,28 @@ def make_archive(tmp_path: Path, files: dict[str, bytes] | None = None) -> Path:
     test that needs a *decodable* image should write a real one with Pillow
     instead -- these are deliberately not valid JPEGs, so a test that silently
     depends on decoding fails loudly rather than passing for the wrong reason.
+
+    **The files are backdated, and that is load-bearing.** A file written
+    within ``walker.SETTLE_SECONDS`` of now reads as a copy still in progress
+    (``walker._arriving_now``), so the walk defers it, waits out the window and
+    looks again -- and whichever ones lose that race are recorded as unstable
+    rather than catalogued. Writing an archive and scanning it in the same
+    millisecond, which every caller here does, puts *all* of it in that state.
+
+    The symptom is a test that passes on a developer machine and fails on a
+    faster runner: `test_the_re_check_mark_cannot_outrun_the_walk` failed in CI
+    with 1 of 3 files catalogued while passing locally eight times running.
+    Nothing here is trying to exercise the arrival logic -- the tests that are
+    write their own files and control the timing themselves (see
+    tests/unit/test_scan_stability.py). An archive that is simply *there* should
+    look like one.
     """
     root = tmp_path / "source"
     root.mkdir(exist_ok=True)
+    settled = time.time() - 60
     for rel_path, content in (files or {}).items():
         target = root / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
+        os.utime(target, (settled, settled))
     return root
