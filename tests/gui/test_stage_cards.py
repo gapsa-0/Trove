@@ -318,3 +318,58 @@ def test_a_job_cancelled_while_preparing_leaves_no_bar():
         )
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# Before the disk has been counted: what the card must not claim
+# ---------------------------------------------------------------------------
+
+
+def test_a_scan_that_has_not_counted_the_disk_yet_says_so():
+    """The polled status endpoint no longer waits for the disk walk, so a
+    freshly opened archive answers before anyone knows how much is on disk.
+
+    The card that used to be drawn from that gap said "up to date", because a
+    backlog nobody had measured came through as zero -- an archive announced
+    fully indexed before anything had looked at it, which is the one wrong
+    answer a user has no reason to doubt and will act on.
+    """
+    card = _card(
+        _stage(kind="scan", card="scan", state="checking", pending=None, progress=None),
+        _stage(kind="enrich", card="scan", state="up_to_date", pending=0, progress=None),
+    )
+    assert card["state"] == "checking"
+    assert card["pending"] is None, "reported a backlog it has not measured"
+    assert card["message"] == "Counting files in this folder…"
+
+
+def test_an_uncounted_scan_outranks_a_finished_stage_on_the_same_card():
+    """Scan and enrich share the Scan card, and the roll-up takes the most
+    active member. "Not looked yet" has to beat "nothing to do" or the fused
+    card reports the very reassurance the state exists to withhold."""
+    assert cards_mod._STATE_RANK["checking"] > cards_mod._STATE_RANK["up_to_date"]
+
+
+def test_an_archive_still_counting_is_not_reported_idle(monkeypatch):
+    """`overall` drives the sidebar chip, which is on screen everywhere. Idle
+    there is "Up to date" -- the same false all-clear, in the one place the
+    user sees from every section."""
+    snap = _snapshot(
+        monkeypatch,
+        _FakeJobs(),
+        _stage(kind="scan", card="scan", state="checking", pending=None, progress=None),
+    )
+    assert snap["overall"] == "checking"
+
+
+def test_known_work_is_reported_over_a_count_that_has_not_landed(monkeypatch):
+    """Checking is the last answer, not the first: if anything is known to be
+    outstanding, saying so is more use than reporting the count still in
+    flight."""
+    snap = _snapshot(
+        monkeypatch,
+        _FakeJobs(),
+        _stage(kind="scan", card="scan", state="checking", pending=None, progress=None),
+        _stage(kind="places", card="places", state="queued", pending=12, progress=None),
+    )
+    assert snap["overall"] == "working"

@@ -82,7 +82,13 @@ export const S = {
   // The text-results group, present only for an archive that reads its
   // documents. Null everywhere else, which is what activeGrids() reads.
   textGrid: null,
-  timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, poll: null,
+  // `gpoll` is the one pipeline poller's interval handle (pipeline.js). There
+  // used to be a second slot beside it, `poll`, that the Overview, People and
+  // Pets screens all wrote in turn -- one timer shared by three modules, which
+  // worked only because one section is on show at a time and made `stopPoll`
+  // something People had to import from the Overview. Each screen now owns its
+  // own handle privately; what is shared is the snapshot, not the timer.
+  timeline: { bucket: "month", year: "", month: "", people: [], place: "" }, gpoll: null,
   // Bumped on every user navigation (section switch / archive open). Async renders
   // capture it and bail if it changed while they were awaiting, so a slow fetch can
   // never paint a stale section over the one the user just picked.

@@ -21,7 +21,7 @@ import {
   openItem,
 } from "./item.js";
 import {
-  isCurrentSnapshot, jget, jpost, oneAtATime,
+  jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   docsButton,
@@ -36,8 +36,8 @@ import {
   attachMergeDrag, guardCardClick, mergesPanel,
 } from "./merge.js";
 import {
-  stopPoll,
-} from "./overview.js";
+  onSnapshot,
+} from "./pipeline.js";
 import {
   S,
 } from "./state.js";
@@ -59,6 +59,7 @@ export async function renderPets(m) {
   const gen = S.nav, root = S.arch.id;
   const sum = await jget("/api/pets/summary?root=" + root);
   if (gen !== S.nav) return;
+  S.petSum = sum;
   S.petJobRunning = false; S.petStamp = petStamp(sum);
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Pets</h2>
       <p>Locally detected animals, likely identities, and non-human face review.</p></div>${docsButton("pets")}</div>
@@ -246,29 +247,39 @@ async function syncPetGrids() {
     keyOf: item => item.id, make: nonhumanCard, complete, empty: NONHUMAN_EMPTY });
   if (complete) { st.nonhuman.offset = nonhuman.length; st.nonhuman.done = true; }
 }
-export function startPetPoll() { stopPoll(); S.poll = setInterval(petTick, 1800); petTick(); }
+export function startPetPoll() { stopPetPoll(); petPoll = setInterval(petTick, 1800); petTick(); }
+export function stopPetPoll() { if (petPoll) { clearInterval(petPoll); petPoll = null; } }
+let petPoll = null;
+// The detect stage comes from the one poller rather than being fetched here.
+// Same reasoning as People's: two requests per tick for a snapshot the sidebar
+// chip already held is what emptied the connection budget while one was slow.
+onSnapshot(() => renderPetStatus());
+// The summary and the detect stage now arrive separately, so the row is drawn
+// from whatever state holds rather than from arguments one caller happens to
+// have. Same shape as People's renderFaceStatus.
+function renderPetStatus() {
+  const el = document.getElementById("petjob"); if (!el || !S.petSum) return;
+  el.innerHTML = detectStatusRow(S.petSum, null);
+}
+const detectRunning = () =>
+  ((S.pipeline && S.pipeline.stages) || []).some(s => s.id === "detect" && s.state === "running");
 // Mirrors faceTick: the stat tiles and status row tick every poll, and the
 // grids are *patched* (syncPetGrids) rather than rebuilt, so the page never
 // resets under the user -- scroll position, the pages the infinite lists
 // have already loaded and any half-finished non-human review all survive,
 // and only cards whose data actually changed are touched.
-// Guarded like faceTick, and for the same reason: two requests per tick on a
-// fixed interval is what empties the connection budget while a snapshot is
-// slow. See `oneAtATime`.
 const petTick = oneAtATime(async () => {
-  if (ACTIVE_SECTION !== "pets") { stopPoll(); return; }
-  const area = document.getElementById("petjob"); if (!area) { stopPoll(); return; }
-  const [snap, sum] = await Promise.all([
-    jget("/api/pipeline?root=" + S.arch.id),
-    jget("/api/pets/summary?root=" + S.arch.id)]);
-  if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
-  const running = (snap.stages || []).some(s => s.id === "detect" && s.state === "running");
+  if (ACTIVE_SECTION !== "pets") { stopPetPoll(); return; }
+  const area = document.getElementById("petjob"); if (!area) { stopPetPoll(); return; }
+  const sum = await jget("/api/pets/summary?root=" + S.arch.id);
+  S.petSum = sum;
+  const running = detectRunning();
   const was = S.petJobRunning; S.petJobRunning = running;
   setStat("ps-pets", sum.pets.toLocaleString());
   setStat("ps-detections", sum.detections.toLocaleString());
   setStat("ps-nonhuman", sum.nonhuman_faces.toLocaleString());
   setStat("ps-scanned", scannedFigure(sum));
-  area.innerHTML = detectStatusRow(sum, null);
+  renderPetStatus();
   // Three list endpoints are worth refetching only when something actually
   // moved; the run's finishing edge always gets one last pass.
   const stamp = petStamp(sum);
@@ -283,7 +294,7 @@ async function reviewNonhuman(id, verdict, card) {
 }
 const PET_DETAIL_PAGE_SIZE = 120;
 export async function showPet(id) {
-  stopPoll(); const m = document.getElementById("main");
+  stopPetPoll(); const m = document.getElementById("main");
   m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
   const pet = await jget(`/api/pet/${id}?root=${S.arch.id}&limit=${PET_DETAIL_PAGE_SIZE}`);
   if (!pet || pet.error) { m.innerHTML = '<div class="soonbox">Pet not found.</div>'; return; }

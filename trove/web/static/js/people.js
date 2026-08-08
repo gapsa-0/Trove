@@ -18,7 +18,7 @@ import {
   startInfiniteList,
 } from "./infinite.js";
 import {
-  isCurrentSnapshot, jget, jpost, oneAtATime,
+  jget, jpost, oneAtATime,
 } from "./api.js";
 import {
   docsButton,
@@ -33,8 +33,8 @@ import {
   attachMergeDrag, guardCardClick, mergesPanel,
 } from "./merge.js";
 import {
-  stopPoll,
-} from "./overview.js";
+  onSnapshot,
+} from "./pipeline.js";
 import {
   S,
 } from "./state.js";
@@ -71,7 +71,7 @@ export async function renderFaces(m) {
     </div>
     <div class="panel" id="facejob"></div>
     <div id="peoplewrap"><div class="muted" style="padding:20px">Loading people…</div></div>`;
-  renderFaceControls();
+  renderFaceStatus();
   renderPeople();
   startFacePoll();   // reflects a face job's progress and refreshes when it ends
 }
@@ -83,43 +83,51 @@ export async function renderFaces(m) {
 // no emoji, exactly one row so the panel never reserves empty space. People
 // and Pets both report on the same fused backend `detect` stage, so they
 // share this wording via detectStatusRow (the sidebar chip owns "running").
-function renderFaceControls(failed) {
+//
+// Reads both halves out of state rather than taking them as arguments, because
+// they now arrive separately: the summary from this screen's own poll, the
+// detect stage from the shared snapshot. Either can land first, and either
+// should redraw the row with whatever the other one last said.
+function renderFaceStatus() {
   const el = document.getElementById("facejob"); if (!el) return;
+  const stage = detectStage();
+  // Keep a failed attempt visible during the scheduler's retry cooldown
+  // instead of making the progress panel blink.
+  const failed = stage && stage.state === "error" && S.faceSum && S.faceSum.unscanned > 0
+    ? (stage.message || "The face worker stopped before reporting progress.") : null;
   el.innerHTML = detectStatusRow(S.faceSum, failed);
 }
-export function startFacePoll() { stopPoll(); S.poll = setInterval(faceTick, 1500); faceTick(); }
+// People and Pets both report on the one fused `detect` stage.
+const detectStage = () => ((S.pipeline && S.pipeline.stages) || []).find(s => s.id === "detect");
+const detectProgress = () => {
+  const stage = detectStage();
+  return stage && stage.state === "running" ? stage.progress : null;
+};
+export function startFacePoll() { stopFacePoll(); facePoll = setInterval(faceTick, 1500); faceTick(); }
+export function stopFacePoll() { if (facePoll) { clearInterval(facePoll); facePoll = null; } }
+let facePoll = null;
+// The pipeline snapshot arrives from the one poller rather than being fetched
+// here. This tick used to ask for it alongside the summary -- two requests every
+// 1.5s for a thing the sidebar chip already had -- which on a slow snapshot was
+// the fastest way in the app to spend the browser's ~6 connections and leave the
+// grid this poll exists to refresh unable to load at all.
+onSnapshot(() => renderFaceStatus());
 // Live refresh while a faces job runs: the stat tiles tick every poll, and
 // the people grid is *patched* (syncPeopleGrid) rather than rebuilt, so the
 // page never resets under the user -- scroll position, the pages the
 // infinite list has already loaded and the "Same person?" review queue all
 // survive, and only cards whose data actually changed are touched.
-//
-// Guarded like the other two pipeline pollers, and this one starves the page
-// fastest of the three: it asks for two things per tick on a 1.5s interval, so
-// a snapshot that takes its time -- the first one of an archive waits for the
-// tree to be counted -- spends the whole connection budget in about four
-// seconds, and the grid it is meant to keep fresh stops loading at all. See
-// `oneAtATime`.
 const faceTick = oneAtATime(async () => {
-  const area = document.getElementById("facejob"); if (!area) { stopPoll(); return; }
-  const [snap, sum] = await Promise.all([
-    jget("/api/pipeline?root=" + S.arch.id),
-    jget("/api/faces/summary?root=" + S.arch.id)]);
-  if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
-  const facesStage = (snap.stages || []).find(s => s.id === "detect");
-  const fj = facesStage && facesStage.state === "running" ? facesStage.progress : null;
-  // Keep a failed attempt visible during the scheduler's retry cooldown
-  // instead of making the progress panel blink.
-  const failedFace = facesStage && facesStage.state === "error" ? facesStage : null;
+  const area = document.getElementById("facejob"); if (!area) { stopFacePoll(); return; }
+  const sum = await jget("/api/faces/summary?root=" + S.arch.id);
+  const fj = detectProgress();
   const wasRunning = S.faceJobRunning; S.faceJobRunning = !!fj;
   const prev = S.faceSum || {}; S.faceSum = sum;
   setStat("fs-people", sum.people.toLocaleString());
   setStat("fs-faces", sum.faces.toLocaleString());
   setStat("fs-photos", sum.photos_with_faces.toLocaleString());
   setStat("fs-scanned", scannedFigure(sum));
-  const failed = failedFace && sum.unscanned > 0
-    ? (failedFace.message || "The face worker stopped before reporting progress.") : null;
-  renderFaceControls(failed);
+  renderFaceStatus();
   if (fj) {
     if (sum.people !== prev.people || sum.faces !== prev.faces) syncPeopleGrid();
   } else if (wasRunning) {
@@ -361,7 +369,7 @@ function personGalleryLabel() {
   return PERSON_NAME ? `in ${PERSON_NAME}\u2019s photos` : "in this person\u2019s photos";
 }
 export async function showPerson(id) {
-  stopPoll();
+  stopFacePoll();
   S.section = "people"; renderNav(); S.facePerson = id;
   if (S.arch) location.hash = `/archive/${S.arch.id}/people`;
   const m = document.getElementById("main");

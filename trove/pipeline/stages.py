@@ -29,6 +29,7 @@ disagree with, and neither is imported from here.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .. import features
@@ -181,6 +182,45 @@ def _optional_pending(
     }
 
 
+def _scan_backlog(
+    root_path: str,
+    on_disk: int | None,
+    indexed: int,
+    settled: bool,
+    awaiting_settle: bool,
+) -> int | None:
+    """How many files the scan still owes, or None when that is not yet known.
+
+    What is left to scan is the difference between disk and catalog -- except
+    that difference never quite closes if any file cannot be read, so it is only
+    consulted while the last completed scan does *not* already account for what
+    is on disk now (db.scan_settled). Without that the scheduler relaunches the
+    scan the instant it finishes, forever. The floor of 1 keeps a deletion-only
+    change (fewer files on disk than rows) visible as work.
+
+    Kept as a block rather than the ternary ruff suggests: as one line it ends in
+    ``... or 1``, where ``or`` is a default and the ``or`` in the condition is a
+    boolean, and the floor stops looking deliberate.
+    """
+    if on_disk is None:
+        # No count yet, which on the GUI's path means the first walk is still
+        # running (see DiskCounts.count). None rather than 0: a backlog of zero
+        # reads as "up to date", and announcing an archive fully indexed before
+        # anything has looked at it is the one answer that is never recoverable
+        # -- the user believes it and stops waiting. A folder that is simply
+        # gone cannot be told from that by the count alone, so it is asked
+        # directly; a missing folder is owed no scan, which is what 0 says.
+        return None if Path(root_path).is_dir() else 0
+    if settled or awaiting_settle:
+        # settled: a completed scan already accounts for what is on disk now.
+        # awaiting_settle: a run just left a file still being copied, so the
+        # archive is genuinely not settled -- but the only way to act on it is
+        # to walk the tree again, and a 40 GB copy would have us doing that
+        # every tick for the length of it. Wait, then ask again.
+        return 0
+    return max(0, on_disk - indexed) or 1
+
+
 def _pending(
     cfg: Config,
     jobs: JobManager,
@@ -189,9 +229,14 @@ def _pending(
     avail: dict[str, bool],
     allow_walk: bool,
     enabled: tuple[str, ...],
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     """Countable backlog per stage, from the catalog. One connection for the
-    cheap DB counts; the expensive disk walk is served from the manager's cache."""
+    cheap DB counts; the expensive disk walk is served from the manager's cache.
+
+    Only the scan entry is ever None, and only on the GUI's path: it means the
+    disk has not been counted yet, so how much is left to scan is not a number
+    anyone can state. Every other entry is a real count.
+    """
     db_path = cfg.archive_db_path(root_id)
     # The disk walk is the expensive half and must happen outside the read
     # connection, so a slow drive never holds one open across the whole query.
@@ -221,28 +266,8 @@ def _pending(
     finally:
         conn.close()
 
-    # What is left to scan is the difference between disk and catalog — except
-    # that difference never quite closes if any file cannot be read, so it is
-    # only consulted while the last completed scan does *not* already account
-    # for what is on disk now (db.scan_settled). Without that the scheduler
-    # relaunches the scan the instant it finishes, forever. The floor of 1 keeps
-    # a deletion-only change (fewer files on disk than rows) visible as work.
-    # Kept as a block rather than the ternary ruff suggests: as one line it ends
-    # in `... or 1`, where `or` is a default and the `or` in the condition is a
-    # boolean, and the floor stops looking deliberate.
-    if settled or on_disk is None:
-        new_files = 0
-    elif awaiting_settle:
-        # A run just left a file still being copied. It is genuinely owed work,
-        # so the archive is not settled -- but the only way to act on it is to
-        # walk the tree again, and a 40 GB copy would have us doing that every
-        # tick for the length of it. Wait, then ask again.
-        new_files = 0
-    else:
-        new_files = max(0, on_disk - indexed) or 1
-
     return {
-        SCAN: new_files,
+        SCAN: _scan_backlog(root_path, on_disk, indexed, settled, awaiting_settle),
         ENRICH: max(0, indexed - enriched),
         # Dedup rebuilds wholesale, so it has no per-file backlog, a dirty flag,
         # set when scan/enrich change data and cleared on a successful rebuild.
@@ -286,6 +311,7 @@ def stage_states(
     out: list[dict] = []
     for sd in (sd for sd in STAGES if sd.kind in wanted):
         k = sd.kind
+        owed = pending[k]  # bound once: None is a state of its own below
         job = running.get(k)
         if not avail[k]:
             state = "unavailable"
@@ -293,7 +319,13 @@ def stage_states(
             state = "running"
         elif not all(resolved.get(d) == "up_to_date" for d in sd.deps):
             state = "blocked"
-        elif pending[k] > 0:
+        elif owed is None:
+            # Only scan, only until the first disk walk lands. Deliberately not
+            # a kind of "queued": the scheduler starts what is queued, and there
+            # is nothing yet to say a scan is owed. `_may_start` takes only
+            # queued/error, so this state is inert to it by construction.
+            state = "checking"
+        elif owed > 0:
             lj = last.get(k)
             state = "error" if (lj and lj["status"] == "error") else "queued"
         else:
@@ -307,7 +339,7 @@ def stage_states(
                 "card": sd.card,
                 "counted": sd.counted,
                 "state": state,
-                "pending": pending[k],
+                "pending": owed,
                 "progress": job_progress(job),
                 "stopped_progress": _stopped_progress(last.get(k)),
                 "blocker": blocker,

@@ -1,13 +1,16 @@
 // The Overview screen: the headline stats, the storage-by-type panel, and the
-// health cards that report what the background pipeline is doing. The pipeline
-// poll lives here because Overview is the only screen that shows its detail;
-// the always-visible sidebar chip is status polling of its own.
+// health cards that report what the background pipeline is doing. The poll
+// itself lives in pipeline.js and serves every screen; this one subscribes for
+// the detail only the Overview draws.
 
 import {
   renderGstat,
 } from "./status.js";
 import {
-  isCurrentSnapshot, jget, jpost, oneAtATime,
+  onSnapshot, refreshPipelineNow,
+} from "./pipeline.js";
+import {
+  jget, jpost,
 } from "./api.js";
 import {
   docsButton,
@@ -114,7 +117,9 @@ function paintOverview(m, s) {
   S.summary = s;
   renderStoragePanel(s);   // reads S.summary back when the metric switch flips
   renderHealthCards();   // paint immediately from the last snapshot (if any)
-  startPoll();           // single poller: /api/pipeline drives every status surface
+  // Nothing to start: the one poller (pipeline.js) has been running since the
+  // archive was opened, and this screen's subscriber is registered at module
+  // level. This used to start a second poller of its own on top of the chip's.
 }
 // The archive's own totals, or what to say before they are known. Both figures
 // come from the same payload, so there is no half-known case to word.
@@ -219,11 +224,15 @@ function renderStoragePanel(s) {
 }
 // Everything runs automatically in the background; this panel only reports
 // what's happening. Every card is rendered the SAME way from one resolved
-// state the server computes (running/queued/blocked/up_to_date/unavailable/
-// error), no per-card logic here, so the five cards can never disagree with
-// each other or with what the pipeline is actually doing.
-const HEALTH_CARDCLASS = { running: "running", queued: "pending", blocked: "", up_to_date: "", unavailable: "", error: "error" };
-const HEALTH_DOT = { queued: "pending", blocked: "check", up_to_date: "ok", unavailable: "check", error: "check" };
+// state the server computes (running/queued/checking/blocked/up_to_date/
+// unavailable/error), no per-card logic here, so the five cards can never
+// disagree with each other or with what the pipeline is actually doing.
+//
+// `checking` draws like `queued` on purpose: both mean "not done, nothing to
+// show yet". It is the scan card while the folder is being counted, which on a
+// large archive is the first twenty seconds after it is opened.
+const HEALTH_CARDCLASS = { running: "running", queued: "pending", checking: "pending", blocked: "", up_to_date: "", unavailable: "", error: "error" };
+const HEALTH_DOT = { queued: "pending", checking: "pending", blocked: "check", up_to_date: "ok", unavailable: "check", error: "check" };
 function healthDoneMessage(id) {
   // The "done" (up_to_date) line reuses the per-domain summary numbers the
   // Overview already holds, so it reads as a result, not a bare "done".
@@ -368,7 +377,7 @@ export async function toggleStagePause(id, event) {
   } catch {
     toast(next ? "Could not pause this step." : "Could not resume this step.", true);
   } finally { S.pausing = false; }
-  await refreshPipeline();
+  await refreshPipelineNow();
 }
 function renderHealthCards() {
   const el = document.getElementById("syncstatus"); if (!el) return;
@@ -425,27 +434,25 @@ export async function togglePipelinePause() {
     if (r && r.error) toast(r.error, true);
   } catch { toast(next ? "Could not pause processing." : "Could not resume processing.", true); }
   finally { S.pausing = false; }
-  await refreshPipeline();
+  await refreshPipelineNow();
 }
-// The one poller behind every status surface: fetch the snapshot, render the
-// cards + sidebar chip, and keep the top stat numbers climbing while active.
+// What the Overview does with a snapshot: redraw its cards, and keep the top
+// stat numbers climbing while work is running.
 //
-// Wrapped so a tick that outlasts its 1.2s interval is waited for rather than
-// piled on -- see `oneAtATime`, which is where the reason lives. The snapshot
-// this fetches is the slow one it was written for.
-const refreshPipeline = oneAtATime(async () => {
-  if (!S.arch) { stopPoll(); return; }
-  let snap;
-  try { snap = await jget("/api/pipeline?root=" + S.arch.id); }
-  catch { return; }   // transient; the next tick retries
-  if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
-  S.pipeline = snap;
+// Subscribed at module level, not started and stopped with the screen. The
+// fetch belongs to pipeline.js and runs for the whole session anyway, so there
+// is nothing to save by unsubscribing -- and `renderHealthCards` already
+// returns when its panel is not on screen, which is the check a per-section
+// subscription would have amounted to.
+onSnapshot(async snap => {
   renderHealthCards();
-  renderGstat(snap);
   const area = document.getElementById("jobarea"); if (area) area.innerHTML = "";
   // Paused counts as not busy: nothing can change, so don't keep re-running
-  // the summary/duplicate queries behind the user's back.
-  const busy = snap.overall !== "idle" && !snap.paused;
+  // the summary/duplicate queries behind the user's back. Neither does
+  // "checking" -- the disk walk has not answered yet, so no number it feeds
+  // has moved, and asking every tick for the length of a 20s walk is exactly
+  // the load this whole rework exists to remove.
+  const busy = !["idle", "checking"].includes(snap.overall) && !snap.paused;
   if (busy && S.section === "overview") {
     // Numbers should climb live while work runs, without waiting for the
     // whole pipeline to finish.
@@ -464,11 +471,9 @@ const refreshPipeline = oneAtATime(async () => {
   }
   // On the busy→idle edge, re-render the Overview once so the "done" messages
   // pick up the final summary numbers. Guarding on the transition avoids an
-  // endless renderOverview→startPoll→refresh loop.
+  // endless render→subscribe→render loop.
   const wasBusy = S.pipeActive; S.pipeActive = busy;
   if (wasBusy && !busy && S.section === "overview") {
     renderOverview(document.getElementById("main"));
   }
 });
-export function startPoll() { stopPoll(); S.poll = setInterval(refreshPipeline, 1200); refreshPipeline(); }
-export function stopPoll() { if (S.poll) { clearInterval(S.poll); S.poll = null; } }

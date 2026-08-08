@@ -108,7 +108,7 @@ def test_every_finished_health_row_says_what_its_stage_found(open_app):
     with open_app("overview") as app:
         app.wait_for(".health-task .health-node")
         app.tab.evaluate(_ALL_DONE_JS)
-        app.tab.evaluate("import('/static/js/overview.js').then(m => m.startPoll())")
+        app.tab.evaluate("import('/static/js/pipeline.js').then(m => m.startPipelinePoll())")
         app.tab.wait_for(
             "!document.querySelector('.health-task-state .spin')"
             " && ![...document.querySelectorAll('.health-task-state')]"
@@ -182,8 +182,8 @@ def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
         # outstanding to have landed -- the placeholder gives way to real cards
         # exactly when it does.
         app.tab.evaluate(
-            "import('/static/js/overview.js')"
-            ".then(m => { m.stopPoll(); window.__pollStopped = true; })"
+            "import('/static/js/pipeline.js')"
+            ".then(m => { m.stopPipelinePoll(); window.__pollStopped = true; })"
         )
         app.tab.wait_for("window.__pollStopped === true", what="the poller to stop")
         app.tab.wait_for(
@@ -236,19 +236,13 @@ def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
 def test_unanswered_status_polls_do_not_stack_up(open_app):
     """A poll tick that outlasts its interval must be waited for, not piled on.
 
-    The first `/api/pipeline` after an archive is opened waits for its tree to
-    be counted -- about 20s for 97k files on a cold cache -- and the two pollers
-    that ask for it run on 1.2s and 2s intervals. Each interval that passed
-    added another request. The duplicated work is not the damage (the server
-    collapses those onto one walk); the damage is that a browser allows about
-    six connections per origin, so a handful of stacked polls is the whole
-    budget and every other request the page makes -- thumbnails, library pages,
-    search -- queues behind them. That is what turned a slow health panel into
-    an archive where nothing at all worked.
-
-    Asserted as "the count stops growing" rather than on an exact number,
-    because there are two independent pollers and the point is that neither
-    accumulates -- not which of them got a request away first.
+    A snapshot the server cannot answer at once is now rare -- the disk walk it
+    used to wait on has been taken off that path entirely -- but "rare" is not
+    "never", and the failure it caused was total: a browser allows about six
+    connections per origin, so a handful of stacked polls is the whole budget,
+    and every other request the page makes (thumbnails, library pages, search)
+    queues behind them. A measured 15 were outstanding at once on a 97k archive,
+    and no thumbnail on Browse loaded at all until the walk finished.
 
     Driven by a snapshot that never answers, because that is the real condition:
     the polls stacked for exactly as long as the first one was outstanding.
@@ -270,29 +264,29 @@ def test_unanswered_status_polls_do_not_stack_up(open_app):
             };
           })()
         """)
-        # Restart the Overview poller so its next tick is a stubbed request; the
-        # sidebar chip's poller has been running since the archive was opened.
-        app.tab.evaluate("import('/static/js/overview.js').then(m => m.startPoll())")
-        app.tab.wait_for("window.__pipeCalls >= 1", what="a poller to issue its first request")
-        # Let both pollers get one request away and reach their guard, then take
-        # the baseline. Timed in the page: `wait_for` re-evaluates its expression
-        # on every poll, so a fresh promise per call would never be the same
-        # promise twice -- a flag a timer sets once is.
+        # Restart the one poller so its next tick is a stubbed request.
+        app.tab.evaluate("import('/static/js/pipeline.js').then(m => m.startPipelinePoll())")
+        app.tab.wait_for("window.__pipeCalls >= 1", what="the poller to issue its first request")
+        # Let it get a request away and reach its guard, then take the baseline.
+        # Timed in the page: `wait_for` re-evaluates its expression on every
+        # poll, so a fresh promise per call would never be the same promise
+        # twice -- a flag a timer sets once is.
         app.tab.evaluate("setTimeout(() => { window.__settled = true; }, 2500)")
-        app.tab.wait_for("window.__settled === true", timeout=20.0, what="both pollers to tick")
+        app.tab.wait_for("window.__settled === true", timeout=20.0, what="the poller to tick")
         before = app.tab.evaluate("window.__pipeCalls")
-        # ...and now several more intervals of both, with nothing answered.
+        # ...and now several more intervals, with nothing answered.
         app.tab.evaluate("setTimeout(() => { window.__waited = true; }, 6000)")
         app.tab.wait_for("window.__waited === true", timeout=20.0, what="five more poll intervals")
         after = app.tab.evaluate("window.__pipeCalls")
 
-        app.tab.evaluate("import('/static/js/overview.js').then(m => m.stopPoll())")
+        app.tab.evaluate("import('/static/js/pipeline.js').then(m => m.stopPipelinePoll())")
         app.tab.evaluate("window.fetch = window.__realFetch")
         assert after == before, (
             f"{after - before} more polls stacked on snapshots that never answered"
         )
-        # One in flight per poller, and there are two of them.
-        assert after <= 2, f"{after} polls outstanding at once"
+        # One poller, so one request in flight. It used to be four tickers
+        # asking for this same snapshot on four intervals.
+        assert after == 1, f"{after} polls outstanding at once"
         assert app.errors() == []
 
 
@@ -319,7 +313,7 @@ def test_a_snapshot_for_another_archive_is_not_taken(open_app):
             ".includes('Checking for work')",
             what="the first pipeline snapshot to land",
         )
-        app.tab.evaluate("import('/static/js/overview.js').then(m => m.stopPoll())")
+        app.tab.evaluate("import('/static/js/pipeline.js').then(m => m.stopPipelinePoll())")
         # Stashed on window rather than returned from the import: `evaluate`
         # does not await promises, so reading through one yields {}.
         app.tab.evaluate("import('/static/js/state.js').then(m => { window.__S = m.S; })")
@@ -340,12 +334,12 @@ def test_a_snapshot_for_another_archive_is_not_taken(open_app):
               : window.__realFetch(...args);
           }})()
         """)
-        app.tab.evaluate("import('/static/js/overview.js').then(m => m.startPoll())")
+        app.tab.evaluate("import('/static/js/pipeline.js').then(m => m.startPipelinePoll())")
         app.tab.evaluate("setTimeout(() => { window.__waited = true; }, 3000)")
         app.tab.wait_for("window.__waited === true", timeout=20.0, what="several polls to land")
 
         kept = app.tab.evaluate("window.__S.pipeline.root_id")
-        app.tab.evaluate("import('/static/js/overview.js').then(m => m.stopPoll())")
+        app.tab.evaluate("import('/static/js/pipeline.js').then(m => m.stopPipelinePoll())")
         app.tab.evaluate("window.fetch = window.__realFetch")
 
         assert kept == mine, f"took a snapshot about root {kept} while root {mine} was open"

@@ -15,8 +15,8 @@ import {
   S,
 } from "./state.js";
 import {
-  startGlobalStatus,
-} from "./status.js";
+  startPipelinePoll,
+} from "./pipeline.js";
 import {
   openArchiveSetup,
 } from "./setup.js";
@@ -214,5 +214,5 @@ export async function openArchive(a, section) {
   document.getElementById("archname").textContent = a.name;
   location.hash = `/archive/${a.id}/${S.section}`;
   await jpost("/api/archive/open", { root_id: a.id });
-  showSection(S.section); startGlobalStatus();
+  showSection(S.section); startPipelinePoll();
 }

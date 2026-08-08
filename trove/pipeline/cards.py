@@ -31,10 +31,14 @@ _UNAVAILABLE_TEXT = "Not in this build"
 # Precedence when several stages share one card (scan + enrich): the most
 # "active" state wins, so a running enrich keeps the Scan card spinning.
 _STATE_RANK = {
-    "running": 5,
-    "error": 4,
-    "queued": 3,
-    "blocked": 2,
+    "running": 6,
+    "error": 5,
+    "queued": 4,
+    "blocked": 3,
+    # Above up_to_date because it is the one thing a card must not round down
+    # to: "we have not looked yet" and "there is nothing to do" are opposite
+    # claims, and only one of them is safe to be wrong about.
+    "checking": 2,
     "unavailable": 1,
     "up_to_date": 0,
 }
@@ -165,7 +169,11 @@ def _card(
     lead = max(members, key=lambda s: _STATE_RANK[s["state"]])
     state = lead["state"]
     counted = any(m["counted"] for m in members)
-    pending = sum(m["pending"] for m in members if m["counted"]) if counted else None
+    counts = [m["pending"] for m in members if m["counted"]]
+    # One member with nothing to report makes the card's total unreportable --
+    # summing the rest would print a number smaller than the truth and look
+    # like the whole answer. See stages: only scan, only before its first walk.
+    pending = sum(counts) if counted and all(c is not None for c in counts) else None
     progress = next((m["progress"] for m in members if m["progress"]), None)
     blocker = lead["blocker"]
     blocker_card[card_id] = _CARD_OF.get(blocker) if blocker else None
@@ -318,6 +326,12 @@ def _message(
             noun = "item" if pending == 1 else "items"
             return f"{pending:,} {noun} queued"
         return "Queued"
+    if state == "checking":
+        # Says what is actually happening -- the folder is being counted -- and
+        # not how long it will take, which nothing here knows. A card that has
+        # to sit for twenty seconds on a large archive should at least name the
+        # thing it is waiting for.
+        return "Counting files in this folder…"
     if state == "unavailable":
         return _UNAVAILABLE_TEXT
     if state == "error":

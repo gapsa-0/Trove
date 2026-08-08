@@ -139,6 +139,11 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
     toward ``overall`` -- reporting "idle" while a recluster holds the writer
     would be a lie -- but stay out of ``stages`` so the Overview grid is
     unaffected; only the ambient sidebar chip reads them.
+
+    ``overall`` gains "checking" from the same honesty: this endpoint no longer
+    waits for the disk walk (see DiskCounts.count), so a freshly opened archive
+    answers at once with a scan card that does not know its backlog yet. That
+    is neither idle nor working, and calling it either would be a guess.
     """
     states = stages.stage_states(cfg, jobs, root_id, root_path)
     paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
@@ -157,6 +162,12 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
         # Everything still outstanding is stopped by a per-stage pause; the
         # pipeline is not idle, it is waiting on the user.
         overall = "paused"
+    elif any(c["state"] == "checking" for c in card_list):
+        # Last of the non-idle answers, and deliberately below "working": if
+        # anything is known to be outstanding, saying so is more use than
+        # reporting the count that has not landed. Only when nothing else has
+        # an answer does the honest one become "still finding out".
+        overall = "checking"
     else:
         overall = "idle"
     return {

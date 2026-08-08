@@ -10,6 +10,8 @@ from zero over and over.
 
 from __future__ import annotations
 
+import threading
+
 from trove.config import Config
 from trove.db import database as db
 from trove.pipeline import manager as jobs_mod
@@ -94,23 +96,41 @@ def test_an_interrupted_scan_does_not_count_as_coverage(tmp_path, monkeypatch):
 
 
 def test_status_polling_never_waits_for_a_disk_walk(tmp_path, monkeypatch):
-    """Counting 150k files can outlast the client's poll interval; a walk on the
-    request thread then stacks requests up until the UI stops updating."""
+    """Counting 97k files takes ~20s from a cold cache, far longer than the
+    client's poll interval, and a walk on the request thread holds the reply for
+    all of it -- so the polls stack until the browser has no connection left for
+    any other request and the whole archive looks frozen.
+
+    This used to make an exception of the *first* call, on the grounds that
+    there was nothing cached to serve. But an archive that was just opened is
+    always that case, so the exception was the common path and the endpoint
+    blocked exactly when someone was waiting on it. It now answers None, and
+    the scan card says it is still counting (see stages._scan_backlog).
+    """
     jm = _job_manager(tmp_path, monkeypatch)
-    walks = []
+    # Which thread each walk ran on, because that -- not whether one happened at
+    # all -- is the property. A background walk is exactly what should be kicked
+    # off; what must never happen is one on the thread answering the request.
+    walked_on = []
+    caller = threading.current_thread()
 
     def count_files(path):
-        walks.append(path)
+        walked_on.append(threading.current_thread())
         return 5
 
     monkeypatch.setattr("trove.scan.walker.count_files", count_files)
     monkeypatch.setattr("pathlib.Path.is_dir", lambda self: True)
 
-    # Nothing cached yet: the first call has nothing to serve and must walk.
-    assert jm.disk_count(1, "/media", allow_walk=False) == 5
-    assert len(walks) == 1
-    # Now stale, but a polled call keeps serving the cached count rather than
-    # blocking on a fresh walk — the distinct value proves where it came from.
+    # Nothing cached: it answers "not known yet" rather than walking here.
+    assert jm.disk_count(1, "/media", allow_walk=False) is None
+    # Stale rather than absent: still served from the cache, never re-walked
+    # inline -- the distinct value proves where the answer came from.
     jm._disk._cache[1] = (0.0, 42)
     assert jm.disk_count(1, "/media", allow_walk=False) == 42
+    assert caller not in walked_on, "the polled path walked on the request thread"
+
+    # The scheduler's path is the one allowed to wait for a real number.
+    jm._disk._cache.pop(1, None)
+    assert jm.disk_count(1, "/media", allow_walk=True) == 5
+    assert caller in walked_on, "the scheduler's path did not get a fresh count"
     jm.shutdown(timeout=1)

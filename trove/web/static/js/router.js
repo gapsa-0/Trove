@@ -25,13 +25,13 @@ import {
   renderPhotos,
 } from "./library.js";
 import {
-  renderOverview, startPoll, stopPoll,
+  renderOverview,
 } from "./overview.js";
 import {
-  renderFaces, startFacePoll,
+  renderFaces, startFacePoll, stopFacePoll,
 } from "./people.js";
 import {
-  renderPets, startPetPoll,
+  renderPets, startPetPoll, stopPetPoll,
 } from "./pets.js";
 import {
   ARCHIVES, loadPicker, openArchive,
@@ -46,8 +46,8 @@ import {
   ICONS, S, archiveSections,
 } from "./state.js";
 import {
-  stopGlobalStatus,
-} from "./status.js";
+  stopPipelinePoll,
+} from "./pipeline.js";
 import {
   renderTimeline,
 } from "./timeline.js";
@@ -64,7 +64,7 @@ export function applyHash() {
 }
 export function toPicker() {
   if (S.arch) jpost("/api/archive/close", { root_id: S.arch.id });
-  stopPoll(); stopGlobalStatus(); resetSectionViews(); S.arch = null;
+  stopSectionPolls(); stopPipelinePoll(); resetSectionViews(); S.arch = null;
   document.getElementById("app").classList.remove("on");
   document.getElementById("picker").style.display = "";
   loadPicker();
@@ -156,9 +156,13 @@ function stashActiveSection() {
   SECTION_VIEWS.set(section, { fragment, scrollTop });
   ACTIVE_SECTION = null;
 }
+// The pipeline snapshot is not among these: one poller (pipeline.js) serves
+// every screen for as long as an archive is open, so a section never starts or
+// stops it. What is left here is the polling a screen genuinely owns -- its own
+// summary endpoint -- which only makes sense while that screen is on show.
+function stopSectionPolls() { stopFacePoll(); stopPetPoll(); }
 function resumeSection(id) {
-  if (id === "overview") startPoll();
-  else if (id === "library") renderSearchWays();
+  if (id === "library") renderSearchWays();
   else if (id === "people" && document.getElementById("facejob")) startFacePoll();
   else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
   else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
@@ -170,7 +174,7 @@ export function showSection(id, reload = false) {
   if (!RENDERERS[id] || !archiveSections(S.arch).some(s => s.id === id)) id = "overview";
   if (ACTIVE_SECTION === id && !reload) return;
   S.nav++; const gen = S.nav;
-  stopPoll();
+  stopSectionPolls();
   const m = document.getElementById("main");
   if (ACTIVE_SECTION) {
     if (reload && ACTIVE_SECTION === id) {

@@ -59,27 +59,36 @@ class DiskCounts:
     def count(
         self, root_id: int, root_path: str, max_age: float | None = None, allow_walk: bool = True
     ) -> int | None:
-        """Files on disk under this root, cached so the polled status endpoint
-        never triggers a fresh ~150k-file walk. Returns None if the folder is
-        gone.
+        """Files on disk under this root. None when there is no answer yet.
 
-        ``allow_walk=False`` additionally refuses to *wait* for a refresh walk,
-        which is what the status endpoint passes. Counting 150k files on a busy
-        external drive can take longer than the client's poll interval, and a
-        walk on the request thread then stacks requests up against the browser's
-        handful of connections until the whole UI stops updating. The stale
-        count is served instead and a refresh runs in the background. The very
-        first walk still blocks: there is nothing to serve yet, and answering
-        "no idea" would show every stage as up to date on the first paint.
-        Blocking it is, but only once per root -- see ``_walk``.
+        ``allow_walk=False`` -- what the polled status endpoint passes -- means
+        *this thread never walks*. It answers with the cached count, or with
+        None when there is not one yet, and leaves a background walk running
+        either way.
+
+        None is the whole point of it. Counting 97k files on a cold cache takes
+        about twenty seconds, and a walk on the request thread holds the reply
+        for all of it; the browser keeps polling, and about six stalled requests
+        later it has no connection left for thumbnails, grids or any other
+        screen, so the whole archive looks frozen rather than merely slow to say
+        what it is doing. This used to make an exception of the *first* walk --
+        nothing cached to serve, and reporting "no idea" would have shown every
+        stage as up to date -- but an archive that was just opened is always
+        that case, so the exception was the common path. Saying "not counted
+        yet" out loud costs one honest card (``stages`` reports the scan stage
+        as ``checking``) and buys a status endpoint that cannot stall.
+
+        ``allow_walk=True`` is the scheduler's path: it runs on its own thread,
+        nothing waits on it, and it needs a real number to decide whether a scan
+        is owed. That one still blocks, under the lock ``_walk`` describes.
         """
         ttl = WALK_TTL if max_age is None else max_age
         hit = self._cache.get(root_id)
         if hit and time.monotonic() - hit[0] < ttl:
             return hit[1]
-        if hit and not allow_walk:
+        if not allow_walk:
             self._refresh(root_id, root_path)
-            return hit[1]
+            return hit[1] if hit else None
         return self._walk(root_id, root_path, ttl)
 
     def _walk(self, root_id: int, root_path: str, ttl: float) -> int | None:

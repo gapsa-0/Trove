@@ -1,13 +1,17 @@
-// The pipeline status chip in the sidebar, shown on every section. It polls on
-// its own rather than borrowing the Overview screen's poll, because it has to
-// stay current while the user is anywhere in the app.
+// The pipeline status chip in the sidebar, shown on every section. It used to
+// poll on its own so it could stay current anywhere in the app; it now
+// subscribes to the one poller in pipeline.js, which runs for the whole session
+// and serves every surface that draws pipeline state.
 
 import {
-  isCurrentSnapshot, jget, jpost, oneAtATime,
+  jpost,
 } from "./api.js";
 import {
   loadGrid, resetGridResults,
 } from "./library.js";
+import {
+  onSnapshot, refreshPipelineNow,
+} from "./pipeline.js";
 import {
   S,
 } from "./state.js";
@@ -75,46 +79,41 @@ export function renderGstat(snap) {
     // caught that); reads as stopped, not "Working…".
     el.title = "Background processing is paused";
     el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">Paused</span></div>`;
+  } else if (snap.overall === "checking") {
+    // The folder is being counted, so whether anything is owed is not yet
+    // known. Same words as the no-snapshot branch above, because it is the same
+    // thing being said -- the difference is that the server is now saying it,
+    // rather than the client inferring it from an answer that had not arrived.
+    el.title = "Checking for new work…";
+    el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Checking for new work…</span></div>`;
   } else {
     // Work is waiting to run (queued/blocked) but nothing is on the writer yet.
     el.title = "Work is queued";
     el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Working…</span></div>`;
   }
 }
-// Wrapped for the same reason the Overview's poller is, and it matters more
-// here: this one runs on every section for the whole session, so on a slow
-// snapshot it is the Library and the viewer that lose their connections, not
-// just the health panel nobody is looking at. See `oneAtATime`.
-const gstatTick = oneAtATime(async () => {
-  if (!S.arch) { stopGlobalStatus(); return; }
-  try {
-    const snap = await jget("/api/pipeline?root=" + S.arch.id);
-    if (!isCurrentSnapshot(snap, S.arch)) return;   // answered about the archive we left
-    S.pipeline = snap;
-    renderGstat(snap);
-    // A library opened just before the scanner commits its first batch used to
-    // remain an empty wall until the user manually changed a filter or route.
-    // Refresh only that empty state, so active browsing is never interrupted.
-    const scanning = (snap.stages || []).some(s => s.id === "scan" && s.state === "running"), g = S.grid;
-    if (scanning && S.section === "library" && g && g.loaded === 0 && !g.refreshing) {
-      g.refreshing = true;
-      setTimeout(() => {
-        if (S.section === "library" && S.grid === g && g.loaded === 0) {
-          resetGridResults(g);
-          loadGrid().finally(() => { if (S.grid === g) g.refreshing = false; });
-        } else if (S.grid === g) {
-          g.refreshing = false;
-        }
-      }, 1500);
-    }
-  } catch {
-    // A poll tick that fails is a non-event: the next one is two seconds away
-    // and the chip simply keeps its last value. Reporting it would fill the
-    // console every time the server restarts under the user.
+// The chip draws on every snapshot; the fetch behind it belongs to pipeline.js,
+// which is the only thing that asks for one. Subscribed at module level rather
+// than per section because this chip is on screen for the whole session --
+// there is no point at which it should stop being told.
+onSnapshot(snap => {
+  renderGstat(snap);
+  // A library opened just before the scanner commits its first batch used to
+  // remain an empty wall until the user manually changed a filter or route.
+  // Refresh only that empty state, so active browsing is never interrupted.
+  const scanning = (snap.stages || []).some(s => s.id === "scan" && s.state === "running"), g = S.grid;
+  if (scanning && S.section === "library" && g && g.loaded === 0 && !g.refreshing) {
+    g.refreshing = true;
+    setTimeout(() => {
+      if (S.section === "library" && S.grid === g && g.loaded === 0) {
+        resetGridResults(g);
+        loadGrid().finally(() => { if (S.grid === g) g.refreshing = false; });
+      } else if (S.grid === g) {
+        g.refreshing = false;
+      }
+    }, 1500);
   }
 });
-export function startGlobalStatus() { stopGlobalStatus(); S.gpoll = setInterval(gstatTick, 2000); gstatTick(); }
-export function stopGlobalStatus() { if (S.gpoll) { clearInterval(S.gpoll); S.gpoll = null; } }
 
 /* Coming back to the window is the strongest sign the app gets that files were
    added: adding them means leaving Trove, dropping them in somewhere else and
@@ -136,9 +135,9 @@ function noteReturned() {
   // Fire and forget, including on failure: this is an optimisation, and the
   // poll behind it is what guarantees the change is found either way.
   jpost("/api/pipeline/changed?root=" + S.arch.id).catch(() => {});
-  // Ask for the new state at once rather than up to two seconds later, so the
-  // card starts moving as soon as the server has something to say.
-  gstatTick();
+  // Ask for the new state at once rather than up to a poll later, so the card
+  // starts moving as soon as the server has something to say.
+  refreshPipelineNow();
 }
 document.addEventListener("visibilitychange", noteReturned);
 window.addEventListener("focus", noteReturned);
