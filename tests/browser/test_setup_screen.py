@@ -285,7 +285,7 @@ def test_dragging_a_card_onto_the_pipeline_adds_it(open_app):
         app.wait_for('#set-flow .set-chip[data-feature="semantic"]')
 
         assert lit == 1, "only the target that would change something is offered"
-        assert "689 MB" in app.text(".set-total")
+        assert "715 MB" in app.text(".set-total")
         # The card stays where it is and reports its new state.
         assert app.count('.set-card[data-feature="semantic"].on') == 1
         assert app.errors() == []

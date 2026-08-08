@@ -30,9 +30,11 @@ tokenizers==0.23.1
 # PDF text extraction and page rasterising, for the Documents feature. Ships a
 # prebuilt PDFium; its wheels are py3-none-<platform>, so cp313 needs no build.
 pypdfium2==5.12.1
-# OCR: PP-OCRv6 detection and recognition, with the ONNX weights inside the
-# wheel. ~32 MB of the installer, and the reason Text in images downloads
-# nothing at runtime.
+# OCR: PP-OCRv6 detection and recognition. The wheel carries the ONNX weights
+# too, but packaging/trove.spec filters them out and the app fetches them on
+# first use instead -- they were 26.5 MB of every installer, the largest single
+# item in it, for a feature most users never switch on (ADR 0019). What is left
+# of this package after the weights is 0.1 MB.
 rapidocr==3.9.2
 pyclipper==1.4.0
 shapely==2.1.2

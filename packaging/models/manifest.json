@@ -20,6 +20,76 @@
       "license": "AdaFace code is MIT — (c) 2022 Minchul Kim et al., https://github.com/mk-minchul/AdaFace — but these weights are trained on WebFace12M (a WebFace260M subset) and carry its non-commercial academic research terms. See packaging/THIRD_PARTY_NOTICES.md.",
       "url": "https://github.com/gapsa-0/Trove/releases/download/models-v1/adaface_ir101_w12m.onnx",
       "reason": "Same situation as dinov2_pet: no upstream ONNX exists, only a torch checkpoint, so this repository re-publishes the export as a release asset and the app fetches it once on first use. It is doubly load-bearing here because its second output — the feature norm — is the quality signal the FIQA gate (trove/faces/fiqa.py) tiers every face with; without it faces are all BORDERLINE and nothing can seed a cluster core."
+    },
+    {
+      "name": "ppocr_det",
+      "file": "rapidocr/PP-OCRv6_det_small.onnx",
+      "sha256": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+      "size": 9929594,
+      "source": "PaddleOCR PP-OCRv6 small text detection, as published by RapidAI at https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx — byte-identical to the copy inside the rapidocr 3.9.2 wheel",
+      "license": "Apache-2.0. Engineering by RapidAI (https://github.com/RapidAI/RapidOCR); weights are Baidu's, released with PaddleOCR (https://github.com/PaddlePaddle/PaddleOCR). No non-commercial clause.",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/PP-OCRv6_det_small.onnx",
+      "reason": "Unlike dinov2_pet and adaface this weight *does* have an upstream URL, and it used to need neither URL nor manifest entry because it shipped inside the rapidocr wheel. That was 26.5 MB of compressed installer — the single largest item in the whole Python payload, larger than scipy or OpenCV — carried by every user for a feature most never enable. It is mirrored here rather than fetched from ModelScope directly for the same reason the two exports are: the manifest pins exact bytes forever, and the upstream `v3.9.2` path is RapidAI's to retag. Measured at ~1 MB/s from ModelScope on a European connection, which is the other half of the argument."
+    },
+    {
+      "name": "ppocr_rec",
+      "file": "rapidocr/PP-OCRv6_rec_small.onnx",
+      "sha256": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+      "size": 21234383,
+      "source": "PaddleOCR PP-OCRv6 small text recognition, as published by RapidAI at https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx — byte-identical to the copy inside the rapidocr 3.9.2 wheel",
+      "license": "Apache-2.0. Engineering by RapidAI (https://github.com/RapidAI/RapidOCR); weights are Baidu's, released with PaddleOCR (https://github.com/PaddlePaddle/PaddleOCR). No non-commercial clause.",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/PP-OCRv6_rec_small.onnx",
+      "reason": "The largest of the three, and the one that carries the charset: 18,708 characters as ONNX metadata, including every Spanish accent, which is why Search by picture text needs no separate per-language weight (ADR 0019). Mirrored for the same reason as ppocr_det."
+    },
+    {
+      "name": "ppocr_cls",
+      "file": "rapidocr/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "size": 585532,
+      "source": "PaddleOCR PP-OCR mobile angle classifier, as published by RapidAI at https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx — byte-identical to the copy inside the rapidocr 3.9.2 wheel",
+      "license": "Apache-2.0. Engineering by RapidAI (https://github.com/RapidAI/RapidOCR); weights are Baidu's, released with PaddleOCR (https://github.com/PaddlePaddle/PaddleOCR). No non-commercial clause.",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "reason": "Half a megabyte, and the app never calls it: trove/text/ocr.py drives detection and recognition directly and never asks for orientation. It is here because `RapidOCR.__init__` builds all three sessions unconditionally, so a missing classifier is a constructor failure rather than a degraded reading. Cheaper to fetch than to fork the constructor."
+    },
+    {
+      "name": "bergamot_wasm",
+      "file": "bergamot/bergamot-translator-worker.wasm",
+      "sha256": "95a2b58dd6773bf1b3f345d71f9149928b9f75f4ec9c9064c0b3e42c298671b2",
+      "size": 5174294,
+      "source": "Bergamot Translator browser runtime, npm @browsermt/bergamot-translator 0.4.9 — https://github.com/browsermt/bergamot-translator",
+      "license": "Mozilla Public License 2.0",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/bergamot-translator-worker.wasm",
+      "reason": "The only one of these four that is a runtime rather than a weight, but it travels with them: without the WASM the three model files are unreadable, so splitting them across two tiers could only produce a half-installed translator. Served to the page by the /vendor route out of the cache (trove/web/routes/static.py), not imported by Python at all."
+    },
+    {
+      "name": "bergamot_es_en_model",
+      "file": "bergamot/translate-es-en-model.bin",
+      "sha256": "4b6b7f451094aaa447d012658af158ffc708fc8842dde2f871a58404f5457fe0",
+      "size": 17140755,
+      "source": "Spanish-to-English Firefox Translations model, published by Mozilla — https://github.com/mozilla/translations",
+      "license": "Mozilla Public License 2.0",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/translate-es-en-model.bin",
+      "reason": "Used only to translate a Spanish query before embedding it, which happens only on a description search — so this belongs to Search by description, a feature that already downloads 689 MB. It used to sit in trove/web/vendor/ inside the wheel, which meant every user carried 15.9 MB of compressed installer for a feature they might never enable, while the users who *did* enable it would not have noticed the same bytes arriving inside a 689 MB fetch. The page verifies these hashes again on its own side (trove/web/vendor/translation-es-en.json), so a corrupt copy is refused twice."
+    },
+    {
+      "name": "bergamot_es_en_lex",
+      "file": "bergamot/translate-es-en-lex.bin",
+      "sha256": "f11a2c23ef85ab1fee1c412b908d69bc20d66fd59faa8f7da5a5f0347eddf969",
+      "size": 3860888,
+      "source": "Shortlist for the Spanish-to-English Firefox Translations model, published by Mozilla — https://github.com/mozilla/translations",
+      "license": "Mozilla Public License 2.0",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/translate-es-en-lex.bin",
+      "reason": "Half of the same model as bergamot_es_en_model; see there."
+    },
+    {
+      "name": "bergamot_es_en_vocab",
+      "file": "bergamot/translate-es-en-vocab.spm",
+      "sha256": "909b1eea1face0d7f90a474fe29a8c0fef8d104b6e41e65616f864c964ba8845",
+      "size": 825463,
+      "source": "SentencePiece vocabulary for the Spanish-to-English Firefox Translations model, published by Mozilla — https://github.com/mozilla/translations",
+      "license": "Mozilla Public License 2.0",
+      "url": "https://github.com/gapsa-0/Trove/releases/download/models-v2/translate-es-en-vocab.spm",
+      "reason": "Half of the same model as bergamot_es_en_model; see there."
     }
   ]
 }

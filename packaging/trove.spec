@@ -11,7 +11,16 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 # to ``/`` in container/native builds and made PyInstaller look for
 # ``/trove/desktop.py``.
 root = Path(SPECPATH).parent
-datas = collect_data_files("trove")
+# The app's own package data, minus the translator's four large files. Those
+# are manifest entries now (trove/translation.py) fetched with Search by
+# description, and `collect_data_files` would put them straight back: they still
+# sit under trove/web/vendor/ in a source checkout, which is where a developer
+# runs from and where `stage-models.py` can seed them.
+_FETCHED_VENDOR = ("translate-es-en-", "bergamot-translator-worker.wasm")
+datas = [
+    entry for entry in collect_data_files("trove")
+    if not any(part in Path(entry[0]).name for part in _FETCHED_VENDOR)
+]
 target = os.environ.get("ARCHIVE_TOOL_TARGET", "")
 tools = root / "packaging" / "tools" / "staged" / target
 if tools.is_dir():
@@ -44,10 +53,13 @@ for package in ("PIL", "PIL.Image", "pillow_heif", "cv2", "onnxruntime", "sklear
 hiddenimports += collect_submodules("insightface.model_zoo")
 hiddenimports += collect_submodules("insightface.utils")
 datas += collect_data_files("insightface")
-# RapidOCR carries its ONNX weights and its YAML config as package data. Without
-# this the packaged app installs the code and none of the models, and Text in
-# images fails at the first image rather than at build time.
-datas += collect_data_files("rapidocr")
+# RapidOCR carries its YAML config as package data, and the app cannot start its
+# engine without it. It also carries three ONNX weights in the same directory --
+# 26.5 MB compressed, the largest single item this bundle used to hold -- which
+# are manifest entries now, downloaded on first use like every other weight
+# (ADR 0019). Filtering by extension rather than by path because the config and
+# the models are siblings under `rapidocr/`, so there is no directory to exclude.
+datas += [entry for entry in collect_data_files("rapidocr") if not entry[0].endswith(".onnx")]
 hiddenimports += collect_submodules("rapidocr")
 
 # Dev-only weight: torch and transformers exist in a full developer environment
@@ -65,10 +77,24 @@ hiddenimports += collect_submodules("rapidocr")
 # the FAISS and NumPy search paths agree -- so every build machine has it, and
 # without this line the build would silently pick it up and put 62 MB back,
 # 37 MB of which is its own private copy of OpenBLAS.
+#
+# huggingface_hub and its two dependencies are a third kind: nothing here
+# imports them, and they arrive only because `tokenizers` declares them. The
+# app loads its tokenizer from a file it fetched itself
+# (embeddings/backend.py: `Tokenizer.from_file`), and the SigLIP 2 ONNX files
+# come from the same module's own URL constants -- no Hub client is involved on
+# any path. They are 3.8 MB of compressed installer, most of it `hf_xet`, a
+# Rust extension for an upload protocol this app cannot reach.
+#
+# The one thing this forbids is `Tokenizer.from_pretrained`, which reaches for
+# `hf_hub_download` from inside the Rust extension. If a future change wants
+# it, these three come back -- and it would be fetching a tokenizer at runtime
+# from a URL nothing pins, which is its own decision to make.
 excludes = [
     "torch", "torchvision", "torchaudio", "transformers", "sentence_transformers",
     "matplotlib", "tkinter", "IPython", "pytest",
     "faiss",
+    "huggingface_hub", "hf_xet", "fsspec",
 ]
 
 a = Analysis([str(root / "packaging" / "desktop_entry.py")], pathex=[str(root)], binaries=binaries,

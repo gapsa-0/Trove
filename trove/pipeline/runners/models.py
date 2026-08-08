@@ -8,7 +8,7 @@ later.
 That timing is the whole point. Weights used to arrive on first *use*, which
 for Search by description means after scan, enrich and dedup have finished:
 someone chooses the feature, watches an archive scan all afternoon, and only
-when they finally come back to search does a 689 MB download begin. The
+when they finally come back to search does a 715 MB download begin. The
 scheduler starts this job as soon as an archive with missing weights is open
 (``scheduler._start_fetch``), so the download runs alongside the scan and is
 long finished by the time the stage that needs it is reachable.

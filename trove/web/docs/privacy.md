@@ -29,11 +29,15 @@ only never touches the network.
 | [Places](places.md) | Nothing | Never |
 | [People](people.md) | 275 MB | The archive's first detection pass |
 | [Pets](pets.md) | 35 MB | The archive's first detection pass |
-| [Search by description](search.md) | 689 MB | First indexing pass, then the text half on first search |
+| [Search by description](search.md) | 715 MB | First indexing pass, then the text half on first search |
+| [Search by document text](documents.md) | Nothing | Never |
+| [Search by picture text](ocr.md) | 30 MB | The archive's first text pass |
 
-Some of these are bundled with the installers rather than fetched, so a
-packaged build downloads less than the table says. Once the weights are cached,
-everything works fully offline.
+No model is bundled with the installer: every one of them is fetched once, on
+the first run of the feature that needs it, and checked against a known
+fingerprint before it is used. A new installation therefore needs a connection
+once. Once the weights are cached, everything works fully offline, and a second
+archive that wants the same feature downloads nothing.
 
 **The map's street-map layer.** Turning it on fetches public map tiles, which
 discloses to that tile server the coordinates you are currently looking at,

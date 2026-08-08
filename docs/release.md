@@ -98,10 +98,40 @@ torch + transformers. Those two are re-published as release assets on this
 repository (the `models-v1` tag), and `trove/model_manifest.py`
 resolves them the same way as the rest.
 
+Seven more join them under the `models-v2` tag, and these ones *do* exist
+upstream — they are mirrored anyway, so their bytes stay pinned to a release this
+project controls rather than to a path their publishers can retag. Three are the
+PP-OCR weights that used to ride inside the `rapidocr` wheel (~30 MB, ADR 0019).
+Four are the Bergamot Spanish-to-English translator that used to sit in
+`trove/web/vendor/` (~26 MB); Python never opens those — the browser fetches them
+from the `/vendor` route, which serves them out of the same model cache.
+
 They used to travel inside the installer, which cost 349 MB of every download —
 for files most users would fetch over the same connection anyway. Removing them is
 the single largest reason the installers roughly halved. `tests/unit/test_no_bundled_models.py`
-fails the build if the spec starts bundling them again.
+fails the build if the spec starts bundling any of them again.
+
+### Where the installer's weight actually is
+
+Measured 2026-08-07 from the staged payload, compressed with `xz -6` as a stand-in
+for the NSIS/AppImage step, so treat these as close rather than exact:
+
+| Component | raw | compressed |
+| --- | ---: | ---: |
+| Python packages (runtime closure, headless cv2) | 663.5 MB | 173.5 MB |
+| Electron runtime | 285.0 MB | 87.7 MB |
+| FFmpeg shared build (Linux) | 162.0 MB | ~55–65 MB (estimated) |
+| CPython (stdlib + libpython) | 71.6 MB | 19.4 MB |
+| Trove itself | 30.8 MB | 16.7 MB |
+| **Total** | **~1.21 GB** | **~355 MB → ~309 MB after the three moves above** |
+
+The lesson worth keeping: **rank payloads by compressed size, not by `du`.** Code
+compresses 3–4×, model weights barely compress at all, so a 31.7 MB directory of
+ONNX outweighs a 111 MB directory of SciPy in the thing users actually download.
+Two more candidates were measured and rejected as unmovable — a frozen build
+cannot pip-install native extensions at runtime, so the ~24 MB of `onnx`,
+`scikit-image` and friends that only People and Pets need is a trimming question,
+not a download one.
 
 `packaging/scripts/stage-models.py` survives as a developer convenience: it fills
 `packaging/models/staged/`, which is the second tier of the resolver, so a checkout

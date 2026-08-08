@@ -3,7 +3,7 @@
 An archive is not obliged to run every stage this app knows how to run. A
 folder of scanned paperwork has no faces worth clustering; a phone dump full of
 untagged photos has no coordinates to map; and search by description costs a
-689 MB download that someone who only wants duplicates removed should never be
+715 MB download that someone who only wants duplicates removed should never be
 asked to pay. So the work is offered as *features*, chosen per archive when it
 is created and changeable afterwards.
 
@@ -231,7 +231,12 @@ FEATURES: tuple[Feature, ...] = (
         stages=("semantic",),
         card="semantic",
         sections=(),
-        download_mb=689,
+        # 689 MB of SigLIP towers and tokenizer, plus 26 of the Spanish
+        # translator the search box runs before embedding a query
+        # (trove/translation.py). One figure rather than two because there is
+        # one decision: the translator is useless without the towers, and
+        # nobody would price it separately at 4% of the total.
+        download_mb=715,
     ),
     Feature(
         id="documents",
@@ -275,9 +280,12 @@ FEATURES: tuple[Feature, ...] = (
         stages=("text",),
         card="text",
         sections=(),
-        # Nothing to download: unusually for a model here, the weights ship
-        # inside the wheel (ADR 0019), so this is honest rather than optimistic.
-        download_mb=0,
+        # PP-OCRv6 detection and recognition, plus an angle classifier nothing
+        # calls but the engine's constructor insists on. These used to ship
+        # inside the rapidocr wheel and cost nothing here; they were also the
+        # largest single item in the compressed installer, carried by everyone
+        # for a feature most never switch on. ADR 0019 records the move.
+        download_mb=30,
         extractor="ocr",
     ),
 )

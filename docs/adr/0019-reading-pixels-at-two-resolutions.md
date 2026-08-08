@@ -92,10 +92,37 @@ scanned appendix comes back as one document in page order.
 
 ### The weights, and the dependency
 
-RapidOCR **ships its models inside its wheel** — 31.7 MB of ONNX. That makes it
-the only model in this app with no runtime download, no new download origin, no
-`manifest.json` entry, and no half-installed state: the feature is wholly present
-or wholly absent. pip's own hash check covers the weights.
+RapidOCR **ships its models inside its wheel** — 31.7 MB of ONNX. That made it,
+when this was written, the only model in this app with no runtime download, no
+new download origin, no `manifest.json` entry, and no half-installed state: the
+feature was wholly present or wholly absent, and pip's own hash check covered the
+weights.
+
+> **Amended 2026-08-07.** That property was real and it was not worth its price.
+> Measured against the compressed installer rather than on disk, those three
+> files are **26.5 MB — the single largest item in the entire Python payload**,
+> larger than SciPy or OpenCV, and 15% of it. ONNX barely compresses, so the raw
+> and compressed figures are nearly the same; the RapidOCR *code* beside them is
+> 0.1 MB. Every user carried that for a feature most never switch on.
+>
+> They are `manifest.json` entries now (`ppocr_det`, `ppocr_rec`, `ppocr_cls`),
+> fetched on first use like every other weight, and `trove/text/ocr.py` passes
+> each path to `RapidOCR(params=...)` explicitly. That last part is load-bearing:
+> left to itself the engine resolves models against its own package directory and
+> **downloads a missing one from ModelScope**, which is exactly the second,
+> unpinned download origin this section was pleased not to have.
+>
+> The mirror, rather than ModelScope directly, follows this repository's existing
+> rule for weights whose bytes must stay fixed — the manifest pins them by
+> SHA-256 forever, while upstream's `v3.9.2` path is RapidAI's to retag, and it
+> measured ~1 MB/s from Europe. The files are byte-identical to RapidAI's, which
+> is what makes the mirror a re-host rather than a fork; Apache-2.0 permits it,
+> and `THIRD_PARTY_NOTICES.md` carries the attribution.
+>
+> What this costs is precisely the property described above: **the feature now
+> has a half-installed state**, so `available()` (does it import) and
+> `models_ready()` (are the weights here) are two questions rather than one, and
+> the card quotes 30 MB where it used to say "No download needed".
 
 It also removes the per-language weight the plan assumed. PP-OCR's *default*
 recognition dictionary is Chinese and English and has no `á é í ó ú ñ`, which is
@@ -137,3 +164,9 @@ feature can least afford, and the trade was made deliberately.
   scan the document half had to pass over. Without it those files carry a current
   hash
   and a current version and would never be looked at again.
+- **Nothing in this app is bundled with its weights any more** (amended above).
+  The same measurement that moved these three also moved the Bergamot Spanish
+  translator out of `web/vendor/` — 15.9 MB compressed, fetched with Search by
+  description instead — and removed `huggingface_hub` and its two dependencies
+  from the build, which nothing had ever imported. Together, 46 MB off a ~355 MB
+  installer.

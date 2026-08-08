@@ -69,6 +69,13 @@ class Limits:
     # than a page with a picture on it. Both are required -- see
     # ``pdf.looks_scanned`` for why sparse text alone is not evidence.
     min_image_cover: float = 0.5
+    # Where the OCR weights live, since they are downloaded now rather than
+    # carried inside the package (ADR 0019). It rides here for the same reason
+    # everything else does: this layer knows nothing about the installation, and
+    # the alternative -- reading a Config from inside a reader -- is the import
+    # this module is arranged to avoid. Empty is the no-OCR default, which is
+    # sound because nothing reaches the engine without ``OCR in extractors``.
+    models_dir: str = ""
 
 
 def available(extractors: frozenset[str]) -> bool:
@@ -167,6 +174,7 @@ def _read_pdf(path: Path, wanted: frozenset[str], limits: Limits) -> Extraction:
         elif stat.number in read_pages:
             lines, confidence = ocr.read_array(
                 raster.pdf_page(path, stat.number, limits.render_dpi),
+                limits.models_dir,
                 detect_side=limits.detect_side,
             )
             if lines:
@@ -205,7 +213,7 @@ def _read_picture(path: Path, limits: Limits) -> Extraction:
     the reason says so, the file stops being pending, and nothing suggests
     anything went wrong.
     """
-    found = ocr.read_image(path, detect_side=limits.detect_side)
+    found = ocr.read_image(path, limits.models_dir, detect_side=limits.detect_side)
     if found is None:
         raise ValueError(f"{NO_TEXT_LAYER}: no writing was found in this picture")
     return found

@@ -7,7 +7,7 @@ import json
 import os
 import re
 
-from ... import __version__
+from ... import __version__, translation
 from .. import assets, icons
 from ._request import NOT_FOUND, FileBody, Json, Raw, Request
 
@@ -76,9 +76,23 @@ def app_asset(req: Request) -> FileBody | Json:
 
 
 def vendor(req: Request) -> FileBody | Json:
-    """A vendored static asset by filename, or 404 if it isn't under the vendor directory."""
+    """A vendored static asset by filename, or 404 if it isn't one.
+
+    Two directories answer here, and the split is by size rather than by kind.
+    The small files -- Leaflet, the Bergamot loader and worker scripts -- ship
+    in the package. The translator's four large ones are downloaded with Search
+    by description and live in the model cache (``trove/translation.py``), so a
+    user who never turns that feature on never carries them.
+
+    A 404 for one of those four is a normal state, not an error: it is what
+    "not downloaded yet" looks like, and the page treats a translator it cannot
+    load as a query it does not expand.
+    """
     name = req.path.rsplit("/", 1)[1]
+    if ".." in name:
+        return NOT_FOUND
     vf = assets.VENDOR_DIR / name
-    if vf.is_file() and ".." not in name:
+    if vf.is_file():
         return FileBody(vf)
-    return NOT_FOUND
+    fetched = translation.resolve(name, req.cfg.cache_dir)
+    return FileBody(fetched) if fetched else NOT_FOUND

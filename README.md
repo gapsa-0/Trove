@@ -29,7 +29,7 @@ library.*
   chosen on a setup screen: People, Pets, Places, Search by description, Search
   by document text, and Search by picture text. A feature you leave off never runs and never downloads its models, which is the
   difference between an archive that starts working immediately and one that
-  fetches 689 MB first. The choice can be changed at any time, and switching a
+  fetches 715 MB first. The choice can be changed at any time, and switching a
   feature off keeps whatever it already found.
 - Scans incrementally and resumably. Unchanged files are skipped on later runs;
   interrupted work can continue safely.

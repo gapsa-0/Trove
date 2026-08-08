@@ -82,6 +82,7 @@ def _text_pass(
         detect_side=cfg.ocr_detect_side,
         min_chars_per_page=cfg.ocr_text_layer_chars_per_page,
         min_image_cover=cfg.ocr_min_image_cover,
+        models_dir=cfg.cache_dir,
     )
     read = written = skipped = failed = 0
     for offset, row in enumerate(rows):

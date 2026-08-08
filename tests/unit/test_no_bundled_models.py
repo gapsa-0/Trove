@@ -75,3 +75,61 @@ def test_the_spec_appends_only_the_tools_datas_entry():
         f"native tools tree. It appends: {destinations}. Anything else is new payload "
         "in every installer -- confirm that is intended before changing this test."
     )
+
+
+# --- the weights that arrive inside packages rather than through `datas` -----
+#
+# The three checks above watch the spec's own `datas` list, which is where the
+# 349 MB of self-exported weights used to enter. Two later payloads got in by a
+# different door entirely: `collect_data_files` on a third-party package, which
+# sweeps up whatever that package ships. Nothing about them looks like a model
+# in this file, which is exactly why they need naming.
+
+
+def test_the_rapidocr_collection_drops_its_onnx_weights():
+    """RapidOCR ships 31.7 MB of ONNX beside the YAML config the engine needs.
+
+    Collected wholesale that is 26.5 MB of compressed installer -- the largest
+    single item the bundle ever held -- for a feature most users never switch
+    on. They are manifest entries now (ADR 0019), and trove/text/ocr.py passes
+    their paths to the engine explicitly. Removing this filter would put them
+    back with no other symptom: the build still succeeds, the feature still
+    works, and the installer quietly grows.
+    """
+    source = _spec_source()
+    assert 'collect_data_files("rapidocr")' in source, "the spec no longer collects rapidocr at all"
+    for line in source.splitlines():
+        if 'collect_data_files("rapidocr")' in line and not line.lstrip().startswith("#"):
+            assert ".onnx" in line, (
+                "packaging/trove.spec collects rapidocr's data files without filtering "
+                f"out its ONNX weights:\n  {line.strip()}\n"
+                "That is 26.5 MB of compressed installer; see docs/release.md."
+            )
+
+
+def test_the_translator_model_is_not_collected_with_the_app():
+    """The Bergamot es-en model and its WASM runtime are ~27 MB under
+    trove/web/vendor/, and `collect_data_files("trove")` would take them.
+
+    They belong to Search by description, which already downloads 689 MB of
+    SigLIP towers -- 26 more there are invisible, where the same bytes in the
+    installer are paid by everyone. trove/translation.py names them; the
+    /vendor route serves them from the cache.
+    """
+    source = _spec_source()
+    assert "_FETCHED_VENDOR" in source, (
+        "packaging/trove.spec no longer filters the translator's files out of "
+        "collect_data_files('trove'). That is 15.9 MB of compressed installer "
+        "for a feature that is off by default; see docs/release.md."
+    )
+    # The filter is only as good as the names in it, so check it still covers
+    # every manifest entry the /vendor route expects to serve.
+    from trove import translation
+
+    for filename in translation.MODELS.values():
+        assert any(
+            part in filename for part in ("translate-es-en-", "bergamot-translator-worker")
+        ), (
+            f"{filename} is fetched at runtime but the spec's _FETCHED_VENDOR "
+            "prefixes would not exclude it from the bundle."
+        )

@@ -31,11 +31,18 @@ the cost, and skipping recognition afterwards is skipping the small half.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from .results import IMAGE_OCR, Block, Extraction
 
 logger = logging.getLogger(__name__)
+
+# What a caller passes to watch a one-time model download. Spelled here rather
+# than imported from ``model_manifest``, which this module reaches for only
+# inside functions -- resolving a weight must not drag the manifest into a
+# process that merely asked whether OCR is installed.
+Log = Callable[[str], None]
 
 # What the detector's input is scaled down to, longest side in pixels. Below
 # ~736 the cost stops falling (512 measured no faster) while boxes start being
@@ -48,15 +55,27 @@ DEFAULT_DETECT_SIDE = 736
 # photo archive's index worthless.
 MIN_LINE_CONFIDENCE = 0.5
 
-_engine: Any = None
+# The three weights, by manifest name, and which of RapidOCR's three sessions
+# each one feeds. They used to arrive inside the wheel; they are downloaded once
+# now, like every other model here, and the cost of that move is written up in
+# ADR 0019. The classifier is in this table despite nothing ever calling it:
+# ``RapidOCR.__init__`` builds all three sessions whatever ``use_cls`` says, so
+# a missing classifier is a constructor failure rather than a lost feature.
+MODELS = {"Det": "ppocr_det", "Cls": "ppocr_cls", "Rec": "ppocr_rec"}
+
+# One engine per cache directory rather than one per process. A process only
+# ever has one, but keying it means a test that points at a temporary cache
+# cannot be handed the engine an earlier test built somewhere else -- which
+# would pass, silently reading through the wrong files.
+_engines: dict[str, Any] = {}
 
 
 def available() -> bool:
     """Whether the OCR engine imports.
 
-    The models cannot be missing separately: they are inside the package. So
-    unlike every other backend here there is no ``models_ready`` and no
-    ``ensure_models`` -- importing is the whole question.
+    Importability only, as with every other backend: whether the *weights* are
+    here is ``models_ready``. The two used to be one question, because the
+    models shipped inside the package -- see ADR 0019 for why they no longer do.
     """
     try:
         import rapidocr  # noqa: F401
@@ -69,19 +88,52 @@ def available() -> bool:
         return False
 
 
-def engine() -> Any:
-    """The process-wide OCR engine, built once.
+def models_ready(cache_dir: str) -> bool:
+    """Whether all three weights are already on this machine. Never downloads."""
+    from .. import model_manifest
+
+    return all(model_manifest.present(name, cache_dir) is not None for name in MODELS.values())
+
+
+def ensure_models(cache_dir: str, log: Log | None = None) -> None:
+    """Fetch whichever of the three weights are not here yet.
+
+    Smallest first, so the two seconds of classifier and the ten of detector
+    are not spent behind the 21 MB recogniser when the download is going to
+    fail anyway -- the same ordering, and the same reason, as the face
+    backend's embedder-before-detector.
+    """
+    from .. import model_manifest
+
+    for name in sorted(MODELS.values(), key=lambda n: model_manifest.entry(n)["size"]):
+        model_manifest.ensure(name, cache_dir, log=log)
+
+
+def engine(cache_dir: str) -> Any:
+    """The process-wide OCR engine for this cache, built once.
 
     Three ONNX sessions live behind it, so one instance is shared rather than
     one per job -- the text stage is the only caller, but it can be restarted
     within a session and should not pay the load again.
+
+    Every path is passed explicitly. Left to itself RapidOCR would resolve each
+    model against its own package directory and *download the missing one from
+    ModelScope*, which would put a second, unpinned download origin behind a
+    feature whose weights this app already fetches and hash-verifies itself.
+    Naming the files is what turns that off.
     """
-    global _engine
-    if _engine is None:
+    from .. import model_manifest
+
+    engine = _engines.get(cache_dir)
+    if engine is None:
         from rapidocr import RapidOCR
 
-        _engine = RapidOCR()
-    return _engine
+        params = {
+            f"{section}.model_path": str(model_manifest.path(name, cache_dir))
+            for section, name in MODELS.items()
+        }
+        engine = _engines[cache_dir] = RapidOCR(params=params)
+    return engine
 
 
 def _downscaled(array: Any, side: int) -> tuple[Any, float]:
@@ -105,7 +157,7 @@ def _downscaled(array: Any, side: int) -> tuple[Any, float]:
 
 
 def read_array(
-    array: Any, *, detect_side: int = DEFAULT_DETECT_SIDE
+    array: Any, cache_dir: str, *, detect_side: int = DEFAULT_DETECT_SIDE
 ) -> tuple[list[str], float | None]:
     """Lines of text found in one image, and the mean confidence of the reading.
 
@@ -118,7 +170,7 @@ def read_array(
     """
     from rapidocr.ch_ppocr_rec.typings import TextRecInput
 
-    ocr = engine()
+    ocr = engine(cache_dir)
     small, scale = _downscaled(array, detect_side)
     detected = ocr.text_det(small)
     if detected.boxes is None or len(detected.boxes) == 0:
@@ -146,7 +198,9 @@ def read_array(
     return [text.strip() for text, _score in kept], float(mean)
 
 
-def read_image(path: Any, *, detect_side: int = DEFAULT_DETECT_SIDE) -> Extraction | None:
+def read_image(
+    path: Any, cache_dir: str, *, detect_side: int = DEFAULT_DETECT_SIDE
+) -> Extraction | None:
     """One photograph or screenshot, or None when it holds no text.
 
     None rather than an empty extraction because a photograph with no writing in
@@ -156,7 +210,7 @@ def read_image(path: Any, *, detect_side: int = DEFAULT_DETECT_SIDE) -> Extracti
     """
     from . import raster
 
-    lines, confidence = read_array(raster.image(path), detect_side=detect_side)
+    lines, confidence = read_array(raster.image(path), cache_dir, detect_side=detect_side)
     if not lines:
         return None
     return Extraction(IMAGE_OCR, (Block(None, "\n".join(lines)),), confidence=confidence)

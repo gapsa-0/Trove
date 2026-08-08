@@ -144,7 +144,7 @@ def test_a_running_feature_reports_what_it_found_and_a_stopped_one_what_it_costs
         # Off: what switching it on would cost, in the same three words the
         # setup screen uses for it.
         semantic = _fact(app, "semantic")
-        assert semantic in {"No download needed", "Downloaded", "689 MB"}, semantic
+        assert semantic in {"No download needed", "Downloaded", "715 MB"}, semantic
         # ...and says which of the three it is in colour as well as in words,
         # since only one of them is a reason to hesitate.
         tone = app.tab.evaluate(

@@ -25,13 +25,18 @@ size — and what it produces goes into the same per-archive catalogue as
 everything else.
 
 **The only time Archive uses the network on its own** is downloading model
-weights: ~550 MB for People and Pets detection on their first run and ~690 MB
-for the search-by-description model on an archive's first indexing pass, both
-fetched from GitHub or Hugging Face. Only those downloads happen — no photo,
-thumbnail, filename, search query, or catalogue record is sent anywhere. Once
-the weights are cached, everything works fully offline. The pet
-re-identification and face-embedding models are bundled with the installer and
-are never downloaded.
+weights: ~550 MB for People and Pets detection on their first run, ~715 MB for
+the search-by-description model and its query translator on an archive's first
+indexing pass, and ~30 MB for reading the writing in pictures on an archive's
+first text pass — all fetched from GitHub or Hugging Face. Only those downloads
+happen — no photo, thumbnail, filename, search query, or catalogue record is
+sent anywhere. Once the weights are cached, everything works fully offline, and
+a second archive that wants the same feature downloads nothing.
+
+**No model is bundled with the installer.** Every one is fetched on first use
+and verified against a known fingerprint before it is used, which is what keeps
+the installer to a size worth downloading and means a feature you never switch
+on costs you nothing to have installed.
 
 **A feature you did not choose downloads nothing at all.** Each archive is set
 up with the features it should run (see the setup screen when adding a folder),

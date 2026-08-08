@@ -46,7 +46,7 @@ def _extra_label(job: dict[str, Any]) -> str:
     model — 45% of 355 MB") whenever it has one. It reports no total, so the
     sidebar draws it the indeterminate bar it draws for any work with no
     percentage, and a fixed "Downloading models" over that bar is exactly the
-    thing someone reads as hung after the first quiet minute of 689 MB.
+    thing someone reads as hung after the first quiet minute of 715 MB.
     """
     kind = str(job["kind"])
     fixed = _EXTRA_JOB_LABEL.get(kind, kind)

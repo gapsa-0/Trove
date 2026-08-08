@@ -72,7 +72,22 @@ def test_the_repos_own_manifest_resolves_through_the_app(tmp_path):
     application had no code path to these weights at all.
     """
     entries = mm.load()
-    assert {e["name"] for e in entries} == {"adaface", "dinov2_pet"}
+    assert {e["name"] for e in entries} == {
+        # The two self-exports, which have no upstream to fetch from...
+        "adaface",
+        "dinov2_pet",
+        # ...the three PP-OCR weights, which do, and are mirrored anyway so the
+        # bytes stay pinned to a release this project controls (ADR 0019)...
+        "ppocr_det",
+        "ppocr_rec",
+        "ppocr_cls",
+        # ...and the four the browser fetches rather than Python: the Spanish
+        # translator the search box runs before embedding a query.
+        "bergamot_wasm",
+        "bergamot_es_en_model",
+        "bergamot_es_en_lex",
+        "bergamot_es_en_vocab",
+    }
     for entry in entries:
         # Every entry must have a fetchable origin, or a source checkout is back
         # to the failure this whole module exists to prevent.

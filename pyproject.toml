@@ -64,11 +64,13 @@ semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10"
 # scanned page later without a second PDF dependency.
 documents = ["pypdfium2>=5"]
 # Reading text out of pictures. RapidOCR drives PaddleOCR's PP-OCRv6 detection
-# and recognition models on the onnxruntime already here, and — unusually for a
-# model in this app — **ships the weights inside its own wheel**, so there is no
-# runtime download, no new download origin and no manifest entry; pip's own hash
-# check covers them. One recognition model carries 18,708 characters including
-# every Spanish accent, so there is no separate per-language weight either.
+# and recognition models on the onnxruntime already here. The wheel ships those
+# weights, but the app does not use that copy: they are manifest entries fetched
+# on first use like every other model, because at 26.5 MB compressed they were
+# the largest single item in the installer and were carried by everyone whether
+# or not they read a picture (ADR 0019). One recognition model carries 18,708
+# characters including every Spanish accent, so there is no separate
+# per-language weight either.
 #
 # It is the one framework dependency added for this work, and it brings seven
 # packages (pyclipper and shapely native, both with cp313 wheels for the two

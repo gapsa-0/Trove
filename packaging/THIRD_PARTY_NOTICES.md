@@ -42,13 +42,31 @@ Do not publish a release while any entry is incomplete.
   https://ai.google.dev/gemma/terms — used only to turn a typed search query
   into token ids for the SigLIP 2 text tower.
 - RapidOCR — Apache-2.0 — https://github.com/RapidAI/RapidOCR
-  Bundled, together with the PP-OCRv6 detection and recognition models and the
-  PP-OCR angle classifier that ship inside its wheel. The engineering code is
-  RapidAI's; the model weights are Baidu's, released under Apache-2.0 as part of
-  PaddleOCR — https://github.com/PaddlePaddle/PaddleOCR
-  These are the only model weights the installer carries rather than fetching at
-  first use, so the obligation travels with the package rather than with a
-  download. No non-commercial clause on either part.
+  The engineering code is bundled. The PP-OCRv6 detection and recognition models
+  and the PP-OCR angle classifier are **not**: they ship inside RapidAI's wheel,
+  but the installer filters them out and the app downloads them at first use.
+  The weights are Baidu's, released under Apache-2.0 as part of PaddleOCR —
+  https://github.com/PaddlePaddle/PaddleOCR
+  Those three files are re-hosted by this project as release assets, byte-identical
+  to RapidAI's published copies (SHA-256s in packaging/models/manifest.json), which
+  is redistribution and is permitted: Apache-2.0 §4 allows it in any medium, with
+  or without modification, and these are unmodified. No non-commercial clause on
+  either part. Note the wheel ships **no licence file of its own** — only
+  `License-Expression: Apache-2.0` metadata — so the Apache-2.0 text must be
+  supplied by this release rather than copied out of the package. Apache-2.0 §6
+  grants no trademark rights: name RapidAI, Baidu and PaddleOCR as the source, do
+  not imply their endorsement.
+- Bergamot Translator runtime and the Spanish-to-English Firefox Translations
+  model — Mozilla Public License 2.0 —
+  https://github.com/browsermt/bergamot-translator and
+  https://github.com/mozilla/translations
+  The loader and worker scripts are bundled (trove/web/vendor/). The WASM runtime
+  and the three model files are downloaded with Search by description and served
+  to the page from the cache. Like the PP-OCR weights above they are re-hosted
+  unmodified as release assets, which MPL-2.0 permits; the licence text and the
+  notice in trove/web/vendor/BERGAMOT-NOTICE.txt travel with them. Used only to
+  translate a typed Spanish query into English before it is embedded — search
+  text and inference stay on the user's machine.
 - pypdfium2 / PDFium — Apache-2.0 or BSD-3-Clause (pypdfium2's own code) over a
   prebuilt PDFium, BSD-3-Clause — https://github.com/pypdfium2-team/pypdfium2
   Bundled in the installer, not downloaded: the wheel carries the PDFium shared

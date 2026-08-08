@@ -1,20 +1,30 @@
-"""Model weights that have no upstream URL: one manifest, four sources.
+"""Model weights this project re-publishes itself: one manifest, four sources.
 
 Most weights this app uses are fetched at first use from a stable upstream --
 the OpenCV Zoo YOLOX detector, the InsightFace buffalo_l pack, the SigLIP 2
-towers -- and need nothing from this module. Two are different: the AdaFace
-embedder and the DINOv2 pet re-ID model exist only as self-exports (see
-``tools/build/*_export.py``), so there is no upstream to fetch them from.
-``packaging/models/manifest.json`` is what stands in for one: it records each
-file's size, SHA-256, provenance, licence, and our own re-publication as a
-release asset.
+towers -- and need nothing from this module. The rest are here, for two
+different reasons.
+
+Two have no upstream at all: the AdaFace embedder and the DINOv2 pet re-ID model
+exist only as self-exports (see ``tools/build/*_export.py``), so there is nowhere
+to fetch them from and this manifest stands in for one.
+
+Seven do have an upstream and are mirrored anyway, because what this file
+guarantees is not availability but *exact bytes*: the three PP-OCR weights that
+used to travel inside the rapidocr wheel, and the four Bergamot files that used
+to sit in ``web/vendor/`` (see ADR 0019 and ``trove/translation.py``). Their
+publishers can retag the paths they came from; a release asset pinned by SHA-256
+here cannot move under a build that already referenced it.
+
+Either way the entry records the file's size, SHA-256, provenance, licence, and
+our own re-publication as a release asset.
 
 That manifest used to be readable only by ``packaging/scripts/stage-models.py``,
-which meant a frozen build carried these two files and *every other way of
+which meant a frozen build carried these files and *every other way of
 running the app* -- ``npm run dev``, ``trove``, any source checkout -- had no path
 to them at all. The visible symptom was detection downloading ~310 MB of the
 weights it could fetch and then failing on the one it could not. So the manifest
-is a runtime contract now, and the two files resolve identically everywhere:
+is a runtime contract now, and every entry resolves identically everywhere:
 
 1. ``ARCHIVE_MODELS_DIR``, or a frozen build's bundle (``runtime.bundled_model``)
 2. ``packaging/models/staged/`` in a source checkout -- whatever a local

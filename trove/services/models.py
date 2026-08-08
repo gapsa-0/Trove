@@ -1,17 +1,19 @@
 """What each feature needs downloaded, and getting it here.
 
-Three features cost a download: People (a face detector and an embedder), Pets
-(a detector and a re-ID embedder) and Search by description (two SigLIP towers
-and a tokenizer). Every one of those weights lives behind a different backend
-with its own idea of where a file goes and how to fetch it, and until now the
-only code that knew the full list was the stage that happened to need it.
+Four features cost a download: People (a face detector and an embedder), Pets
+(a detector and a re-ID embedder), Search by description (two SigLIP towers, a
+tokenizer, and the Spanish translator the search box runs before embedding a
+query) and Search by picture text (PP-OCR detection, recognition and an angle
+classifier). Every one of those weights lives behind a different backend with
+its own idea of where a file goes and how to fetch it, and until now the only
+code that knew the full list was the stage that happened to need it.
 
 This module is that list, in one table, answering the three questions anyone
 asks about it: is the backend importable at all, are the weights already on
 this machine, and fetch them. The setup panel asks the first two to price a
 feature honestly (``services/archives.features``); the fetch job asks all three
 so that pressing "Create archive" starts the download, rather than a scan that
-finishes hours later and only *then* begins a 689 MB fetch nobody was waiting
+finishes hours later and only *then* begins a 715 MB fetch nobody was waiting
 by the screen for (``pipeline/runners/models.py``).
 
 The weights are shared between archives -- they live under the app-wide cache
@@ -50,10 +52,11 @@ def _table(cfg: Config) -> dict[str, Weights]:
     A feature with no entry here needs nothing downloaded, which is why callers
     treat a missing entry as available, ready, and nothing to fetch.
     """
-    from .. import model_manifest
+    from .. import model_manifest, translation
     from ..embeddings import backend as embed_backend
     from ..faces import backend as face_backend
     from ..pets import backend as pet_backend
+    from ..text import ocr as ocr_backend
 
     cache = cfg.cache_dir
 
@@ -76,16 +79,31 @@ def _table(cfg: Config) -> dict[str, Weights]:
         # needs the other two, and a search is a request with nowhere to show a
         # 317 MB download (see services/semantic.warm_text_model).
         embed_backend.ensure_models(cache, log=log)
+        # ...and the Spanish translator the search box runs before embedding a
+        # query. 26 MB against 689 is why it is fetched here rather than owning
+        # a feature of its own: it is useless without the towers, and nobody
+        # would choose it separately. The browser fetches these from the
+        # /vendor route, which serves them out of this same cache.
+        for name in translation.MODELS:
+            model_manifest.ensure(name, cache, log=log)
+
+    def ocr(log: Log | None) -> None:
+        ocr_backend.ensure_models(cache, log=log)
 
     return {
         "people": Weights(face_backend.available, lambda: face_backend.models_ready(cache), people),
         "pets": Weights(pet_backend.available, lambda: pet_backend.models_ready(cache), pets),
         "semantic": Weights(
-            embed_backend.available, lambda: embed_backend.models_ready(cache), semantic
+            embed_backend.available,
+            lambda: embed_backend.models_ready(cache) and translation.ready(cache),
+            semantic,
         ),
-        # The two text features are deliberately absent: a feature with no entry
-        # here needs nothing downloaded, which is what makes their "no download"
-        # honest -- one parses, and the other's weights ship inside the wheel.
+        "ocr": Weights(ocr_backend.available, lambda: ocr_backend.models_ready(cache), ocr),
+        # Search by document text is deliberately absent: a feature with no
+        # entry here needs nothing downloaded, and that one genuinely parses
+        # rather than infers. Its other half used to be absent too, back when
+        # the OCR weights travelled inside the rapidocr wheel -- ADR 0019
+        # records why they no longer do.
     }
 
 

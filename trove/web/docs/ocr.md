@@ -52,9 +52,14 @@ more than 200 pages, both with that reason recorded.
 
 ## What it costs to install
 
-Nothing to download. This is the only model in Trove that ships with the
-application rather than being fetched on first use, so switching it on starts
-work immediately even with no connection.
+{{download_mb}} MB, downloaded once and shared by every archive on this
+computer. Two models do the work — one finds the writing, one reads it — and a
+third is fetched only because the engine refuses to start without it.
+
+This used to say "nothing to download", because the models travelled inside the
+application. They were also its single largest part, carried by everyone who
+installed Trove whether or not they ever read a picture, so they now arrive the
+way every other model does: once, when you switch the feature on.
 
 ## How it works
 

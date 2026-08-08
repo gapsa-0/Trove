@@ -12,8 +12,15 @@ from __future__ import annotations
 import docfixtures as fx
 import pytest
 
+from trove.paths import default_cache_dir
 from trove.text import ocr, raster
 from trove.text.results import IMAGE_OCR
+
+# Resolved at import for the same reason test_siglip_preprocessing does it:
+# conftest's isolate_app_data fixture points XDG_DATA_HOME at a throwaway
+# directory for every test, so asking for the cache dir inside one would find an
+# empty cache and skip even on a machine that has the weights.
+_CACHE = str(default_cache_dir())
 
 pytest.importorskip("numpy")
 pytest.importorskip("PIL")
@@ -22,6 +29,12 @@ pytestmark = [
     pytest.mark.models,
     pytest.mark.slow,
     pytest.mark.skipif(not ocr.available(), reason="the 'ocr' extra is not installed"),
+    # The weights are downloaded now rather than carried inside the wheel
+    # (ADR 0019), so having the package is no longer the same question as having
+    # the models -- which is exactly the half-installed state that move created.
+    pytest.mark.skipif(
+        not ocr.models_ready(_CACHE), reason="the PP-OCR weights are not on this machine"
+    ),
 ]
 
 SPANISH = [
@@ -38,7 +51,7 @@ def scan(tmp_path_factory):
 
 
 def _text(path):
-    lines, confidence = ocr.read_array(raster.pdf_page(path, 1))
+    lines, confidence = ocr.read_array(raster.pdf_page(path, 1), _CACHE)
     return " ".join(lines), confidence
 
 
@@ -46,8 +59,8 @@ def _text(path):
 
 
 def test_it_reads_accented_spanish(scan):
-    """The reason no per-language weight is needed: one bundled model carries
-    18,708 characters, every Spanish accent among them."""
+    """The reason no per-language weight is needed: the one recognition model
+    carries 18,708 characters, every Spanish accent among them."""
     text, _ = _text(scan)
     for word in ("Petición", "según", "artículo", "Señor", "Muñoz"):
         assert word.lower() in text.lower(), f"{word} missing from: {text}"
@@ -71,7 +84,7 @@ def test_a_reading_carries_its_confidence(scan):
 def test_a_picture_with_no_writing_reads_as_nothing(tmp_path):
     """The overwhelmingly common case, and not a failure. None rather than an
     empty extraction, so the caller records a skip with a reason."""
-    assert ocr.read_image(fx.photo(tmp_path / "photo.png")) is None
+    assert ocr.read_image(fx.photo(tmp_path / "photo.png"), _CACHE) is None
 
 
 def test_a_photographed_document_comes_back_as_one_block(tmp_path):
@@ -81,7 +94,7 @@ def test_a_photographed_document_comes_back_as_one_block(tmp_path):
     page = raster.pdf_page(fx.scan_pdf(tmp_path / "s.pdf", ["\n".join(SPANISH)], dpi=200), 1)
     Image.fromarray(page).save(path)
 
-    found = ocr.read_image(path)
+    found = ocr.read_image(path, _CACHE)
     assert found is not None
     assert found.extractor == IMAGE_OCR
     assert len(found.blocks) == 1
@@ -103,8 +116,8 @@ def test_detecting_small_and_recognising_large_reads_the_same_text(scan):
     1.51s. If that ever stops holding, the extra complexity has stopped paying.
     """
     page = raster.pdf_page(scan, 1)
-    downscaled, _ = ocr.read_array(page, detect_side=736)
-    full_size, _ = ocr.read_array(page, detect_side=max(page.shape[:2]))
+    downscaled, _ = ocr.read_array(page, _CACHE, detect_side=736)
+    full_size, _ = ocr.read_array(page, _CACHE, detect_side=max(page.shape[:2]))
     assert downscaled == full_size
 
 
@@ -128,6 +141,6 @@ def test_low_confidence_lines_are_dropped(tmp_path, monkeypatch):
     archive's index would make it worthless."""
     monkeypatch.setattr(ocr, "MIN_LINE_CONFIDENCE", 1.01)
     page = raster.pdf_page(fx.scan_pdf(tmp_path / "s.pdf", ["Recibo 4471"], dpi=200), 1)
-    lines, confidence = ocr.read_array(page)
+    lines, confidence = ocr.read_array(page, _CACHE)
     assert lines == []
     assert confidence is None

@@ -2,12 +2,15 @@
 """Pre-seed a checkout with the ML model weights, and validate their manifest.
 
 This is a developer convenience and a CI schema check, **not** a release step.
-Releases used to bundle the two weights in ``packaging/models/manifest.json``,
-because unlike the OpenCV Zoo YOLOX detector and the InsightFace buffalo_l pack
-they have no upstream download URL. That cost 349 MB of installer. They are now
-re-published as release assets on this repository instead, so the app fetches them
-on first use like every other weight, and ``packaging/trove.spec``
-bundles nothing.
+Releases used to bundle the two self-exported weights in
+``packaging/models/manifest.json``, because unlike the OpenCV Zoo YOLOX detector
+and the InsightFace buffalo_l pack they have no upstream download URL. That cost
+349 MB of installer. They are now re-published as release assets on this
+repository instead, so the app fetches them on first use like every other weight,
+and ``packaging/trove.spec`` bundles nothing. Seven more entries joined them
+later -- the PP-OCR weights and the Bergamot translator, which arrived inside
+packages rather than inside the spec, and were removed for the same reason
+(ADR 0019).
 
 What remains useful here: staging into ``packaging/models/staged/`` populates the
 second tier of ``trove.model_manifest``'s resolver, which lets a source
@@ -27,7 +30,7 @@ three produce byte-identical output.
 
 The manifest schema, the hashing and the URL download live in
 ``trove.model_manifest``, which the *application* uses to resolve these
-same two files at runtime. They are imported rather than reimplemented here: two
+same files at runtime. They are imported rather than reimplemented here: two
 copies of "what a valid entry is" would eventually disagree, and the one that
 matters is whichever the app believes.
 """
@@ -78,12 +81,40 @@ def cache_models_dir() -> Path | None:
         return None
 
 
+def packaged_copy(item: dict) -> Path | None:
+    """A copy that came in with an installed wheel, if this weight has one.
+
+    Only the PP-OCR three do. They are the one case where the manifest mirrors
+    a file that also travels inside a package: ``rapidocr`` ships its models,
+    the desktop build filters them back out (ADR 0019), and the bytes are
+    identical -- verified by the same SHA-256 check every other source goes
+    through, so a future rapidocr that changed them fails loudly here rather
+    than staging something the manifest does not describe.
+
+    This is what lets CI exercise the OCR tests without a download, and before
+    the release assets those entries point at even exist.
+    """
+    if not item["file"].startswith("rapidocr/"):
+        return None
+    try:
+        import rapidocr
+    except Exception:
+        return None
+    return Path(rapidocr.__file__).parent / "models" / Path(item["file"]).name
+
+
 def candidate_sources(item: dict, override: str | None) -> list[Path]:
     roots = [Path(override)] if override else []
     cache = cache_models_dir()
     if cache is not None:
         roots.append(cache)
-    return [root / item["file"] for root in roots]
+    candidates = [root / item["file"] for root in roots]
+    packaged = packaged_copy(item)
+    # Last of the local sources: an explicit --from and the user's own cache
+    # both say more about intent than "whatever pip happened to install".
+    if packaged is not None:
+        candidates.append(packaged)
+    return candidates
 
 
 def fetch(item: dict, destination: Path) -> str:
@@ -116,16 +147,39 @@ def fetch(item: dict, destination: Path) -> str:
     )
 
 
-def stage() -> int:
+def stage(only: set[str] | None = None) -> int:
     try:
         items = models()
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(error, file=sys.stderr)
         return 1
+    if only is not None:
+        unknown = only - {item["name"] for item in items}
+        if unknown:
+            print(f"no such model in the manifest: {', '.join(sorted(unknown))}", file=sys.stderr)
+            return 1
+        items = [item for item in items if item["name"] in only]
     STAGE.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".models-", dir=STAGE.parent) as tmp_name:
         tmp = Path(tmp_name)
         staged_info = []
+        # A subset run adds to what is already there rather than replacing it.
+        # The swap below is a whole-directory rename -- atomic, and the reason
+        # an interrupted run never leaves a half-staged tree -- so anything not
+        # carried across here would be deleted by staging one model.
+        if only is not None and STAGE.is_dir():
+            for existing in STAGE.rglob("*"):
+                if existing.is_file():
+                    carried = tmp / existing.relative_to(STAGE)
+                    carried.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(existing, carried)
+            info = STAGE / "models-build-info.json"
+            if info.is_file():
+                staged_info = [
+                    entry
+                    for entry in json.loads(info.read_text(encoding="utf-8")).get("models", [])
+                    if entry.get("name") not in only
+                ]
         for item in items:
             destination = tmp / item["file"]
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -159,12 +213,21 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--from", dest="source", help="directory laid out like cache/models")
     parser.add_argument("--validate", action="store_true", help="check the manifest schema only")
+    parser.add_argument(
+        "--only",
+        help=(
+            "comma-separated model names to stage, added to whatever is already "
+            "staged. CI uses this for the PP-OCR three, which resolve out of the "
+            "installed rapidocr wheel and so cost no download"
+        ),
+    )
     args = parser.parse_args()
     if args.validate:
         return validate()
     if args.source:
         os.environ["ARCHIVE_MODEL_SOURCE"] = args.source
-    return stage()
+    only = {name.strip() for name in args.only.split(",") if name.strip()} if args.only else None
+    return stage(only)
 
 
 if __name__ == "__main__":
