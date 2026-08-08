@@ -44,13 +44,49 @@ _EXPORT_BLOCK = re.compile(r"Object\.assign\(window,\s*\{(.*?)\}\s*\)\s*;", re.S
 _NAME = re.compile(r"[A-Za-z_$][\w$]*")
 
 
+def without_interpolations(body: str) -> str:
+    """An attribute body with every ``${...}`` span removed.
+
+    The screens build their markup inside template literals, so an attribute
+    can read ``onclick="openDocs('${esc(reader.docs)}')"``. Those are two
+    different moments: ``esc`` runs while the *string* is being built, in the
+    module, where it is imported normally; only ``openDocs`` is looked up on
+    ``window`` when the button is clicked. Scanning the raw body counts both
+    and demands an export for a function that never needed one.
+
+    Brace-counted rather than a non-greedy regex, because an interpolation may
+    contain braces of its own -- a nested template literal, or an object -- and
+    stopping at the first ``}`` would leave its tail behind to be rescanned.
+
+    A handler whose *name* is interpolated (``onclick="${fn}()"``) disappears
+    with the rest, which is right: nothing static can say what it resolves to,
+    and a guess would be the false positive this function exists to remove.
+    """
+    out: list[str] = []
+    i, end = 0, len(body)
+    while i < end:
+        if body.startswith("${", i):
+            depth = 1
+            i += 2
+            while i < end and depth:
+                if body[i] == "{":
+                    depth += 1
+                elif body[i] == "}":
+                    depth -= 1
+                i += 1
+        else:
+            out.append(body[i])
+            i += 1
+    return "".join(out)
+
+
 def handler_names() -> dict[str, set[str]]:
     """Every bare-function name called from an inline handler, by source file."""
     found: dict[str, set[str]] = {}
     for path in [INDEX, *sorted(JS_DIR.glob("*.js"))]:
         names = set()
         for _event, _quote, body in _ATTR.findall(path.read_text()):
-            names |= {n for n in _CALL.findall(body) if n not in _KEYWORDS}
+            names |= {n for n in _CALL.findall(without_interpolations(body)) if n not in _KEYWORDS}
         if names:
             found[path.name] = names
     return found
