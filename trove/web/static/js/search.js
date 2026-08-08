@@ -41,11 +41,33 @@ function clearlyEnglishSearch(text) {
 // queries), which is why the translation must *replace* the original rather
 // than be merged with it as an alternate vector — taking the best of both
 // would systematically pick the worse one.
-function localTranslator() {
+// Whether the translator's model files are on this machine at all, asked once.
+//
+// They stopped shipping inside the app and are fetched with Search by
+// description instead (ADR 0019), so "not here" is now an ordinary state rather
+// than a broken install: any archive that never switched that feature on has no
+// translator and never will. Asking first is what keeps that cheap. Left to
+// discover it by failing, the loader spends its whole `downloadTimeout` on a
+// worker whose models 404 -- which put a fifteen-second stall in front of every
+// search on exactly the archives that had least reason to pay it.
+//
+// A one-byte ranged GET rather than HEAD, because the /vendor route serves
+// files through a Range-aware reader and answers GET only.
+let TRANSLATOR_PRESENT = null;
+function translatorPresent() {
+  if (!TRANSLATOR_PRESENT) {
+    TRANSLATOR_PRESENT = fetch("/vendor/translate-es-en-model.bin", {
+      headers: { Range: "bytes=0-0" },
+    }).then(r => r.ok).catch(() => false);
+  }
+  return TRANSLATOR_PRESENT;
+}
+async function localTranslator() {
   // The WASM runtime and the es-en model are ~23 MB between them, so whoever
   // asks first waits for the download and the worker spin-up. Building the
   // promise is separated from using it precisely so that cost can be paid
   // ahead of time -- see warmLocalTranslator.
+  if (!(await translatorPresent())) return null;
   if (!LOCAL_TRANSLATOR_PROMISE) {
     LOCAL_TRANSLATOR_PROMISE = import("/vendor/bergamot-translator.js").then(module =>
       new module.LatencyOptimisedTranslator({
@@ -77,6 +99,9 @@ async function localEnglishTranslation(text) {
   if (!text || !text.match(/\p{L}/u) || clearlyEnglishSearch(text)) return "";
   try {
     const translator = await localTranslator();
+    // No translator on this machine: the query goes to the server as typed,
+    // which is the same outcome as a translation that changed nothing.
+    if (!translator) return "";
     const response = await translator.translate({ from: "es", to: "en", text, html: false });
     const translated = (response && response.target && response.target.text || "")
       .replace(/\s+/g, " ").trim().toLocaleLowerCase();
