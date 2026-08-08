@@ -79,6 +79,14 @@ outside the cleanup logic that deletes it.
   is the one exception with no upstream URL, so it ships inside the packaged
   build instead (~85 MB) rather than being fetched. After those downloads,
   the app is fully offline for all media processing.
+
+  > **Amended 2026-08-08.** Nothing ships inside the packaged build any more.
+  > The two weights with no upstream — DINOv2-pet and AdaFace — are re-published
+  > as release assets on this repository and fetched like the rest, which is what
+  > took 349 MB out of every installer; ADR 0019's amendment did the same for the
+  > PP-OCR weights and the query translator. The claim above about *where* they
+  > come from is stale; the claim this ADR is actually about — that inference is
+  > local, and the network is touched once per model and never again — is not.
 - The one deliberate exception to "no network calls" anywhere in the app is
   the GUI map's optional street-map tile layer, which sends photo
   *coordinates* to a public tile server — never the photos — and can be

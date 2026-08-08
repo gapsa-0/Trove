@@ -88,8 +88,8 @@ library.*
   is enabled: photographed receipts, screenshots, and PDFs that are scans rather
   than documents. A PDF is decided page by page, so a contract with a scanned
   appendix is read both ways and comes back as one document. Spanish and English,
-  accents included, with nothing to download — these are the only model weights
-  that ship with the application. It is the slowest stage in the pipeline, at
+  accents included. It downloads 30 MB the first time you switch it on, once per
+  computer rather than once per archive. It is the slowest stage in the pipeline, at
   roughly half a second per picture, so an archive of a hundred thousand photos
   is an overnight run rather than a coffee break; it pauses and resumes safely.
 - Shows photos the right way up. EXIF orientation is always honoured, and a photo
@@ -156,21 +156,18 @@ too — nothing about a search leaves the machine.
 
 | Platform | Download | Size |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | [Trove.Setup.0.1.2.exe](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/Trove.Setup.0.1.2.exe) | 604 MB |
-| Linux, any distribution | [Trove-0.1.2.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/Trove-0.1.2.AppImage) | 744 MB |
-| Debian / Ubuntu | [trove-desktop_0.1.2_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/trove-desktop_0.1.2_amd64.deb) | 614 MB |
+| Windows 10/11 (64-bit) | [Trove.Setup.0.2.0.exe](https://github.com/gapsa-0/Trove/releases/download/v0.2.0/Trove.Setup.0.2.0.exe) | 303 MB |
+| Linux, any distribution | [Trove-0.2.0.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.2.0/Trove-0.2.0.AppImage) | 393 MB |
+| Debian / Ubuntu | [trove-desktop_0.2.0_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.2.0/trove-desktop_0.2.0_amd64.deb) | 271 MB |
 
 Each download bundles its own Python runtime and FFmpeg — nothing is fetched from
-a package manager at install time. The model weights are not in there: they are
-downloaded once, when you create an archive that asks for the feature needing them.
-
-> The sizes above are the published 0.1.2 files, which still carried the model
-> weights inside the installer. The next release drops them, along with a
-> duplicated copy of FFmpeg and an unused GUI toolkit: the Linux build measures
-> 409 MB against 744 MB here.
+a package manager at install time. **No model weights are in there.** Every one is
+downloaded once, the first time you switch on the feature that needs it, and
+shared by every archive on the machine — so a feature you never enable costs you
+nothing to have installed.
 
 Checksums for all three are in
-[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.1.2/SHA256SUMS.txt).
+[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.2.0/SHA256SUMS.txt).
 Newer versions, when they exist, are on the
 [releases page](https://github.com/gapsa-0/Trove/releases).
 

@@ -119,10 +119,10 @@ grandfathered.
 | what OCR costs, and why it reads at two resolutions | `trove/text/ocr.py` (its docstring carries the measurements) |
 | how a document is cut into searchable passages | `trove/text/chunk.py` (its docstring carries the token measurements the sizes came from) |
 | when the text stage re-reads a file | `trove/services/documents.py`'s four-legged pending predicate, and `TEXT_VERSION` beside it |
-| how text search ranks, and what a hit shows | `trove/services/text_search.py` + the text group in `trove/web/static/js/library.js` |
+| how text search ranks, and what a hit shows | `trove/services/text_search.py` + the text group in `trove/web/static/js/library.js`, whose tiles are in `tiles.js` |
 | how the two document rankings are fused, and where each is cut | `trove/services/text_search.py`'s `_rrf` / `_vector_ranked`, with the thresholds in `trove/config/settings.py` (ADR 0018) |
 | the text embedder's recipe, and why there are two embedders | `trove/embeddings/text_backend.py` |
-| how a screen looks | `trove/web/static/css/<area>.css` (e.g. `library.css`, `people.css`, `map.css`) |
+| how a screen looks | `trove/web/static/css/<area>.css` (e.g. `library.css` for Browse's controls, `results.css` for what a query returns, `people.css`, `map.css`) |
 | the SQLite schema | `trove/db/schema.sql`, plus the migration in `init_db` (`trove/db/database.py`) |
 | settings and their defaults | `trove/config/settings.py` |
 | where things live on disk | `trove/paths.py` |

@@ -65,7 +65,7 @@ not optional, because everything else is built on what they produce:
 - **[Indexing](indexing.md)** finds every file and extracts its metadata.
 - **[Duplicates](duplicates.md)** groups the copies of the same thing.
 
-The other four are yours to choose, and the reason you are asked at all is that
+The other six are yours to choose, and the reason you are asked at all is that
 some of them cost a large one-time download:
 
 | Feature | Gives you | Downloads |
@@ -73,7 +73,9 @@ some of them cost a large one-time download:
 | [Places](places.md) | A map of where you have been | Nothing |
 | [People](people.md) | A page per person, from faces | 275 MB |
 | [Pets](pets.md) | A page per animal | 35 MB |
-| [Search by description](search.md) | Typing "a dog on the beach" and finding it | 689 MB |
+| [Search by description](search.md) | Typing "a dog on the beach" and finding it | 715 MB |
+| [Search by document text](documents.md) | Finding a document by a phrase inside it | Nothing |
+| [Search by picture text](ocr.md) | Reading the writing in screenshots and scans | 30 MB |
 
 A feature you leave switched off downloads nothing, runs nothing and shows no
 section.
