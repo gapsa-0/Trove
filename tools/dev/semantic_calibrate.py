@@ -145,7 +145,7 @@ def _indexer_version():
     return semantic.INDEXER_VERSION
 
 
-def main():
+def _parse_args():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -161,7 +161,46 @@ def main():
         action="store_true",
         help="score without modality-gap centering (a different, narrower scale)",
     )
-    args = ap.parse_args()
+    return ap.parse_args()
+
+
+def _report_sweep(real, absent, centering: bool) -> None:
+    """The grid this tool exists to print: what each (floor, ratio) pair keeps.
+
+    Each cell is ``real/absent`` -- the median number of results kept for a
+    query whose subject is in the archive, against one whose subject is not.
+    The pair worth shipping has the left number comfortably large and the right
+    number small, and no single cut does both, which is why there are two.
+    """
+    import numpy as np
+
+    print("Median results kept per query, for score >= max(floor, ratio*best):")
+    # The two modes live on different scales -- centering roughly triples the
+    # range -- so sweep the floors that are actually near the decision here.
+    ratios = (0.55, 0.60, 0.65, 0.70, 0.75) if centering else (0.70, 0.75, 0.80, 0.85, 0.90)
+    floors = (0.0, 0.15, 0.18, 0.20, 0.22) if centering else (0.0, 0.04, 0.05, 0.06, 0.07)
+    print("  floor   " + "".join(f"{r:>12.2f}" for r in ratios))
+    for floor in floors:
+        cells = []
+        for ratio in ratios:
+            keeps = [
+                (real[:, i] >= max(floor, ratio * float(real[:, i].max()))).sum()
+                for i in range(real.shape[1])
+            ]
+            drops = [
+                (absent[:, i] >= max(floor, ratio * float(absent[:, i].max()))).sum()
+                for i in range(absent.shape[1])
+            ]
+            cells.append(f"{int(np.median(keeps)):>6d}/{int(np.median(drops)):<5d}")
+        print(f"  {floor:.2f}    " + "".join(f"{c:>12s}" for c in cells))
+    print(
+        "\n  each cell is  real/absent  — want the left number comfortably "
+        "large\n  and the right number small. Set both in config.json."
+    )
+
+
+def main():
+    args = _parse_args()
 
     import numpy as np
 
@@ -231,29 +270,7 @@ def main():
             "     where the best score is low, the ratio where it is high.\n"
         )
 
-    print("Median results kept per query, for score >= max(floor, ratio*best):")
-    # The two modes live on different scales -- centering roughly triples the
-    # range -- so sweep the floors that are actually near the decision here.
-    ratios = (0.55, 0.60, 0.65, 0.70, 0.75) if centering else (0.70, 0.75, 0.80, 0.85, 0.90)
-    floors = (0.0, 0.15, 0.18, 0.20, 0.22) if centering else (0.0, 0.04, 0.05, 0.06, 0.07)
-    print("  floor   " + "".join(f"{r:>12.2f}" for r in ratios))
-    for floor in floors:
-        cells = []
-        for ratio in ratios:
-            keeps = [
-                (real[:, i] >= max(floor, ratio * float(real[:, i].max()))).sum()
-                for i in range(real.shape[1])
-            ]
-            drops = [
-                (absent[:, i] >= max(floor, ratio * float(absent[:, i].max()))).sum()
-                for i in range(absent.shape[1])
-            ]
-            cells.append(f"{int(np.median(keeps)):>6d}/{int(np.median(drops)):<5d}")
-        print(f"  {floor:.2f}    " + "".join(f"{c:>12s}" for c in cells))
-    print(
-        "\n  each cell is  real/absent  — want the left number comfortably "
-        "large\n  and the right number small. Set both in config.json."
-    )
+    _report_sweep(real, absent, centering)
 
 
 if __name__ == "__main__":

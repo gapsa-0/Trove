@@ -37,6 +37,10 @@ from dataclasses import dataclass, field
 # What a link may point at: another documentation page, an anchor on this one,
 # or an external https URL. Anything else (javascript:, data:, http:) is dropped
 # to plain text, keeping its label.
+# One number from a `scale` block: its value, and exactly how the page wrote it.
+# Both halves are load-bearing -- see the comment in ``_scale_parts``.
+_Num = tuple[float, str]
+
 _LINK_OK = re.compile(r"\A(?:#[\w/-]*|[\w-]+\.md(?:#[\w-]+)?|https://[^\s<>\"]+)\Z")
 _HEADING = re.compile(r"\A(#{1,4})\s+(.+?)\s*\Z")
 _FENCE = re.compile(r"\A```([\w-]*)\s*\Z")
@@ -148,19 +152,10 @@ def _table(rows: list[str]) -> str:
     return f'<div class="doc-tablewrap"><table><thead><tr>{ths}</tr></thead><tbody>{trs}</tbody></table></div>'
 
 
-def _scale(body: list[str]) -> str:
-    """A calibration figure: where a threshold sits between the values it separates.
-
-    This is the one construct here that is not a Markdown feature, and it exists
-    because the thresholds in this app are not arbitrary -- ``config/settings.py``
-    records what was measured on either side of nearly every one of them ("same
-    animal ~0.8-0.96, different <=~0.3"). Printing only the number throws that
-    away; drawing it shows the reader how much room the cut actually has, which
-    is the thing they want to know when a photo lands in the wrong group.
-
-    It is written as a fenced block with a ``scale`` info string so the page
-    stays valid Markdown: on a Git host the figure degrades to a legible code
-    block rather than to nothing.
+def _scale_parts(
+    body: list[str],
+) -> tuple[_Num, _Num, list[tuple[_Num, _Num, str, str]], list[tuple[_Num, str]], str]:
+    """The four line kinds a ``scale`` block may hold, read into their parts.
 
         range 0 1
         band 0 0.30 muted Different animals
@@ -173,18 +168,13 @@ def _scale(body: list[str]) -> str:
     carries meaning rather than decoration -- ``muted`` is the population the
     threshold is there to exclude, ``soft`` a middle tier that is neither.
 
-    Band labels are listed under the track rather than written along it: three
-    bands on one line collide at any width, and a key also survives the narrow
-    layout, where the track is a few hundred pixels wide.
+    ``note`` says where the numbers came from. A band drawn without one is a
+    measurement claim with no source, which is exactly the kind of thing this
+    page is supposed to stop being.
 
-    Marks are drawn ON the track, so two of them closer together than about a
-    tenth of the range will overlap. That is an authoring constraint, not
-    something to solve here -- a figure needing two cuts that close is a figure
-    making two points, and should be two figures.
-
-    ``note`` is required, and says where the numbers came from. A band drawn
-    without one is a measurement claim with no source, which is exactly the kind
-    of thing this page is supposed to stop being.
+    Unknown line kinds and malformed ones are skipped rather than raised on: a
+    documentation page is rendered on request, and a typo in a figure should
+    cost that figure, not the page someone was trying to read.
     """
     # Every number is carried as (value, as-written). The page and the settings
     # table beside it have to agree character for character -- reformatting
@@ -205,6 +195,34 @@ def _scale(body: list[str]) -> str:
             marks.append(((float(parts[0]), parts[0]), parts[1] if len(parts) > 1 else ""))
         elif kind == "note":
             note = rest
+    return lo, hi, bands, marks, note
+
+
+def _scale(body: list[str]) -> str:
+    """A calibration figure: where a threshold sits between the values it separates.
+
+    This is the one construct here that is not a Markdown feature, and it exists
+    because the thresholds in this app are not arbitrary -- ``config/settings.py``
+    records what was measured on either side of nearly every one of them ("same
+    animal ~0.8-0.96, different <=~0.3"). Printing only the number throws that
+    away; drawing it shows the reader how much room the cut actually has, which
+    is the thing they want to know when a photo lands in the wrong group.
+
+    It is written as a fenced block with a ``scale`` info string so the page
+    stays valid Markdown: on a Git host the figure degrades to a legible code
+    block rather than to nothing. ``_scale_parts`` documents the four lines it
+    may hold.
+
+    Band labels are listed under the track rather than written along it: three
+    bands on one line collide at any width, and a key also survives the narrow
+    layout, where the track is a few hundred pixels wide.
+
+    Marks are drawn ON the track, so two of them closer together than about a
+    tenth of the range will overlap. That is an authoring constraint, not
+    something to solve here -- a figure needing two cuts that close is a figure
+    making two points, and should be two figures.
+    """
+    lo, hi, bands, marks, note = _scale_parts(body)
     span = (hi[0] - lo[0]) or 1.0
     pct = lambda v: 100 * (v[0] - lo[0]) / span  # noqa: E731 -- one expression, used five times
     track = "".join(
@@ -234,122 +252,152 @@ def _scale(body: list[str]) -> str:
     )
 
 
+@dataclass
+class _Blocks:
+    """The half-finished block the renderer is currently filling, and the output.
+
+    Markdown's block elements are open-ended: a paragraph, list, quote or table
+    ends because something *else* starts, not because it says so. So the loop
+    has to carry whichever one is open, and every branch that begins a new block
+    has to close the last one first.
+
+    That state lived as six locals and a closure inside ``render``, which is
+    what made the function long enough to hide its own shape. Named here, the
+    loop reads as what it is -- a dispatch on the line -- and this class holds
+    the only thing it accumulates.
+    """
+
+    out: list[str] = field(default_factory=list)
+    outline: list[tuple[str, str]] = field(default_factory=list)
+    para: list[str] = field(default_factory=list)
+    table: list[str] = field(default_factory=list)
+    items: list[str] = field(default_factory=list)
+    list_tag: str = ""
+    quote: list[str] = field(default_factory=list)
+
+    def flush(self) -> None:
+        """Close whichever block is open. Called before every block-level change."""
+        if self.para:
+            self.out.append(f"<p>{_inline(' '.join(self.para))}</p>")
+            self.para.clear()
+        if self.table:
+            self.out.append(_table(self.table))
+            self.table.clear()
+        if self.items:
+            self.out.append(
+                f"<{self.list_tag}>"
+                + "".join(f"<li>{_inline(i)}</li>" for i in self.items)
+                + f"</{self.list_tag}>"
+            )
+            self.items.clear()
+            self.list_tag = ""
+        if self.quote:
+            self.out.append(f"<blockquote><p>{_inline(' '.join(self.quote))}</p></blockquote>")
+            self.quote.clear()
+
+    def heading(self, level: int, text: str) -> None:
+        """One heading, and its entry in the page outline if it is an ``h2``.
+
+        Only ``h2`` earns an outline row: the sidebar is a page's sections, and
+        listing every ``h3`` under them turns a nine-line contents into forty.
+        """
+        anchor = slug(text)
+        if level == 2:
+            self.outline.append((anchor, text))
+        self.out.append(f'<h{level} id="{_esc(anchor)}">{_inline(text)}</h{level}>')
+
+
+def _fenced(lines: list[str], at: int, lang: str) -> tuple[str, int]:
+    """One fenced block's HTML, and the line after its closing fence.
+
+    ``at`` is the line *after* the opening fence. An unterminated fence runs to
+    the end of the page rather than raising: the alternative is a page that
+    refuses to render because someone forgot three backticks.
+    """
+    body: list[str] = []
+    while at < len(lines) and not _FENCE.match(lines[at].strip()):
+        body.append(lines[at])
+        at += 1
+    if lang == "scale":
+        return _scale(body), at + 1
+    cls = f' class="lang-{_esc(lang)}"' if lang else ""
+    return f"<pre><code{cls}>{_esc(chr(10).join(body))}</code></pre>", at + 1
+
+
 def render(text: str) -> Page:
     """Turn one documentation page's Markdown into front matter plus HTML."""
     lines = text.replace("\r\n", "\n").split("\n")
     meta, at = _front_matter(lines)
-    out: list[str] = []
-    outline: list[tuple[str, str]] = []
-    para: list[str] = []
-    table: list[str] = []
-    items: list[str] = []
-    list_tag = ""
-    quote: list[str] = []
-
-    def flush() -> None:
-        """Close whichever block is open. Called before every block-level change."""
-        nonlocal list_tag
-        if para:
-            out.append(f"<p>{_inline(' '.join(para))}</p>")
-            para.clear()
-        if table:
-            out.append(_table(table))
-            table.clear()
-        if items:
-            out.append(
-                f"<{list_tag}>"
-                + "".join(f"<li>{_inline(i)}</li>" for i in items)
-                + f"</{list_tag}>"
-            )
-            items.clear()
-            list_tag = ""
-        if quote:
-            out.append(f"<blockquote><p>{_inline(' '.join(quote))}</p></blockquote>")
-            quote.clear()
+    b = _Blocks()
 
     while at < len(lines):
-        line = lines[at]
-        stripped = line.strip()
+        stripped = lines[at].strip()
 
         fence = _FENCE.match(stripped)
         if fence:
-            flush()
-            at += 1
-            body: list[str] = []
-            while at < len(lines) and not _FENCE.match(lines[at].strip()):
-                body.append(lines[at])
-                at += 1
-            at += 1  # the closing fence
-            lang = fence.group(1)
-            if lang == "scale":
-                out.append(_scale(body))
-            else:
-                cls = f' class="lang-{_esc(lang)}"' if lang else ""
-                out.append(f"<pre><code{cls}>{_esc(chr(10).join(body))}</code></pre>")
+            b.flush()
+            html_, at = _fenced(lines, at + 1, fence.group(1))
+            b.out.append(html_)
             continue
 
         if not stripped:
-            flush()
+            b.flush()
             at += 1
             continue
 
         heading = _HEADING.match(stripped)
         if heading:
-            flush()
-            level, text_ = len(heading.group(1)), heading.group(2)
-            anchor = slug(text_)
-            if level == 2:
-                outline.append((anchor, text_))
-            out.append(f'<h{level} id="{_esc(anchor)}">{_inline(text_)}</h{level}>')
+            b.flush()
+            b.heading(len(heading.group(1)), heading.group(2))
             at += 1
             continue
 
         # A rule, but only where it cannot be a table's alignment row -- which is
         # the same three hyphens, and is the row that tells a paragraph of pipes
         # from a table.
-        if _RULE.match(stripped) and not table:
-            flush()
-            out.append("<hr>")
+        if _RULE.match(stripped) and not b.table:
+            b.flush()
+            b.out.append("<hr>")
             at += 1
             continue
 
         if stripped.startswith("|"):
-            if _TABLE_ALIGN.match(stripped) and table:
+            if _TABLE_ALIGN.match(stripped) and b.table:
                 at += 1  # alignment row: consumed, not rendered
                 continue
-            if not table:
-                flush()
-            table.append(stripped)
+            if not b.table:
+                b.flush()
+            b.table.append(stripped)
             at += 1
             continue
 
         if stripped.startswith("> "):
-            if not quote:
-                flush()
-            quote.append(stripped[2:])
+            if not b.quote:
+                b.flush()
+            b.quote.append(stripped[2:])
             at += 1
             continue
 
         ordered = _ORDERED.match(stripped)
         if stripped.startswith("- ") or ordered:
             tag = "ol" if ordered else "ul"
-            if list_tag != tag:
-                flush()
-                list_tag = tag
-            items.append(ordered.group(2) if ordered else stripped[2:])
+            if b.list_tag != tag:
+                b.flush()
+                b.list_tag = tag
+            b.items.append(ordered.group(2) if ordered else stripped[2:])
             at += 1
             continue
 
         # A continuation line inside a list item or a quote belongs to it, not to
         # a new paragraph: a page wraps its prose at the repo's column width, and
         # a wrapped bullet must not break the list in half.
-        if items:
-            items[-1] += " " + stripped
-        elif quote:
-            quote.append(stripped)
+        if b.items:
+            b.items[-1] += " " + stripped
+        elif b.quote:
+            b.quote.append(stripped)
         else:
-            para.append(stripped)
+            b.para.append(stripped)
         at += 1
 
-    flush()
-    return Page(meta=meta, html="".join(out), outline=outline)
+    b.flush()
+    return Page(meta=meta, html="".join(b.out), outline=b.outline)

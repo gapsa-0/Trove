@@ -228,40 +228,51 @@ def dup_groups(
             LIMIT ? OFFSET ?""",
         (*rp, limit, offset),
     ).fetchall()
-    out = []
-    for g in groups:
-        members = conn.execute(
-            """SELECT f.id, f.media_type, f.rel_path, m.role,
-                      r.path AS root,
-                      CASE
-                        WHEN m.role='canonical' THEN 'canonical'
-                        WHEN f.sha256 = canonical.sha256 THEN 'identical'
-                        ELSE 'visual'
-                      END AS match_type
-               FROM dup_members m JOIN files f ON f.id=m.file_id
-               JOIN roots r ON r.id=f.root_id
-               JOIN files canonical ON canonical.id=?
-               WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
-            (g["canonical_file_id"], g["id"]),
-        ).fetchall()
-        out.append(
-            {
-                "id": g["id"],
-                "method": g["method"],
-                "count": g["member_count"],
-                "reclaimable": g["redundant_bytes"],
-                "canonical_id": g["canonical_file_id"],
-                "members": [
-                    {
-                        "id": m["id"],
-                        "type": m["media_type"],
-                        "role": m["role"],
-                        "match_type": m["match_type"],
-                        "name": os.path.basename(m["rel_path"]),
-                        "folder": os.path.dirname(m["rel_path"]),
-                    }
-                    for m in members
-                ],
-            }
-        )
+    out = [
+        {
+            "id": g["id"],
+            "method": g["method"],
+            "count": g["member_count"],
+            "reclaimable": g["redundant_bytes"],
+            "canonical_id": g["canonical_file_id"],
+            "members": _group_members(conn, g["canonical_file_id"], g["id"]),
+        }
+        for g in groups
+    ]
     return {"groups": out, "offset": offset, "count": len(out), "total": total}
+
+
+def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -> list[dict]:
+    """One group's members, canonical first, each labelled with how it matched.
+
+    ``match_type`` is computed here rather than stored because it is a fact
+    about a *pair* -- this file against this group's canonical -- and the same
+    file can be an identical copy in one group and a visual match in another.
+    The canonical is joined in by id for that comparison rather than read in a
+    second query, so the label and the row it labels come from one snapshot.
+    """
+    members = conn.execute(
+        """SELECT f.id, f.media_type, f.rel_path, m.role,
+                  r.path AS root,
+                  CASE
+                    WHEN m.role='canonical' THEN 'canonical'
+                    WHEN f.sha256 = canonical.sha256 THEN 'identical'
+                    ELSE 'visual'
+                  END AS match_type
+           FROM dup_members m JOIN files f ON f.id=m.file_id
+           JOIN roots r ON r.id=f.root_id
+           JOIN files canonical ON canonical.id=?
+           WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
+        (canonical_id, group_id),
+    ).fetchall()
+    return [
+        {
+            "id": m["id"],
+            "type": m["media_type"],
+            "role": m["role"],
+            "match_type": m["match_type"],
+            "name": os.path.basename(m["rel_path"]),
+            "folder": os.path.dirname(m["rel_path"]),
+        }
+        for m in members
+    ]

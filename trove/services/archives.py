@@ -66,55 +66,65 @@ def archives(cfg: Config) -> list[dict[str, Any]]:
             "covers": [],
         }
         if Path(db_path).is_file():
-            conn = db.open_readonly(db_path)
-            try:
-                # Two aggregates, two indexes. A third once counted how many
-                # files had been hashed, which nothing on the start page or
-                # anywhere else ever showed -- and `sha256` is in no index, so
-                # that unread number was what pulled the entire table off disk.
-                stats = conn.execute(
-                    f"""SELECT COUNT(*) c, COALESCE(SUM(size),0) s
-                        FROM files f WHERE {_VISIBLE}"""
-                ).fetchone()
-                last = conn.execute(
-                    "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
-                ).fetchone()
-                # A few canonical image ids for the start-page cover mosaic. Served
-                # by the root-scoped /archivethumb route (no archive is "open" on
-                # the picker). Newest first so the cover reflects recent additions.
-                covers = [
-                    r[0]
-                    for r in conn.execute(
-                        f"""SELECT f.id FROM files f
-                        WHERE {_NOT_HIDDEN} AND f.media_type='image'
-                        ORDER BY f.id DESC LIMIT 5"""
-                    ).fetchall()
-                ]
-                # "Has this archive ever been walked end to end", asked through
-                # the same function the pipeline asks it with. It is emphatically
-                # not "is the newest scan_runs row still open": backing out of an
-                # archive cancels its scan and leaves a row that stays open
-                # forever, because an archive already covered never queues
-                # another scan to replace it. Reading that as "still being read"
-                # made a fully catalogued 97k-file archive say "so far"
-                # permanently, while the pipeline had it settled and was three
-                # stages further on.
-                #
-                # A run that skipped a file still being copied does not count
-                # either -- it walked the whole tree without covering it, which
-                # is the same thing scan_settled refuses to settle on.
-                covered = db.last_completed_scan(conn, rid)
-                row.update(
-                    files=stats["c"],
-                    size=stats["s"],
-                    covers=covers,
-                    partial=covered is None or bool(covered["files_unstable"]),
-                    last_scan=(last["finished_at"] or last["started_at"]) if last else None,
-                )
-            finally:
-                conn.close()
+            row.update(_catalogued(db_path, rid))
         out.append(row)
     return out
+
+
+def _catalogued(db_path: str, rid: int) -> dict[str, Any]:
+    """What one archive's database says about it, for the picker card.
+
+    Split from ``archives`` so that the loop above reads as what it is -- the
+    shape of a card, and the zeroed defaults an archive with no database yet
+    gets -- rather than burying it under the queries.
+    """
+    conn = db.open_readonly(db_path)
+    try:
+        # Two aggregates, two indexes. A third once counted how many
+        # files had been hashed, which nothing on the start page or
+        # anywhere else ever showed -- and `sha256` is in no index, so
+        # that unread number was what pulled the entire table off disk.
+        stats = conn.execute(
+            f"""SELECT COUNT(*) c, COALESCE(SUM(size),0) s
+                FROM files f WHERE {_VISIBLE}"""
+        ).fetchone()
+        last = conn.execute(
+            "SELECT started_at, finished_at FROM scan_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        # A few canonical image ids for the start-page cover mosaic. Served
+        # by the root-scoped /archivethumb route (no archive is "open" on
+        # the picker). Newest first so the cover reflects recent additions.
+        covers = [
+            r[0]
+            for r in conn.execute(
+                f"""SELECT f.id FROM files f
+                WHERE {_NOT_HIDDEN} AND f.media_type='image'
+                ORDER BY f.id DESC LIMIT 5"""
+            ).fetchall()
+        ]
+        # "Has this archive ever been walked end to end", asked through
+        # the same function the pipeline asks it with. It is emphatically
+        # not "is the newest scan_runs row still open": backing out of an
+        # archive cancels its scan and leaves a row that stays open
+        # forever, because an archive already covered never queues
+        # another scan to replace it. Reading that as "still being read"
+        # made a fully catalogued 97k-file archive say "so far"
+        # permanently, while the pipeline had it settled and was three
+        # stages further on.
+        #
+        # A run that skipped a file still being copied does not count
+        # either -- it walked the whole tree without covering it, which
+        # is the same thing scan_settled refuses to settle on.
+        covered = db.last_completed_scan(conn, rid)
+        return {
+            "files": stats["c"],
+            "size": stats["s"],
+            "covers": covers,
+            "partial": covered is None or bool(covered["files_unstable"]),
+            "last_scan": (last["finished_at"] or last["started_at"]) if last else None,
+        }
+    finally:
+        conn.close()
 
 
 def features(cfg: Config) -> list[dict[str, Any]]:
