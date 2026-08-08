@@ -164,6 +164,29 @@ def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
     """
     with open_app("overview") as app:
         app.wait_for("#pause-btn")
+        # Let the app's own first poll finish before touching fetch, because
+        # stubbing cannot recall a request that is already in flight -- and this
+        # test is *about* the state before any snapshot, so one arriving late is
+        # not a detail of the setup but the thing being suppressed. It lands in
+        # `refreshPipeline`, which assigns `S.pipeline` with no generation guard,
+        # so the null set below is overwritten and the button re-enabled. On a
+        # developer machine that reply comes back before the stub is even
+        # installed; on a loaded runner it arrived between the wait and the
+        # assertion, which is what made this the browser tier's flakiest test.
+        #
+        # Stop the poller so no *new* request is issued, then wait for the one
+        # outstanding to have landed -- the placeholder gives way to real cards
+        # exactly when it does.
+        app.tab.evaluate(
+            "import('/static/js/overview.js')"
+            ".then(m => { m.stopPoll(); window.__pollStopped = true; })"
+        )
+        app.tab.wait_for("window.__pollStopped === true", what="the poller to stop")
+        app.tab.wait_for(
+            "!(document.getElementById('syncstatus') || {}).textContent"
+            ".includes('Checking for work')",
+            what="the first pipeline snapshot to land",
+        )
         app.tab.evaluate("""
           (() => {
             window.__realFetch = window.fetch;
@@ -186,7 +209,18 @@ def test_the_pause_button_does_not_guess_while_it_is_still_checking(open_app):
             what="the pause button to say it does not know yet",
         )
 
-        assert app.tab.evaluate("document.getElementById('pause-btn').disabled") is True
+        # Both halves in one evaluate: "says it does not know" and "cannot be
+        # pressed" are one claim, and `renderPauseControl` sets them in one
+        # synchronous pass. Read over two round-trips they could only ever
+        # disagree because something repainted in between -- which is a fact
+        # about the test, not about the button.
+        assert (
+            app.tab.evaluate("""
+          (() => { const b = document.getElementById('pause-btn');
+                   return b.textContent === 'Checking…' && b.disabled === true; })()
+        """)
+            is True
+        )
         # ...and stays inert if something reaches it anyway.
         app.tab.evaluate("togglePipelinePause()")
         assert app.tab.evaluate("window.__pausePosts") == 0, "it posted a pause it could not know"
