@@ -29,7 +29,7 @@ from trove.web import server
 # check, and once the chains are gone it is a plain read of the tables.
 # ---------------------------------------------------------------------------
 
-# GET, exact (33: 29 /api + 4 non-api).
+# GET, exact (35: 31 /api + 4 non-api).
 GET_EXACT = {
     "/api/health",
     "/api/archives",
@@ -60,6 +60,11 @@ GET_EXACT = {
     "/api/browse/semantic/search",
     "/api/browse/text/status",
     "/api/browse/text/search",
+    # Added with the rebuilt media viewer (c4bce51) and never declared here, so
+    # this guard had been failing since. It is declared rather than covered:
+    # nothing in the suite drives ``routes/search.py::similar`` yet, and this
+    # file's job is to say what the surface *is*, not to pretend otherwise.
+    "/api/similar",
     "/api/pipeline",
     "/",
     "/index.html",

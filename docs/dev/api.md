@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**75 routes**: 35 GET (exact) + 12 GET (prefix) + 28 POST.
+**76 routes**: 35 GET (exact) + 12 GET (prefix) + 29 POST.
 
 ## GET -- exact path
 
@@ -66,7 +66,7 @@ see the module docstring in `routes/__init__.py`.
 | `/api/pet/` | One pet's detail page: their detections, paginated. | `trove/web/routes/pets.py::group` |
 | `/icon-` | The app icon PNG, 512px or 192px depending on which the request path names. | `trove/web/routes/static.py::icon` |
 | `/static/` | One of the app's own stylesheets or scripts, by ``css/<name>`` or ``js/<name>``. | `trove/web/routes/static.py::app_asset` |
-| `/vendor/` | A vendored static asset by filename, or 404 if it isn't under the vendor directory. | `trove/web/routes/static.py::vendor` |
+| `/vendor/` | A vendored static asset by filename, or 404 if it isn't one. | `trove/web/routes/static.py::vendor` |
 | `/archivethumb/` | A thumbnail scoped to a named archive, for the start-page cover mosaic where nothing is 'open' yet. | `trove/web/routes/media.py::archive_thumb` |
 | `/thumb/` | A file's thumbnail, generated and cached on first request. | `trove/web/routes/media.py::thumb` |
 | `/faceThumb/` | A cropped face thumbnail, cut from the source photo or (for a video detection) its re-derived keyframe. | `trove/web/routes/media.py::face_thumb` |
@@ -83,6 +83,7 @@ see the module docstring in `routes/__init__.py`.
 | `/api/archive/close` | Close the currently open archive, stopping its background jobs. | `trove/web/routes/archives.py::close` |
 | `/api/archive/remove` | Forget an archive: delete its private database and cache wholesale. | `trove/web/routes/archives.py::remove` |
 | `/api/pipeline/pause` | Pause or resume the whole pipeline, or a single stage's card if `stage` is given. | `trove/web/routes/pipeline.py::pause` |
+| `/api/pipeline/changed` | Files may have arrived in this archive's folder; check sooner than the poll would have. | `trove/web/routes/pipeline.py::changed` |
 | `/api/faces/person/rename` | Rename a person cluster. | `trove/web/routes/people.py::rename_person` |
 | `/api/faces/reassign` | Move one face onto a named person and pin it there so re-clustering keeps it. | `trove/web/routes/people.py::reassign` |
 | `/api/faces/merge` | Merge two person clusters the user confirmed are the same, immediately and durably. | `trove/web/routes/people.py::merge` |
