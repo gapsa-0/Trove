@@ -119,14 +119,43 @@ def test_a_photo_missing_its_last_bytes_is_still_thumbnailed(tmp_path: Path):
         assert max(thumbnail.size) == 320
 
 
-def test_a_file_that_is_not_a_picture_at_all_still_has_no_thumbnail(tmp_path: Path):
+def test_a_file_that_is_not_a_picture_at_all_still_has_no_thumbnail(tmp_path: Path, caplog):
     """Tolerating a missing tail must not turn into tolerating anything: a file
     the decoder cannot identify has nothing to draw, and the route needs the
-    None to know to answer 404 rather than send it."""
+    None to know to answer 404 rather than send it.
+
+    Reported in one line, not a traceback. Every screen asks for a thumbnail
+    of whatever it is showing, so an archive holding documents and zip files
+    hits this constantly -- 781 times in three days of one real log, each with
+    the same thirteen Pillow frames under it."""
     not_a_picture = tmp_path / "notes.jpg"
     not_a_picture.write_bytes(b"UUUU" * 2048)
 
-    assert thumb_for(str(tmp_path / "cache"), 1, not_a_picture) is None
+    with caplog.at_level("WARNING", logger="trove.thumbnails"):
+        assert thumb_for(str(tmp_path / "cache"), 1, not_a_picture) is None
+
+    assert len(caplog.records) == 1
+    record = caplog.records[0]
+    assert not record.exc_info, "an unreadable file is an ordinary outcome, not a traceback"
+    assert "notes.jpg" in record.getMessage()
+
+
+def test_a_bug_in_the_thumbnailer_still_gets_its_traceback(tmp_path: Path, monkeypatch, caplog):
+    """The point of quietening the line above is that a rare surprise stays as
+    loud as it was. Anything that is not the decoder refusing the file keeps
+    the frames that say where it came from."""
+    from trove import thumbnails
+
+    source = tmp_path / "source.jpg"
+    Image.new("RGB", (40, 24), "red").save(source)
+    monkeypatch.setattr(
+        thumbnails, "_apply_rotation", lambda *a, **k: (_ for _ in ()).throw(TypeError("misused"))
+    )
+
+    with caplog.at_level("WARNING", logger="trove.thumbnails"):
+        assert thumb_for(str(tmp_path / "cache"), 1, source) is None
+
+    assert caplog.records[0].exc_info is not None
 
 
 def test_an_upright_photo_is_never_re_encoded(tmp_path: Path):

@@ -112,6 +112,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A video frame ffmpeg refuses to produce is written to the log with its exit
   status and ffmpeg's own reason, instead of leaving no trace.
 
+- A file the image decoder cannot read is logged as one line rather than a
+  traceback. An archive holds plenty of files that are not pictures and every
+  screen asks for a thumbnail of what it shows, so this is an ordinary
+  outcome; three days of one real log held 781 of them. Anything that is not
+  the decoder refusing the file keeps its traceback.
+
 ## [0.2.1] - 2026-08-08
 
 ### Fixed

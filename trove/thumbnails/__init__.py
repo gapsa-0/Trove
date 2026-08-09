@@ -163,6 +163,31 @@ def _try_pillow() -> tuple[ModuleType, ModuleType] | None:
     return Image, ImageOps
 
 
+def _blames_the_file(exc: Exception) -> bool:
+    """Whether the decoder is saying "this is not something I can read".
+
+    An archive is full of files that are not pictures, and every screen asks
+    for a thumbnail of whatever it is showing -- so this is an ordinary
+    outcome, reported in one line. Three days of this machine's log held 781
+    of them, each with a full Pillow traceback under it: html, svg, exe, txt,
+    md, csv, xls, ipynb, xlsx, pptx, odt, doc, zip. Thirteen frames apiece,
+    always the same thirteen, saying only what the first line already said.
+
+    ``OSError`` covers Pillow's own ``UnidentifiedImageError``, which is a
+    subclass, and the read failures under it. A decompression bomb is a
+    refusal about the file too. Anything else is a bug in this module and
+    keeps its traceback, which is the distinction worth drawing: a rare
+    surprise should still be as loud as it was.
+    """
+    if isinstance(exc, OSError):
+        return True
+    try:
+        from PIL import Image
+    except ImportError:  # pragma: no cover - Pillow is present if a decode ran
+        return False
+    return isinstance(exc, Image.DecompressionBombError)
+
+
 def _why(stderr: bytes) -> str:
     """The last thing ffmpeg said before giving up.
 
@@ -392,8 +417,14 @@ def face_thumb_for(
             crop = crop.resize((size, size), resampling)
             crop.save(tmp, "JPEG", quality=82)
         return tp
-    except Exception:
-        logger.warning("face thumbnail failed for face_id=%s src=%s", face_id, src, exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "no face crop for face_id=%s src=%s: %s",
+            face_id,
+            src,
+            exc,
+            exc_info=not _blames_the_file(exc),
+        )
         return None
 
 
@@ -433,8 +464,10 @@ def _thumb_pdf(tp: Path, src: Path, size: int) -> Path | None:
         finally:
             doc.close()
         return tp
-    except Exception:
-        logger.warning("pdf thumbnail failed for src=%s", src, exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "no pdf thumbnail for src=%s: %s", src, exc, exc_info=not _blames_the_file(exc)
+        )
         return None
 
 
@@ -458,8 +491,14 @@ def thumb_for(
             im.thumbnail((size, size))
             im.convert("RGB").save(tmp, "JPEG", quality=80)
         return tp
-    except Exception:
-        logger.warning("thumbnail failed for fid=%s src=%s", fid, src, exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "no thumbnail for fid=%s src=%s: %s",
+            fid,
+            src,
+            exc,
+            exc_info=not _blames_the_file(exc),
+        )
         return None
 
 
@@ -490,6 +529,12 @@ def upright_for(
             im = _apply_rotation(ImageOps.exif_transpose(im), rotate)
             im.convert("RGB").save(tmp, "JPEG", quality=90)
         return tp
-    except Exception:
-        logger.warning("upright render failed for fid=%s src=%s", fid, src, exc_info=True)
+    except Exception as exc:
+        logger.warning(
+            "no upright render for fid=%s src=%s: %s",
+            fid,
+            src,
+            exc,
+            exc_info=not _blames_the_file(exc),
+        )
         return None
