@@ -39,20 +39,49 @@ def thumb(req: Request) -> FileBody | Json:
     return _thumb_body(tp, src)
 
 
-def _thumb_body(tp: Path | None, src: Path) -> FileBody | Json:
-    """The generated thumbnail, or the original when that IS an image.
+# What a browser will actually paint inside an ``<img>``. Named for that and
+# not for "images", because the two are different sets: TIFF and HEIC are
+# photographs no desktop browser decodes, while SVG is not a photograph and
+# every browser draws it. Wider than the catalogue's IMAGE_EXTS in places and
+# narrower in others, so it is written out here rather than derived.
+_BROWSER_RENDERS = {
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".png",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".avif",
+    ".ico",
+    ".svg",
+}
 
-    Falling back to the original unconditionally meant an ``<img src="/thumb/">``
-    for a PDF received a whole PDF: undecodable, so the tile showed a broken
-    image, and the archive shipped a multi-megabyte document to draw a 62 px
-    square. A file we cannot render a thumbnail for and that is not itself an
-    image is simply absent, which is what the grid's own fallback icon is for.
+
+def _thumb_body(tp: Path | None, src: Path) -> FileBody | Json:
+    """The generated thumbnail, or the original where a browser can draw it.
+
+    The fallback exists for one case and is worth keeping for it: a photo the
+    decoder here refuses -- a JPEG whose last bytes are missing, most often --
+    which every browser renders anyway. Handing over the original is how the
+    tile shows a picture instead of an icon.
+
+    Which is why this asks whether the *browser* can decode the file, rather
+    than whether we happen to know it as a video or a PDF. Under that older
+    test everything else fell through to "send the whole file": a .docx, a
+    camera RAW, a voice note, a backup .zip. None of them can become a
+    picture, so the tile broke regardless -- after downloading the file to
+    find out. The viewer's filmstrip asks for a thumbnail of every neighbour
+    in the gallery, and this archive holds .zip files of 29 GB; with six
+    connections per origin, one of those answers stalls every other image on
+    the page behind it.
+
+    A file that cannot be drawn is simply absent, which is what the grid's own
+    fallback icon is for.
     """
     if tp:
         return FileBody(tp)
-    if src.suffix.lower() in thumbnails.VIDEO_EXTS or src.suffix.lower() == ".pdf":
-        return NOT_FOUND
-    return FileBody(src)
+    return FileBody(src) if src.suffix.lower() in _BROWSER_RENDERS else NOT_FOUND
 
 
 def archive_thumb(req: Request) -> FileBody | Json:

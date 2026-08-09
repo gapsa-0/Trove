@@ -15,6 +15,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A grid full of thumbnails no longer stalls because of one file in it.**
+  When Trove could not draw a thumbnail for something, it sent the browser the
+  whole file instead and let it try — so a tile for a spreadsheet quietly
+  downloaded the spreadsheet, one for a camera RAW downloaded 25 MB, and the
+  viewer, which fetches a thumbnail for every file on either side of the one
+  you opened, could start sending a multi-gigabyte backup archive to draw a
+  62-pixel square. A browser only fetches a handful of pictures at a time, so
+  every other tile on the screen waited behind that, and the ones that gave up
+  waiting stayed blank until you navigated away and back.
+
+  Files nothing can be drawn from now simply show their file-type icon, which
+  is what it was always for. Photos are unaffected — including ones with the
+  last few bytes missing, which the browser is still asked to draw because it
+  makes a better job of those than Trove does.
+
 - **Videos have their thumbnails back, and are searchable by description
   again.** Since the previous release nothing could be got out of a video at
   all: the grid showed a bare film icon for every clip, no face or pet was
