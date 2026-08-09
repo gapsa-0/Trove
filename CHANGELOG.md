@@ -15,6 +15,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Thumbnails are not fetched again every time you look at them.** Nothing
+  Trove sent the browser said how long it could be kept or how to tell whether
+  it had changed, so every screen change re-downloaded the whole grid and every
+  arrow press in the viewer re-downloaded the whole filmstrip — and each of
+  those requests rebuilt the picture from the original file if it was not
+  already on disk. Grids paint quickly on a second visit now, and moving
+  between screens no longer competes with indexing for the disk.
+
 - **A grid full of thumbnails no longer stalls because of one file in it.**
   When Trove could not draw a thumbnail for something, it sent the browser the
   whole file instead and let it try — so a tile for a spreadsheet quietly

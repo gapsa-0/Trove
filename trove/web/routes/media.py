@@ -10,6 +10,21 @@ from ... import thumbnails
 from ...services import browse, people, pets
 from ._request import NOT_FOUND, FileBody, Json, Request
 
+# How long a browser may reuse a thumbnail without asking again.
+#
+# Every one of these URLs is a file id, and the bytes behind an id are not
+# fixed: the pipeline settles a photo's rotation after the grid has already
+# drawn it, hashing changes the cache key from the id to the content, and an
+# edited file keeps its id. So "immutable" would be wrong -- a photo caught
+# mid-indexing would stay sideways in the browser for the rest of the session.
+#
+# A minute is chosen against what actually costs: the grid re-renders on every
+# screen change and the filmstrip rebuilds on every arrow press, so the same
+# hundred tiles are asked for over and over within seconds. Answering none of
+# those is the win. Past the minute the ETag makes the question cheap -- a 304
+# and no body -- and a thumbnail that did change is picked up then.
+MEDIA_CACHE = "private, max-age=60"
+
 
 # -- media serving ----------------------------------------------------
 # Thumbnails and originals are requested by bare id with no ``root``
@@ -80,8 +95,10 @@ def _thumb_body(tp: Path | None, src: Path) -> FileBody | Json:
     fallback icon is for.
     """
     if tp:
-        return FileBody(tp)
-    return FileBody(src) if src.suffix.lower() in _BROWSER_RENDERS else NOT_FOUND
+        return FileBody(tp, cache_control=MEDIA_CACHE)
+    if src.suffix.lower() not in _BROWSER_RENDERS:
+        return NOT_FOUND
+    return FileBody(src, cache_control=MEDIA_CACHE)
 
 
 def archive_thumb(req: Request) -> FileBody | Json:
@@ -129,9 +146,9 @@ def face_thumb(req: Request) -> FileBody | Json:
         tp = thumbnails.face_thumb_for(
             cache_dir, face_id, frame, box, sha256=sha256, rotate=0, variant=frame_offset
         )
-        return FileBody(tp if tp else frame)
+        return FileBody(tp if tp else frame, cache_control=MEDIA_CACHE)
     tp = thumbnails.face_thumb_for(cache_dir, face_id, src, box, sha256=sha256, rotate=rotate)
-    return FileBody(tp if tp else src)
+    return FileBody(tp if tp else src, cache_control=MEDIA_CACHE)
 
 
 def animal_thumb(req: Request) -> FileBody | Json:
@@ -154,9 +171,9 @@ def animal_thumb(req: Request) -> FileBody | Json:
         tp = thumbnails.face_thumb_for(
             cache_dir, detection_id, frame, box, sha256=sha256, rotate=0, variant=frame_offset
         )
-        return FileBody(tp if tp else frame)
+        return FileBody(tp if tp else frame, cache_control=MEDIA_CACHE)
     tp = thumbnails.face_thumb_for(cache_dir, detection_id, src, box, sha256=sha256, rotate=rotate)
-    return FileBody(tp if tp else src)
+    return FileBody(tp if tp else src, cache_control=MEDIA_CACHE)
 
 
 def original(req: Request) -> FileBody | Json:
@@ -172,4 +189,4 @@ def original(req: Request) -> FileBody | Json:
     # A photo stored sideways is served from an upright re-encode; every
     # other file is served as its own untouched bytes.
     up = thumbnails.upright_for(cache_dir, fid, src, rotate, sha256=sha256)
-    return FileBody(up if up else src)
+    return FileBody(up if up else src, cache_control=MEDIA_CACHE)

@@ -6,9 +6,11 @@ never taken from the request), so there is no path-traversal surface.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import mimetypes
+import os
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +32,39 @@ _CHUNK = 256 * 1024
 # single range, which is a different response from the one that was asked for.
 # A list is legal to refuse, so it is refused rather than half-answered.
 _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)\Z")
+
+
+def _etag(path: Path, stat: os.stat_result) -> str:
+    """A validator for one file on disk, as a strong ETag.
+
+    Hashed rather than assembled from the parts, because the path is user data
+    -- a filename may hold a quote, a comma or a newline, any of which would
+    break out of the header field it is written into. The inputs are the ones
+    that change when the bytes do: which file this is, how long it is, and when
+    it was last written.
+
+    Cheap on purpose: this is computed for every media response, and the point
+    of it is to *avoid* reading the file.
+    """
+    key = f"{path}|{stat.st_size}|{stat.st_mtime_ns}".encode()
+    return f'"{hashlib.blake2b(key, digest_size=16).hexdigest()}"'
+
+
+def _matches(if_none_match: str | None, etag: str) -> bool:
+    """Whether a client's ``If-None-Match`` already names this body.
+
+    ``*`` matches anything that exists. Otherwise the header is a list, and a
+    browser revalidating a cached entry may return the tag marked weak
+    (``W/"..."``) even when it was given a strong one -- so the comparison
+    drops that prefix rather than missing the match and resending the file,
+    which is the whole cost this is here to avoid.
+    """
+    if not if_none_match:
+        return False
+    if if_none_match.strip() == "*":
+        return True
+    candidates = (tag.strip().removeprefix("W/") for tag in if_none_match.split(","))
+    return etag in candidates
 
 
 def _parse_range(header: str, size: int) -> tuple[int, int] | None:
@@ -125,11 +160,28 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _not_modified(self, etag: str, cache_control: str | None) -> None:
+        """304 for a client that already holds this exact body.
+
+        No ``Content-Length``: RFC 9110 forbids a body here, and a length
+        beside no bytes is how a connection ends up out of step with what the
+        client is reading.
+        """
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
+        self.end_headers()
+
     def _send_file(
         self, path: Path, content_type: str | None = None, cache_control: str | None = None
     ) -> None:
         ctype = content_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
-        size = path.stat().st_size
+        stat = path.stat()
+        size = stat.st_size
+        etag = _etag(path, stat)
+        if _matches(self.headers.get("If-None-Match"), etag):
+            return self._not_modified(etag, cache_control)
         header = self.headers.get("Range")
         rng = _parse_range(header, size) if header else None
         start, end, status = 0, size - 1, 200
@@ -143,6 +195,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(length))
+        self.send_header("ETag", etag)
         if cache_control:
             self.send_header("Cache-Control", cache_control)
         if status == 206:
