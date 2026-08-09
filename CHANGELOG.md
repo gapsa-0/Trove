@@ -29,6 +29,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pet detection as "there is nobody in this video" — and neither would have
   looked again on its own.
 
+  Five video formats were additionally never given a thumbnail even before
+  that, and for longer: AVCHD camcorder clips (`.mts`, `.m2ts`), `.3g2` phone
+  video, `.flv` and `.swf`. The grid marked them as video but the thumbnailer
+  did not recognise them, so it tried to open them as photographs and, failing
+  that, sent the whole clip to the browser as if it were the picture.
+
 - **"Counting files in this folder" no longer sits on the Indexing card most
   of the time.** Every time the Trove window came back to the front, it threw
   away its record of how many files were in the archive folder and re-counted

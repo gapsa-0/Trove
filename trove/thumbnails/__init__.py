@@ -18,6 +18,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from ..media.types import VIDEO_EXTS as _CATALOGUED_VIDEO_EXTS
 from ..runtime import no_window, tool, tool_env
 
 if TYPE_CHECKING:
@@ -32,7 +33,17 @@ Box = tuple[int, int, int, int]
 
 _HEIF_REGISTERED = False
 
-VIDEO_EXTS = {".mp4", ".mov", ".avi", ".wmv", ".3gp", ".mkv", ".m4v", ".mpg", ".mpeg", ".webm"}
+# Derived from the catalogue's own list rather than written out again, because
+# the two drifted: media/types.py has long called .3g2, .flv, .mts, .m2ts and
+# .swf video -- so the grid drew a film icon for them -- while this set did
+# not, which sent them down the Pillow branch instead of to ffmpeg. Pillow
+# cannot open a video, so they got no thumbnail, and the fallback below then
+# handed the whole clip to an <img>. A camcorder archive is mostly .mts.
+#
+# One list means a format the catalogue learns about is a format ffmpeg is
+# asked about. Dotted here because the callers hold a Path and compare
+# ``suffix``; the catalogue keys off a bare extension column.
+VIDEO_EXTS = {f".{ext}" for ext in _CATALOGUED_VIDEO_EXTS}
 
 # Bump when the extraction logic changes (e.g. a different video seek). The
 # cache key embeds it, so old thumbnails made by earlier logic are ignored and
