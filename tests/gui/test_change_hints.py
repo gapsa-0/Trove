@@ -14,11 +14,13 @@ watcher be optional and best-effort.
 
 from __future__ import annotations
 
+import threading
 import time
 
 from trove.config import Config
 from trove.pipeline import manager as jobs_mod
 from trove.pipeline import watcher
+from trove.scan import walker
 
 
 def _job_manager(tmp_path, monkeypatch):
@@ -138,12 +140,14 @@ def test_the_watcher_follows_the_open_archive(tmp_path, monkeypatch):
     assert w._root_id is None
 
 
-# -- the watch waits for the walk --------------------------------------------
+# -- placing the watch must not stop the app ---------------------------------
 #
-# Placing a recursive watch walks the tree and stats every file, inside Rust,
-# holding the GIL: ~20 s of a wholly unresponsive app on a 150k-file archive on
-# a spinning disk. Opening an archive must not wait for it, and neither must
-# anything else the server is being asked for. See _watch_when_walked.
+# inotify has no recursive mode, so something must enumerate the tree and
+# register each directory. Asking watchfiles to do it means asking Rust to,
+# which it does with the GIL held: one unbroken 11.5 s freeze warm and 24-26 s
+# cold on the 97k-file archive, during which the app serves nothing at all.
+# These hold the shape that avoids it -- the directory list is built in Python,
+# where scandir releases the GIL, and Rust is handed an explicit flat list.
 
 
 def _watching(jm, monkeypatch):
@@ -153,10 +157,11 @@ def _watching(jm, monkeypatch):
     return placed
 
 
-def test_opening_an_archive_does_not_place_the_watch(tmp_path, monkeypatch):
-    """The expensive part is not merely moved off the request thread -- it holds
-    the GIL, so a background thread would stall the app just the same. It waits
-    for a walk instead."""
+def test_opening_an_archive_places_the_watch_straight_away(tmp_path, monkeypatch):
+    """It used to be deferred until the first disk walk, on the theory that a
+    warmed page cache made the setup cheap. Measurement says otherwise -- warm
+    is still 11.5 s -- so the deferral bought nothing and cost every file
+    dropped in before that walk landed."""
     jm = _job_manager(tmp_path, monkeypatch)
     placed = _watching(jm, monkeypatch)
     monkeypatch.setattr(Config, "archive_path", lambda self, aid: str(tmp_path))
@@ -165,58 +170,63 @@ def test_opening_an_archive_does_not_place_the_watch(tmp_path, monkeypatch):
 
     jm.open_archive(1)
 
-    assert placed == []
-    assert jm._watch_owed._owed == (1, str(tmp_path))
-
-
-def test_the_walk_places_the_watch(tmp_path, monkeypatch):
-    """Once a count comes back the tree's metadata is cached, which is the whole
-    point of waiting: the same setup costs ~0.3 s instead of ~20 s."""
-    jm = _job_manager(tmp_path, monkeypatch)
-    placed = _watching(jm, monkeypatch)
-    jm._watch_when_walked(1, str(tmp_path))
-
-    assert jm.disk_count(1, str(tmp_path)) is not None
     assert placed == [(1, str(tmp_path))]
 
 
-def test_the_watch_is_placed_once_however_many_walks_report_in(tmp_path, monkeypatch):
-    """The scheduler's tick and the status endpoint's snapshot both call
-    disk_count and routinely overlap; the debt is claimed under a lock."""
+def test_counting_files_no_longer_places_the_watch(tmp_path, monkeypatch):
+    """disk_count is asked how many files are on disk, several times a minute
+    from two threads. Settling a watch debt from inside it made an expensive,
+    once-per-archive action a side effect of a routine reading."""
     jm = _job_manager(tmp_path, monkeypatch)
     placed = _watching(jm, monkeypatch)
-    jm._watch_when_walked(1, str(tmp_path))
 
     for _ in range(5):
-        jm.disk_count(1, str(tmp_path))
+        assert jm.disk_count(1, str(tmp_path)) is not None
 
-    assert placed == [(1, str(tmp_path))]
-
-
-def test_a_missing_folder_places_no_watch(tmp_path, monkeypatch):
-    """disk_count answers None for a folder that is gone -- an unplugged drive
-    is not something to start watching, and the debt stays owed for when it
-    comes back."""
-    jm = _job_manager(tmp_path, monkeypatch)
-    placed = _watching(jm, monkeypatch)
-    gone = str(tmp_path / "unplugged")
-    jm._watch_when_walked(1, gone)
-
-    assert jm.disk_count(1, gone) is None
     assert placed == []
-    assert jm._watch_owed._owed == (1, gone)
 
 
-def test_closing_the_archive_cancels_a_watch_not_yet_placed(tmp_path, monkeypatch):
-    """A walk already in flight can finish after the close. Without cancelling
-    the debt it would start watching an archive the user has just left."""
+def test_the_directory_list_is_built_in_python(tmp_path):
+    """The property the whole fix rests on: this list is produced by scandir,
+    which releases the GIL, rather than by the Rust walk that does not."""
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    (tmp_path / "a" / "photo.jpg").write_bytes(b"x")
+
+    found = set(walker.iter_dirs(tmp_path))
+
+    assert found == {tmp_path, tmp_path / "a", tmp_path / "a" / "b"}
+
+
+def test_a_folder_that_is_gone_is_not_watched(tmp_path):
+    """An unplugged drive is not something to start watching, and the poll
+    already reports it as not mounted."""
+    w = watcher.ArchiveWatcher(lambda rid: None)
+
+    assert w._watch_pass(1, str(tmp_path / "unplugged"), threading.Event()) is False
+
+
+def test_a_new_directory_asks_for_the_watch_to_be_replaced(tmp_path):
+    """A non-recursive watch covers the directories it was given and nothing
+    below them, so a folder dropped into the archive has to re-place it --
+    otherwise files copied in afterwards are never reported."""
+    from watchfiles import Change
+
+    (tmp_path / "added").mkdir()
+
+    assert watcher._added_directory({(Change.added, str(tmp_path / "added"))}) is True
+    # A file is the common case and must not cost a re-place.
+    (tmp_path / "photo.jpg").write_bytes(b"x")
+    assert watcher._added_directory({(Change.added, str(tmp_path / "photo.jpg"))}) is False
+    # Nor a directory that was only modified: it is already covered.
+    assert watcher._added_directory({(Change.modified, str(tmp_path / "added"))}) is False
+
+
+def test_closing_the_archive_stops_the_watch(tmp_path, monkeypatch):
     jm = _job_manager(tmp_path, monkeypatch)
-    placed = _watching(jm, monkeypatch)
+    stopped = []
+    monkeypatch.setattr(jm._watcher, "stop", lambda: stopped.append(True))
     jm._open_root_id = 1
-    jm._watch_when_walked(1, str(tmp_path))
 
     jm.close_archive(1)
-    jm.disk_count(1, str(tmp_path))
 
-    assert placed == []
-    assert jm._watch_owed._owed is None
+    assert stopped == [True]

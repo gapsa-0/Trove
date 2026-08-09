@@ -1,14 +1,14 @@
 """The work the manager does *around* jobs rather than as jobs.
 
-Four things live here, and what unites them is what they are not. None is a
+Three things live here, and what unites them is what they are not. None is a
 pipeline stage, none has a ``Job``, none reports progress and nothing waits for
 a result: they are the housekeeping that decides whether opening an archive
 takes 175 ms or several seconds, and whether a file dropped into a folder is
 noticed in seconds or on the next sweep. Each also owns a lock or a timer of its
 own, which is the practical reason they were worth lifting out of
 ``manager.py`` -- that module's threading contract is about the job registry and
-the write lock, and four unrelated little state machines sitting beside it made
-it read as though they were part of the same argument.
+the write lock, and unrelated little state machines sitting beside it made it
+read as though they were part of the same argument.
 
 They stay callable exactly as before: ``JobManager`` keeps the public names
 (``note_files_changed``, ``warm_for_open``) and delegates, because routes and
@@ -109,64 +109,6 @@ def warm_archives(db_paths: Callable[[], list[str]], stopping: Callable[[], bool
                 conn.close()
     except Exception:
         logger.debug("warm: gave up", exc_info=True)
-
-
-class OwedWatch:
-    """A filesystem watch promised for a root, to be placed after its next walk.
-
-    Setting a recursive watch is not the cheap call it looks like. It walks
-    the whole tree and stats every entry to find the directories it needs a
-    watch on -- 151,310 ``statx`` calls for 595 watches on a 150k-file
-    archive -- and ``watchfiles`` does that inside Rust, holding the GIL for
-    its whole duration. Cold, that is one 1 KB metadata record per file off
-    the disk: ~150 MB, and ~20 seconds on a spinning drive. Held GIL means
-    those seconds are not slow, they are *stopped* -- no request of any kind
-    is served while it runs, and opening an archive used to wait out all of
-    it before the first screen could be drawn.
-
-    So the watch is owed on open and paid in ``disk_count``. The scheduler
-    already walks this tree to decide what is pending, in Python, where
-    every ``scandir`` releases the GIL and the app stays responsive
-    throughout. Once that walk has been through, the same metadata is in the
-    page cache and setting the watch over it costs ~0.3 s instead of ~20.
-
-    Nothing is lost by waiting: this is a hint, and the poll behind it is
-    what is actually correct -- see ``watcher``'s module docstring.
-
-    One root at a time, because one archive is open at a time; owing a second
-    replaces the first, which is what closing one archive and opening another
-    should do.
-    """
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._owed: tuple[int, str] | None = None
-
-    def owe(self, root_id: int, path: str) -> None:
-        with self._lock:
-            self._owed = (root_id, path)
-
-    def forget(self) -> None:
-        """Drop the debt without paying it, because the archive was closed.
-
-        A walk already in flight can land after the close returns, and settling
-        the debt then would start watching an archive the user has just left.
-        """
-        with self._lock:
-            self._owed = None
-
-    def claim(self, root_id: int, root_path: str) -> bool:
-        """True exactly once for the root that was owed, now its tree is walked.
-
-        Claimed under the lock so a burst of concurrent ``disk_count`` calls --
-        the scheduler's tick and the status endpoint's snapshot routinely
-        overlap -- places the watch exactly once.
-        """
-        with self._lock:
-            if self._owed != (root_id, root_path):
-                return False
-            self._owed = None
-        return True
 
 
 class HintThrottle:

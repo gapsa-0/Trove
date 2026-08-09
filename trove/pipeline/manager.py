@@ -107,9 +107,9 @@ class JobManager:
         # Work is deliberately opt-in per visible archive.  Starting the GUI
         # alone must not start touching an archive in the background.
         self._open_root_id: int | None = None
-        # The four bits of housekeeping that are not jobs, each owning its own
-        # lock or timer -- see upkeep.py for what they buy and why they are not
-        # part of this module's threading contract.
+        # The housekeeping that is not jobs, each bit owning its own lock or
+        # timer -- see upkeep.py for what they buy and why they are not part of
+        # this module's threading contract.
         self._hints = upkeep.HintThrottle(self._act_on_hint, lambda: watcher.WALK_FLOOR)
         # Public, because it is a collaborator rather than an implementation
         # detail: tests drive tick() by hand instead of waiting on the timer.
@@ -119,9 +119,6 @@ class JobManager:
         # looked at is watched -- the same rule the scheduler follows, which
         # also keeps the inotify watches held down to one tree.
         self._watcher = watcher.ArchiveWatcher(self.note_files_changed)
-        # open_archive records the debt rather than paying it on the spot;
-        # disk_count settles it once the tree has been walked.
-        self._watch_owed = upkeep.OwedWatch()
         # Whether the one-shot pre-open warm has been kicked off. See warm_for_open.
         self._warmed = False
         self._warm_lock = threading.Lock()
@@ -196,15 +193,8 @@ class JobManager:
 
         Kept on the manager because ``stages._pending`` reads it off whatever
         object it is handed, and that object is this one.
-
-        Also where a deferred filesystem watch gets placed: a count came back,
-        so this root's tree has been walked and the watch can be set up over
-        warm metadata instead of cold. See ``_watch_when_walked``.
         """
-        count = self._disk.count(root_id, root_path, max_age=max_age, allow_walk=allow_walk)
-        if count is not None:
-            self._place_owed_watch(root_id, root_path)
-        return count
+        return self._disk.count(root_id, root_path, max_age=max_age, allow_walk=allow_walk)
 
     def dedup_needed(self, root_id: int) -> bool:
         """Whether a duplicate rebuild is outstanding. See ``archives``.
@@ -377,7 +367,11 @@ class JobManager:
         self._pause.load(root_id)
         path = self.cfg.archive_path(root_id)
         if path is not None:
-            self._watch_when_walked(root_id, path)
+            # Placed here rather than deferred until the first walk: setting it
+            # up costs ~0.4 s on its own thread now (see ``watcher``), so there
+            # is nothing left to wait for -- and waiting meant files dropped in
+            # during that window were noticed only by the poll behind it.
+            self._watcher.start(root_id, path)
         self.nudge()
 
     def warm_for_open(self) -> None:
@@ -412,20 +406,6 @@ class JobManager:
             self.scheduler.stopping,
         )
 
-    def _watch_when_walked(self, root_id: int, path: str) -> None:
-        """Owe this root a filesystem watch, paid once its tree is walked.
-
-        Setting one costs ~20 s of held GIL on a cold 150k-file archive and
-        ~0.3 s once the scheduler's own walk has warmed the metadata, which is
-        the whole reason for the delay -- see ``upkeep.OwedWatch``.
-        """
-        self._watch_owed.owe(root_id, path)
-
-    def _place_owed_watch(self, root_id: int, root_path: str) -> None:
-        """Start the watch this root was owed, now that its tree is walked."""
-        if self._watch_owed.claim(root_id, root_path):
-            self._watcher.start(root_id, root_path)
-
     def close_archive(self, root_id: int | None = None) -> None:
         """Stop work when the currently viewed archive is closed."""
         with self._lock:
@@ -442,12 +422,6 @@ class JobManager:
         # archive being closed: a mismatched root_id returns above without
         # touching anything, and stopping the watch there would leave the
         # archive that is still open unwatched.
-        #
-        # The debt goes first. A watch owed but not yet placed is settled by
-        # whichever thread next finishes a walk, and a walk already in flight
-        # can land after this returns -- forgetting to cancel here would start
-        # watching an archive the user has just closed.
-        self._watch_owed.forget()
         self._watcher.stop()
 
     def set_paused(self, value: bool) -> None:

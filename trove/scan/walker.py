@@ -90,6 +90,33 @@ def iter_files(root: Path) -> Iterator[Path]:
             continue
 
 
+def iter_dirs(root: Path) -> Iterator[Path]:
+    """Yield ``root`` and every directory under it (symlinks not followed).
+
+    The traversal ``iter_files`` performs, reporting the directories it passes
+    through rather than the files it finds. It exists for the filesystem
+    watcher, which needs this list *in Python*: ``watchfiles`` will derive the
+    same thing far faster inside Rust, but does it with the GIL held, and on a
+    97k-file archive that is 11-26 s during which the app serves nothing at
+    all. Every ``scandir`` here releases the GIL, so the list costs ~0.3 s that
+    nothing has to wait for. See ``pipeline.watcher``.
+    """
+    stack = [root]
+    while stack:
+        d = stack.pop()
+        yield d
+        try:
+            with os.scandir(d) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(Path(entry.path))
+                    except OSError:
+                        continue
+        except (PermissionError, FileNotFoundError, NotADirectoryError):
+            continue
+
+
 def count_files(root: Path) -> int:
     """Fast pre-count of non-ignored files (scandir only, no hashing)."""
     return sum(1 for p in iter_files(root) if not is_ignored(p.name))
