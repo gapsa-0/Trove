@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # (x, y, w, h) in the pixels of the frame the detector looked at.
 Box = tuple[int, int, int, int]
 
-_HEIF_REGISTERED = False
+_PILLOW_READY = False
 
 # Derived from the catalogue's own list rather than written out again, because
 # the two drifted: media/types.py has long called .3g2, .flv, .mts, .m2ts and
@@ -129,12 +129,12 @@ def _try_pillow() -> tuple[ModuleType, ModuleType] | None:
     than ``ModuleType`` past this point -- the trade for keeping Pillow optional
     and imported lazily.
     """
-    global _HEIF_REGISTERED
+    global _PILLOW_READY
     try:
-        from PIL import Image, ImageOps
+        from PIL import Image, ImageFile, ImageOps
     except ImportError:
         return None
-    if not _HEIF_REGISTERED:
+    if not _PILLOW_READY:
         try:
             import pillow_heif
 
@@ -146,7 +146,20 @@ def _try_pillow() -> tuple[ModuleType, ModuleType] | None:
             # pets/backend.py and detect/extract.py: without HEIC support these
             # files simply fail to decode later like any other unreadable file.
             pass
-        _HEIF_REGISTERED = True
+        # Draw as much of a photo as is actually there. Pillow's default is to
+        # raise "image file is truncated" when a JPEG's last bytes are missing,
+        # which happens to real photographs -- an interrupted copy, a phone
+        # pulled off a cable mid-write, a Takeout export that lost its tail --
+        # and every browser renders those without complaint. Refusing meant the
+        # tile fell back to sending the whole original, which the browser then
+        # drew anyway: the same picture, at twenty times the bytes.
+        #
+        # The flag is process-wide, so a decode anywhere else becomes equally
+        # tolerant once the first thumbnail has been made. That is the wanted
+        # direction -- a photo worth showing is a photo worth indexing -- and it
+        # can only turn a failure into a partial success, never the reverse.
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        _PILLOW_READY = True
     return Image, ImageOps
 
 

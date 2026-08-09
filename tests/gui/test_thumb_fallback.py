@@ -79,21 +79,19 @@ def test_a_file_no_thumbnail_can_be_made_of_is_absent_not_downloaded(
     assert served != body
 
 
-def test_a_photo_the_decoder_refuses_is_still_offered_to_the_browser(live_server):
-    """The one case the fallback exists for. Browsers render a JPEG whose last
-    bytes are missing; Pillow refuses it. Sending the original is how the tile
-    shows a picture anyway."""
-    from PIL import Image
-
-    whole = Path(live_server.ids["archive_path"]) / "whole.jpg"
-    Image.new("RGB", (640, 480), (200, 90, 40)).save(whole, "JPEG")
-    truncated = whole.read_bytes()[:-400]
-    fid = _add(live_server, "cut-short.jpg", "image", truncated)
+def test_a_picture_the_decoder_cannot_read_is_still_offered_to_the_browser(live_server):
+    """What the fallback is for. The decoders here and the browser's are not
+    the same decoder, and where ours gives up on something that carries an
+    image's name, the browser is the better judge -- it may well draw it.
+    Only formats it could draw are offered, so the cost of being wrong is one
+    small file, not a backup archive."""
+    fid = _add(live_server, "unreadable.png", "image", b"\x89PNG\r\n\x1a\n" + b"\xff" * 2048)
 
     status, content_type, served = _get(live_server.base_url, f"/thumb/{fid}")
 
     assert status == 200, served
     assert content_type.startswith("image/")
+    assert served
 
 
 def test_an_ordinary_photo_still_gets_a_generated_thumbnail(live_server):

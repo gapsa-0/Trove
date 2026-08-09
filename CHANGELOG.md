@@ -34,9 +34,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   waiting stayed blank until you navigated away and back.
 
   Files nothing can be drawn from now simply show their file-type icon, which
-  is what it was always for. Photos are unaffected — including ones with the
-  last few bytes missing, which the browser is still asked to draw because it
-  makes a better job of those than Trove does.
+  is what it was always for.
+
+- **A photo missing its last few bytes gets a thumbnail like any other.**
+  Photographs arrive truncated more often than you would think — an
+  interrupted copy, a phone unplugged mid-transfer, a Takeout export that lost
+  its tail. Trove refused to read them, where every browser draws them without
+  complaint, so those tiles fell back to downloading the whole original.
 
 - **Videos have their thumbnails back, and are searchable by description
   again.** Since the previous release nothing could be got out of a video at

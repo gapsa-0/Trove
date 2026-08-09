@@ -99,6 +99,36 @@ def test_detection_and_display_turn_a_photo_the_same_way(deg):
     assert np.array_equal(np.asarray(_apply_rotation(im, deg)), rotate_image(np.asarray(im), deg))
 
 
+def test_a_photo_missing_its_last_bytes_is_still_thumbnailed(tmp_path: Path):
+    """Real photographs arrive truncated -- an interrupted copy, a phone pulled
+    off a cable, a Takeout export that lost its tail -- and Pillow's default is
+    to raise on them where every browser just draws what is there. Refusing
+    meant the tile fell back to sending the whole original, which the browser
+    then drew anyway: the same picture, at many times the bytes."""
+    whole = tmp_path / "whole.jpg"
+    Image.new("RGB", (1200, 900), (200, 90, 40)).save(whole, "JPEG", quality=90)
+    cut_short = tmp_path / "cut-short.jpg"
+    cut_short.write_bytes(whole.read_bytes()[:-400])
+
+    result = thumb_for(str(tmp_path / "cache"), 1, cut_short, size=320)
+
+    assert result is not None, "no thumbnail; the route would send the original instead"
+    assert result.stat().st_size < cut_short.stat().st_size
+    with Image.open(result) as thumbnail:
+        thumbnail.load()
+        assert max(thumbnail.size) == 320
+
+
+def test_a_file_that_is_not_a_picture_at_all_still_has_no_thumbnail(tmp_path: Path):
+    """Tolerating a missing tail must not turn into tolerating anything: a file
+    the decoder cannot identify has nothing to draw, and the route needs the
+    None to know to answer 404 rather than send it."""
+    not_a_picture = tmp_path / "notes.jpg"
+    not_a_picture.write_bytes(b"UUUU" * 2048)
+
+    assert thumb_for(str(tmp_path / "cache"), 1, not_a_picture) is None
+
+
 def test_an_upright_photo_is_never_re_encoded(tmp_path: Path):
     """Rotation zero means the viewer gets the original bytes, untouched."""
     source = tmp_path / "source.jpg"
