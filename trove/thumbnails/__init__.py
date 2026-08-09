@@ -139,6 +139,18 @@ def _try_pillow() -> tuple[ModuleType, ModuleType] | None:
     return Image, ImageOps
 
 
+def _why(stderr: bytes) -> str:
+    """The last thing ffmpeg said before giving up.
+
+    Its whole log goes to stderr -- banner, build flags, every stream it
+    probed -- and the sentence naming the failure is the last line of it.
+    Decoded leniently because the text carries filenames, which are whatever
+    the filesystem holds rather than anything guaranteed to be UTF-8.
+    """
+    lines = [ln for ln in stderr.decode("utf-8", "replace").splitlines() if ln.strip()]
+    return lines[-1] if lines else "no output"
+
+
 def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
     ffmpeg = tool("ffmpeg")
     if ffmpeg is None:
@@ -150,7 +162,7 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
     extracted = False
     with _atomic(tp) as tmp:
         try:
-            subprocess.run(
+            done = subprocess.run(
                 [
                     ffmpeg,
                     "-y",
@@ -167,7 +179,13 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
                     str(tmp),
                 ],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                # Kept rather than discarded: ffmpeg reports a refused job by
+                # exiting non-zero, not by raising, so with this on DEVNULL the
+                # only trace of one was this function returning False -- which
+                # every caller reads as "this video has no frame there". A
+                # scratch filename it could choose no muxer for hid behind that
+                # for a release, and no log line anywhere said why.
+                stderr=subprocess.PIPE,
                 timeout=20,
                 # The bundled ffmpeg is a shared build and cannot find its own
                 # libav* without this; see runtime.tool_env. Harmless for a PATH
@@ -176,6 +194,19 @@ def _video_frame(tp: Path, src: Path, size: int, offset: str) -> bool:
                 **no_window(),
             )
             extracted = tmp.exists() and tmp.stat().st_size > 0
+            if done.returncode:
+                # Only a non-zero exit, which is what separates "ffmpeg would
+                # not do this" from the ordinary case of an offset past the end
+                # of a short clip: that exits 0 having written nothing, and
+                # video_frames_for is built to skip it. Warning on "no file"
+                # instead would put a line in the log for every short video.
+                logger.warning(
+                    "ffmpeg exited %s extracting a frame of %s at %s: %s",
+                    done.returncode,
+                    src,
+                    offset,
+                    _why(done.stderr),
+                )
         except Exception as exc:
             # Mostly subprocess.TimeoutExpired (the 20s timeout above), plus
             # whatever a codec ffmpeg cannot read raises. Either way there is no

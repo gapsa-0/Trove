@@ -88,6 +88,44 @@ def test_the_sampled_frames_a_video_is_indexed_from_are_produced(tmp_path: Path)
     assert all(f.stat().st_size > 0 for f in frames)
 
 
+def test_a_video_ffmpeg_refuses_says_so_in_the_log(tmp_path: Path, caplog):
+    """The bug this file exists for was invisible: ffmpeg refuses a job by
+    exiting non-zero, and the exit status was neither checked nor logged."""
+    src = tmp_path / "broken.mp4"
+    src.write_bytes(b"not a video, but named like one" * 40)
+
+    with caplog.at_level("WARNING", logger="trove.thumbnails"):
+        assert thumbnails.thumb_for(str(tmp_path / "cache"), 5, src, sha256="dead") is None
+
+    assert caplog.records, "a video ffmpeg could not read left no trace at all"
+    said = caplog.text
+    assert "ffmpeg exited" in said
+    assert str(src) in said
+
+
+def test_an_offset_past_the_end_of_a_clip_is_not_reported_as_a_failure(tmp_path: Path):
+    """ffmpeg exits 0 having written nothing when asked to seek past the end,
+    and video_frames_for is built to skip that offset. It is the ordinary
+    shape of a short video, so it must not put a warning in the log."""
+    src = _video(tmp_path / "blink.mp4", seconds=0.4)
+
+    import logging
+
+    records: list[logging.LogRecord] = []
+    handler = logging.Handler()
+    handler.emit = records.append  # type: ignore[method-assign]
+    logging.getLogger("trove.thumbnails").addHandler(handler)
+    try:
+        frames = thumbnails.video_frames_for(
+            str(tmp_path / "cache"), 6, src, ["00:00:00", "00:00:30"], size=128, sha256="ab"
+        )
+    finally:
+        logging.getLogger("trove.thumbnails").removeHandler(handler)
+
+    assert len(frames) == 1, "the reachable offset should still produce a frame"
+    assert not records, f"a short clip logged: {[r.getMessage() for r in records]}"
+
+
 def test_the_keyframe_a_video_detection_is_re_cut_from_is_produced(tmp_path: Path):
     """detect_frame_for is re-derived from a stored offset months later, so a
     face box measured in a video frame can be cropped again."""

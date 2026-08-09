@@ -71,6 +71,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   builds of SQLite, once an archive had more duplicate groups than the database
   would accept variables in one statement.
 
+### Internal
+
+- A video frame ffmpeg refuses to produce is written to the log with its exit
+  status and ffmpeg's own reason, instead of leaving no trace.
+
 ## [0.2.1] - 2026-08-08
 
 ### Fixed
