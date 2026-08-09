@@ -25,6 +25,21 @@ from ._request import NOT_FOUND, FileBody, Json, Request
 # and no body -- and a thumbnail that did change is picked up then.
 MEDIA_CACHE = "private, max-age=60"
 
+# "Nothing can be drawn from this file", kept as long as a picture would be.
+#
+# The viewer's filmstrip rebuilds on every arrow press and asks for a
+# thumbnail of all twenty-five files around the one open. The pictures among
+# those come back out of the browser's cache; without this, the files that
+# have no picture were the only ones still crossing the wire, on every press,
+# for as long as you held the key down.
+#
+# Deliberately not the shared ``NOT_FOUND``. This is the answer "this file has
+# nothing to show", which stays true. "No archive is open yet" and "no such
+# id" are also 404s on this route and are *not* about the file at all -- the
+# first is a startup race, and caching it would leave a tile blank for a
+# minute after the archive it belongs to opened.
+NO_PICTURE = Json({"error": "not found"}, 404, cache_control=MEDIA_CACHE)
+
 
 # -- media serving ----------------------------------------------------
 # Thumbnails and originals are requested by bare id with no ``root``
@@ -97,7 +112,7 @@ def _thumb_body(tp: Path | None, src: Path) -> FileBody | Json:
     if tp:
         return FileBody(tp, cache_control=MEDIA_CACHE)
     if src.suffix.lower() not in _BROWSER_RENDERS:
-        return NOT_FOUND
+        return NO_PICTURE
     return FileBody(src, cache_control=MEDIA_CACHE)
 
 

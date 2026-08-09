@@ -32,10 +32,16 @@ _T = TypeVar("_T")
 
 @dataclass(frozen=True)
 class Json:
-    """A JSON body with an explicit status."""
+    """A JSON body with an explicit status.
+
+    ``cache_control`` is almost never set: a JSON answer describes archive
+    state that a POST may have just changed, so the default is ``no-store``
+    and the one route that overrides it says why (``routes/media.py``).
+    """
 
     body: Any
     status: int = 200
+    cache_control: str | None = None
 
 
 @dataclass(frozen=True)

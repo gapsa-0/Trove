@@ -17,12 +17,24 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 import factories
 import pytest
 from live_archive import _get
 
 from trove.db import database as db
+
+
+def _fetch(base_url: str, path: str):
+    """Like ``_get``, but keeping the headers -- what a cache is told matters
+    as much here as the status."""
+    try:
+        with urlopen(f"{base_url}{path}", timeout=10) as resp:
+            return resp.status, dict(resp.headers), resp.read()
+    except HTTPError as exc:
+        return exc.code, dict(exc.headers), exc.read()
 
 
 def _catalogue(live_server) -> sqlite3.Connection:
@@ -77,6 +89,32 @@ def test_a_file_no_thumbnail_can_be_made_of_is_absent_not_downloaded(
         "an <img> cannot decode it, and the tile's own fallback icon is what this is for"
     )
     assert served != body
+
+
+@pytest.mark.parametrize("rel_path, media_type", UNRENDERABLE[:1])
+def test_the_browser_is_told_it_may_remember_there_is_nothing_to_draw(
+    live_server, rel_path, media_type
+):
+    """The filmstrip re-asks for all twenty-five neighbours on every arrow
+    press. The pictures come back out of the browser's cache; without this the
+    files with no picture would be the only ones still crossing the wire."""
+    fid = _add(live_server, rel_path, media_type, b"\x00" * 512)
+
+    status, headers, _ = _fetch(live_server.base_url, f"/thumb/{fid}")
+
+    assert status == 404
+    assert headers.get("Cache-Control") == "private, max-age=60"
+
+
+def test_a_file_that_is_not_in_the_archive_is_not_remembered_as_missing(live_server):
+    """The other 404s this route can give are about the request, not the file:
+    an id that is not here, or an archive that has not finished opening. The
+    second is a startup race, and caching it would leave a tile blank for a
+    minute after its archive came up."""
+    status, headers, _ = _fetch(live_server.base_url, "/thumb/999999")
+
+    assert status == 404
+    assert headers.get("Cache-Control") == "no-store"
 
 
 def test_a_picture_the_decoder_cannot_read_is_still_offered_to_the_browser(live_server):

@@ -119,11 +119,17 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     # -- response helpers -------------------------------------------------
-    def _json(self, obj: Any, status: int = 200) -> None:
+    def _json(self, obj: Any, status: int = 200, cache_control: str | None = None) -> None:
         # Archive state changes through POST requests, so serving a heuristic
         # browser cache entry here makes a completed add/remove appear to have
-        # done nothing until another navigation happens.
-        self._bytes(json.dumps(obj).encode(), "application/json", status, cache_control="no-store")
+        # done nothing until another navigation happens. A route may override
+        # that where its answer is about a file rather than about state.
+        self._bytes(
+            json.dumps(obj).encode(),
+            "application/json",
+            status,
+            cache_control=cache_control or "no-store",
+        )
 
     def _bytes(
         self,
@@ -276,7 +282,7 @@ class Handler(BaseHTTPRequestHandler):
         elif isinstance(result, routes.Raw):
             self._bytes(result.body, result.content_type, result.status, result.cache_control)
         elif isinstance(result, routes.Json):
-            self._json(result.body, result.status)
+            self._json(result.body, result.status, result.cache_control)
         else:
             self._json(result)
 
