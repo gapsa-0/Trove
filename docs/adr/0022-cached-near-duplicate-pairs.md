@@ -128,8 +128,13 @@ the cancel event. Everything else in a run is sub-second.
   (`run`, `DedupStats`, `perceptual_available`) so no caller moved; the name is
   now a poor description of a module that orchestrates exact *and* perceptual
   grouping, and renaming it is owed.
-- One latent bug was fixed on the way past: `groups.clear` relied on
-  `ON DELETE CASCADE` to clear `dup_members`, which only fires where
-  `PRAGMA foreign_keys` is on. Correctness that turns on a connection-level
+- Two latent bugs were fixed on the way past, both in `groups.clear`. It
+  relied on `ON DELETE CASCADE` to clear `dup_members`, which only fires where
+  `PRAGMA foreign_keys` is on — correctness that turns on a connection-level
   setting is one stray connection away from silently accumulating members of
-  groups that no longer exist, so the sweep is explicit now.
+  groups that no longer exist, so the sweep is explicit now. And it bound one
+  SQL variable per group, against `SQLITE_MAX_VARIABLE_NUMBER` — a build-time
+  constant nothing in the process can see (32,766 by default since SQLite
+  3.32, 250,000 on this project's interpreter), so a rebuild that worked
+  everywhere it was tried would have failed outright past some number of
+  duplicate groups on someone else's build.

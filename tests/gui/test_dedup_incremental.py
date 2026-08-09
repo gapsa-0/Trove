@@ -15,12 +15,14 @@ a_full_one` is the guard that keeps "cheaper" from quietly meaning "different".
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 
 import factories
 import pytest
 
 from trove.config import Config
+from trove.db import database as db
 from trove.dedup import bands, exact
 from trove.pipeline.job import Job, JobProgress
 
@@ -269,3 +271,32 @@ def test_a_cancelled_job_stops_searching_instead_of_finishing_the_pass(searches)
     # rather than half-regrouped.
     conn.rollback()
     assert conn.execute("SELECT COUNT(*) FROM dup_groups").fetchone()[0] == 0
+
+
+def test_clearing_many_groups_does_not_exhaust_sqlite_bind_variables():
+    """`clear` used to bind one parameter per group, so an archive with more
+    duplicate groups than the connection allows variables could not be
+    regrouped at all -- a failure landing only on the largest archives, which
+    are the ones least able to afford it.
+
+    The ceiling is a build-time constant (SQLITE_MAX_VARIABLE_NUMBER, 32,766 by
+    default since SQLite 3.32 but 250,000 on the interpreter this suite happens
+    to run on), so the test lowers it on its own connection rather than
+    building an archive big enough to reach whichever value is in force. That
+    keeps it a test of the shape of the SQL, which is the actual defect.
+    """
+    conn = db.connect(":memory:")
+    conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)  # SQLite's pre-3.32 default
+    db.init_db(conn)
+    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/x', '2026-01-01')")
+    conn.executemany(
+        """INSERT INTO files(id, root_id, rel_path, size, mtime, media_type, sha256,
+                             first_seen, last_seen, present, hidden)
+           VALUES(?, 1, ?, 10, 0, 'image', ?, '2026-01-01', '2026-01-01', 1, 0)""",
+        # Consecutive pairs share a SHA, so this is exactly 2,000 exact groups.
+        [(i, f"{i}.jpg", f"{(i + 1) // 2:064x}") for i in range(1, 4_001)],
+    )
+    conn.commit()
+
+    assert exact.run(conn, root_id=1).groups == 2_000
+    assert exact.run(conn, root_id=1).groups == 2_000  # the clear-and-rebuild path

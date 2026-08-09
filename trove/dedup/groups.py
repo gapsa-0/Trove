@@ -60,6 +60,15 @@ def clear(conn: sqlite3.Connection, root_id: int | None) -> None:
     archive, the whole group is discarded: retaining it would keep files in a
     *different* archive hidden because of a cross-archive match.
 
+    The doomed groups are named by subquery rather than read into Python and
+    bound back one id per parameter. That older shape was a bind variable per
+    group, against a ceiling that is a build-time constant nothing here can see
+    (SQLITE_MAX_VARIABLE_NUMBER: 32,766 by default since SQLite 3.32, though
+    250,000 on the interpreter this project is developed against). Which meant
+    a rebuild that worked everywhere it was tried and failed outright past some
+    number of duplicate groups on someone else's build -- on the largest
+    archives, which are exactly the ones that cannot afford the pass to fail.
+
     The members are swept explicitly at the end rather than left to
     ``dup_members``' ``ON DELETE CASCADE``. That cascade only fires where
     ``PRAGMA foreign_keys`` is on, which ``db.connect`` does set -- but a
@@ -67,25 +76,19 @@ def clear(conn: sqlite3.Connection, root_id: int | None) -> None:
     stray connection away from silently accumulating members of groups that no
     longer exist, and this costs one indexed sweep to not depend on.
     """
-    group_clause = (
-        ""
-        if root_id is None
-        else (
-            " WHERE id IN (SELECT DISTINCT m.group_id FROM dup_members m "
-            "JOIN files f ON f.id=m.file_id WHERE f.root_id=?)"
+    if root_id is None:
+        conn.execute("UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IS NOT NULL")
+        conn.execute("DELETE FROM dup_groups")
+    else:
+        doomed = (
+            "SELECT m.group_id FROM dup_members m JOIN files f ON f.id=m.file_id WHERE f.root_id=?"
         )
-    )
-    group_params = () if root_id is None else (root_id,)
-    old_groups = conn.execute("SELECT id FROM dup_groups" + group_clause, group_params).fetchall()
-    if old_groups:
-        ids = [row[0] for row in old_groups]
-        marks = ",".join("?" for _ in ids)
+        # Both read dup_members, so both run before the sweep empties it.
         conn.execute(
-            f"UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IN ({marks})",
-            ids,
+            f"UPDATE files SET hidden=0, dup_group_id=NULL WHERE dup_group_id IN ({doomed})",
+            (root_id,),
         )
-        conn.execute(f"DELETE FROM dup_groups WHERE id IN ({marks})", ids)
-    conn.execute("DELETE FROM dup_members WHERE group_id NOT IN (SELECT id FROM dup_groups)")
+        conn.execute(f"DELETE FROM dup_groups WHERE id IN ({doomed})", (root_id,))
     conn.execute("DELETE FROM dup_members WHERE group_id NOT IN (SELECT id FROM dup_groups)")
 
 
