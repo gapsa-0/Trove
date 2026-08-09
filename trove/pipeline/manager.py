@@ -332,9 +332,14 @@ class JobManager:
         The one entry point for every hint, whichever direction it came from --
         the filesystem watcher, or the window regaining focus after someone
         dropped files in. Neither is trusted to say *what* changed: both do the
-        same two things, drop the cached disk count and wake the scheduler, and
-        the tick that follows re-walks and decides. That is why a hint being
+        same two things, expire the cached disk count and wake the scheduler,
+        and the tick that follows re-walks and decides. That is why a hint being
         wrong, duplicated or absent costs nothing but timing.
+
+        Expire, not drop. A hint is a guess, and most of them -- every return to
+        the window -- turn out to be about nothing. Discarding a count we have
+        on a guess is what put "Counting files in this folder…" over the
+        Indexing card several times an hour; see DiskCounts.invalidate.
 
         Throttled per root -- see ``upkeep.HintThrottle`` for why a hint is
         deferred rather than dropped.
@@ -558,8 +563,12 @@ class JobManager:
             )
         finally:
             job.finished_at = time.time()
-            # A finished scan changed what's on disk-vs-indexed; drop the cached
-            # walk so freshness reflects it immediately.
+            # A finished scan moved the *indexed* side of disk-vs-indexed, and
+            # files can arrive during a long one, so the walk is worth
+            # re-taking. Expiring rather than dropping it (see
+            # DiskCounts.invalidate): the disk count itself is not what a scan
+            # changed, so there is no reason for the card that just finished
+            # indexing to lose its answer while the re-walk runs.
             if job.kind == "scan" and job.root_id is not None:
                 self._disk.invalidate(job.root_id)
             # A stage that just rewrote a table changed the shape of what the

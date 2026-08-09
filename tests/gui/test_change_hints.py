@@ -3,8 +3,8 @@
 The scheduler's idle interval backs off to five minutes on a quiet archive, and
 the disk count behind it is cached for a minute more, so files dropped into a
 folder could sit there unnoticed for the length of both. A hint short-circuits
-that: drop the cached count, wake the scheduler, and let the tick that follows
-walk and decide as it always did.
+that: expire the cached count, wake the scheduler, and let the tick that
+follows walk and decide as it always did.
 
 Nothing here decides anything about the files themselves. That is the property
 these hold to -- a hint is allowed to be wrong, repeated or missing, because the
@@ -18,8 +18,8 @@ import threading
 import time
 
 from trove.config import Config
+from trove.pipeline import archives, watcher
 from trove.pipeline import manager as jobs_mod
-from trove.pipeline import watcher
 from trove.scan import walker
 
 
@@ -31,10 +31,14 @@ def _job_manager(tmp_path, monkeypatch):
     return jm
 
 
-def test_a_hint_drops_the_cached_count_and_wakes_the_scheduler(tmp_path, monkeypatch):
+def test_a_hint_expires_the_cached_count_and_wakes_the_scheduler(tmp_path, monkeypatch):
     """The two things a hint does, and the only two. The cached count matters as
     much as the wake-up: a tick that reuses a count from before the files landed
-    looks at the archive and sees nothing new."""
+    looks at the archive and sees nothing new.
+
+    Expired, not dropped -- see DiskCounts.invalidate. The next caller re-walks
+    either way; keeping the value is what lets the poll answer with the previous
+    number instead of "no idea" while that walk runs."""
     jm = _job_manager(tmp_path, monkeypatch)
     jm._disk._cache[1] = (time.monotonic(), 42)
     woken = []
@@ -43,8 +47,41 @@ def test_a_hint_drops_the_cached_count_and_wakes_the_scheduler(tmp_path, monkeyp
 
     jm.note_files_changed(1)
 
-    assert 1 not in jm._disk._cache
+    stamp, count = jm._disk._cache[1]
+    assert count == 42, "the hint threw away a count it had no reason to doubt"
+    assert time.monotonic() - stamp > archives.WALK_TTL, "the count did not expire"
     assert woken == [True]
+
+
+def test_a_hint_leaves_the_poll_an_answer_to_give(tmp_path, monkeypatch):
+    """What the user sees, and the reason the line above says "expires".
+
+    Every return to the window sends a hint (status.js binds focus and
+    visibilitychange), which fires at most every WALK_FLOOR seconds but is
+    deferred rather than dropped, so one always lands. While it dropped the
+    cached count, the polled path answered None -- which _scan_backlog reports
+    as a `checking` stage and the Overview draws as "Counting files in this
+    folder…" over the top of the Indexing card's own result, for the ~20s a
+    97k-file walk takes. Alt-tab a few times and it was never off the screen.
+
+    The walk is kicked either way; only the answer given while it runs changes.
+    """
+    jm = _job_manager(tmp_path, monkeypatch)
+    jm._disk._cache[1] = (time.monotonic(), 97_078)
+    monkeypatch.setattr(jm.scheduler, "nudge", lambda: None)
+    monkeypatch.setattr(jm.scheduler, "stopping", lambda: False)
+    walked = []
+    monkeypatch.setattr("trove.scan.walker.count_files", lambda path: walked.append(path) or 97_099)
+    monkeypatch.setattr("pathlib.Path.is_dir", lambda self: True)
+
+    jm.note_files_changed(1)
+
+    # The poll never walks on its own thread, so it answers from the cache --
+    # with the last count, not with None.
+    assert jm.disk_count(1, str(tmp_path), allow_walk=False) == 97_078
+    # ...and the re-walk it needs was still started.
+    assert jm.disk_count(1, str(tmp_path), allow_walk=True) == 97_099
+    assert walked, "the expired count was never re-walked"
 
 
 def test_a_second_hint_straight_away_does_not_cost_a_second_walk(tmp_path, monkeypatch):

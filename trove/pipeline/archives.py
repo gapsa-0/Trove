@@ -52,9 +52,33 @@ class DiskCounts:
         self._stopping = stopping
 
     def invalidate(self, root_id: int) -> None:
-        """Drop a root's cached count. A finished scan changed what is on
-        disk-vs-indexed, so freshness must reflect it immediately."""
-        self._cache.pop(root_id, None)
+        """Mark a root's cached count stale, so the next caller re-walks.
+
+        Expires the entry rather than dropping it, and the difference is the
+        whole point. A dropped entry makes ``count`` answer ``None`` -- "no
+        idea how many files are down there" -- which ``_scan_backlog`` turns
+        into a ``checking`` stage and the Overview into "Counting files in this
+        folder…" over the top of the Indexing card's real answer, for the
+        twenty seconds a 97k-file walk takes.
+
+        That is far too strong for what invalidation actually knows. Both
+        callers are guesses: the window came back to the front, or a scan
+        finished (which changed what is *indexed*, not what is on disk). A
+        guess that something may have changed is not grounds for throwing away
+        a number we do have, and the stale-while-revalidate path three lines
+        below already does the right thing with an expired entry -- kick a
+        background walk, serve the previous count meanwhile. Dropping the entry
+        was the only reason that path could not run.
+
+        Expiring to -inf rather than to 0: ``time.monotonic`` counts from an
+        arbitrary epoch (uptime, on Linux), so on a machine that booted less
+        than ``WALK_TTL`` ago a 0 timestamp reads as *fresh* -- the exact
+        opposite of what this is for, on the one machine nobody tests on.
+        """
+        with self._lock:
+            hit = self._cache.get(root_id)
+            if hit is not None:
+                self._cache[root_id] = (float("-inf"), hit[1])
 
     def count(
         self, root_id: int, root_path: str, max_age: float | None = None, allow_walk: bool = True

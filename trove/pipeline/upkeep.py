@@ -120,10 +120,10 @@ class HintThrottle:
     of a slow trickle is still noticed without every file in the trickle
     costing a walk.
 
-    ``act`` is what a hint actually does, which is deliberately not much: drop
-    the cached disk count and wake the scheduler. Neither the watcher nor the
-    window-focus hint is trusted to say *what* changed, and the tick that
-    follows re-walks and decides -- which is why a hint being wrong,
+    ``act`` is what a hint actually does, which is deliberately not much:
+    expire the cached disk count and wake the scheduler. Neither the watcher
+    nor the window-focus hint is trusted to say *what* changed, and the tick
+    that follows re-walks and decides -- which is why a hint being wrong,
     duplicated or absent costs nothing but timing.
     """
 

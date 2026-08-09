@@ -15,6 +15,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **"Counting files in this folder" no longer sits on the Indexing card most
+  of the time.** Every time the Trove window came back to the front, it threw
+  away its record of how many files were in the archive folder and re-counted
+  from scratch — replacing "97,083 files catalogued" with a progress message
+  for the twenty seconds that takes, on a large archive. Switch to another app
+  and back a few times and it was rarely off the screen. It now keeps the last
+  count and refreshes it in the background, so the card keeps its answer.
+  Changes are still picked up exactly as quickly.
+
 - **Finding duplicates no longer takes twenty minutes every time you touch the
   archive.** On a 97,000-file archive a duplicate rebuild took 19½ minutes, and
   it ran again in full after any scan — including one that found nothing but
