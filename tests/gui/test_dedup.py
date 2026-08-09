@@ -52,7 +52,7 @@ def test_visual_match_merges_different_encodings_and_keeps_best_image(monkeypatc
     )
     conn.commit()
     monkeypatch.setattr(
-        exact, "_perceptual_hashes", lambda *args, **kwargs: ({1: 0, 2: 0x3F, 3: 2**64 - 1}, 2, 0)
+        exact.fingerprints, "compute", lambda *args, **kwargs: {1: 0, 2: 0x3F, 3: 2**64 - 1}
     )
 
     stats = exact.run(conn, Config())
@@ -93,7 +93,7 @@ def test_interrupted_regroup_leaves_previous_grouping_intact(monkeypatch):
     def _boom(*_args, **_kwargs):
         raise RuntimeError("boom mid-grouping")
 
-    monkeypatch.setattr(exact, "_pick_canonical", _boom)
+    monkeypatch.setattr(exact.groups, "pick_canonical", _boom)
 
     raised = False
     try:

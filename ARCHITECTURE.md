@@ -29,8 +29,10 @@ Hashing happens inside the scan stage, not as a separate one: `scan` walks the
 source root(s), fast-hashes and SHA-256s each new or changed file, and writes
 the `files` row. `enrich` runs in parallel with it, resolving date/GPS/Takeout
 metadata for whatever `scan` has already committed. Once both have caught up,
-`dedup` rebuilds duplicate groups wholesale; three independent stages then
-fan out from it. `detect` finds faces and pets in a single decode pass per
+`dedup` rebuilds duplicate groups wholesale — but not the near-duplicate search
+behind them, which is cached per file against the content it was run for (ADR
+[0022](docs/adr/0022-cached-near-duplicate-pairs.md)); three independent stages
+then fan out from it. `detect` finds faces and pets in a single decode pass per
 image/frame and immediately clusters them into people and pets. This is the
 real dependency graph, from `trove/pipeline/stages.py`:
 
@@ -145,7 +147,7 @@ they describe:
 | Group | Tables |
 | --- | --- |
 | Catalogue | `roots`, `files`, `media_meta`, `dates`, `geo`, `takeout_sidecar`, `orientation` |
-| Dedup | `dup_groups`, `dup_members`, `perceptual_hashes`, `dedup_runs` |
+| Dedup | `dup_groups`, `dup_members`, `perceptual_hashes`, `dup_edges`, `dup_edge_scan`, `dedup_runs` |
 | Places | `place_clusters`, `place_cluster_members`, `place_merges` |
 | People | `persons`, `faces`, `face_links`, `person_merges`, `person_files`, `fiqa_calibration` |
 | Pets | `pets`, `animal_detections`, `pet_links`, `pet_merges`, `pet_files`, `nonhuman_detections` |

@@ -146,6 +146,20 @@ def test_the_grouping_phase_still_names_itself():
     assert card["message"] == "Grouping duplicates…"
 
 
+def test_searching_for_near_duplicates_does_not_claim_to_be_fingerprinting():
+    """Dedup grew a third phase between the other two: comparing fingerprints
+    against the archive (dedup/edges.py). It reports an empty `current` on
+    purpose -- `current` is both the card's detail line and its signal that a
+    *photo* is being decoded, which is a different and far slower phase. The
+    accurate flat text stands instead, over a bar that moves."""
+    searching = _progress(done=1_200, total=88_234, current="")
+
+    card = _card(_stage(kind="dedup", card="dedup", counted=False, progress=searching))
+
+    assert card["message"] == "Finding duplicates…"
+    assert (card["progress"]["done"], card["progress"]["total"]) == (1_200, 88_234)
+
+
 def test_a_preparing_scan_is_not_reported_as_finalizing_metadata():
     """The Scan card fuses scan ∥ enrich and has its own bar rule; preparing
     still wins, because neither stage is walking files yet."""

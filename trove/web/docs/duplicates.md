@@ -36,13 +36,33 @@ same photo stored upright fingerprint identically instead of looking like two
 unrelated pictures.
 
 Comparing every hash against every other one would be 11 billion comparisons on
-a 150,000-photo archive. Instead the hashes go into a BK-tree, a structure that
-uses the triangle inequality of Hamming distance to skip whole branches that
-cannot contain a match, turning each lookup into a few dozen comparisons.
+a 150,000-photo archive. Instead each 64-bit hash is cut into seven bands, and
+every band is indexed. Two hashes that differ in at most six bits can differ in
+at most six bands, so at least one of the seven must match *exactly* — looking
+up all seven bands finds every genuine match while reading almost none of the
+archive.
 
 Exact matches and visual matches then go into one union-find structure
 together, so a photo that is byte-identical to one file and visually identical
 to another ends up in a single group rather than two.
+
+## Why a second run is quick
+
+Whether two pictures look alike is a fact about the pictures, not about when
+Trove last asked. So the pairs it finds are written down, against the exact
+content they were found for. Add twenty photos to an archive of ninety thousand
+and only those twenty are compared against the rest; delete a few and nothing is
+compared at all. A photo that gets edited or re-saved has its old pairs thrown
+out and is compared afresh, because its content — and so its fingerprint — is no
+longer the one those pairs were about.
+
+Changing `phash_hamming_threshold` discards every stored pair, since they were
+found under the old setting. The next run searches the whole archive again.
+
+The groups themselves are still rebuilt from scratch every single run. That is
+deliberate: it means a grouping damaged by a crash, or left behind by an older
+version, is repaired by the next pass rather than persisting, and it costs
+seconds now that the search behind it is not repeated.
 
 ## The numbers
 

@@ -165,6 +165,32 @@ CREATE TABLE IF NOT EXISTS perceptual_hashes (
 CREATE INDEX IF NOT EXISTS idx_perceptual_hashes_algorithm
     ON perceptual_hashes(algorithm);
 
+-- Pairs of files whose fingerprints are within `phash_hamming_threshold` bits
+-- of each other. Duplicate *groups* are still rebuilt from scratch on every
+-- run -- these are the relation the rebuild reads, kept so that a run after a
+-- small scan searches for the files that changed rather than for all of them.
+-- Stored once per pair, lower file id first.
+CREATE TABLE IF NOT EXISTS dup_edges (
+    lo_file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    hi_file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    PRIMARY KEY (lo_file_id, hi_file_id)
+);
+-- The primary key already covers lookups by the low id; clearing one file's
+-- pairs has to find the ones where it is the high id too.
+CREATE INDEX IF NOT EXISTS idx_dupedges_hi ON dup_edges(hi_file_id);
+
+-- Which files have already been searched against the rest of the archive, and
+-- for what. Same shape and purpose as `face_scan`/`pet_scan`: computing a
+-- fingerprint and searching for its neighbours are separate jobs, so they get
+-- separate records. A row whose `sha256` no longer matches the file's, or whose
+-- `threshold` no longer matches the configured one, means this one file's
+-- search is owed again -- and nothing else's (see dedup/edges.py).
+CREATE TABLE IF NOT EXISTS dup_edge_scan (
+    file_id   INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    sha256    TEXT NOT NULL,
+    threshold INTEGER NOT NULL
+);
+
 -- One row per archive root: the file population covered by the last
 -- successful wholesale dedup rebuild. A rebuild has no per-file backlog to
 -- count the way enrich/faces/semantic do, so the GUI scheduler's "is a

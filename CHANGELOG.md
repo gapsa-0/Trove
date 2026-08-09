@@ -13,6 +13,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Finding duplicates no longer takes twenty minutes every time you touch the
+  archive.** On a 97,000-file archive a duplicate rebuild took 19½ minutes, and
+  it ran again in full after any scan — including one that found nothing but
+  five deleted files, none of which had duplicates at all. Nearly all of that
+  time went on rediscovering which photos look alike, which Trove now writes
+  down against the exact content it found them for. Add twenty photos and only
+  those twenty are compared; delete some and nothing is. The same rebuild is
+  now **3 seconds** on an unchanged archive, and 5 on the deletion case.
+
+  The comparison itself was replaced too, with an index that finds exactly the
+  same matches roughly twenty times faster — so even the first run after
+  upgrading, which has to look at every photo once, takes about a minute
+  instead of twenty. Duplicate groups are unchanged: the new code reproduces
+  this archive's 18,916 groups, the same hidden copies and the same choice of
+  which copy stays visible.
+
+- **Closing the app during a duplicate rebuild no longer hangs it.** The
+  rebuild ignored the request to stop and ran to the end — with its progress
+  bar frozen the whole time, so it looked like it had hung — and then threw
+  away everything it had done, starting from zero on the next launch. It now
+  stops when asked, and keeps the work it has finished.
+
+- Duplicate detection could fail outright on very large archives, on some
+  builds of SQLite, once an archive had more duplicate groups than the database
+  would accept variables in one statement.
+
 ## [0.2.1] - 2026-08-08
 
 ### Fixed

@@ -28,12 +28,18 @@ group keeps one **canonical** copy visible; the rest are marked hidden
   candidate.
 - **Perceptual / near-duplicate**: image perceptual hashing
   (`perceptual_available()` gates this on `imagehash` + Pillow being
-  installed), grouped by Hamming distance via a `_BKTree` — a metric tree
-  that narrows each lookup instead of comparing every pair, which the
-  module's comment notes would otherwise turn a 150k-photo archive into
-  billions of checks.
+  installed), grouped by Hamming distance, which would otherwise turn a
+  150k-photo archive into billions of checks.
 
-Groups are built with a `_UnionFind` over both signals together, so a chain
+  > **Note, 2026-08-09.** The structure that narrows those checks was a
+  > `_BKTree` when this was written; it is now `dedup/bands.py`'s `BandIndex`,
+  > and the pairs it finds are cached in `dup_edges` rather than rediscovered
+  > every run. Both changes are covered by [0022](0022-cached-near-duplicate-pairs.md)
+  > and neither changes the grouping — the replacement was verified to
+  > reproduce this archive's 18,916 groups, hidden set and canonical picks
+  > exactly. The decision below is untouched.
+
+Groups are built with a `UnionFind` over both signals together, so a chain
 of exact and perceptual matches collapses into one group regardless of which
 relation connects any two members.
 
