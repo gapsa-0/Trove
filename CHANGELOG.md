@@ -29,6 +29,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   whether there is anything to do; it is not a second pass over your archive,
   which is what the old wording looked like sitting on the Indexing card.
 
+  For the same reason, indexing says "Checking 43,200 files for changes" while
+  it walks files it already holds, where it used to say "Re-checking 43,200
+  files already scanned". Going over known files is how an edit gets noticed —
+  and how a deletion does — rather than work being done twice.
+
 - **Finding duplicates no longer takes twenty minutes every time you touch the
   archive.** On a 97,000-file archive a duplicate rebuild took 19½ minutes, and
   it ran again in full after any scan — including one that found nothing but

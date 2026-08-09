@@ -175,7 +175,7 @@ def test_a_preparing_scan_is_not_reported_as_finalizing_metadata():
 
 
 # ---------------------------------------------------------------------------
-# Re-checking: the ground a restarted scan has to cross again
+# Crossing files the walk already holds, before it reaches anything new
 # ---------------------------------------------------------------------------
 
 
@@ -183,13 +183,19 @@ def test_a_scan_crossing_files_it_already_has_draws_no_bar():
     """Scan is the only stage that restarts at the top of the tree rather than
     at its own backlog, and re-reaching what it holds costs a stat() per file.
     Counted as progress, that made the bar rewind to 0 and race back to where
-    it stopped -- work being redone, apparently, when none is."""
+    it stopped -- work being redone, apparently, when none is.
+
+    The sentence in its place says why the walk is there: crossing known files
+    is how an edit is spotted and how a deletion is, not repetition. It used to
+    read "Re-checking 4,000 files already scanned…", which named the activity,
+    gave no reason for it, and spent two words insisting it was a second pass.
+    """
     crossing = _progress(done=4000, total=30772, recheck_below=12400, current="2019/a.jpg")
 
     card = _card(_stage(kind="scan", card="scan", progress=crossing))
 
     assert card["progress"] is None
-    assert card["message"] == "Re-checking 4,000 files already scanned…"
+    assert card["message"] == "Checking 4,000 files for changes…"
 
 
 def test_the_bar_comes_back_where_the_scan_left_off():
@@ -227,10 +233,10 @@ def test_preparing_outranks_re_checking():
 
 
 def test_a_re_checking_scan_says_that_dating_files_is_still_running():
-    """Dating files runs parallel to the walk, so a re-checking scan usually
-    shares its card with a stage doing real work. Saying only "Re-checking…"
-    had the Overview claiming nothing was happening while its own "With a date"
-    tile climbed on the same poll."""
+    """Dating files runs parallel to the walk, so this scan usually shares its
+    card with a stage doing real work. A sentence about the walk alone had the
+    Overview claiming nothing was happening while its own "With a date" tile
+    climbed on the same poll."""
     crossing = _progress(done=4000, total=30772, recheck_below=12400)
 
     card = _card(
@@ -239,7 +245,7 @@ def test_a_re_checking_scan_says_that_dating_files_is_still_running():
     )
 
     assert card["progress"] is None, "the two count different things; neither bar fits here"
-    assert card["message"] == "Re-checking 4,000 files already scanned · reading metadata"
+    assert card["message"] == "Checking 4,000 files for changes · reading metadata"
 
 
 def test_a_re_checking_scan_alone_claims_nothing_about_metadata():
@@ -250,7 +256,7 @@ def test_a_re_checking_scan_alone_claims_nothing_about_metadata():
         _stage(kind="enrich", card="scan", state="up_to_date"),
     )
 
-    assert card["message"] == "Re-checking 4,000 files already scanned…"
+    assert card["message"] == "Checking 4,000 files for changes…"
 
 
 # ---------------------------------------------------------------------------

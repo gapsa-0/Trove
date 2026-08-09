@@ -113,11 +113,17 @@ def _dedup_card_message(progress: dict, message: str | None) -> str | None:
 def _rechecking(progress: dict) -> bool:
     """Whether this run is still crossing ground it has already covered.
 
-    True only for a scan that stopped part-way and started again from the top
-    of the tree (see ``Job.recheck_below``). It is the same situation
-    ``preparing`` describes -- the stage is busy, and a bar over it would be
-    counting something other than the work -- so the card treats it the same
-    way, with its own sentence.
+    Scan only, and far from rare: ``runners/scan.py`` sets ``recheck_below`` to
+    ``min(present_file_count, on_disk)`` at the top of *every* run, so on a
+    settled archive -- where those two are the same number -- the mark sits at
+    the end of the walk and the whole run is below it. This is the ordinary
+    state of a re-scan, not the aftermath of an interrupted one, and the card
+    says so for as long as it lasts. (Only a first scan, with nothing
+    catalogued yet, has a mark of 0.)
+
+    It is the same situation ``preparing`` describes -- the stage is busy, and
+    a bar over it would be counting something other than the work -- so the
+    card treats it the same way, with its own sentence.
 
     A stage still preparing is *not* re-checking, whatever mark it has already
     recorded: the mark is set while the disk is being counted, and a scan that
@@ -133,17 +139,32 @@ def _rechecking(progress: dict) -> bool:
 
 
 def _recheck_message(progress: dict, enriching: bool) -> str:
-    """No denominator on purpose. How many files are being re-checked is
-    knowable, but saying "12,400 of 30,772" reads as a bar written out in
-    words, and it is the number this phase exists to stop drawing.
+    """What the walk is doing before it reaches anything new.
+
+    Says the purpose rather than the mechanism. This used to read "Re-checking
+    N files already scanned", which names an activity and gives no reason for
+    it -- and whose two load-bearing words, "Re-" and "already", exist only to
+    say the work is being done a second time. Crossing files it already holds
+    is not repetition: it is how an edit is noticed (stat says the file moved
+    on) and, above all, how a *deletion* is, since ``scan_root`` touches
+    ``last_seen`` on every file it meets and then marks absent whatever it
+    never met. "Checking for changes" is that, in the words the user has.
+
+    It also composes with what follows: below the mark this sentence, above it
+    "Scanning files…" with the bar, which reads as a progression rather than as
+    redoing work and then working.
+
+    No denominator on purpose. How many files are being crossed is knowable,
+    but saying "12,400 of 30,772" reads as a bar written out in words, and it
+    is the number this phase exists to stop drawing.
 
     ``enriching`` is the other half of this card. Dating files runs parallel to
-    the walk, so a re-checking scan is very often sharing the card with a stage
-    doing real work -- and saying only "Re-checking…" left the Overview
-    claiming nothing was happening while its own "With a date" tile climbed.
+    the walk, so this scan is very often sharing the card with a stage doing
+    real work -- and a sentence about the walk alone left the Overview claiming
+    nothing was happening while its own "With a date" tile climbed.
     """
     done = progress.get("done") or 0
-    crossing = f"Re-checking {done:,} files already scanned"
+    crossing = f"Checking {done:,} files for changes"
     return f"{crossing} · reading metadata" if enriching else f"{crossing}…"
 
 
