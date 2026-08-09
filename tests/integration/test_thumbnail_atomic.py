@@ -46,6 +46,19 @@ def test_the_cache_path_does_not_exist_until_the_write_is_finished(cache):
     assert tp.read_bytes() == b"partial"
 
 
+def test_the_scratch_path_keeps_the_extension_the_cache_file_will_have(cache):
+    """ffmpeg picks its output muxer from the filename, so a scratch path
+    ending ``.tmp`` names no format it knows and it refuses the job before
+    decoding anything -- by exiting non-zero, which nothing here would see.
+    Asserted separately from the video tests (tests/integration/
+    test_thumbs_video.py) because those skip where ffmpeg is absent, and this
+    invariant has to hold on a machine that cannot run them."""
+    tp = cache / "thumbs" / "abc_v1_320.jpg"
+
+    with thumbnails._atomic(tp) as tmp:
+        assert tmp.suffix == tp.suffix == ".jpg"
+
+
 def test_a_failed_write_leaves_no_cache_entry(cache):
     tp = cache / "thumbs" / "abc_v1_320.jpg"
 

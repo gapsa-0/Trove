@@ -15,6 +15,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Videos have their thumbnails back, and are searchable by description
+  again.** Since the previous release nothing could be got out of a video at
+  all: the grid showed a bare film icon for every clip, no face or pet was
+  ever found in one, and description search quietly stopped indexing them.
+  The frame extractor was writing to a scratch filename ending `.tmp`, and
+  ffmpeg picks the format to write from the filename — it recognised nothing
+  and refused each job before reading a frame, without saying so.
+
+  Videos that were passed over while this was broken are picked up again on
+  the next indexing run; they had been recorded as permanently unreadable.
+
 - **"Counting files in this folder" no longer sits on the Indexing card most
   of the time.** Every time the Trove window came back to the front, it threw
   away its record of how many files were in the archive folder and re-counted

@@ -63,9 +63,19 @@ def _atomic(tp: Path) -> Iterator[Path]:
     An empty scratch file is never published: a writer that failed leaves no
     cache entry at all, rather than a zero-byte one that would be served
     forever as a valid hit.
+
+    The scratch name ends in the target's own extension, and that is not
+    cosmetic. One of the writers here is ffmpeg, which chooses its output
+    muxer from the filename it is given: a path ending ``.tmp`` names no
+    format it knows, so it refused every job before decoding a frame
+    ("Unable to choose an output format"). It reports that by exiting
+    non-zero rather than by raising, so with ``.tmp`` on the end every video
+    thumbnail, every sampled frame behind semantic video indexing, and every
+    keyframe behind a video face crop failed in silence. Pillow is told its
+    format explicitly and would not have cared; ffmpeg only has the name.
     """
     tp.parent.mkdir(parents=True, exist_ok=True)
-    tmp = tp.with_name(f".{tp.name}.{os.getpid()}-{threading.get_ident()}.tmp")
+    tmp = tp.with_name(f".{tp.name}.{os.getpid()}-{threading.get_ident()}.tmp{tp.suffix}")
     try:
         yield tmp
         if tmp.exists() and tmp.stat().st_size > 0:
