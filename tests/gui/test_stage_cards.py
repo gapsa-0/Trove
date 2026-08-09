@@ -354,7 +354,10 @@ def test_a_scan_that_has_not_counted_the_disk_yet_says_so():
     )
     assert card["state"] == "checking"
     assert card["pending"] is None, "reported a backlog it has not measured"
-    assert card["message"] == "Counting files in this folder…"
+    # Not "Counting files in this folder…", which is how the question gets
+    # answered rather than what was asked -- and which, landing on the Indexing
+    # card, reads as indexing doing its own job a second time.
+    assert card["message"] == "Checking for work…"
 
 
 def test_an_uncounted_scan_outranks_a_finished_stage_on_the_same_card():

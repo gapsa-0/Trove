@@ -327,11 +327,20 @@ def _message(
             return f"{pending:,} {noun} queued"
         return "Queued"
     if state == "checking":
-        # Says what is actually happening -- the folder is being counted -- and
-        # not how long it will take, which nothing here knows. A card that has
-        # to sit for twenty seconds on a large archive should at least name the
-        # thing it is waiting for.
-        return "Counting files in this folder…"
+        # The same words the panel uses before its first snapshot lands
+        # (overview.js), because it is the same thing: deciding whether any
+        # stage has anything to do.
+        #
+        # It used to name the mechanism -- "Counting files in this folder…" --
+        # on the theory that a card sitting for twenty seconds should say what
+        # it is waiting for. But counting files is how the question is
+        # answered, not what the user asked, and this line lands on the
+        # *Indexing* card, directly after a stage whose whole job is to go
+        # through the files in that folder. Read from outside the code it says
+        # the app is doing the same work again. What makes a wait read as a
+        # hang is missing motion, not missing jargon, and the spinner beside
+        # this is what answers that.
+        return "Checking for work…"
     if state == "unavailable":
         return _UNAVAILABLE_TEXT
     if state == "error":

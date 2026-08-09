@@ -24,6 +24,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   count and refreshes it in the background, so the card keeps its answer.
   Changes are still picked up exactly as quickly.
 
+  When it does need to check, it now says "Checking for work" rather than
+  "Counting files in this folder". Counting the files is how Trove works out
+  whether there is anything to do; it is not a second pass over your archive,
+  which is what the old wording looked like sitting on the Indexing card.
+
 - **Finding duplicates no longer takes twenty minutes every time you touch the
   archive.** On a 97,000-file archive a duplicate rebuild took 19½ minutes, and
   it ran again in full after any scan — including one that found nothing but
