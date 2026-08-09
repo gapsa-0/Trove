@@ -239,3 +239,110 @@ def test_the_index_folds_accents_so_a_spanish_search_finds_a_spanish_word():
             "SELECT COUNT(*) FROM doc_chunk_fts WHERE doc_chunk_fts MATCH ?", (query,)
         ).fetchone()[0]
         assert found == 1, query
+
+
+# -- 17 -> 18: the verdicts recorded while no video frame could be read -------
+# For one release ffmpeg refused every frame extraction, and both stages that
+# sample a video wrote that down as final: description search as a permanent
+# "unsupported" skip, detection as a scan marker holding zero. Neither is ever
+# revisited on its own, so the fixed extractor needs those rows cleared.
+
+_FRAMELESS = "unsupported video: could not extract any frames (ffmpeg missing or unreadable video)"
+
+
+def _archive_with_a_written_off_video(previous_version: int | None = 17):
+    conn = db.connect(":memory:")
+    conn.executescript(db._SCHEMA_SQL.read_text())
+    if previous_version is not None:
+        conn.execute(f"PRAGMA user_version={previous_version}")
+    conn.execute("INSERT INTO roots(id, path, added_at) VALUES(1, '/x', 'now')")
+    conn.execute(
+        """INSERT INTO files(id, root_id, rel_path, ext, size, mtime, media_type,
+                             sha256, first_seen, last_seen)
+           VALUES(1, 1, 'clip.mp4', 'mp4', 10, 0, 'video', 'sha', 'now', 'now')"""
+    )
+    conn.execute(
+        """INSERT INTO semantic_embeddings(file_id, source_sha256, model, dimensions,
+               embedding, status, error, indexed_at)
+           VALUES(1, 'sha', 'm', 1, NULL, 'skipped', ?, '2026-08-07')""",
+        (_FRAMELESS,),
+    )
+    conn.execute("INSERT INTO face_scan(file_id, n_faces, scanned_at) VALUES(1, 0, 'now')")
+    conn.execute(
+        """INSERT INTO pet_scan(file_id, n_animals, model_source, scanned_at)
+           VALUES(1, 0, 'm', 'now')"""
+    )
+    conn.commit()
+    return conn
+
+
+def _leftovers(conn) -> tuple[int, int, int]:
+    count = lambda sql: conn.execute(sql).fetchone()[0]  # noqa: E731
+    return (
+        count("SELECT COUNT(*) FROM semantic_embeddings"),
+        count("SELECT COUNT(*) FROM face_scan"),
+        count("SELECT COUNT(*) FROM pet_scan"),
+    )
+
+
+def test_upgrading_reopens_a_video_the_frame_extractor_gave_up_on():
+    conn = _archive_with_a_written_off_video()
+
+    db.init_db(conn)
+
+    assert _leftovers(conn) == (0, 0, 0), (
+        "the video is still carrying the verdicts recorded while nothing could "
+        "be read from it, so no stage will ever look at it again"
+    )
+
+
+def test_a_video_skipped_for_its_own_sake_is_left_alone():
+    """Only the frameless verdict is undone. A file the indexer refused for
+    some other reason still has a real answer recorded, and re-running it
+    would reproduce the same one."""
+    conn = _archive_with_a_written_off_video()
+    conn.execute(
+        "UPDATE semantic_embeddings SET error='media exceeds the size limit' WHERE file_id=1"
+    )
+    conn.commit()
+
+    db.init_db(conn)
+
+    assert conn.execute("SELECT COUNT(*) FROM semantic_embeddings").fetchone()[0] == 1
+
+
+def test_a_photo_keeps_the_detection_work_already_done_for_it():
+    """The detect half of the fix clears by media type, since a scan marker
+    cannot say whether looking was possible. It must not reach past videos."""
+    conn = _archive_with_a_written_off_video()
+    conn.execute(
+        """INSERT INTO files(id, root_id, rel_path, ext, size, mtime, media_type,
+                             sha256, first_seen, last_seen)
+           VALUES(2, 1, 'photo.jpg', 'jpg', 10, 0, 'image', 'sha2', 'now', 'now')"""
+    )
+    conn.execute("INSERT INTO face_scan(file_id, n_faces, scanned_at) VALUES(2, 3, 'now')")
+    conn.commit()
+
+    db.init_db(conn)
+
+    kept = conn.execute("SELECT file_id, n_faces FROM face_scan").fetchall()
+    assert [tuple(r) for r in kept] == [(2, 3)]
+
+
+def test_an_already_current_database_does_not_pay_for_the_cleanup_again():
+    """init_db runs at every job start, so a cleanup that already ran must not
+    keep taking the writer's lock -- and must not wipe detection work redone
+    since."""
+    conn = _archive_with_a_written_off_video(previous_version=None)
+    db.init_db(conn)
+    # OR REPLACE so this stands for "detection has since run again", whether or
+    # not the call above cleared the marker -- the assertion below is what says
+    # which happened, rather than a constraint violation up here.
+    conn.execute(
+        "INSERT OR REPLACE INTO face_scan(file_id, n_faces, scanned_at) VALUES(1, 2, 'now')"
+    )
+    conn.commit()
+
+    db.init_db(conn)
+
+    assert conn.execute("SELECT n_faces FROM face_scan WHERE file_id=1").fetchone()[0] == 2

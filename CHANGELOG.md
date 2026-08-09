@@ -23,8 +23,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ffmpeg picks the format to write from the filename — it recognised nothing
   and refused each job before reading a frame, without saying so.
 
-  Videos that were passed over while this was broken are picked up again on
-  the next indexing run; they had been recorded as permanently unreadable.
+  Videos passed over while this was broken are picked up again the next time
+  the archive is opened. Both stages had written the failure down as a fact
+  about the file — description search as "this video cannot be read", face and
+  pet detection as "there is nobody in this video" — and neither would have
+  looked again on its own.
 
 - **"Counting files in this folder" no longer sits on the Indexing card most
   of the time.** Every time the Trove window came back to the front, it threw

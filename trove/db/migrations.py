@@ -217,6 +217,50 @@ def _drop_legacy_video_embeddings(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM semantic_embeddings WHERE input_kind='video'")
 
 
+def _reopen_videos_the_frame_extractor_failed(conn: sqlite3.Connection) -> None:
+    """Undo the permanent verdicts recorded while no video frame could be read.
+
+    For one release the frame extractor handed ffmpeg a scratch filename it
+    could choose no output format for, so it refused every job before decoding
+    anything (see thumbnails._atomic). Both stages that sample a video read
+    that as a property of the file:
+
+    * description search stored ``status='skipped'`` with an ``unsupported``
+      error, which ``services.semantic._is_permanent_skip`` defines as
+      never-retry, and ``pending_rows`` then stops offering the file at all;
+    * face and pet detection wrote a scan marker with zero counts, which is
+      what "this video holds nobody" looks like, and is equally final.
+
+    Neither would ever be revisited on its own, so a fixed extractor alone
+    leaves those videos blank forever. Clearing the rows is what makes them
+    pending again -- exactly once, gated on the schema version by ``run``
+    below, for the reason ``_drop_legacy_video_embeddings`` gives.
+
+    The semantic half is exact: that error text is written in one place and
+    means only this. The detect half cannot be, because a scan marker records
+    what was found and not whether looking was possible -- a video with no
+    frames and a video with nobody in it leave the same row. So every video's
+    marker goes, and archives that were never affected pay one more detect
+    pass over their videos. That is the same trade ``_clear_multiframe_
+    fingerprints`` makes, and the alternative is identity data that is
+    silently, permanently wrong.
+    """
+    conn.execute(
+        # Matched on the message rather than imported from the module that
+        # writes it (services/semantic.py, media_part): db is the foundation
+        # layer and services sits two above it.
+        "DELETE FROM semantic_embeddings WHERE status='skipped' "
+        "AND error LIKE 'unsupported video: could not extract any frames%'"
+    )
+    # Two literal table names from a tuple written here, not anything a caller
+    # supplies -- the interpolation is spelling the statement twice, not
+    # building it from input.
+    for table in ("face_scan", "pet_scan"):
+        conn.execute(
+            f"DELETE FROM {table} WHERE file_id IN (SELECT id FROM files WHERE media_type='video')"
+        )
+
+
 def text_index_present(conn: sqlite3.Connection) -> bool:
     """Whether this database carries the document-text index.
 
@@ -289,3 +333,5 @@ def run(conn: sqlite3.Connection, previous_version: int) -> None:
         _drop_legacy_video_embeddings(conn)
     if previous_version < 16:
         _clear_multiframe_fingerprints(conn)
+    if previous_version < 18:
+        _reopen_videos_the_frame_extractor_failed(conn)
