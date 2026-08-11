@@ -250,6 +250,12 @@ def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -
     file can be an identical copy in one group and a visual match in another.
     The canonical is joined in by id for that comparison rather than read in a
     second query, so the label and the row it labels come from one snapshot.
+
+    Copies come back in path order, not the scan order they were inserted in.
+    The screen draws them as a row of pictures that all look the same, so the
+    only thing telling one from the next is where it lives -- and in database-id
+    order that reads as nothing, while in path order the copies sharing a folder
+    sit together, which is how someone clearing them out works through them.
     """
     members = conn.execute(
         """SELECT f.id, f.media_type, f.rel_path, m.role,
@@ -262,7 +268,7 @@ def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -
            FROM dup_members m JOIN files f ON f.id=m.file_id
            JOIN roots r ON r.id=f.root_id
            JOIN files canonical ON canonical.id=?
-           WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
+           WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.rel_path, f.id""",
         (canonical_id, group_id),
     ).fetchall()
     return [
