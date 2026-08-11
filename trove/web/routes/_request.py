@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, TypeVar, overload
 
 from ...config import Config
+from ...errors import ArchiveError
 from ...pipeline.manager import JobManager
 
 _T = TypeVar("_T")
@@ -122,9 +123,16 @@ class Request:
         return out
 
     def limit(self, default: int, cap: int) -> int:
-        """``?limit=``, defaulted then clamped. The cap is per route and is the
-        server's protection against a client asking for the whole archive."""
-        return min(self.one("limit", int, default), cap)
+        """``?limit=``, defaulted then clamped to 1..cap. The cap is per route
+        and is the server's protection against a client asking for the whole
+        archive.
+
+        Clamped at both ends, because only clamping the top did not hold: SQLite
+        reads a negative ``LIMIT`` as no limit at all, so ``?limit=-1`` asked for
+        every row in the table and got it -- the one thing the cap exists to
+        refuse.
+        """
+        return max(1, min(self.one("limit", int, default), cap))
 
     def offset(self) -> int:
         return self.one("offset", int, 0)
@@ -151,15 +159,32 @@ class Request:
         """The archive the GUI currently has open."""
         return self.jobs.current_root_id()
 
-    def db(self, root_id: int | None) -> str:
+    def _archive(self, root_id: int | None) -> int:
+        """The id of a registered archive, or a message a person can act on.
+
+        Both checks are here rather than in the routes because both mistakes
+        arrive the same way -- a hand-edited URL, a bookmark to an archive that
+        has since been removed, a tab left open while another window deleted it
+        -- and all 50-odd root-scoped routes should answer them identically.
+
+        Without the registry check the id was handed straight to
+        ``archive_db_path``, which happily names a database that was never
+        created; the caller then got SQLite's own words for it, ``unable to open
+        database file``, which says nothing about archives and reads like a
+        failure of the disk rather than a request for something that is not
+        there.
+        """
         if root_id is None:
             raise ValueError("root is required")
-        return self.cfg.archive_db_path(root_id)
+        if self.cfg.archive_path(root_id) is None:
+            raise ArchiveError(f"there is no archive {root_id} — it may have been removed")
+        return root_id
+
+    def db(self, root_id: int | None) -> str:
+        return self.cfg.archive_db_path(self._archive(root_id))
 
     def cache(self, root_id: int | None) -> str:
-        if root_id is None:
-            raise ValueError("root is required")
-        return self.cfg.archive_cache_dir(root_id)
+        return self.cfg.archive_cache_dir(self._archive(root_id))
 
     # -- request body -------------------------------------------------------
     def body_str(self, name: str, default: str | None = None) -> str:
