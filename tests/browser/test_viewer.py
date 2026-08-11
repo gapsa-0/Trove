@@ -734,3 +734,50 @@ def test_the_transport_sits_on_the_picture_not_on_the_stage(open_app, archive):
         stage = app.tab.evaluate("Math.round(document.getElementById('mmedia').offsetWidth)")
         assert port[1] < stage, "the transport is still the width of the stage"
         assert app.errors() == []
+
+
+def test_a_video_being_converted_opens_at_its_real_size_over_its_own_frame(open_app, archive):
+    """What the wait looks like while the re-encoding starts.
+
+    A <video> with nothing decoded yet is 300x150 of black -- a small dark box
+    adrift on the stage, at the wrong size and the wrong shape, for the whole
+    of the second the conversion takes. Worse, the transport is laid on the
+    picture's own edges, so it opened around that box and then jumped when the
+    real dimensions landed.
+
+    Both are answered from the catalogue, which measured this file at index
+    time: the element carries the size it will keep, and the frame already
+    extracted for the grid stands in until a real one arrives.
+
+    The "Converting this video…" note itself is deliberately not raced for
+    here. It is put up before the load and taken down by the first frame, and
+    on a two-second 64x48 clip that gap is short enough that asserting on it
+    would be a coin toss. What is checked is that it does not outlive the
+    picture, which is the failure that would actually be seen.
+    """
+    fid = archive.ids.get("reencodable")
+    if fid is None:
+        pytest.skip("re-encoding for playback needs ffmpeg")
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({fid})")
+        app.wait_for("#mmedia video")
+
+        # The seeded clip is 64x48 and the catalogue knows it, so the element
+        # must never be the 300x150 default.
+        assert (
+            app.tab.evaluate(
+                "JSON.stringify([document.querySelector('#mmedia video').width,"
+                " document.querySelector('#mmedia video').height])"
+            )
+            == "[64,48]"
+        ), "the video opened at the element default instead of its own size"
+        assert app.tab.evaluate(
+            "(document.querySelector('#mmedia video').poster || '').includes('/thumb/')"
+        ), "no frame standing in while the conversion runs"
+
+        app.tab.wait_for(
+            "(document.querySelector('#mmedia video') || {}).videoWidth > 0",
+            what="the re-encoding to put a picture on the stage",
+        )
+        assert app.count("#mmedia .vxwait") == 0, "the note outlived the picture it was waiting for"
+        assert app.errors() == []

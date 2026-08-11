@@ -240,6 +240,11 @@ function videoStage(it) {
   let from = 0;
   const convert = at => {
     from = at;
+    // Re-encoding takes about a second to put a first frame up, and a seek
+    // pays it again because a pipe cannot be rewound. Unsaid, that second is a
+    // still picture that has stopped responding; said, it is a wait with a
+    // reason. Cleared by the first frame, or by the panel if none arrives.
+    showConverting();
     v.src = `/file/${id}?play=1${at ? `&t=${at.toFixed(3)}` : ""}`;
     v.load();
     // Rejected when the window will not autoplay -- nothing to report, the
@@ -262,10 +267,43 @@ function videoStage(it) {
   };
   v.addEventListener("error", () => nothingDrawn("refused"));
   v.addEventListener("loadedmetadata", () => { if (!v.videoWidth) nothingDrawn("opened"); });
+  v.addEventListener("loadeddata", () => { if (v.videoWidth) clearConverting(); });
   v.controls = true;
   v.autoplay = true;
+  // The frame already extracted for the grid, standing in until the first real
+  // one arrives. Without it the element is its own default 300x150 of black --
+  // a small dark box adrift on the stage, at the wrong size and the wrong
+  // shape, for the whole of the wait. A file with no frame answers 404 and the
+  // element falls back to that default, which is where it started.
+  v.poster = "/thumb/" + id;
+  // ...and the size the catalogue measured, so the picture opens at the size
+  // it will keep. The element is otherwise 300x150 until metadata lands and
+  // then jumps, taking the transport -- which is laid on the picture's own
+  // edges -- across the stage with it. Set as attributes rather than styles
+  // because that is what gives the element an aspect ratio to scale within.
+  if (it.meta && it.meta.width && it.meta.height) {
+    v.width = it.meta.width;
+    v.height = it.meta.height;
+  }
   v.src = "/file/" + id;
   return v;
+}
+/* "This is being converted", while it is.
+
+   Deliberately only on the re-encoding path. A file that plays as itself is
+   the browser's own business and it is quick about it; a spinner flashed over
+   every video would be noise on the six thousand that never wait. */
+function showConverting() {
+  const m = document.getElementById("mmedia");
+  if (!m || m.querySelector(".vxwait")) return;
+  const note = document.createElement("div");
+  note.className = "vxwait";
+  note.innerHTML = `<span class="spin"></span>Converting this video…`;
+  m.appendChild(note);
+}
+function clearConverting() {
+  const note = document.querySelector("#mmedia .vxwait");
+  if (note) note.remove();
 }
 /* The transport for a re-encoded video, and the reason it exists at all.
 

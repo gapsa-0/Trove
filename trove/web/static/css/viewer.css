@@ -427,6 +427,35 @@
   font-size: 32px
 }
 
+/* "Converting this video…", over the frame standing in for it meanwhile.
+
+   Dark-on-glass rather than theme tokens, like every other surface that floats
+   over the media: what is behind it is a still from the video, whatever
+   appearance the app is in. That includes the spinner, which is shared with
+   the status rail and takes its colours from tokens meant for a panel. */
+.vxwait {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  padding: 9px 15px;
+  border-radius: 999px;
+  background: rgba(28, 28, 30, .72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #fff;
+  font-size: 12.5px;
+  white-space: nowrap;
+  transform: translate(-50%, -50%)
+}
+
+.vxwait .spin {
+  border-color: rgba(255, 255, 255, .28);
+  border-top-color: #fff
+}
+
 /* The transport for a re-encoded video: a copy of the native controls it
    replaces, because half the archive's video keeps the native ones and the
    viewer must not hand you two different players depending on how a file
