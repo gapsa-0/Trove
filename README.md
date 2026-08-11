@@ -38,10 +38,13 @@ library.*
 - Chooses a best capture date using this default order: Google Takeout capture time,
   EXIF, filename, then filesystem modification time.
 - Groups byte-identical copies and visually similar image exports. A canonical copy
-  is selected; other copies are hidden from normal browsing, never deleted, and can
-  be shown again. The Duplicates page breaks the redundant copies down by what they
-  are — byte-identical versus only visually the same, and photos versus the far
-  fewer videos that tend to account for most of the reclaimable space.
+  is selected; the others are hidden from normal browsing but never deleted, and each
+  one stays listed, openable and named on the Duplicates page. That page breaks the
+  redundant copies down by what they are — byte-identical versus only visually the
+  same, and photos versus the far fewer videos that tend to account for most of the
+  reclaimable space — and it can read the split by size or by file count. Freeing the
+  space is your job: Trove has no delete button anywhere, so it tells you which copies
+  are spare and which folder each one is in, and leaves them where they are.
 - Builds a timeline, media library, source-folder view, and item inspector.
 - Clusters GPS-tagged media into places. Places can be named, manually created from a
   map pin, and manually assigned without altering the media's GPS metadata. A spot

@@ -40,16 +40,7 @@ export function tile(it, resultIndex = null, caption = "date") {
     (it.indexed ? ", indexed for description search" : "") +
     (it.has_gps ? ", has a location" : ""));
   d.onclick = () => openItem(it.id);
-  // Documents get a thumbnail too where one can be made -- a PDF renders its
-  // first page -- because what is printed on a page is the only thing that
-  // tells two contracts apart in a grid. The server answers 404 when it cannot
-  // render one, and `onerror` is already the path back to the type icon, so
-  // asking costs nothing on the formats that have none.
-  if (it.type === "image" || it.type === "video" || it.type === "document") {
-    const img = document.createElement("img"); img.loading = "lazy";
-    img.src = "/thumb/" + it.id; img.onerror = () => img.replaceWith(ph(TYPE_ICON[it.type] || "🖼️")); d.appendChild(img);
-  }
-  else d.appendChild(ph(TYPE_ICON[it.type] || "📦"));
+  d.appendChild(thumbNode(it));
   const cap = document.createElement("div"); cap.className = "cap";
   // A name is arbitrary user data and long enough to need cutting off, so it is
   // escaped, truncated by CSS, and given a title carrying the whole of it.
@@ -76,6 +67,32 @@ export function tile(it, resultIndex = null, caption = "date") {
   return d;
 }
 function ph(icon) { const s = document.createElement("div"); s.className = "ph"; s.textContent = icon; return s; }
+
+/* The picture of a file, or the icon that stands in for one.
+
+   Documents get a thumbnail too where one can be made -- a PDF renders its
+   first page -- because what is printed on a page is the only thing that tells
+   two contracts apart in a grid. The server answers 404 when it cannot render
+   one, and `onerror` is already the path back to the type icon, so asking costs
+   nothing on the formats that have none.
+
+   Exported because the Duplicates screen lays its media out its own way and so
+   kept its own copy of this rule -- a copy that left `document` out, which is
+   how a duplicated contract showed a bare 📄 there and its first page on every
+   other screen. The list of what can be drawn, and what stands in when it
+   cannot, is one thing and now lives in one place. */
+export function thumbNode(it) {
+  if (!THUMBABLE.has(it.type)) return ph(TYPE_ICON[it.type] || "📦");
+  const img = document.createElement("img");
+  img.loading = "lazy";
+  // Decorative: every caller labels the control this sits inside, and a second
+  // announcement of the same file name is noise on a screen reader.
+  img.alt = "";
+  img.src = "/thumb/" + it.id;
+  img.onerror = () => img.replaceWith(ph(TYPE_ICON[it.type] || "🖼️"));
+  return img;
+}
+const THUMBABLE = new Set(["image", "video", "document"]);
 /* A library tile plus the passage that matched -- for the text results group
    ONLY. tile() itself is shared with four other grids and must never grow this,
    so the snippet is attached afterwards, the way personTile attaches its own

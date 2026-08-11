@@ -16,7 +16,7 @@ import {
   docsHashSlug, openDocs,
 } from "./docs.js";
 import {
-  renderDedup,
+  renderDedup, resumeDedup,
 } from "./dups.js";
 import {
   INFINITE_LIST_KEYS,
@@ -166,12 +166,24 @@ function resumeSection(id) {
   else if (id === "people" && document.getElementById("facejob")) startFacePoll();
   else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
   else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
+  // Duplicates has no poll of its own: it rides the pipeline snapshot, which
+  // only reaches it while it is the section on show. So what a stashed screen
+  // missed while the user was elsewhere is asked for once, here, on the way
+  // back -- otherwise the replayed fragment is exactly as stale as it was left.
+  else if (id === "dups") resumeDedup();
 }
 export function showSection(id, reload = false) {
   // A hash can name a section this archive does not run — a bookmark from
   // before People was switched off, or a link between archives. Fall back to
   // the Overview rather than rendering a screen whose data will never arrive.
   if (!RENDERERS[id] || !archiveSections(S.arch).some(s => s.id === id)) id = "overview";
+  // Written before the early return, not after it. A hash naming a section that
+  // does not exist falls back to the Overview -- and when the Overview was
+  // already the section on show, returning here left the address bar still
+  // claiming the section nobody is looking at, so a reload or a copied link
+  // reproduced the wrong screen. Assigning the same hash it already holds is a
+  // no-op; assigning a different one re-enters here and returns at this line.
+  if (S.arch) location.hash = `/archive/${S.arch.id}/${id}`;
   if (ACTIVE_SECTION === id && !reload) return;
   S.nav++; const gen = S.nav;
   stopSectionPolls();
@@ -185,7 +197,6 @@ export function showSection(id, reload = false) {
     } else stashActiveSection();
   }
   S.section = id; ACTIVE_SECTION = id; renderNav();
-  if (S.arch) location.hash = `/archive/${S.arch.id}/${id}`;
   const saved = SECTION_VIEWS.get(id);
   if (saved && !reload) {
     SECTION_VIEWS.delete(id);

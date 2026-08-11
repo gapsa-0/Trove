@@ -2,9 +2,14 @@
 // application state or talks to the server; if a helper needs either, it belongs
 // with the screen that owns it.
 
+// Whole bytes, one decimal above that: a tenth of a kilobyte is a real
+// distinction and a tenth of a byte is not, so plain bytes are printed as
+// integers. It is the zero case that made this worth fixing -- an archive with
+// nothing to reclaim announced "0.0 B", which reads like a rounded-down
+// quantity rather than none at all.
 export function fmtBytes(n) {
   if (n == null) return "-"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, f = n;
-  while (f >= 1024 && i < 4) { f /= 1024; i++; } return f.toFixed(1) + " " + u[i];
+  while (f >= 1024 && i < 4) { f /= 1024; i++; } return f.toFixed(i ? 1 : 0) + " " + u[i];
 }
 export function esc(s) {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")

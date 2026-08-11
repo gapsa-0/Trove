@@ -1,5 +1,20 @@
 /* duplicates */
 
+/* The sentence above the list: what a group is, which copy stays, and the one
+   thing the screen cannot do for you. Wider measure than a caption and tighter
+   than body copy, because it is read once and then never again. */
+.dup-lede {
+  max-width: 76ch;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dup-lede-kept {
+  color: var(--good);
+  font-weight: 600;
+}
+
 /* The listing's controls. A plain .filterbar of .fsel selects, the same row
    Timeline and Browse use, so a control that filters a list looks and behaves
    the same wherever it is met. The one addition is the count, pushed to the far
@@ -27,28 +42,44 @@
   margin-bottom: 10px;
 }
 
+/* The end of the list, said once. */
+.dup-end {
+  margin: 18px 0 4px;
+  font-size: 12px;
+  text-align: center;
+}
+
 /* Wraps rather than scrolls sideways: a group is a set of copies to compare
    against each other, and a copy parked off the right edge cannot be compared
-   with anything. Fixed 120px tracks rather than 1fr, so a thumbnail is the
+   with anything. Fixed 130px tracks rather than 1fr, so a thumbnail is the
    same size in a group of three as in a group of thirty -- comparing pictures
    across groups is the whole activity here, and tiles that resize with the
    group's member count would defeat it. */
 .duprow {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 120px);
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, 130px);
+  gap: 10px 12px;
   justify-content: start;
 }
 
+/* A real button, so a keyboard reaches it. Reset to look like the div it
+   replaced -- the app's .btn styling has no business here. */
 .duptile {
-  width: 120px;
+  width: 130px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+  display: block;
 }
 
 .duptile>img,
 .duptile>.ph {
-  width: 120px;
-  height: 120px;
+  width: 130px;
+  height: 130px;
   object-fit: cover;
   border-radius: 8px;
   border: 2px solid var(--line);
@@ -65,34 +96,80 @@
   border-color: var(--good);
 }
 
+.duptile:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+.duptile:hover>img,
+.duptile:hover>.ph {
+  border-color: var(--line-strong);
+}
+
+.duptile.kept:hover>img,
+.duptile.kept:hover>.ph {
+  border-color: var(--good);
+}
+
 .dtcap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
-  margin-top: 3px;
+  margin-top: 5px;
 }
 
-.dtcap .keep {
-  color: var(--good);
-  font-weight: 600;
+/* Video, marked the way Browse marks it (tiles.js) so the same file does not
+   look like a photograph on one screen and a video on the next. */
+.dtplay {
+  color: var(--muted);
+  font-size: 9px;
 }
 
+/* The tag. Filled for the copy that is kept and quiet for the ones that are
+   not: in a row of nine identical pictures the kept one is the fact being
+   looked for, and it used to be the faintest mark in the row while every copy
+   beside it wore a bright pill. Both are theme tokens, so neither has to be
+   redefined per theme -- the previous pair were fixed pastel hexes that were
+   the brightest thing on the dark screen. */
 .duptag {
   display: inline-block;
   border-radius: 9px;
-  padding: 1px 6px;
+  padding: 1px 7px;
   font-size: 10px;
   font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
 }
 
-.duptag.exact {
-  background: #d9f7e6;
-  color: #176b3a;
+.duptag.canonical {
+  background: var(--good);
+  color: #fff;
 }
 
+.duptag.identical,
 .duptag.visual {
-  background: #e4e7ff;
-  color: #414eaa;
+  padding-left: 0;
+  padding-right: 0;
+  color: var(--muted);
+  font-weight: 500;
 }
 
+/* The file's own name: the only thing that tells two copies of one picture
+   apart, and for a long time the one thing this screen did not show. */
+.dtname {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The last two segments of the folder (see shortFolder): the whole path never
+   fits, and cutting it at the width instead left every copy in a deep archive
+   reading the same first few folders. */
 .dtpath {
   font-size: 10px;
   color: var(--muted);

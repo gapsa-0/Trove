@@ -36,7 +36,7 @@ import {
   renamePet,
 } from "./pets.js";
 import {
-  applyDupFilters, openDupCopy,
+  applyDupFilters, setDupMetric,
 } from "./dups.js";
 import {
   answerSuggest, backToPeople, editPersonName, hidePerson,
@@ -167,13 +167,13 @@ Object.assign(window, {
   newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
-  openCopy, openDocs, openDupCopy, openFeatureSheet, openFileLocation, openItem, openRelated,
+  openCopy, openDocs, openFeatureSheet, openFileLocation, openItem, openRelated,
   openSettings,
   reassignFace,
   removeFeature, removeManualPerson,
   removeManualPet,
   renamePet, renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
-  setMapView,
+  setDupMetric, setMapView,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,

@@ -15,6 +15,67 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The Duplicates screen keeps up with the grouping it is reporting on.**
+  Duplicate detection is scheduled rather than started by hand, so the screen is
+  routinely opened while it is still running — and once opened, it stayed frozen
+  at whatever it had found in that first moment for the rest of the session. It
+  would read "0 duplicate groups" and "no copies found yet" while the sidebar
+  said "Up to date" and the Library overview reported ninety-one redundant
+  copies, and leaving the screen and coming back showed the same stale figures
+  again, because returning to a screen replayed it rather than asking. The
+  figures now move as the run goes, the list fills itself in when the run
+  settles, and coming back to the screen brings it up to date.
+
+- **Copies in a group say which file they are.** A group was drawn as a row of
+  thumbnails of the same picture over a folder path cut off at whatever fitted,
+  which in a deep archive meant nine copies all captioned `Takeout/Google
+  Photos/…` and no way to tell one from another without opening each in turn.
+  Every copy now carries its own file name, and the folder is shortened to the
+  part that actually differs — `…/Bariloche - dia 1` beside `…/Bariloche - dia
+  2` — with the whole path still one hover away.
+
+- **A folder with a quotation mark in its name no longer breaks its tile.**
+  `Fotos de "Mama" & Papa` — an ordinary thing to find in a Takeout export —
+  ended the tile's tooltip early, spilled the rest of the name into the page as
+  visible text, and destroyed the tile's own click handler, so that one copy was
+  the single file in the archive that could not be opened.
+
+- **The Duplicates screen can be used from the keyboard.** Its copies were the
+  one grid in the app not built as real buttons: a hundred and fifty pictures on
+  a page that no keyboard could reach and no screen reader could name. They now
+  behave like every other tile in Trove, are announced with the file's name and
+  where it lives, and take a visible focus ring.
+
+- **Filter controls are legible in the light theme.** A rule meant for the dark
+  panel inside the viewer was reaching every filter and sort control in the app,
+  painting white text on a white background — both of the Duplicates screen's
+  controls, and the Timeline's, were invisible until clicked.
+
+- **A duplicated PDF shows its first page**, the way it already did everywhere
+  else in Trove, instead of a generic document icon; and a duplicated video is
+  marked as a video rather than looking like a photograph.
+
+- **Changing the duplicates filter returns you to the top of the list**, instead
+  of leaving you somewhere in the middle of a list you had not seen the start
+  of, with the control you just used scrolled off the screen.
+
+- **An archive id that does not exist is answered as such.** A stale bookmark,
+  or a tab left open while another window removed the archive, produced SQLite's
+  own words — "unable to open database file" — which reads like a broken disk
+  rather than a request for something that is not there.
+
+### Changed
+
+- **The Duplicates screen says what it will and will not do.** It now states
+  plainly that Trove never deletes anything and that freeing the space is yours
+  to do, which is what the reference page already said and the screen did not.
+  The breakdown of what the copies are can be read by size or by file count, the
+  way the Library overview's storage panel can — the bars were drawn by count
+  alone, which cannot answer a question about disk space. The copy that Trove
+  keeps is now the most prominent thing in its group rather than the faintest,
+  and the same three words — kept, identical copy, visual match — are used for a
+  copy wherever it appears.
+
 - **Thumbnails are not fetched again every time you look at them.** Nothing
   Trove sent the browser said how long it could be kept or how to tell whether
   it had changed, so every screen change re-downloaded the whole grid and every

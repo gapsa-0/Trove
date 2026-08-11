@@ -112,9 +112,14 @@ have. It is a share of **unique files**, not of the redundant copies above it,
 which is why it sits below a rule: the segments of the two do not compare.
 
 Then one row per group, biggest saving first. Each row shows every copy with
-the folder it lives in, and the one Trove keeps is tagged with a green check.
-Click any copy to open it; the viewer's arrows then step through that group and
-stop at its edges, so a comparison never wanders into the next group's photos.
+its file name and the folder it lives in, and the one Trove keeps wears a
+filled *✓ Kept* tag. Click any copy to open it; the viewer's arrows then step
+through that group and stop at its edges, so a comparison never wanders into
+the next group's photos.
+
+The folder under a copy is shortened to its last two parts, because that is
+where copies of one file differ — `…/Bariloche - dia 1` beside
+`…/Bariloche - dia 2`. Hovering a copy shows the whole path.
 
 Two controls sit above the list. The first narrows it to groups holding at
 least one identical copy, or at least one visual match, and a group can answer
@@ -191,8 +196,11 @@ most likely one of these.
 
 **Which copy got kept.** The rule above prefers the largest original, which is
 usually right, but it has no way to know that the smaller file is the one you
-edited. Everything in the group is still there, so this is recoverable rather
-than permanent.
+edited. Nothing is lost either way — every copy is still on disk, still listed
+in its group here, and still openable from this screen. What Trove cannot do
+yet is be told it picked wrong: there is no way to promote another copy to the
+kept one, so the copy you wanted stays out of Browse until the file itself
+changes.
 
 ## When it runs
 
