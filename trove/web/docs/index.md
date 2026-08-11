@@ -108,7 +108,18 @@ of those rewrites the catalogue wholesale.
 
 The **Library health** panel on the Overview shows what each stage is doing,
 what it is waiting on and how much is left. There is a **Pause all** button
-there when you want the machine back.
+there when you want the machine back, and each stage has its own pause control
+beside it if you want to stop only one — face detection overnight, say, while
+indexing carries on. Both kinds are remembered across restarts, so a stage you
+paused stays paused until you resume it, and the sidebar says how many are
+stopped so a paused step cannot be forgotten about.
+
+**If the archive's folder cannot be found** — an external drive not connected,
+a network share unreachable, a folder moved — the health panel says so at the
+top and nothing is indexed until it is back. Trove shows what it catalogued
+last time meanwhile, but the files themselves cannot be read, so thumbnails and
+originals will not open. Nothing is deleted and nothing is forgotten: reconnect
+the folder and it picks up on its own.
 
 A first run on a large archive takes hours. It is resumable: closing Trove
 mid-scan loses nothing, and reopening picks up where it stopped.

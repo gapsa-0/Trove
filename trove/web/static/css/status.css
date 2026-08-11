@@ -224,6 +224,12 @@ table.types .share {
 
 /* Size / Files switch in the panel heading: one bar at a time, so the two
    readings never compete for the same strip of pixels. */
+/* An archive with nothing to break down has nothing to switch between, and the
+   empty container was still drawing its own pill. */
+.metric-switch:empty {
+  display: none
+}
+
 .metric-switch {
   display: flex;
   gap: 2px;
@@ -250,9 +256,12 @@ table.types .share {
   color: var(--accent);
 }
 
+/* Room under the bar for the tooltip that appears there. Without it the tip
+   landed on the table's own header row and hid the column names -- exactly
+   while someone was hovering the bar to read the columns. */
 .storage-bar {
   position: relative;
-  margin-bottom: 16px;
+  margin-bottom: 40px;
 }
 
 .storage-bar .type-summary-bar {
@@ -281,6 +290,15 @@ table.types .share {
 
 .storage-tip[hidden] {
   display: none;
+}
+
+/* An archive with nothing catalogued: a sentence where the bar and table
+   would be, rather than an empty bar that reads as one still loading. */
+.storage-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 .storage-tip .swatch {

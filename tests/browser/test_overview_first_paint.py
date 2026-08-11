@@ -83,3 +83,94 @@ def test_every_tile_holds_a_real_number_once_the_answers_land(open_app):
         app.wait_for("#ov-total")
         app.tab.wait_for(_LOADED, timeout=15.0, what="every Overview tile to be filled in")
         assert app.errors() == [], f"the Overview raised: {app.errors()}"
+
+
+# The whole screen is rendered from one snapshot, so a state that only the
+# server can produce is best injected there: overwrite the field the renderer
+# reads and redraw, rather than renaming a folder out from under a live archive.
+_WITH_SNAPSHOT_JS = """
+  (() => {
+    const patch = %s;
+    const real = window.fetch;
+    window.fetch = async (u, o) => {
+      const res = await real(u, o);
+      if (!String(u).includes('/api/pipeline?')) return res;
+      const body = await res.clone().json();
+      return new Response(JSON.stringify({ ...body, ...patch }),
+        { headers: { 'Content-Type': 'application/json' } });
+    };
+    showSection('overview', true);
+  })()
+"""
+
+
+def test_a_missing_folder_is_said_out_loud_rather_than_shown_as_healthy(open_app):
+    """The regression: an archive whose folder cannot be reached reported green
+    dots, "up to date" and a full file count, while every thumbnail and original
+    in it answered 404. The notice leads the health panel, the sidebar chip says
+    so from every screen, and the figures -- which are now facts about the
+    catalogue rather than about the archive -- stop looking current."""
+    with open_app("overview", wait_for=".health-task") as app:
+        app.tab.evaluate(_WITH_SNAPSHOT_JS % "{ root_missing: true }")
+        app.wait_for(".health-missing")
+
+        notice = app.text(".health-missing")
+        assert "cannot be found" in notice
+        assert "thumbnails and originals will not open" in notice
+        # Not an error, and not a dead end: it says what to do about it.
+        assert "connect it" in notice
+
+        assert "Folder not found" in app.text("#gstat")
+        assert app.count(".statrow .stat.stat-stale") == app.count(".statrow .stat"), (
+            "every headline figure is unverifiable while the folder is unreadable"
+        )
+        assert app.errors() == []
+
+
+def test_one_paused_step_is_not_reported_as_the_whole_pipeline(open_app):
+    """The chip used to read `overall`, which says "paused" whenever the only
+    outstanding work sits behind one stopped stage -- so pausing a single step
+    put a flat "Paused" over an archive that was busy indexing, next to a button
+    still offering to "Pause all"."""
+    with open_app("overview", wait_for=".health-task") as app:
+        app.tab.evaluate(
+            _WITH_SNAPSHOT_JS % '{ paused: false, paused_stages: ["dedup"], overall: "paused" }'
+        )
+        app.tab.wait_for(
+            "document.getElementById('gstat').textContent.includes('paused')",
+            what="the chip to report the stopped step",
+        )
+
+        assert "1 step paused" in app.text("#gstat")
+        assert app.text("#pause-btn").strip() == "Pause all", "the pipeline is not paused"
+        assert app.errors() == []
+
+
+def test_the_stat_row_fills_its_width_whatever_the_archive_runs(open_app):
+    """Places is optional, so the row is three tiles as often as four. Fixed at
+    four columns, three of them left the row ending short of the page head and
+    both panels below it."""
+    with open_app("overview", wait_for=".statrow .stat") as app:
+        # The fixture archive runs every feature, so it draws all four tiles and
+        # a four-column grid fits it exactly -- the case that was broken is the
+        # ordinary one, an archive without Places. Dropping a tile is how that
+        # archive's row is reached from here.
+        gaps = app.tab.evaluate("""
+          (() => {
+            const row = document.querySelector('.statrow');
+            const measure = () => {
+              const r = row.getBoundingClientRect();
+              const last = [...row.querySelectorAll('.stat')].pop().getBoundingClientRect();
+              return Math.round(r.right - last.right);
+            };
+            const before = measure();
+            row.querySelectorAll('.stat')[2].remove();
+            return [before, measure(), row.querySelectorAll('.stat').length];
+          })()
+        """)
+        four, three, left = gaps
+
+        assert left == 3, "expected three tiles after dropping one"
+        assert four < 4, f"a full row already stops {four}px short"
+        assert three < 4, f"a three-tile row stops {three}px short of the page"
+        assert app.errors() == []

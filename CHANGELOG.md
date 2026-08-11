@@ -15,6 +15,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **An archive whose folder cannot be found says so.** Disconnect the drive an
+  archive lives on — or move or rename its folder — and the Library overview
+  reported perfect health: green dots, a full file count, "Up to date" in the
+  sidebar, while every thumbnail and original in it failed to open. The start
+  page had been marking the same archive "not mounted" the whole time. The
+  health panel now leads with what has happened, names the folder, and says what
+  to do about it; the sidebar says it from every screen; and the headline
+  figures stop presenting themselves as current, because what they describe is
+  the catalogue rather than files anything can read.
+
+- **Pausing one step is no longer reported as pausing everything.** The sidebar
+  said a flat "Paused" over an archive that was busily indexing, next to a
+  button still offering to "Pause all" — or, if the stopped step happened to
+  have nothing waiting, "Up to date" over a step that would silently ignore the
+  next thousand photos. It now says how many steps are stopped, and never
+  disagrees with the button beside it.
+
+- **A paused step keeps saying how much is waiting.** It reported the bare word
+  "Paused" and dropped the backlog — the one number the person who paused it
+  comes back for. It now reads "Paused · 25 waiting", and a step paused with
+  nothing outstanding no longer prints a "finished" line under a stopped dot.
+
+- **A figure produced by a paused step no longer looks current.** With duplicate
+  detection paused, "Redundant copies" read 92 while the archive held 112, in
+  the same type as the live figures either side of it. Such a tile is now dimmed
+  and says which step is stopped.
+
+- **The headline row fills the width again.** It was fixed at four columns, so
+  any archive not running Places — three tiles — left the row ending well short
+  of everything below it.
+
+- **An empty archive reads as empty**, rather than as a storage chart that
+  failed to load: the blank bar and the table header with no rows under it are
+  replaced by a line saying whether Trove is still reading the folder or has
+  been through it and found nothing.
+
+- **The storage table says what its percentage is a share of.** The Size/Files
+  switch changed what the "Share" column divided by without changing the column,
+  so with Files selected a row read "304 · 17.9 MB · 93.3%" and the percentage
+  attached itself to the megabytes beside it.
+
 - **The Duplicates screen keeps up with the grouping it is reporting on.**
   Duplicate detection is scheduled rather than started by hand, so the screen is
   routinely opened while it is still running — and once opened, it stayed frozen
@@ -65,6 +106,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rather than a request for something that is not there.
 
 ### Changed
+
+- **Two smaller things on the Library overview.** Each headline tile opens a
+  screen, and now says so — a chevron, and a label that names where it goes
+  rather than announcing a bare number to a screen reader. And **Manage
+  features**, the only way from inside an archive to change what Trove does with
+  it, reads as a control rather than as a footnote.
 
 - **The Duplicates screen says what it will and will not do.** It now states
   plainly that Trove never deletes anything and that freeing the space is yours

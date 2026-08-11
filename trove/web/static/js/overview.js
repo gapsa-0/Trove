@@ -16,7 +16,7 @@ import {
   docsButton,
 } from "./docs.js";
 import {
-  fmtBytes, fmtElapsed, toast,
+  esc, fmtBytes, fmtElapsed, toast,
 } from "./dom.js";
 import {
   ICONS, S, TYPE_COL, archiveSections, typeLabel,
@@ -33,12 +33,52 @@ const statValue = v => (v == null ? UNKNOWN : v.toLocaleString());
 // doorway, so a tile whose screen this archive does not run is not rendered at
 // all — leaving it would be a button that silently does nothing, which is the
 // exact failure the app goes to some length elsewhere to prevent.
+//
+// The label says where the door goes, because nothing else did: the tile's own
+// text is a name and a number, so a screen reader announced "Redundant copies
+// 92, button" and pressing it moved the user to a screen they were not told
+// about.
+const SECTION_NAME = {
+  library: "Browse", timeline: "Timeline", places: "Places", dups: "Duplicates",
+};
 function statTile(section, colour, label, id, value) {
   if (!archiveSections(S.arch).some(s => s.id === section)) return "";
-  return `<button class="stat" onclick="showSection('${section}')">
+  return `<button class="stat" onclick="showSection('${section}')"
+      aria-label="${label}: ${statValue(value).replace(/<[^>]*>/g, "")}. Open ${SECTION_NAME[section] || section}">
       <span class="metric-icon ${colour}">${ICONS[section]}</span>
       <div><div class="k">${label}</div>
-      <div class="v" id="${id}">${statValue(value)}</div></div></button>`;
+      <div class="v" id="${id}">${statValue(value)}</div></div>
+      <span class="stat-go" aria-hidden="true">›</span></button>`;
+}
+
+/* Mark the tiles whose figure is behind a stopped stage.
+
+   Each of these numbers is produced by a stage that can be paused, and the row
+   presented all of them as equally current facts about the archive: with
+   Duplicates paused, "Redundant copies" read 92 while the truth was 112, in the
+   same type as the two live figures beside it and with nothing to say so.
+
+   The tile is dimmed and given the reason on hover rather than being hidden or
+   annotated in place: the number is still the last true answer, and the row has
+   no room for a sentence per tile. */
+const STAT_STAGE = { "ov-total": "scan", "ov-enriched": "scan", "ov-gps": "places", "ov-dups": "dedup" };
+function markStaleStats(snap) {
+  const stages = (snap && snap.stages) || [];
+  for (const [id, stageId] of Object.entries(STAT_STAGE)) {
+    const tile = document.getElementById(id)?.closest(".stat");
+    if (!tile) continue;
+    const stage = stages.find(s => s.id === stageId);
+    // A folder that cannot be read makes every one of these a fact about the
+    // catalogue rather than about the archive, so all four are dimmed together
+    // -- which is what makes the notice above felt rather than merely stated.
+    const why = !snap ? ""
+      : snap.root_missing ? "The folder cannot be read, so this is what was catalogued last time."
+        : snap.paused ? "Background processing is paused, so this figure may be out of date."
+          : stage && (stage.paused || stage.stalled)
+            ? `${stage.label} is paused, so this figure may be out of date.` : "";
+    tile.classList.toggle("stat-stale", !!why);
+    if (why) tile.title = why; else tile.removeAttribute("title");
+  }
 }
 
 // What the picker already handed us, shaped as a partial /api/summary.
@@ -157,6 +197,28 @@ export function setStorageMetric(metric) {
   S.storageMetric = metric;
   if (S.summary) renderStoragePanel(S.summary);
 }
+/* An archive with nothing in it yet.
+
+   Which of the two reasons it is depends on whether the scan has finished
+   looking: until it has, "nothing here" is a statement about how far it has
+   got; once it has, it is a statement about the folder. Both are worth telling
+   apart, because only one of them is something the user should act on. */
+function renderEmptyStorage() {
+  const scan = ((S.pipeline && S.pipeline.stages) || []).find(x => x.id === "scan");
+  const looked = !!scan && scan.state === "up_to_date";
+  const missing = !!(S.pipeline && S.pipeline.root_missing);
+  const line = missing
+    ? "The folder cannot be reached, so there is nothing to measure."
+    : looked
+      ? "Trove has been through this folder and found no photos, videos, audio or documents in it."
+      : "Nothing catalogued yet. This fills in as the folder is read.";
+  const bar = document.getElementById("typebar");
+  const tbl = document.getElementById("typetbl");
+  if (bar) bar.innerHTML = `<p class="storage-empty">${line}</p>`;
+  if (tbl) tbl.innerHTML = "";
+  const sw = document.getElementById("storage-switch");
+  if (sw) sw.innerHTML = "";     // nothing to switch between
+}
 function renderStoragePanel(s) {
   const cap = document.getElementById("ov-storage-caption");
   if (cap) cap.textContent = storageCaption(s);
@@ -164,6 +226,13 @@ function renderStoragePanel(s) {
   // below is not, and an empty bar is the honest thing to show until it lands.
   // Drawing one segment for "everything" would be inventing a shape.
   if (!s.types) return;
+  // Nothing catalogued: a bar with no segments and a table with a header and no
+  // rows is a skeleton, and an empty grey bar is indistinguishable from one
+  // still loading. Say the one thing there is to say instead. An empty archive
+  // is a real and recoverable situation -- the wrong folder was added, or the
+  // folder holds nothing Trove reads -- so it gets a sentence rather than a
+  // chart of nothing.
+  if (!s.total) { renderEmptyStorage(); return; }
   const key = storageMetric(), metric = STORAGE_METRICS[key];
   const colour = t => TYPE_COL[t.type] || TYPE_COL.other;
   // Sorted by the metric on screen, so the bar and the table below it read
@@ -212,7 +281,13 @@ function renderStoragePanel(s) {
 
   const tbl = document.getElementById("typetbl");
   if (!tbl) return;
-  tbl.innerHTML = `<tr><th>Type</th><th>Files</th><th>Size</th><th>Share</th></tr>`;
+  // The header follows the switch. "Share" alone changed what it divided by
+  // while sitting in the column next to Size, so with Files selected a row read
+  // "image · 304 · 17.9 MB · 93.3%" and the percentage attached itself to the
+  // number beside it. 93.3% is its share of files; its share of size is 97%.
+  // The hover tip on the bar has always said "of files" / "of size"; this is
+  // the same qualifier, where someone reading the table actually is.
+  tbl.innerHTML = `<tr><th>Type</th><th>Files</th><th>Size</th><th>% ${metric.of}</th></tr>`;
   types.forEach(t => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td><span class="swatch" style="background:${colour(t)}"></span>${typeLabel(t.type)}</td>
@@ -265,6 +340,25 @@ function healthDoneMessage(id) {
     default: return "";
   }
 }
+/* What a stopped card says, which used to be the bare word "Paused".
+
+   Two things were lost by that. A stage stopped with work behind it knows how
+   much -- the server sends `pending` on every tick -- and that is the number
+   the person who paused it comes back for; "Paused" alone is the same sentence
+   after an hour and after a month. And a stage stopped with nothing waiting had
+   its done message printed instead, so a card that was dimmed and marked with a
+   stopped dot simultaneously read "112 redundant copies found", which is the
+   state it is *not* in any more.
+
+   `counted` is what says the figure means something: dedup rebuilds wholesale
+   and reports no backlog, so it has nothing to add and says so by omission. */
+function pausedMessage(stage) {
+  if (stage.counted && stage.pending) {
+    return `Paused · ${stage.pending.toLocaleString()} waiting`;
+  }
+  const done = stage.state === "up_to_date" ? healthDoneMessage(stage.id) : "";
+  return done ? `Paused · ${done}` : "Paused";
+}
 function healthCard(stage) {
   const st = stage.state;
   const allPaused = !!(S.pipeline && S.pipeline.paused);
@@ -290,7 +384,8 @@ function healthCard(stage) {
     + stage.label + stagePauseButton(stage);
   const mark = st === "running" ? `<span class="spin"></span>` : `<span class="dot ${dot}"></span>`;
   const message = pausing ? "Pausing…"
-    : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
+    : stopped ? pausedMessage(stage)
+      : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
   let detail = "", bar = "";
   // Not gated on "running": a stage stopped mid-run keeps the bar it reached
   // (the server hands it back for a paused card -- see stages._stopped_progress),
@@ -379,6 +474,31 @@ export async function toggleStagePause(id, event) {
   } finally { S.pausing = false; }
   await refreshPipelineNow();
 }
+/* The archive's folder is not there.
+
+   Leads the panel, because every figure below it is about a catalogue rather
+   than about files that can be opened -- the thumbnails and the originals all
+   answer 404 in this state. The scheduler has always known: `_scan_backlog`
+   asks `Path.is_dir()` and reports a backlog of 0, on the correct reasoning
+   that a folder which is gone is owed no scan. But 0 is also what a fully
+   indexed archive looks like, so this screen showed green dots and "up to
+   date" over an archive nothing in the app could read.
+
+   Says what to do about it, and does not offer to fix it: nothing in Trove can
+   mount a drive, and a button that only apologises is worse than a sentence. */
+function missingRootNotice(path) {
+  return `<div class="health-missing" role="status">
+      <b>This folder cannot be found.</b>
+      <p>Trove is showing what it catalogued last time. The files themselves cannot
+      be read, so thumbnails and originals will not open, and nothing new will be
+      indexed until the folder is back.</p>
+      <p class="health-missing-path">${esc(path || "")}</p>
+      <p>If it is on a drive or a network share, connect it — Trove picks up again
+      on its own. If the folder was moved or renamed, remove this archive from the
+      start page and add it at its new location; your files are not touched either
+      way.</p>
+    </div>`;
+}
 function renderHealthCards() {
   const el = document.getElementById("syncstatus"); if (!el) return;
   const snap = S.pipeline;
@@ -387,7 +507,9 @@ function renderHealthCards() {
     el.innerHTML = `<div class="health-grid"><div class="health-task running"><div class="health-task-body"><div class="health-task-state"><span class="spin"></span>Checking for work…</div></div></div></div>`;
     return;
   }
-  el.innerHTML = `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;
+  el.innerHTML = (snap.root_missing ? missingRootNotice(S.arch && S.arch.path) : "")
+    + `<div class="health-grid">${snap.stages.map(healthCard).join("")}</div>`;
+  markStaleStats(snap);
 }
 // Whole-pipeline pause/resume: pausing cancels every
 // running job at its next batch checkpoint (see JobManager.set_paused), and
@@ -446,6 +568,12 @@ export async function togglePipelinePause() {
 // subscription would have amounted to.
 onSnapshot(async snap => {
   renderHealthCards();
+  // What an empty archive's storage line says turns on whether the scan has
+  // finished looking -- "nothing yet" while it is still reading the folder,
+  // "there is nothing here" once it has. That is a fact from the snapshot, not
+  // from the summary, so it has to be redrawn when the snapshot moves and not
+  // only when the numbers do.
+  if (S.section === "overview" && S.summary && !S.summary.total) renderStoragePanel(S.summary);
   const area = document.getElementById("jobarea"); if (area) area.innerHTML = "";
   // Paused counts as not busy: nothing can change, so don't keep re-running
   // the summary/duplicate queries behind the user's back. Neither does
