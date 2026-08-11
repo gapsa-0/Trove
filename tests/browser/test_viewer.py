@@ -570,6 +570,12 @@ def test_an_ordinary_open_clears_the_way_back(open_app, archive):
         assert app.errors() == []
 
 
+def _item(archive, fid):
+    """One file's payload, straight from the API the viewer reads it from."""
+    with urllib.request.urlopen(f"{archive.base_url}/api/item/{fid}?root={archive.root_id}") as r:
+        return json.load(r)
+
+
 def test_a_video_the_window_refuses_says_so_instead_of_going_black(open_app, archive):
     """The stage used to hand the file to a <video> and leave it there.
 
@@ -577,13 +583,23 @@ def test_a_video_the_window_refuses_says_so_instead_of_going_black(open_app, arc
     camcorder shelf -- then sat as a black rectangle with a dead transport
     under it and nothing to say why, which reads as Trove having broken rather
     than as the player having limits.
+
+    Which of the two messages it ends on depends on the machine, so the machine
+    is asked rather than assumed: with an ffmpeg to re-encode through, this file
+    has been through it and failed there too, and the honest answer is that
+    nothing here could read it. Without one, the format is still the story.
+    Pinning either wording outright would fail on half the machines that run
+    this.
     """
     with open_app("library", wait_for=".tile") as app:
         app.tab.evaluate(f"openItem({archive.ids['broken']})")
         app.wait_for(".noview")
 
         panel = app.tab.evaluate("document.querySelector('#viewer .noview').textContent")
-        assert ".avi" in panel, "the message does not name the format it cannot play"
+        if _item(archive, archive.ids["broken"])["can_reencode"]:
+            assert "could read" in panel, panel
+        else:
+            assert ".avi" in panel, "the message does not name the format it cannot play"
         # The way out is the point of the panel: another player can open it.
         assert app.count("#viewer .noview a.iwide") == 1
         # ...and the element that could not draw it is gone, not left behind it
@@ -601,15 +617,22 @@ def test_a_video_that_opens_and_draws_nothing_says_so_too(open_app, archive):
     reports no error at all. Metadata loads, the length is right, the transport
     runs, any sound plays -- and the picture never arrives. Watching `error`
     alone would leave every one of those exactly as black as before.
+
+    This fixture is sound with no picture in it, so it reaches the panel down
+    either route -- the window draws nothing, and re-encoding it puts no
+    picture there either.
     """
     with open_app("library", wait_for=".tile") as app:
         app.tab.evaluate(f"openItem({archive.ids['soundonly']})")
         app.wait_for(".noview")
 
         panel = app.tab.evaluate("document.querySelector('#viewer .noview').textContent")
-        # Not the other branch's wording: this file was read, and saying it was
-        # of an unknown kind would send someone looking in the wrong place.
-        assert "read the file" in panel, panel
+        if _item(archive, archive.ids["soundonly"])["can_reencode"]:
+            assert "could read" in panel, panel
+        else:
+            # Not the other branch's wording: this file was read, and saying it
+            # was of an unknown kind sends someone looking in the wrong place.
+            assert "read the file" in panel, panel
         assert app.count("#mmedia video") == 0
         assert app.errors() == []
 

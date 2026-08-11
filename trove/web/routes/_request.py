@@ -11,7 +11,8 @@ Handlers may return:
 * any JSON-serialisable object -- sent as ``200 application/json``;
 * ``Json(body, status)`` when the status is not 200;
 * ``Raw(bytes, content_type)`` for a body built in memory (icons, manifest);
-* ``FileBody(path)`` for a file streamed off disk, which is Range-aware.
+* ``FileBody(path)`` for a file streamed off disk, which is Range-aware;
+* ``Stream(chunks, content_type)`` for a body with no length known up front.
 
 Keeping that a small discriminated union, rather than letting handlers write to
 the response themselves, is the whole reason the handlers are testable.
@@ -19,7 +20,7 @@ the response themselves, is the whole reason the handlers are testable.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar, overload
@@ -61,6 +62,26 @@ class FileBody:
 
     path: Path
     content_type: str | None = None
+    cache_control: str | None = None
+
+
+@dataclass(frozen=True)
+class Stream:
+    """A body sent as it is produced, from a source whose length nobody knows
+    until it ends -- today, a video being re-encoded on its way to the window.
+
+    No ``Content-Length`` and no ``Range``, which the server answers by letting
+    the close of the connection end the body. A client cannot seek in this; the
+    route that serves one takes an offset instead and starts a new stream.
+
+    ``chunks`` is a generator rather than any iterator, because the server
+    closes it when the response ends however it ends. That close is the only
+    signal a producer holding something expensive -- a subprocess -- gets that
+    nobody is reading any more, so it must do its cleanup in a ``finally``.
+    """
+
+    chunks: Generator[bytes]
+    content_type: str
     cache_control: str | None = None
 
 

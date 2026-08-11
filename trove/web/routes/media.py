@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import cast
 
 from ... import thumbnails
+from ...media import transcode
 from ...services import browse, people, pets
-from ._request import NOT_FOUND, FileBody, Json, Request
+from ._request import NOT_FOUND, FileBody, Json, Request, Stream
 
 # How long a browser may reuse a thumbnail without asking again.
 #
@@ -191,8 +192,14 @@ def animal_thumb(req: Request) -> FileBody | Json:
     return FileBody(tp if tp else src, cache_control=MEDIA_CACHE)
 
 
-def original(req: Request) -> FileBody | Json:
-    """The original file, or an upright re-encode for a photo stored sideways."""
+def original(req: Request) -> FileBody | Stream | Json:
+    """The original file, or an upright re-encode for a photo stored sideways.
+
+    ``?play=1`` asks for something the window can actually play instead of the
+    file itself, for the videos whose format it has no reader for. ``?t=`` is
+    where to start: a stream cannot be rewound, so the viewer seeks by asking
+    for a new one from a new offset.
+    """
     fid = int(req.path.rsplit("/", 1)[1])
     db_path, cache_dir = _open_db_and_cache(req)
     info = browse.media_source(db_path, fid) if db_path else None
@@ -201,6 +208,15 @@ def original(req: Request) -> FileBody | Json:
     # See thumb() above: info non-None proves cache_dir is a str too.
     cache_dir = cast(str, cache_dir)
     src, sha256, rotate = info
+    if req.one("play"):
+        chunks = transcode.stream(src, max(0.0, req.one("t", float, 0.0)))
+        # No ffmpeg on this machine. The item payload already told the viewer
+        # as much (``can_reencode``), so it does not normally ask -- this is
+        # the window between the two calls, and the 404 lands it on the same
+        # panel it would have shown without asking.
+        if chunks is None:
+            return Json({"error": "cannot re-encode"}, 404)
+        return Stream(chunks, transcode.CONTENT_TYPE)
     # A photo stored sideways is served from an upright re-encode; every
     # other file is served as its own untouched bytes.
     up = thumbnails.upright_for(cache_dir, fid, src, rotate, sha256=sha256)

@@ -225,13 +225,41 @@ function renderStage() {
 
    Hence the test is "did a picture arrive", asked of the element itself. Not
    of the file's name, which cannot answer it: three files in the archive this
-   was written against are named .avi, are MP4 inside, and play. */
+   was written against are named .avi, are MP4 inside, and play.
+
+   Either way the answer is the same and is not a message: ffmpeg reads all of
+   these, Trove already runs it for every video thumbnail, so the file goes
+   back out through it and the window is handed something it does play. About
+   a second, and then the video runs. The panel is what is left for the files
+   ffmpeg cannot read either. */
 function videoStage(it) {
   const v = document.createElement("video"), id = it.id;
-  // Both paths end here, and only while this file is still the one on screen:
-  // metadata for a video arrives well after an arrow press has moved on, and
-  // it must not paint over whatever is open by then.
-  const nothingDrawn = why => { if (stillOpen(id)) showNoPicture(it, why); };
+  // Where the stream currently on the element starts, in seconds into the
+  // original. Zero for a file playing as itself; whatever was last seeked to
+  // for a re-encoded one, which is the whole of what the transport below adds.
+  let from = 0;
+  const convert = at => {
+    from = at;
+    v.src = `/file/${id}?play=1${at ? `&t=${at.toFixed(3)}` : ""}`;
+    v.load();
+    // Rejected when the window will not autoplay -- nothing to report, the
+    // transport's own button is right there.
+    v.play().catch(() => {});
+    mountTransport(v, it, () => from, convert);
+  };
+  const nothingDrawn = why => {
+    // Only while this file is still the one on screen: metadata for a video
+    // arrives well after an arrow press has moved on, and neither the retry
+    // nor the panel may land on whatever is open by then.
+    if (!stillOpen(id)) return;
+    // Whether the re-encoding has already been tried is read off the element
+    // rather than kept in a flag beside it. Swapping `src` leaves the load we
+    // abandoned free to raise `error` afterwards, and a flag would have that
+    // stale event stand for the new load's verdict -- the panel over a video
+    // that is about to play perfectly well.
+    if (it.can_reencode && !v.src.includes("play=1")) return convert(0);
+    showNoPicture(it, why);
+  };
   v.addEventListener("error", () => nothingDrawn("refused"));
   v.addEventListener("loadedmetadata", () => { if (!v.videoWidth) nothingDrawn("opened"); });
   v.controls = true;
@@ -239,6 +267,55 @@ function videoStage(it) {
   v.src = "/file/" + id;
   return v;
 }
+/* The transport for a re-encoded video, and the reason it exists at all.
+
+   ffmpeg's output arrives down a pipe, so the window is handed a video with no
+   length and nothing behind the playhead to jump back to: `duration` grows as
+   the bytes land and `seekable` stays empty. The native controls drawn over
+   that are actively misleading -- a scrub bar that rescales every few seconds
+   and will not move to the middle of a film it says is thirty seconds long
+   when it is nineteen minutes.
+
+   So for these the native controls come off and this goes on instead, over the
+   two facts that are actually known: how long the video really is, which the
+   catalogue measured when it indexed the file, and where in it this stream was
+   asked to start. Position is `from + currentTime`, and a click seeks by
+   asking for a new stream from the new offset -- the only way to move
+   backwards in something that cannot be rewound. It costs about a second at
+   any offset, because ffmpeg is told to seek before it decodes rather than
+   after.
+
+   A video whose length was never measured gets no bar. There is nothing to
+   draw one against, and a bar scaled to a guess is worse than none. */
+function mountTransport(v, it, from, seek) {
+  const m = document.getElementById("mmedia");
+  const total = (it.meta && it.meta.duration_s) || 0;
+  if (!m || m.querySelector(".vxport")) return;      // a seek, not a first play
+  v.controls = false;
+  const bar = document.createElement("div");
+  bar.className = "vxport";
+  bar.innerHTML = `<button class="vxplay" type="button" aria-label="Play"></button>
+    <div class="vxbar"${total ? "" : " hidden"}><div class="vxfill"></div></div>
+    <span class="vxtime"></span>`;
+  const [play, track, time] = ["vxplay", "vxbar", "vxtime"].map(c => bar.querySelector("." + c));
+  const fill = track.querySelector(".vxfill");
+  const paint = () => {
+    const at = from() + v.currentTime;
+    play.textContent = v.paused ? "▶" : "❚❚";
+    play.setAttribute("aria-label", v.paused ? "Play" : "Pause");
+    if (total) fill.style.width = `${Math.min(100, 100 * at / total)}%`;
+    time.textContent = total ? `${clock(at)} / ${clock(total)}` : clock(at);
+  };
+  play.addEventListener("click", () => { v.paused ? v.play().catch(() => {}) : v.pause(); paint(); });
+  ["timeupdate", "play", "pause"].forEach(e => v.addEventListener(e, paint));
+  track.addEventListener("click", event => {
+    const box = track.getBoundingClientRect();
+    seek(Math.max(0, Math.min(total, total * (event.clientX - box.left) / box.width)));
+  });
+  m.appendChild(bar);
+  paint();
+}
+const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 /* Say that no picture arrived, in place of the black rectangle that is all the
    element itself has to show for it.
 
@@ -254,19 +331,32 @@ function showNoPicture(it, why) {
   d.className = "noview";
   d.innerHTML = `<img class="poster" src="/thumb/${it.id}" alt=""
       onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'big',textContent:'🎞️'}))">
-    <div class="say">${esc(why === "refused" ? `Can’t play ${fileKind(it)} here` : "Can’t play this video here")}</div>
-    <div class="sub">${esc(noPictureReason(why))}</div>
+    <div class="say">${esc(noPictureHeading(it, why))}</div>
+    <div class="sub">${esc(noPictureReason(it, why))}</div>
     <a class="iwide" style="width:auto" href="/file/${it.id}" target="_blank">Open in the app that owns it ↗</a>`;
   v.insertBefore(d, m.nextSibling);
 }
-/* Which of the two it was, in words. Worth telling apart: one says the file is
-   of a kind this window never opens, the other that it opened it and could not
-   draw what was inside. A reader given the wrong one goes looking in the wrong
-   place. */
-function noPictureReason(why) {
+function noPictureHeading(it, why) {
+  // Re-encoding was available and was tried, so the format is no longer the
+  // story: nothing on this machine could get a picture out of this file.
+  if (it.can_reencode) return "Nothing here could read this video";
+  return why === "refused" ? `Can’t play ${fileKind(it)} here` : "Can’t play this video here";
+}
+/* Why, in terms of what was actually attempted. Three states and they send a
+   reader to three different places: a file nothing can read is damaged, a
+   format this window will not open needs the converter that is missing, and a
+   file it opened but could not draw needs that same converter for a different
+   reason. Collapsing them into one sentence would make two of the three wrong.
+
+   Naming ffmpeg is deliberate. The desktop build stages its own copy and never
+   shows these two lines at all; the person who sees them installed Trove with
+   pip, and the name is the difference between an explanation and a dead end. */
+function noPictureReason(it, why) {
+  if (it.can_reencode)
+    return "Trove re-encoded this file with ffmpeg and there was still no picture in it. It is most likely damaged.";
   if (why === "refused")
-    return "This window plays a short list of video formats and this file is not one of them. That is a limit of the player here, not a fault in the file.";
-  return "This window read the file, but the video inside it is stored in a way it has no reader for. Its length and its sound are right; only the picture is missing.";
+    return "This window plays a short list of video formats and this file is not one of them. Trove converts the rest as they play, but that needs ffmpeg, which is not installed here.";
+  return "This window read the file, but the video inside it is stored in a way it has no reader for. Trove converts these as they play, but that needs ffmpeg, which is not installed here.";
 }
 function isPdf(it) {
   return (it.rel_path || "").toLowerCase().endsWith(".pdf");

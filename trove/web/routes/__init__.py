@@ -39,7 +39,7 @@ from . import (
     search,
     static,
 )
-from ._request import NOT_FOUND, FileBody, Json, Raw, Request, ok_or_error
+from ._request import NOT_FOUND, FileBody, Json, Raw, Request, Stream, ok_or_error
 
 __all__ = [
     "GET_PREFIX_ROUTES",
@@ -50,6 +50,7 @@ __all__ = [
     "Json",
     "Raw",
     "Request",
+    "Stream",
     "handler_for",
     "ok_or_error",
     "prefix_handler",

@@ -27,6 +27,7 @@ import sqlite3
 from typing import Any, cast
 
 from ..db import database as db
+from ..media import transcode
 from . import text_search
 from ._common import _NOT_HIDDEN, _QUALITY_OK, reading
 from .places import _PLACE_EXEMPT
@@ -413,6 +414,13 @@ def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, A
             if t
             else None
         ),
+        # Whether a video the window cannot draw could be re-encoded into one
+        # it can. Which turns on the install rather than the file -- the
+        # desktop build stages its own ffmpeg, a pip install may have none --
+        # but the viewer asks the question about a file, and this payload is
+        # the only thing it reads. False for everything that is not a video,
+        # so the answer never depends on a probe nobody needed.
+        "can_reencode": f["media_type"] == "video" and transcode.available(),
         # A file whose sniffed type disagrees with its extension is worth
         # flagging: it is why a "photo" sometimes will not open.
         "type_mismatch": bool(

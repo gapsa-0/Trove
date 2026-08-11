@@ -152,6 +152,37 @@ class Handler(BaseHTTPRequestHandler):
             # there is nobody left to send an error to.
             pass
 
+    def _send_stream(self, body: routes.Stream) -> None:
+        """A body written as its producer yields it.
+
+        No ``Content-Length``, because nobody knows one: a video being
+        re-encoded on the way out has no length until it ends. This server
+        speaks HTTP/1.0, where that is exactly what closing the connection
+        means, so the framing costs nothing -- no chunked encoding to write and
+        none to get wrong.
+
+        ``no-store`` for the same reason. The bytes are made fresh per request
+        and are not the file at that id; a cache entry for them would be
+        returned for a plain ``/file/`` request later.
+
+        The ``finally`` is the contract ``Stream`` documents. A closed tab or a
+        video arrowed past breaks the socket mid-write, and the generator is
+        the only thing holding the encoder: without closing it here, every
+        abandoned request would leave an ffmpeg running to the end of a file
+        nobody is watching.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", body.content_type)
+        self.send_header("Cache-Control", body.cache_control or "no-store")
+        self.end_headers()
+        try:
+            for chunk in body.chunks:
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            body.chunks.close()
+
     def _range_not_satisfiable(self, size: int) -> None:
         """416 for a range starting at or past the end of the file.
 
@@ -279,6 +310,8 @@ class Handler(BaseHTTPRequestHandler):
         the three wrappers exist for everything else."""
         if isinstance(result, routes.FileBody):
             self._send_file(result.path, result.content_type, result.cache_control)
+        elif isinstance(result, routes.Stream):
+            self._send_stream(result)
         elif isinstance(result, routes.Raw):
             self._bytes(result.body, result.content_type, result.status, result.cache_control)
         elif isinstance(result, routes.Json):

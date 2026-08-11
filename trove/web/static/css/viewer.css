@@ -412,7 +412,8 @@
   color: rgba(255, 255, 255, .55)
 }
 
-.viewer.rail-on .noview {
+.viewer.rail-on .noview,
+.viewer.rail-on .vxport {
   right: 354px
 }
 
@@ -425,6 +426,73 @@
   border-radius: 18px;
   background: rgba(255, 255, 255, .07);
   font-size: 32px
+}
+
+/* The transport for a re-encoded video, standing in for native controls that
+   cannot describe a stream with no length and nothing to rewind to. Laid over
+   the foot of the stage the way the native ones sit, so nothing moves when a
+   video turns out to need it. */
+.vxport {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .62));
+  color: #fff
+}
+
+.vxport .vxplay {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .16);
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer
+}
+
+.vxport .vxplay:hover {
+  background: rgba(255, 255, 255, .28)
+}
+
+/* Generous hit area for a bar that is only 4px of ink: a seek costs a second
+   of re-encoding, and missing by two pixels spends it on the wrong place. */
+.vxport .vxbar {
+  flex: 1;
+  padding: 8px 0;
+  cursor: pointer
+}
+
+.vxport .vxbar::before {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .25);
+  content: ""
+}
+
+.vxport .vxfill {
+  height: 4px;
+  margin-top: -4px;
+  border-radius: 2px;
+  background: #fff;
+  pointer-events: none
+}
+
+.vxport .vxtime {
+  flex: none;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: .85
 }
 
 /* The frame pulled out of a video this window cannot play. Held to the
@@ -621,7 +689,8 @@
   }
 
   .viewer.rail-on .docstage,
-  .viewer.rail-on .noview {
+  .viewer.rail-on .noview,
+  .viewer.rail-on .vxport {
     right: 0
   }
 
