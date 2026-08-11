@@ -51,6 +51,30 @@ let TRAIL = [];
 
 const has = id => archiveHasFeature(S.arch, id);
 const viewer = () => document.getElementById("viewer");
+/* What the stage is currently holding open, released before the next file
+   takes its place. Set by videoStage; a no-op for everything else.
+
+   Detaching a <video> is not the same as stopping it. Chromium keeps the load
+   in flight for a while after the element leaves the document, and for a
+   re-encoded video that load is an ffmpeg process: arrowing through a folder
+   of .avi files left one running per file passed, each holding most of a core,
+   and four or five of those is a machine that has stopped responding. Aborting
+   the request is what closes the socket, which closes the stream, which kills
+   the encoder -- and that has to be asked for. */
+const NOTHING_TO_RELEASE = () => {};
+let releaseStage = NOTHING_TO_RELEASE;
+/* Stop a media element now: no more events from it, no more bytes for it.
+   `removeAttribute` before `load()` is the part that matters -- load() on an
+   element with no source is what aborts the request already in flight. */
+function stopLoading(el) {
+  try {
+    el.pause();
+    el.removeAttribute("src");
+    el.load();
+  } catch {
+    // A detached or already-torn-down element. Nothing left to stop.
+  }
+}
 
 export async function openItem(id, opts = {}) {
   // Named archive, not "whichever one is open": the grid is drawn from ?root=,
@@ -158,6 +182,7 @@ function renderStage() {
   const it = MITEM, m = document.getElementById("mmedia");
   const v = viewer();
   m.className = "stage";
+  releaseStage();
   m.innerHTML = "";
   if (!m.dataset.zoomMounted) { mountZoom(m); m.dataset.zoomMounted = "1"; }
   // Every file opens fit to the frame; see the note on ZOOM.
@@ -234,6 +259,18 @@ function renderStage() {
    ffmpeg cannot read either. */
 function videoStage(it) {
   const v = document.createElement("video"), id = it.id;
+  // Everything this element goes on to attach lives on one signal, so putting
+  // the next file on the stage takes all of it off in one call. See
+  // releaseStage: the listeners here outlive the element, because two of them
+  // are on the stage itself and the stage is not rebuilt between files.
+  const alive = new AbortController();
+  const on = (target, event, fn) =>
+    target.addEventListener(event, fn, { signal: alive.signal });
+  releaseStage = () => {
+    alive.abort();
+    stopLoading(v);
+    releaseStage = NOTHING_TO_RELEASE;
+  };
   // Where the stream currently on the element starts, in seconds into the
   // original. Zero for a file playing as itself; whatever was last seeked to
   // for a re-encoded one, which is the whole of what the transport below adds.
@@ -242,15 +279,16 @@ function videoStage(it) {
     from = at;
     // Re-encoding takes about a second to put a first frame up, and a seek
     // pays it again because a pipe cannot be rewound. Unsaid, that second is a
-    // still picture that has stopped responding; said, it is a wait with a
-    // reason. Cleared by the first frame, or by the panel if none arrives.
-    showConverting();
+    // still picture that has stopped responding; said, it is a wait somebody
+    // can see the end of. Cleared by the first frame, or by the panel if none
+    // arrives.
+    showLoading();
     v.src = `/file/${id}?play=1${at ? `&t=${at.toFixed(3)}` : ""}`;
     v.load();
     // Rejected when the window will not autoplay -- nothing to report, the
     // transport's own button is right there.
     v.play().catch(() => {});
-    mountTransport(v, it, () => from, convert);
+    mountTransport(v, it, () => from, convert, alive.signal);
   };
   const nothingDrawn = why => {
     // Only while this file is still the one on screen: metadata for a video
@@ -265,9 +303,12 @@ function videoStage(it) {
     if (it.can_reencode && !v.src.includes("play=1")) return convert(0);
     showNoPicture(it, why);
   };
-  v.addEventListener("error", () => nothingDrawn("refused"));
-  v.addEventListener("loadedmetadata", () => { if (!v.videoWidth) nothingDrawn("opened"); });
-  v.addEventListener("loadeddata", () => { if (v.videoWidth) clearConverting(); });
+  on(v, "error", () => nothingDrawn("refused"));
+  on(v, "loadedmetadata", () => { if (!v.videoWidth) nothingDrawn("opened"); });
+  // stillOpen for the same reason as nothingDrawn: this fires on the file that
+  // was abandoned as readily as on the one on screen, and unguarded it took
+  // down the note belonging to whatever had replaced it.
+  on(v, "loadeddata", () => { if (v.videoWidth && stillOpen(id)) clearLoading(); });
   v.controls = true;
   v.autoplay = true;
   // The frame already extracted for the grid, standing in until the first real
@@ -288,20 +329,33 @@ function videoStage(it) {
   v.src = "/file/" + id;
   return v;
 }
-/* "This is being converted", while it is.
+/* "This is coming", while it is.
+
+   The word is "Loading" and not "Converting", though converting is what is
+   happening. Two reasons, and the second is the one that settles it:
+
+   * Which videos need re-encoding is a fact about the decoders in this window,
+     not about this person's archive. They opened a video; it is loading. The
+     rest of the app says "Loading…" for every other wait and this is not a
+     different kind of wait to the one waiting.
+   * "Converting" reads as though the file is being changed. Nothing is: the
+     re-encoding is a stream that exists for as long as it is watched and is
+     never written anywhere. In an app whose promise is that it catalogues
+     originals where they lie and alters nothing, that is the last thing to
+     imply over somebody's only copy of a video.
 
    Deliberately only on the re-encoding path. A file that plays as itself is
    the browser's own business and it is quick about it; a spinner flashed over
    every video would be noise on the six thousand that never wait. */
-function showConverting() {
+function showLoading() {
   const m = document.getElementById("mmedia");
   if (!m || m.querySelector(".vxwait")) return;
   const note = document.createElement("div");
   note.className = "vxwait";
-  note.innerHTML = `<span class="spin"></span>Converting this video…`;
+  note.innerHTML = `<span class="spin"></span>Loading…`;
   m.appendChild(note);
 }
-function clearConverting() {
+function clearLoading() {
   const note = document.querySelector("#mmedia .vxwait");
   if (note) note.remove();
 }
@@ -352,7 +406,7 @@ const VX_ICON = {
 };
 const VX_RATES = [0.5, 1, 1.5, 2];
 
-function mountTransport(v, it, from, seek) {
+function mountTransport(v, it, from, seek, alive) {
   const m = document.getElementById("mmedia");
   const total = (it.meta && it.meta.duration_s) || 0;
   if (!m || m.querySelector(".vxport")) return;      // a seek, not a first play
@@ -436,12 +490,15 @@ function mountTransport(v, it, from, seek) {
     showMenu(false);
   });
   // Anywhere else on the stage closes it, the way every other menu here does.
+  // On the stage rather than on the bar, and the stage is the one element here
+  // that is *not* rebuilt between files -- so this one needs the signal, where
+  // the handlers above go out with the bar they are attached to.
   m.addEventListener("click", event => {
     if (!menu.hidden && !event.target.closest(".vxmore,.vxmenu")) showMenu(false);
-  });
-  mountIdleFade(m, bar, v);
+  }, { signal: alive });
+  mountIdleFade(m, bar, v, alive);
   m.appendChild(bar);
-  alignToPicture(m, bar, v);
+  alignToPicture(m, bar, v, alive);
   paint();
 }
 /* Sit on the picture, not on the stage.
@@ -459,7 +516,7 @@ function mountTransport(v, it, from, seek) {
    that true afterwards -- opening the inspector, resizing the window and
    going fullscreen all move the picture, and all of them resize this element
    to say so. */
-function alignToPicture(stage, bar, v) {
+function alignToPicture(stage, bar, v, alive) {
   const align = () => {
     const box = v.getBoundingClientRect(), frame = stage.getBoundingClientRect();
     if (!box.width) return;                    // no picture yet; CSS holds it
@@ -468,22 +525,27 @@ function alignToPicture(stage, bar, v) {
     bar.style.right = "auto";
     bar.style.bottom = `${Math.max(0, frame.bottom - box.bottom)}px`;
   };
-  new ResizeObserver(align).observe(v);
+  const watch = new ResizeObserver(align);
+  watch.observe(v);
+  alive.addEventListener("abort", () => watch.disconnect());
   align();
 }
 /* Out of the way while a video is playing and nobody is doing anything, which
    is the behaviour being copied and also the reason it can be a solid bar over
    the picture in the first place. Any movement brings it back; a paused video
    keeps it, because a paused video is one you are about to reach for. */
-function mountIdleFade(stage, bar, v) {
+function mountIdleFade(stage, bar, v, alive) {
   let idle = null;
   const wake = () => {
     bar.classList.remove("idle");
     clearTimeout(idle);
     idle = setTimeout(() => { if (!v.paused) bar.classList.add("idle"); }, 2600);
   };
-  ["pointermove", "pointerdown", "focusin"].forEach(e => stage.addEventListener(e, wake));
-  ["play", "pause"].forEach(e => v.addEventListener(e, wake));
+  // Same as the menu's: these are on the stage, which the next file inherits.
+  ["pointermove", "pointerdown", "focusin"].forEach(
+    e => stage.addEventListener(e, wake, { signal: alive }));
+  ["play", "pause"].forEach(e => v.addEventListener(e, wake, { signal: alive }));
+  alive.addEventListener("abort", () => clearTimeout(idle));
   wake();
 }
 const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -497,7 +559,11 @@ const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(
    honest shape for a file nothing here could read. */
 function showNoPicture(it, why) {
   const m = document.getElementById("mmedia"), v = viewer();
-  m.innerHTML = "";                            // stops the download, and any sound
+  // Emptying the stage detaches the element; it does not stop it. Releasing
+  // first is what ends the request, and with it the encoder behind a
+  // re-encoding that was never going to draw anything.
+  releaseStage();
+  m.innerHTML = "";
   const d = document.createElement("div");
   d.className = "noview";
   d.innerHTML = `<img class="poster" src="/thumb/${it.id}" alt=""
@@ -1073,6 +1139,7 @@ export function closeModal() {
   const v = viewer();
   const doc = v.querySelector(".docstage,.noview");
   if (doc) doc.remove();                        // stops a playing PDF/embed holding focus
+  releaseStage();
   document.getElementById("mmedia").innerHTML = "";
   document.getElementById("vfilm").innerHTML = "";
   MITEM = null; RELATED = null;

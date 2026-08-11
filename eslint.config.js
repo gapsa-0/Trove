@@ -104,6 +104,7 @@ module.exports = [
         requestAnimationFrame: "readonly",
         requestIdleCallback: "readonly",
         ResizeObserver: "readonly",
+        AbortController: "readonly",
         getSelection: "readonly",
         Node: "readonly",
         alert: "readonly",

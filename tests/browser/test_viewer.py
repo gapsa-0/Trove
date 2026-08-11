@@ -749,7 +749,7 @@ def test_a_video_being_converted_opens_at_its_real_size_over_its_own_frame(open_
     time: the element carries the size it will keep, and the frame already
     extracted for the grid stands in until a real one arrives.
 
-    The "Converting this video…" note itself is deliberately not raced for
+    The "Loading…" note itself is deliberately not raced for
     here. It is put up before the load and taken down by the first frame, and
     on a two-second 64x48 clip that gap is short enough that asserting on it
     would be a coin toss. What is checked is that it does not outlive the
@@ -780,4 +780,69 @@ def test_a_video_being_converted_opens_at_its_real_size_over_its_own_frame(open_
             what="the re-encoding to put a picture on the stage",
         )
         assert app.count("#mmedia .vxwait") == 0, "the note outlived the picture it was waiting for"
+        assert app.errors() == []
+
+
+def test_leaving_a_video_mid_load_stops_it(open_app, archive):
+    """Detaching a <video> is not the same as stopping it.
+
+    Emptying the stage takes the element out of the document and leaves its
+    load running; for a re-encoded video that load is an ffmpeg process, so
+    arrowing through a folder of .avi files left one encoder running per file
+    passed, each holding most of a core. Four or five of those is a machine
+    that has stopped answering -- which is what this looked like from the
+    outside, and it was reported as the app breaking.
+
+    Asserted on the element that was left behind rather than on any process:
+    clearing the source and reloading is what aborts the request in flight,
+    and that is the thing the fix has to keep doing.
+    """
+    fid = archive.ids.get("reencodable")
+    if fid is None:
+        pytest.skip("re-encoding for playback needs ffmpeg")
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({fid})")
+        app.wait_for("#mmedia video")
+        app.tab.evaluate("window.__left = document.querySelector('#mmedia video'); 1")
+
+        app.tab.evaluate(f"openItem({archive.ids['first_file']})")
+        app.tab.wait_for(
+            "!!document.querySelector('#mmedia img')",
+            what="the viewer to move on to the photograph",
+        )
+
+        assert app.tab.evaluate("window.__left.getAttribute('src') === null"), (
+            "the abandoned video kept its source, and with it the request behind it"
+        )
+        assert app.tab.evaluate("window.__left.paused") is True
+        assert app.count("#mmedia video") == 0
+        assert app.errors() == []
+
+
+def test_opening_another_video_mid_load_leaves_one_player(open_app, archive):
+    """Two videos in quick succession used to strand pieces of the first over
+    the second: its "Loading…" was cleared by the one it had replaced, whose
+    events go on arriving long after it is gone."""
+    fid = archive.ids.get("reencodable")
+    if fid is None:
+        pytest.skip("re-encoding for playback needs ffmpeg")
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({fid})")
+        app.wait_for("#mmedia video")
+        app.tab.evaluate(f"openItem({archive.ids['broken']})")
+        app.tab.evaluate(f"openItem({fid})")
+        app.tab.wait_for(
+            "(document.querySelector('#mmedia video') || {}).videoWidth > 0",
+            what="the last video opened to put a picture up",
+        )
+
+        assert app.count("#mmedia video") == 1
+        assert app.count("#mmedia .vxport") == 1, "a transport was left over from an earlier file"
+        # The panel belongs to the file that could not be drawn, which is no
+        # longer the one on screen.
+        assert app.count("#viewer .noview") == 0
+        app.tab.wait_for(
+            "document.querySelectorAll('#mmedia .vxwait').length === 0",
+            what="the note to go with the picture it was waiting for",
+        )
         assert app.errors() == []
