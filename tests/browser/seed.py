@@ -13,7 +13,10 @@ is not what this tier is checking.
 
 from __future__ import annotations
 
+import math
 import os
+import struct
+import wave
 from pathlib import Path
 
 import factories
@@ -183,6 +186,46 @@ def seed_hostile_names(conn, root_id: int, source_dir: Path, canonical: int) -> 
     return copy
 
 
+def seed_unplayable_videos(conn, root_id: int, source_dir: Path) -> dict[str, int]:
+    """One video of each kind the window refuses to draw.
+
+    The player built into the window reads a short list of formats, and an
+    archive of family video is full of ones it does not. It fails in two
+    unrelated ways, and the viewer has a listener for each, so there is a file
+    here for each:
+
+    * ``broken.avi`` -- bytes it will not open at all, which raises ``error``.
+      A real .avi does the same and for the same reason: there is no reader for
+      that shape of file in the build. Junk under a video name reaches the same
+      listener without this tier having to carry a video fixture.
+    * ``soundonly.mp4`` -- a **real WAV**, written by the standard library,
+      under a video name. The window opens it happily, finds no picture in it,
+      and says nothing: ``loadedmetadata`` fires, the duration is right, and
+      ``videoWidth`` stays 0. That is exactly what a Motion JPEG .mov or an
+      HEVC .mp4 does, and it is the case with no error to catch.
+
+    Neither needs ffmpeg, which this tier does not have and should not want:
+    the fixtures are three lines of ``wave`` and a slice of nonsense.
+    """
+    ids = {
+        name.split(".")[0]: factories.add_file(
+            conn, root_id=root_id, rel_path=name, media_type="video"
+        )
+        for name in ("broken.avi", "soundonly.mp4")
+    }
+    (source_dir / "broken.avi").write_bytes(b"not a video, just some bytes" * 40)
+    # 0.5s of a quiet tone. The pitch is irrelevant; that it decodes is not,
+    # because a file the window *cannot* read would take the other branch.
+    with wave.open(str(source_dir / "soundonly.mp4"), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(8000)
+        wav.writeframes(
+            b"".join(struct.pack("<h", int(3000 * math.sin(i / 12))) for i in range(4000))
+        )
+    return ids
+
+
 def seed(conn, root_id: int, source_dir: Path) -> dict:
     """A small archive with something on every screen.
 
@@ -232,6 +275,7 @@ def seed(conn, root_id: int, source_dir: Path) -> dict:
     # panel opens, not a person's, not a pet's, not half of the duplicate pair.
     ids["ocr_photo"] = file_ids[20]
     ids["document"] = seed_documents(conn, root_id, source_dir, ids["ocr_photo"])
+    ids.update(seed_unplayable_videos(conn, root_id, source_dir))
 
     # The run that produced the group above. Dedup writes no per-file row -- a
     # file with no copies is simply in no group -- so this marker is the whole

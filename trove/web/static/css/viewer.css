@@ -427,6 +427,17 @@
   font-size: 32px
 }
 
+/* The frame pulled out of a video this window cannot play. Held to the
+   thumbnail's own 320px so it is never blown up past what was stored, and
+   dimmed: it is evidence that the file reads, not the film you asked for, and
+   at full strength it reads as playback that has stalled on the first frame. */
+.noview .poster {
+  max-width: min(320px, 100%);
+  max-height: 42vh;
+  border-radius: 12px;
+  opacity: .75
+}
+
 .noview .say {
   font-size: 14px;
   font-weight: 600;

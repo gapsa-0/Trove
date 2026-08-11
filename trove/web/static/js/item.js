@@ -196,7 +196,7 @@ function renderStage() {
     img.alt = it.name;
     m.appendChild(img);
   } else if (it.type === "video") {
-    m.innerHTML = `<video src="/file/${it.id}" controls autoplay></video>`;
+    m.appendChild(videoStage(it));
   } else if (it.type === "audio") {
     m.innerHTML = `<div style="padding:40px;text-align:center">
       <div class="ph" style="font-size:60px">🎵</div>
@@ -205,6 +205,68 @@ function renderStage() {
   setBoxSource(m, it);
   drawBoxes();
   renderZoomBar();
+}
+/* The stage's <video>, wired to notice when it is showing nothing.
+
+   The player is the one built into this window, and it reads a short list of
+   formats: the web's own containers and nothing else. A shelf of family video
+   is full of formats that are not on that list, and they fail in two different
+   ways -- which is why there are two listeners here and not one.
+
+   * **It refuses the file.** .avi and .wmv never open at all; there is no
+     reader for either shape of file in this window. `error` fires before
+     anything has looked at the video inside.
+   * **It opens the file and draws nothing.** The container is one it knows but
+     the video within it is not -- Motion JPEG from an old camera's .mov,
+     MPEG-4 Part 2 in a .3gp, HEVC from a recent phone. Nothing raises `error`
+     for this: the metadata loads, the length is right, the timeline runs, the
+     sound plays, and `videoWidth` stays 0. It is the worse of the two to sit
+     through, because every part of it says it is working.
+
+   Hence the test is "did a picture arrive", asked of the element itself. Not
+   of the file's name, which cannot answer it: three files in the archive this
+   was written against are named .avi, are MP4 inside, and play. */
+function videoStage(it) {
+  const v = document.createElement("video"), id = it.id;
+  // Both paths end here, and only while this file is still the one on screen:
+  // metadata for a video arrives well after an arrow press has moved on, and
+  // it must not paint over whatever is open by then.
+  const nothingDrawn = why => { if (stillOpen(id)) showNoPicture(it, why); };
+  v.addEventListener("error", () => nothingDrawn("refused"));
+  v.addEventListener("loadedmetadata", () => { if (!v.videoWidth) nothingDrawn("opened"); });
+  v.controls = true;
+  v.autoplay = true;
+  v.src = "/file/" + id;
+  return v;
+}
+/* Say that no picture arrived, in place of the black rectangle that is all the
+   element itself has to show for it.
+
+   The frame above the words is the one already extracted for the grid, so it
+   costs nothing here and settles the question the message raises: the file
+   reads, and this is what is in it. Where there is no frame either -- a
+   truncated download, a .swf -- it stands aside for the icon, which is the
+   honest shape for a file nothing here could read. */
+function showNoPicture(it, why) {
+  const m = document.getElementById("mmedia"), v = viewer();
+  m.innerHTML = "";                            // stops the download, and any sound
+  const d = document.createElement("div");
+  d.className = "noview";
+  d.innerHTML = `<img class="poster" src="/thumb/${it.id}" alt=""
+      onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'big',textContent:'🎞️'}))">
+    <div class="say">${esc(why === "refused" ? `Can’t play ${fileKind(it)} here` : "Can’t play this video here")}</div>
+    <div class="sub">${esc(noPictureReason(why))}</div>
+    <a class="iwide" style="width:auto" href="/file/${it.id}" target="_blank">Open in the app that owns it ↗</a>`;
+  v.insertBefore(d, m.nextSibling);
+}
+/* Which of the two it was, in words. Worth telling apart: one says the file is
+   of a kind this window never opens, the other that it opened it and could not
+   draw what was inside. A reader given the wrong one goes looking in the wrong
+   place. */
+function noPictureReason(why) {
+  if (why === "refused")
+    return "This window plays a short list of video formats and this file is not one of them. That is a limit of the player here, not a fault in the file.";
+  return "This window read the file, but the video inside it is stored in a way it has no reader for. Its length and its sound are right; only the picture is missing.";
 }
 function isPdf(it) {
   return (it.rel_path || "").toLowerCase().endsWith(".pdf");

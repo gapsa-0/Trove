@@ -568,3 +568,65 @@ def test_an_ordinary_open_clears_the_way_back(open_app, archive):
         app.tab.wait_for("document.getElementById('vback').offsetParent === null")
 
         assert app.errors() == []
+
+
+def test_a_video_the_window_refuses_says_so_instead_of_going_black(open_app, archive):
+    """The stage used to hand the file to a <video> and leave it there.
+
+    A format the window has no reader for -- .avi and .wmv, most of an old
+    camcorder shelf -- then sat as a black rectangle with a dead transport
+    under it and nothing to say why, which reads as Trove having broken rather
+    than as the player having limits.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({archive.ids['broken']})")
+        app.wait_for(".noview")
+
+        panel = app.tab.evaluate("document.querySelector('#viewer .noview').textContent")
+        assert ".avi" in panel, "the message does not name the format it cannot play"
+        # The way out is the point of the panel: another player can open it.
+        assert app.count("#viewer .noview a.iwide") == 1
+        # ...and the element that could not draw it is gone, not left behind it
+        # holding the download open.
+        assert app.count("#mmedia video") == 0
+        assert app.errors() == []
+
+
+def test_a_video_that_opens_and_draws_nothing_says_so_too(open_app, archive):
+    """The failure with no error to catch, and the reason the stage listens
+    twice.
+
+    Motion JPEG in an old .mov, MPEG-4 Part 2 in a .3gp, HEVC from a recent
+    phone: the window opens the container, cannot draw the video inside it, and
+    reports no error at all. Metadata loads, the length is right, the transport
+    runs, any sound plays -- and the picture never arrives. Watching `error`
+    alone would leave every one of those exactly as black as before.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({archive.ids['soundonly']})")
+        app.wait_for(".noview")
+
+        panel = app.tab.evaluate("document.querySelector('#viewer .noview').textContent")
+        # Not the other branch's wording: this file was read, and saying it was
+        # of an unknown kind would send someone looking in the wrong place.
+        assert "read the file" in panel, panel
+        assert app.count("#mmedia video") == 0
+        assert app.errors() == []
+
+
+def test_a_video_the_window_can_play_is_left_alone(open_app, archive):
+    """The guard on the two tests above: they would both pass on a stage that
+    had simply stopped playing video."""
+    with open_app("library", wait_for=".tile") as app:
+        _open_first_photo(app)
+        app.tab.evaluate(f"openItem({archive.ids['broken']})")
+        app.wait_for(".noview")
+
+        # Back to a file that draws: the panel must go with it.
+        app.tab.evaluate(f"openItem({archive.ids['first_file']})")
+        app.tab.wait_for(
+            "!!document.querySelector('#mmedia img') && !document.querySelector('#viewer .noview')",
+            what="the stage to go back to drawing the file it was given",
+        )
+
+        assert app.errors() == []
