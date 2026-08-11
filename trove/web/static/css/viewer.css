@@ -644,6 +644,30 @@
   background: #fff
 }
 
+/* The handle, which is also the whole of what says the track can be dragged
+   rather than only clicked. Native shows it on hover and so does this; while a
+   drag is in progress it stays out whatever the pointer is over, because by
+   then the pointer is captured and may be anywhere on the screen. */
+.vxport .vxknob {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity .12s
+}
+
+.vxport .vxbar:hover .vxknob,
+.vxport .vxbar.scrubbing .vxknob {
+  opacity: 1
+}
+
 /* -- the overflow menu -- */
 .vxport .vxmenu {
   position: absolute;

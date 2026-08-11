@@ -251,9 +251,12 @@ def seed_reencodable_video(conn, root_id: int, source_dir: Path) -> dict[str, in
     shutil.copyfile(built, source_dir / "camcorder.avi")
     # The length the transport draws its bar against. Written the way enrich
     # would; without it there is a player but no scrubbing, which is a
-    # different case with its own branch.
+    # different case with its own branch. Eight seconds rather than two so a
+    # drag across the bar moves the readout by whole seconds, which is what
+    # lets a test tell a preview that follows the pointer from one that does
+    # not move at all.
     conn.execute(
-        "INSERT INTO media_meta(file_id, width, height, duration_s) VALUES(?, 64, 48, 2.0)",
+        "INSERT INTO media_meta(file_id, width, height, duration_s) VALUES(?, 64, 48, 8.0)",
         (fid,),
     )
     return {"reencodable": fid}

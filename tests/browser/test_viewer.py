@@ -684,9 +684,12 @@ def test_a_re_encoded_video_gets_the_same_player_as_a_native_one(open_app, archi
             assert app.count(f"#mmedia .vxport .{control}") == 1, f"no .{control} on the transport"
         # The length comes from the catalogue, not from the stream: the stream
         # does not know one, and a bar scaled to what has arrived so far
-        # rescales under the pointer every few seconds.
-        assert "0:02" in app.tab.evaluate(
-            "document.querySelector('#mmedia .vxtime').textContent"
+        # rescales under the pointer every few seconds. Asked of the payload
+        # rather than written in, so lengthening the seeded clip -- which the
+        # drag test needs -- cannot quietly leave this asserting the old one.
+        seconds = int(_item(archive, fid)["meta"]["duration_s"])
+        assert app.tab.evaluate("document.querySelector('#mmedia .vxtime').textContent").endswith(
+            f"/ {seconds // 60}:{seconds % 60:02d}"
         ), "the transport is not drawn against the length the archive measured"
         assert app.errors() == []
 
@@ -845,4 +848,71 @@ def test_opening_another_video_mid_load_leaves_one_player(open_app, archive):
             "document.querySelectorAll('#mmedia .vxwait').length === 0",
             what="the note to go with the picture it was waiting for",
         )
+        assert app.errors() == []
+
+
+def test_the_track_can_be_dragged_and_seeks_once_at_the_end(open_app, archive):
+    """The last thing that made this feel like a different control.
+
+    A click was handled and a drag was not, so the one gesture everybody uses
+    on a video did nothing. It cannot simply be wired to seek on every move
+    either: a seek here is a second of re-encoding, so a drag across the bar
+    would queue an encoder per pointer position to answer a gesture that ends
+    somewhere else entirely.
+
+    So the bar previews while the pointer moves -- readout and handle follow,
+    picture stays put -- and the seek happens once, on release, at the position
+    actually chosen. Both halves are asserted: that the preview moves, and that
+    the source does not move with it.
+
+    Driven through the input pipeline rather than with dispatched events, for
+    the same reason `App.hover` is: pointer capture and `:hover` follow the
+    browser's own pointer, which a synthetic event does not move.
+    """
+    fid = archive.ids.get("reencodable")
+    if fid is None:
+        pytest.skip("re-encoding for playback needs ffmpeg")
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({fid})")
+        app.wait_for(".vxport")
+        app.tab.wait_for(
+            "(document.querySelector('#mmedia video') || {}).videoWidth > 0",
+            what="the re-encoding to put a picture on the stage",
+        )
+        track = app.tab.evaluate(
+            "(r => [r.x, r.y + r.height / 2, r.width])"
+            "(document.querySelector('#mmedia .vxbar').getBoundingClientRect())"
+        )
+        at = lambda frac: {  # noqa: E731 - a coordinate, not a policy
+            "x": track[0] + track[2] * frac,
+            "y": track[1],
+            "button": "left",
+            "clickCount": 1,
+        }
+        src = lambda: app.tab.evaluate("document.querySelector('#mmedia video').src")  # noqa: E731
+        readout = lambda: app.tab.evaluate(  # noqa: E731
+            "document.querySelector('#mmedia .vxtime').textContent"
+        )
+        before = src()
+
+        app.tab.call("Input.dispatchMouseEvent", {"type": "mousePressed", **at(0.15)})
+        pressed = readout()
+        app.tab.call("Input.dispatchMouseEvent", {"type": "mouseMoved", **at(0.85)})
+        dragged = readout()
+
+        # Against the position dragged to, not merely "it changed": the clip is
+        # playing while this runs, so a readout that ignored the pointer
+        # entirely would still tick over on its own and pass that.
+        # 15% and 85% of eight seconds are 0:01 and 0:06, and playback needs
+        # six seconds to reach the second of those.
+        assert pressed.startswith("0:01"), f"the press did not preview its position ({pressed})"
+        assert dragged.startswith("0:06"), f"the readout did not follow the drag ({dragged})"
+        assert src() == before, "the drag re-encoded on the way past, once per pointer position"
+
+        app.tab.call("Input.dispatchMouseEvent", {"type": "mouseReleased", **at(0.85)})
+        app.tab.wait_for(
+            "document.querySelector('#mmedia video').src.includes('t=')",
+            what="the release to seek, once",
+        )
+
         assert app.errors() == []

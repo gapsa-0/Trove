@@ -430,17 +430,28 @@ function mountTransport(v, it, from, seek, alive) {
         <button type="button" role="menuitem" class="vxpip">Picture in picture</button>
       </div>
     </div>
-    <div class="vxbar"${total ? "" : " hidden"}><div class="vxbuf"></div><div class="vxfill"></div></div>`;
+    <div class="vxbar"${total ? "" : " hidden"}><div class="vxbuf"></div><div class="vxfill"></div>
+      <div class="vxknob"></div></div>`;
   const find = c => bar.querySelector("." + c);
   const [play, track, time] = ["vxplay", "vxbar", "vxtime"].map(find);
   const [mute, vol, full] = ["vxmute", "vxvol", "vxfull"].map(find);
   const [more, menu, fill, buf] = ["vxmore", "vxmenu", "vxfill", "vxbuf"].map(find);
+  const knob = find("vxknob");
+  // Where the finger is while the track is being dragged, in seconds, or null
+  // when it is not. Held apart from the video's own position because the two
+  // genuinely differ for as long as a drag lasts: the bar has to follow the
+  // finger immediately, and the video cannot -- every seek is a second of
+  // re-encoding, so committing one per pointermove would queue a hundred
+  // encoders to answer a gesture that ends somewhere else entirely.
+  let scrubbing = null;
   const paint = () => {
-    const at = from() + v.currentTime;
+    const at = scrubbing ?? from() + v.currentTime;
     play.innerHTML = v.paused ? VX_ICON.play : VX_ICON.pause;
     play.setAttribute("aria-label", v.paused ? "Play" : "Pause");
     if (total) {
-      fill.style.width = `${Math.min(100, (100 * at) / total)}%`;
+      const played = Math.min(100, (100 * at) / total);
+      fill.style.width = `${played}%`;
+      knob.style.left = `${played}%`;
       // What has been encoded and arrived, which for a stream is the part you
       // can go back over without paying for a fresh one. The native control
       // draws exactly this, in exactly this grey.
@@ -458,10 +469,57 @@ function mountTransport(v, it, from, seek, alive) {
   play.addEventListener("click", () => { v.paused ? v.play().catch(() => {}) : v.pause(); paint(); });
   ["timeupdate", "play", "pause", "volumechange", "progress", "ratechange"]
     .forEach(e => v.addEventListener(e, paint));
-  track.addEventListener("click", event => {
+  /* Drag, not just click. The native bar can be dragged and this could not,
+     which is the one thing left that made it feel like a different control.
+
+     The seek lands on release. During the drag the bar and the readout follow
+     the pointer off `scrubbing` while the picture stays where it was, so the
+     gesture is answered at once and the expensive part happens once, on the
+     position actually chosen. A click is the degenerate drag -- press and
+     release in one place -- and takes the same path. */
+  const atPointer = event => {
     const box = track.getBoundingClientRect();
-    seek(Math.max(0, Math.min(total, (total * (event.clientX - box.left)) / box.width)));
+    return Math.max(0, Math.min(total, (total * (event.clientX - box.left)) / box.width));
+  };
+  track.addEventListener("pointerdown", event => {
+    if (!total || event.button !== 0) return;
+    event.preventDefault();
+    scrubbing = atPointer(event);
+    track.classList.add("scrubbing");
+    paint();
+    // Capture keeps the pointer's events coming to the track once it wanders
+    // off it, which it will: the bar is four pixels of ink and a drag is a
+    // gesture across a window. Refused for a pointer the browser has no record
+    // of, and that is survivable rather than fatal -- the window handlers
+    // below see the same events either way, which is why they are on the
+    // window and not on the track.
+    try {
+      track.setPointerCapture(event.pointerId);
+    } catch {
+      // No capture; the drag still runs off the window's own events.
+    }
   });
+  window.addEventListener("pointermove", event => {
+    if (scrubbing === null) return;
+    scrubbing = atPointer(event);
+    paint();
+  }, { signal: alive });
+  const stopScrub = () => {
+    track.classList.remove("scrubbing");
+    const at = scrubbing;
+    // Cleared before seeking, or the bar sits at the drop point while the new
+    // stream starts somewhere near it, and then jumps.
+    scrubbing = null;
+    return at;
+  };
+  window.addEventListener("pointerup", () => {
+    const at = stopScrub();
+    if (at !== null) seek(at);
+  }, { signal: alive });
+  window.addEventListener("pointercancel", () => {
+    stopScrub();
+    paint();
+  }, { signal: alive });
   mute.addEventListener("click", () => {
     // Unmuting a video dragged to zero has to give it something audible back,
     // or the button reports sound that is not there.
@@ -539,7 +597,12 @@ function mountIdleFade(stage, bar, v, alive) {
   const wake = () => {
     bar.classList.remove("idle");
     clearTimeout(idle);
-    idle = setTimeout(() => { if (!v.paused) bar.classList.add("idle"); }, 2600);
+    idle = setTimeout(() => {
+      // Not while the track is being dragged: a pointer held still mid-gesture
+      // sends no events, and fading the bar out from under it is the one way
+      // to lose a seek that was halfway to being chosen.
+      if (!v.paused && !bar.querySelector(".vxbar.scrubbing")) bar.classList.add("idle");
+    }, 2600);
   };
   // Same as the menu's: these are on the stage, which the next file inherits.
   ["pointermove", "pointerdown", "focusin"].forEach(
