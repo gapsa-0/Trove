@@ -396,3 +396,82 @@ def test_known_work_is_reported_over_a_count_that_has_not_landed(monkeypatch):
         _stage(kind="places", card="places", state="queued", pending=12, progress=None),
     )
     assert snap["overall"] == "working"
+
+
+# ---------------------------------------------------------------------------
+# A folder that is not there
+# ---------------------------------------------------------------------------
+
+
+def test_a_missing_folder_is_reported_rather_than_read_as_up_to_date(monkeypatch, tmp_path):
+    """The regression this exists for.
+
+    ``_scan_backlog`` asks ``Path.is_dir()`` directly and answers 0 for a folder
+    that is gone, on the correct reasoning that no scan is owed for one. But 0
+    is also what a fully indexed archive looks like, so every surface downstream
+    reported an archive in perfect health -- green dots, "6 files catalogued",
+    "Up to date" in the sidebar -- while every thumbnail and original in it
+    answered 404. The scheduler's answer is unchanged; the reason for it now
+    travels with the payload.
+    """
+    gone = tmp_path / "unplugged-drive"
+
+    monkeypatch.setattr(
+        stages_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [_stage(state="up_to_date")],
+    )
+    snap = status_mod.snapshot(Config(), _FakeJobs(), 1, str(gone))
+
+    assert snap["root_missing"] is True
+
+
+def test_a_folder_that_is_there_says_so(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        stages_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [_stage(state="up_to_date")],
+    )
+    snap = status_mod.snapshot(Config(), _FakeJobs(), 1, str(tmp_path))
+
+    assert snap["root_missing"] is False
+
+
+def test_a_file_in_place_of_a_folder_counts_as_missing(monkeypatch, tmp_path):
+    """``is_dir``, not ``exists``: a path that is now a file cannot be walked
+    either, and the answer a user needs is the same one."""
+    not_a_folder = tmp_path / "archive"
+    not_a_folder.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        stages_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [_stage(state="up_to_date")],
+    )
+    snap = status_mod.snapshot(Config(), _FakeJobs(), 1, str(not_a_folder))
+
+    assert snap["root_missing"] is True
+
+
+def test_the_pipeline_pause_and_a_single_stage_pause_stay_separable(monkeypatch, tmp_path):
+    """What the sidebar chip needs to tell them apart.
+
+    It used to read `overall`, which says "paused" both when the pipeline is
+    stopped and when the only outstanding work sits behind one stopped stage --
+    so pausing a single step put a flat "Paused" over an archive that was busy
+    indexing, beside a button still offering to "Pause all". Both facts are in
+    the payload; this pins that they stay there and stay distinct.
+    """
+    monkeypatch.setattr(
+        stages_mod,
+        "stage_states",
+        lambda cfg, jobs, root_id, root_path, allow_walk=False: [
+            _stage(kind="scan", card="scan", state="running"),
+            _stage(kind="dedup", card="dedup", state="queued", progress=None),
+        ],
+    )
+    jobs = _FakeJobs(paused=False, stages=["dedup"])
+    snap = status_mod.snapshot(Config(), jobs, 1, str(tmp_path))
+
+    assert snap["paused"] is False, "the pipeline itself is not paused"
+    assert snap["paused_stages"] == ["dedup"]

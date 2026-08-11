@@ -31,6 +31,10 @@ function gstatPct(pct) {
   if (pct > 0 && pct < 1) return "&lt;1%";
   return Math.min(100, Math.round(pct)) + "%";
 }
+// How many stages the user has stopped on their own, with the pipeline itself
+// still running. Not the same question as `overall`, which folds this into
+// "paused" only when the stopped stage happens to have work waiting.
+const stepsPaused = snap => (snap.paused_stages || []).length;
 function gstatRow(run) {
   const pct = run.progress && run.progress.percent != null ? run.progress.percent : null;
   // The card's own line, not a wording of the chip's own. This module used to
@@ -65,20 +69,39 @@ export function renderGstat(snap) {
   // collapsed rail falls back to .gmini (see the .gstat CSS).
   const mini = `<span class="gmini"><span class="spin"></span>`
     + (runs.length > 1 ? `<span class="gcount">×${runs.length}</span>` : "") + `</span>`;
-  if (runs.length) {
+  if (snap && snap.root_missing) {
+    // Ahead of everything, including a running job: whatever the pipeline
+    // believes it is doing, not one file in this archive can be opened. It used
+    // to report "Up to date" here, in green, which is the worst answer of the
+    // set -- the user believes it and never looks for the drive.
+    el.title = "This archive's folder cannot be found";
+    el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">Folder not found</span></div>`;
+  } else if (runs.length) {
     el.title = runs.map(r => `${r.label}: ${r.message || ""}`).join("\n");
     el.innerHTML = mini + runs.map(gstatRow).join("");
   } else if (!snap) {
     el.title = "Checking for new work…";
     el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Checking for new work…</span></div>`;
+  } else if (snap.paused) {
+    // The whole pipeline. Asked of `paused` rather than of `overall`, which
+    // also says "paused" when the only thing stopped is one stage -- see the
+    // branch below.
+    el.title = "Background processing is paused";
+    el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">Paused</span></div>`;
+  } else if (stepsPaused(snap)) {
+    // One or more stages stopped on their own, with the pipeline running.
+    // This used to be two different lies depending on whether the paused stage
+    // happened to have work: "Paused", over an archive that was busy indexing,
+    // when it did; and "Up to date", over a stage that would silently ignore
+    // the next thousand photos, when it did not. Neither said the one thing
+    // that was true, and both contradicted the "Pause all" button offering to
+    // pause a pipeline the chip had just called paused.
+    const n = stepsPaused(snap);
+    el.title = `${n} step${n === 1 ? "" : "s"} paused; everything else is running`;
+    el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">${n} step${n === 1 ? "" : "s"} paused</span></div>`;
   } else if (snap.overall === "idle") {
     el.title = "Up to date";
     el.innerHTML = `<div class="gstate"><span class="dot ok"></span><span class="gtxt">Up to date</span></div>`;
-  } else if (snap.overall === "paused") {
-    // Nothing is actually running (the `runs` branch above already
-    // caught that); reads as stopped, not "Working…".
-    el.title = "Background processing is paused";
-    el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">Paused</span></div>`;
   } else if (snap.overall === "checking") {
     // The folder is being counted, so whether anything is owed is not yet
     // known. Same words as the no-snapshot branch above, because it is the same

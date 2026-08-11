@@ -14,6 +14,7 @@ Nothing here decides anything: every state it reports was resolved in
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..config import Config
@@ -144,6 +145,15 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
     waits for the disk walk (see DiskCounts.count), so a freshly opened archive
     answers at once with a scan card that does not know its backlog yet. That
     is neither idle nor working, and calling it either would be a guess.
+
+    ``root_missing`` says the archive's folder is not there: an external drive
+    not mounted, a network share unreachable, a folder moved or renamed. The
+    scheduler has always known -- ``_scan_backlog`` asks ``Path.is_dir()``
+    directly and reports a backlog of 0, because a folder that is gone is owed
+    no scan -- but 0 is also what "fully indexed" looks like, so every surface
+    downstream reported an archive in perfect health while none of its files
+    could be opened. The scheduler's answer is unchanged; what is new is that
+    the reason for it now reaches the screen.
     """
     states = stages.stage_states(cfg, jobs, root_id, root_path)
     paused = bool(jobs.paused()) if hasattr(jobs, "paused") else False
@@ -177,4 +187,9 @@ def snapshot(cfg: Config, jobs: JobManager, root_id: int, root_path: str) -> dic
         "extra": extra,
         "paused": paused,
         "paused_stages": sorted(per_stage),
+        # One `stat` per poll. `_scan_backlog` already makes the same call on
+        # the same tick whenever the disk count is unknown, and the start page
+        # makes it per archive per listing, so this is a cost the app has
+        # always paid -- it was only ever the answer that went unused.
+        "root_missing": not Path(root_path).is_dir(),
     }
