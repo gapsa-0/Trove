@@ -412,8 +412,7 @@
   color: rgba(255, 255, 255, .55)
 }
 
-.viewer.rail-on .noview,
-.viewer.rail-on .vxport {
+.viewer.rail-on .noview {
   right: 354px
 }
 
@@ -428,63 +427,126 @@
   font-size: 32px
 }
 
-/* The transport for a re-encoded video, standing in for native controls that
-   cannot describe a stream with no length and nothing to rewind to. Laid over
-   the foot of the stage the way the native ones sit, so nothing moves when a
-   video turns out to need it. */
+/* The transport for a re-encoded video: a copy of the native controls it
+   replaces, because half the archive's video keeps the native ones and the
+   viewer must not hand you two different players depending on how a file
+   happens to be stored.
+
+   Every number here is measured off a screenshot of Chromium's own panel at
+   the same size, not estimated: a 4px track inset 16px with its centre 21px
+   off the bottom, control centres 24px in from either end and 48px apart, the
+   row's centre 47px up, 13px text. Two rows, controls above the track. */
 .vxport {
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
   z-index: 3;
+  padding: 44px 16px 11px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .86));
+  color: #fff;
+  transition: opacity .3s
+}
+
+/* Out of the way while a video plays and nobody is reaching for it. Not
+   `display`, which would take the layout with it and make the picture jump. */
+.vxport.idle {
+  opacity: 0;
+  pointer-events: none
+}
+
+/* -8px so a 32px control's centre lands 24px in from the port's own edge,
+   which is where the native panel puts it, while the track below keeps the
+   16px inset the padding gives it. */
+.vxport .vxrow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, .62));
-  color: #fff
+  height: 32px;
+  margin: 0 -8px 4px
+}
+
+.vxport .vxgap {
+  flex: 1
 }
 
 .vxport button {
+  display: inline-flex;
   flex: none;
-  width: 30px;
-  height: 30px;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, .16);
+  background: transparent;
   color: inherit;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer
+  cursor: pointer;
+  transition: background .15s
 }
 
 .vxport button:hover {
-  background: rgba(255, 255, 255, .28)
+  background: rgba(255, 255, 255, .16)
 }
 
-/* The two on the right are secondary to the transport itself: same target
-   size, less ink, so the eye goes to play and the bar first. */
-.vxport .vxmute,
-.vxport .vxfull {
-  background: transparent;
-  font-size: 13px
+.vxport button svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor
 }
 
-/* Same slider as the zoom pill's, at the same size, so the one other place in
-   the viewer with a slider in it behaves identically. */
-.vxport .vxvol {
+/* Speaker cone and play triangle are solid; the waves, the mute cross and the
+   fullscreen corners are drawn lines. Same split the native icons use. */
+.vxport button svg .wave {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+.vxport .vxtime {
   flex: none;
-  width: 72px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap
+}
+
+/* 48px between the centres of the controls on the right, which is the native
+   panel's pitch: 32px of control and 16px of air. The volume slider stays out
+   of the row until it is wanted so it does not disturb that spacing. */
+.vxport .vxsound,
+.vxport .vxfull,
+.vxport .vxmore {
+  margin-left: 16px
+}
+
+.vxport .vxsound {
+  display: flex;
+  flex: none;
+  align-items: center
+}
+
+.vxport .vxvol {
+  width: 0;
   height: 3px;
   margin: 0;
   padding: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, .28);
+  opacity: 0;
+  background: rgba(255, 255, 255, .35);
   appearance: none;
   -webkit-appearance: none;
-  cursor: pointer
+  cursor: pointer;
+  transition: width .18s, opacity .18s, margin .18s
+}
+
+.vxport .vxsound:hover .vxvol,
+.vxport .vxsound:focus-within .vxvol {
+  width: 64px;
+  margin: 0 8px 0 2px;
+  opacity: 1
 }
 
 .vxport .vxvol::-webkit-slider-thumb {
@@ -505,35 +567,84 @@
   background: #fff
 }
 
-/* Generous hit area for a bar that is only 4px of ink: a seek costs a second
-   of re-encoding, and missing by two pixels spends it on the wrong place. */
+/* -- the track --
+   20px of hit area around 4px of ink: a seek costs a second of re-encoding,
+   and missing by two pixels spends it on the wrong place. */
 .vxport .vxbar {
-  flex: 1;
-  padding: 8px 0;
+  position: relative;
+  height: 4px;
+  margin: 8px 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .3);
   cursor: pointer
 }
 
+.vxport .vxbar[hidden] {
+  display: none
+}
+
 .vxport .vxbar::before {
-  display: block;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, .25);
+  position: absolute;
+  top: -8px;
+  right: 0;
+  bottom: -8px;
+  left: 0;
   content: ""
 }
 
+/* Encoded and arrived, in the grey the native control draws it in
+   (rgb(176,175,175) sampled off one) -- for a stream this is the stretch you
+   can go back over without paying for a fresh one. */
+.vxport .vxbuf,
 .vxport .vxfill {
-  height: 4px;
-  margin-top: -4px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
   border-radius: 2px;
-  background: #fff;
   pointer-events: none
 }
 
-.vxport .vxtime {
-  flex: none;
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  opacity: .85
+.vxport .vxbuf {
+  width: 0;
+  background: rgba(255, 255, 255, .69)
+}
+
+.vxport .vxfill {
+  width: 0;
+  background: #fff
+}
+
+/* -- the overflow menu -- */
+.vxport .vxmenu {
+  position: absolute;
+  right: 8px;
+  bottom: 46px;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(28, 28, 30, .96);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .5)
+}
+
+.vxport .vxmenu[hidden] {
+  display: none
+}
+
+.vxport .vxmenu button {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  text-align: left
+}
+
+.vxport .vxmenu button[aria-checked="true"]::after {
+  margin-left: auto;
+  content: "\2713"
 }
 
 /* The frame pulled out of a video this window cannot play. Held to the
@@ -730,8 +841,7 @@
   }
 
   .viewer.rail-on .docstage,
-  .viewer.rail-on .noview,
-  .viewer.rail-on .vxport {
+  .viewer.rail-on .noview {
     right: 0
   }
 

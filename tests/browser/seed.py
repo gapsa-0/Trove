@@ -15,13 +15,17 @@ from __future__ import annotations
 
 import math
 import os
+import shutil
 import struct
+import subprocess
+import tempfile
 import wave
 from pathlib import Path
 
 import factories
 
 from trove.db import database as db
+from trove.runtime import no_window, tool, tool_env
 
 # One more than the Library grid's own page size (GRID_PAGE_SIZE = 120 in
 # static/js/library.js), so there is a second page to fetch and paging can be
@@ -186,6 +190,75 @@ def seed_hostile_names(conn, root_id: int, source_dir: Path, canonical: int) -> 
     return copy
 
 
+_MJPEG_AVI: Path | None = None
+
+
+def _mjpeg_avi() -> Path | None:
+    """A tiny Motion JPEG .avi, built once and copied thereafter.
+
+    The shape 736 of the 739 .avi files in the archive this was written for
+    actually have, and the case the whole re-encoding path exists for: the
+    window will not open the container, ffmpeg reads it happily. Nothing else
+    seeded here can stand in -- the other two videos are *meant* to fail, and a
+    file that re-encodes into a real picture is the only way to see the
+    transport at all.
+
+    Built rather than committed so no binary lands in the tree, and cached in a
+    module global because the archive fixture is per-test: ffmpeg once a
+    session is a rounding error, ffmpeg 115 times is half a minute.
+    """
+    global _MJPEG_AVI
+    if _MJPEG_AVI is None:
+        ffmpeg = tool("ffmpeg")
+        if ffmpeg is None:
+            return None
+        made = Path(tempfile.mkdtemp(prefix="trove-seed-")) / "camcorder.avi"
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x48:rate=5:duration=2",
+                "-c:v",
+                "mjpeg",
+                "-q:v",
+                "6",
+                str(made),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=60,
+            env=tool_env(),
+            check=True,
+            **no_window(),
+        )
+        _MJPEG_AVI = made
+    return _MJPEG_AVI
+
+
+def seed_reencodable_video(conn, root_id: int, source_dir: Path) -> dict[str, int]:
+    """The one video here that fails in the window and succeeds through ffmpeg.
+
+    Absent on a machine with no ffmpeg, where there is nothing to test: the
+    viewer falls back to the panel and the tests for that cover it.
+    """
+    built = _mjpeg_avi()
+    if built is None:
+        return {}
+    fid = factories.add_file(conn, root_id=root_id, rel_path="camcorder.avi", media_type="video")
+    shutil.copyfile(built, source_dir / "camcorder.avi")
+    # The length the transport draws its bar against. Written the way enrich
+    # would; without it there is a player but no scrubbing, which is a
+    # different case with its own branch.
+    conn.execute(
+        "INSERT INTO media_meta(file_id, width, height, duration_s) VALUES(?, 64, 48, 2.0)",
+        (fid,),
+    )
+    return {"reencodable": fid}
+
+
 def seed_unplayable_videos(conn, root_id: int, source_dir: Path) -> dict[str, int]:
     """One video of each kind the window refuses to draw.
 
@@ -276,6 +349,7 @@ def seed(conn, root_id: int, source_dir: Path) -> dict:
     ids["ocr_photo"] = file_ids[20]
     ids["document"] = seed_documents(conn, root_id, source_dir, ids["ocr_photo"])
     ids.update(seed_unplayable_videos(conn, root_id, source_dir))
+    ids.update(seed_reencodable_video(conn, root_id, source_dir))
 
     # The run that produced the group above. Dedup writes no per-file row -- a
     # file with no copies is simply in no group -- so this marker is the whole

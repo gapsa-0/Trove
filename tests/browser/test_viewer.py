@@ -16,6 +16,8 @@ when a feature is off.
 import json
 import urllib.request
 
+import pytest
+
 
 def _configure(archive, **body):
     """Change the archive's setup through the API the screen itself posts to.
@@ -652,4 +654,83 @@ def test_a_video_the_window_can_play_is_left_alone(open_app, archive):
             what="the stage to go back to drawing the file it was given",
         )
 
+        assert app.errors() == []
+
+
+def test_a_re_encoded_video_gets_the_same_player_as_a_native_one(open_app, archive):
+    """The viewer must not hand you two different players depending on how a
+    file happens to be stored.
+
+    A video the window will not open is re-encoded on the way out, and that
+    stream has no length and nothing to rewind to -- so the native controls
+    come off and a copy of them goes on, over the length the catalogue
+    measured. The copy is the point: everything the native panel reaches, this
+    reaches, or the difference is one the person watching has to care about.
+    """
+    fid = archive.ids.get("reencodable")
+    if fid is None:
+        pytest.skip("re-encoding for playback needs ffmpeg")
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({fid})")
+        app.wait_for(".vxport")
+        app.tab.wait_for(
+            "(document.querySelector('#mmedia video') || {}).videoWidth > 0",
+            what="the re-encoding to put a picture on the stage",
+        )
+
+        # Native controls off, or there are two transports over one video.
+        assert app.tab.evaluate("document.querySelector('#mmedia video').controls") is False
+        for control in ("vxplay", "vxbar", "vxtime", "vxmute", "vxvol", "vxfull", "vxmore"):
+            assert app.count(f"#mmedia .vxport .{control}") == 1, f"no .{control} on the transport"
+        # The length comes from the catalogue, not from the stream: the stream
+        # does not know one, and a bar scaled to what has arrived so far
+        # rescales under the pointer every few seconds.
+        assert "0:02" in app.tab.evaluate(
+            "document.querySelector('#mmedia .vxtime').textContent"
+        ), "the transport is not drawn against the length the archive measured"
+        assert app.errors() == []
+
+
+# The two boxes that have to end up identical, as a JS expression returning a
+# pair of [left, width, bottom]. Shared so the wait and the assertion below are
+# asking about exactly the same thing.
+_TRANSPORT_AND_PICTURE = (
+    "['#mmedia video', '#mmedia .vxport'].map("
+    "s => (r => [Math.round(r.left), Math.round(r.width), Math.round(r.bottom)])"
+    "(document.querySelector(s).getBoundingClientRect()))"
+)
+
+
+def test_the_transport_sits_on_the_picture_not_on_the_stage(open_app, archive):
+    """Where the native panel sits, so arrowing from one player to the other
+    does not move the controls across the window.
+
+    Waited for rather than read straight off: a video element is 300x150 until
+    its metadata lands, and the transport is put up before that so there are
+    controls during the second the re-encoding takes to start. It follows the
+    picture to its real size a moment later, which is what is being checked --
+    a resize observer doing its job, not the value it happens to hold on the
+    frame the test looked.
+    """
+    fid = archive.ids.get("reencodable")
+    if fid is None:
+        pytest.skip("re-encoding for playback needs ffmpeg")
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({fid})")
+        app.wait_for(".vxport")
+        app.tab.wait_for(
+            "(document.querySelector('#mmedia video') || {}).videoWidth > 0",
+            what="the re-encoding to put a picture on the stage",
+        )
+        app.tab.wait_for(
+            f"(([v, p]) => v[0] === p[0] && v[1] === p[1] && v[2] === p[2])({_TRANSPORT_AND_PICTURE})",
+            what="the transport to settle onto the picture",
+        )
+
+        video, port = json.loads(app.tab.evaluate(f"JSON.stringify({_TRANSPORT_AND_PICTURE})"))
+        assert port == video, f"the transport is not on the picture: {port} vs {video}"
+        # ...and it is on the picture rather than merely on something small:
+        # the stage is far wider, which is where it used to sit.
+        stage = app.tab.evaluate("Math.round(document.getElementById('mmedia').offsetWidth)")
+        assert port[1] < stage, "the transport is still the width of the stage"
         assert app.errors() == []
