@@ -15,8 +15,11 @@
 // interaction). Nothing to press, nothing to remember having pressed, and no
 // state to carry across a re-render.
 //
-// The cost is that a keyboard has no hover: a tile is not focusable, so these
-// sentences are not reachable without a pointer. What is reachable is the
+// The cost is that this needs a hovering pointer: a tile is not focusable, so a
+// keyboard cannot reach these sentences, and neither can a touch screen, where
+// the rule is switched off outright (@media (hover: hover) in overview.css)
+// because a caption that appears on tap and stays until something else is
+// tapped is a different, worse control. What is reachable either way is the
 // "How this works" button in the same page head, whose page says the same
 // things at length -- see web/docs/duplicates.md on "unique files".
 

@@ -101,7 +101,7 @@ function paintOverview(m, s) {
       ${statTile("library", "blue", "All files", "ov-total", s.total)}
       ${statTile("timeline", "violet", "With a date", "ov-enriched", s.enriched)}
       ${statTile("places", "green", "With a location", "ov-gps", s.with_gps)}
-      ${statTile("dups", "orange", "Duplicate copies", "ov-dups", s.duplicates)}
+      ${statTile("dups", "orange", "Redundant copies", "ov-dups", s.duplicates)}
     </div>
     <div class="overview-grid">
       <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Progress on everything this archive runs</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>

@@ -394,7 +394,12 @@ def test_the_copies_of_a_file_are_shown_rather_than_counted(open_app, archive):
             "document.querySelector('#minfo .copies').closest('.isec').textContent"
         )
         assert "Duplicates" in section
-        assert "This file" in section and "Looks the same" in section
+        # The Duplicates screen's own words for the same fact, not a second set
+        # of them: this used to read "Looks the same" here and "Visual match"
+        # there, which is how one fact becomes two in a reader's head -- and it
+        # sat directly under a section called "Looks like this", which means
+        # something else again.
+        assert "This file" in section and "Visual match" in section
         assert "1 other copy" in section
         assert app.errors() == []
 

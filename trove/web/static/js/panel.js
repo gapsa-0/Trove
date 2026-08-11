@@ -294,7 +294,13 @@ function dupGroup(it, d) {
   return `<div class="copies">${d.members.map(m => copyTile(m, it.id)).join("")}</div>
     <div class="imuted">${esc(lead)}</div>`;
 }
-const COPY_TAG = { canonical: "✓ Kept", identical: "Identical", visual: "Looks the same" };
+// Word for word what the Duplicates screen's tiles say (dups.js's DUP_TAG), for
+// the reason given above. These used to read "Identical" and "Looks the same",
+// which is the same fact in different words on two screens one click apart --
+// and "Looks the same" sat directly above a section called "Looks like this",
+// which is a different fact again: other pictures in the archive that resemble
+// this one, rather than copies of it.
+const COPY_TAG = { canonical: "✓ Kept", identical: "Identical copy", visual: "Visual match" };
 /* One copy. The file you are looking at is marked and does not open itself;
    every other copy is a way into that copy, with the arrows then walking the
    group -- the same claim about "next" the Duplicates screen makes. */

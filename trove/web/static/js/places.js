@@ -136,7 +136,7 @@ export async function renderMap(m) {
     renderMapViewNote();
     document.querySelector(".mapwrap").insertAdjacentHTML("beforeend", `<div class="map-empty">
       <div class="big">⌖</div><h3>No locations yet</h3>
-      <p>Places will appear here automatically when Archive finds GPS information in EXIF or Takeout metadata.</p></div>`);
+      <p>Places will appear here automatically when Trove finds GPS information in EXIF or Takeout metadata.</p></div>`);
     return;
   }
   addMapViewToggle(MAP);
