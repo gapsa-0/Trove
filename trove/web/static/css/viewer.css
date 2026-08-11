@@ -446,7 +446,7 @@
   color: #fff
 }
 
-.vxport .vxplay {
+.vxport button {
   flex: none;
   width: 30px;
   height: 30px;
@@ -460,8 +460,49 @@
   cursor: pointer
 }
 
-.vxport .vxplay:hover {
+.vxport button:hover {
   background: rgba(255, 255, 255, .28)
+}
+
+/* The two on the right are secondary to the transport itself: same target
+   size, less ink, so the eye goes to play and the bar first. */
+.vxport .vxmute,
+.vxport .vxfull {
+  background: transparent;
+  font-size: 13px
+}
+
+/* Same slider as the zoom pill's, at the same size, so the one other place in
+   the viewer with a slider in it behaves identically. */
+.vxport .vxvol {
+  flex: none;
+  width: 72px;
+  height: 3px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .28);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer
+}
+
+.vxport .vxvol::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  appearance: none;
+  -webkit-appearance: none
+}
+
+.vxport .vxvol::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff
 }
 
 /* Generous hit area for a bar that is only 4px of ink: a seek costs a second

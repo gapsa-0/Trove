@@ -286,7 +286,14 @@ function videoStage(it) {
    after.
 
    A video whose length was never measured gets no bar. There is nothing to
-   draw one against, and a bar scaled to a guess is worse than none. */
+   draw one against, and a bar scaled to a guess is worse than none.
+
+   Everything else here is only present because taking the native controls off
+   takes *all* of them off -- there is no way to keep a volume slider and drop
+   a scrub bar. So the rest of what they offered is rebuilt: sound, mute, and
+   fullscreen. A file that plays as itself keeps the native set, and the two
+   have to reach the same things or the viewer answers the same question two
+   different ways depending on how the file happens to be stored. */
 function mountTransport(v, it, from, seek) {
   const m = document.getElementById("mmedia");
   const total = (it.meta && it.meta.duration_s) || 0;
@@ -296,8 +303,13 @@ function mountTransport(v, it, from, seek) {
   bar.className = "vxport";
   bar.innerHTML = `<button class="vxplay" type="button" aria-label="Play"></button>
     <div class="vxbar"${total ? "" : " hidden"}><div class="vxfill"></div></div>
-    <span class="vxtime"></span>`;
-  const [play, track, time] = ["vxplay", "vxbar", "vxtime"].map(c => bar.querySelector("." + c));
+    <span class="vxtime"></span>
+    <button class="vxmute" type="button" aria-label="Mute"></button>
+    <input class="vxvol" type="range" min="0" max="1" step="0.02" aria-label="Volume">
+    <button class="vxfull" type="button" aria-label="Full screen">⛶</button>`;
+  const find = c => bar.querySelector("." + c);
+  const [play, track, time] = ["vxplay", "vxbar", "vxtime"].map(find);
+  const [mute, vol, full] = ["vxmute", "vxvol", "vxfull"].map(find);
   const fill = track.querySelector(".vxfill");
   const paint = () => {
     const at = from() + v.currentTime;
@@ -305,12 +317,30 @@ function mountTransport(v, it, from, seek) {
     play.setAttribute("aria-label", v.paused ? "Play" : "Pause");
     if (total) fill.style.width = `${Math.min(100, 100 * at / total)}%`;
     time.textContent = total ? `${clock(at)} / ${clock(total)}` : clock(at);
+    const off = v.muted || !v.volume;
+    mute.textContent = off ? "🔇" : "🔊";
+    mute.setAttribute("aria-label", off ? "Unmute" : "Mute");
+    vol.value = String(off ? 0 : v.volume);
   };
   play.addEventListener("click", () => { v.paused ? v.play().catch(() => {}) : v.pause(); paint(); });
-  ["timeupdate", "play", "pause"].forEach(e => v.addEventListener(e, paint));
+  ["timeupdate", "play", "pause", "volumechange"].forEach(e => v.addEventListener(e, paint));
   track.addEventListener("click", event => {
     const box = track.getBoundingClientRect();
     seek(Math.max(0, Math.min(total, total * (event.clientX - box.left) / box.width)));
+  });
+  mute.addEventListener("click", () => {
+    // Unmuting a video dragged to zero has to give it something audible back,
+    // or the button reports sound that is not there.
+    v.muted = !v.muted && !!v.volume;
+    if (!v.muted && !v.volume) v.volume = 1;
+  });
+  vol.addEventListener("input", () => { v.volume = Number(vol.value); v.muted = !v.volume; });
+  // The stage rather than the video: fullscreen on the element itself would
+  // take this bar off the screen, and with the native controls gone that
+  // leaves a video with no way to pause it.
+  full.addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else m.requestFullscreen().catch(() => toast("Couldn’t go full screen.", true));
   });
   m.appendChild(bar);
   paint();
