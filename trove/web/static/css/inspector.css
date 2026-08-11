@@ -133,14 +133,23 @@
   background: rgba(255, 255, 255, .1)
 }
 
-.fsel,
-.dtrow input {
+/* Controls inside the viewer's glass panel, which is dark in both themes --
+   hence the fixed white rather than a token.
+
+   Scoped to `.info`, which is what the rest of this file describes. Written
+   bare, these two selectors reached every `.fsel` in the app: this stylesheet
+   is loaded after theme.css and library.css (see web/index.html), so a filter
+   select on Duplicates, Browse or the Timeline was handed white text on a
+   10%-white surface, which in the light theme is white on white. Both of the
+   Duplicates screen's controls were unreadable that way. */
+.info .fsel,
+.info .dtrow input {
   border-color: rgba(255, 255, 255, .18);
   background: rgba(255, 255, 255, .1);
   color: #fff
 }
 
-.fsel option {
+.info .fsel option {
   color: var(--text);
   background: var(--panel)
 }
