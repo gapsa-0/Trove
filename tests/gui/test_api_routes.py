@@ -342,6 +342,12 @@ API_POST_CASES = [
         {"ok"},
         id="POST /api/faces/hide",
     ),
+    pytest.param(
+        "/api/faces/person/cover",
+        lambda ids: {"person_id": ids["person_a"], "face_id": ids["face_a"]},
+        {"ok", "cover_face_id"},
+        id="POST /api/faces/person/cover",
+    ),
     pytest.param(  # the reversible kind: this hides, the next restores
         "/api/faces/hide",
         lambda ids: {"person_id": ids["person_b"], "reason": "unknown"},

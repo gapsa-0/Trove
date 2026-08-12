@@ -122,6 +122,7 @@ POST_ROUTES: dict[str, Handler] = {
     "/api/pipeline/pause": pipeline.pause,
     "/api/pipeline/changed": pipeline.changed,
     "/api/edit-log/undo": people.undo_edit,
+    "/api/faces/person/cover": people.set_cover,
     "/api/faces/person/rename": people.rename_person,
     "/api/faces/reassign": people.reassign,
     "/api/faces/merge": people.merge,

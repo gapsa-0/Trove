@@ -170,6 +170,16 @@ def hide(req: Request) -> Json:
     return ok_or_error(res)
 
 
+def set_cover(req: Request) -> Json:
+    """Choose which of a person's photos represents them."""
+    res = db.write_with_retry(
+        lambda: people_edit.set_person_cover(
+            req.db(req.open_root_id), req.body.get("person_id"), req.body.get("face_id")
+        )
+    )
+    return ok_or_error(res)
+
+
 def unhide(req: Request) -> Json:
     """Put a hidden cluster back on the People screen."""
     res = db.write_with_retry(

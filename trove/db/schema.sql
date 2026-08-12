@@ -324,6 +324,12 @@ CREATE TABLE IF NOT EXISTS faces (
     embedding  BLOB NOT NULL,
     person_id  INTEGER REFERENCES persons(id) ON DELETE SET NULL,
     manual_person TEXT,               -- pinned person NAME (survives recluster); NULL = auto
+    -- 1 = the user chose this face as their person's cover. On the FACE, not on
+    -- persons.cover_face_id, for the reason manual_person is here too: the
+    -- persons row is deleted and rebuilt by every recluster, so a choice
+    -- recorded there lasts until the next detect chunk. Every place that picks
+    -- a cover ranks on this before det_score.
+    manual_cover INTEGER NOT NULL DEFAULT 0,
     not_person INTEGER NOT NULL DEFAULT 0,  -- 1 = user marked "not a person" (doll/animal/cartoon); excluded from clustering
     nonhuman_kind TEXT,              -- animal | toy | cartoon | false_detection
     nonhuman_source TEXT,            -- manual | animal-overlap:<model>

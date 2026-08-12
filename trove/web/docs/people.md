@@ -154,6 +154,13 @@ clustering pass. Undoing the removal from the history restores both.
 **Merge two people.** Drag one card onto another when the same person has ended
 up with two pages. Trove asks first, and the merge can be undone.
 
+**Fix one photo.** Each photo on a person's page carries two controls of its
+own. *This is not the person* takes the photo off them and stops it being
+suggested for them again. *Make cover photo* chooses which face represents them
+on their card — Trove otherwise picks whichever one it judged sharpest, which
+is not always the one that looks like them. Your choice outranks that from then
+on, including after re-clustering.
+
 **Take a group off the screen.** Each card, and each person's page, offers two
 ways out, and they are not the same thing. *Not a person* is about the
 detections — a doll, a statue, a face on a poster — and takes them out of

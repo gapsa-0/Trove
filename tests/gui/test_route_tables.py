@@ -100,6 +100,7 @@ POST_EXACT = {
     "/api/map/cluster/merge",
     "/api/map/cluster/unmerge",
     "/api/edit-log/undo",
+    "/api/faces/person/cover",
     "/api/faces/person/rename",
     "/api/faces/reassign",
     "/api/faces/merge",

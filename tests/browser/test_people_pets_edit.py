@@ -149,6 +149,29 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
         assert app.errors() == []
 
 
+def test_a_photo_on_a_persons_page_carries_its_own_actions(open_app):
+    """Both controls exist on the tile, and the cover one changes the avatar.
+
+    The avatar is the only place on this page the cover is visible, so it is
+    the only thing that can show the choice landed.
+    """
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        app.click(".pcard img.face, .pcard .facecollage img")
+        app.wait_for(".tile")
+        assert app.count(".tile .tile-detach") >= 1, "the detach control went missing"
+        assert app.count(".tile .tile-cover") >= 1, "no way to choose a cover"
+
+        app.click(".tile .tile-cover")
+        app.tab.wait_for(
+            "(document.querySelector('.person-header-avatar') || {}).src ?"
+            " document.querySelector('.person-header-avatar').src.includes('faceThumb') : false",
+            timeout=10.0,
+            what="the header avatar to show the chosen face",
+        )
+        assert app.errors() == []
+
+
 def test_a_persons_recent_changes_open_from_the_top_bar(open_app):
     """The merge list used to sit permanently between the name and the photos.
 

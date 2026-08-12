@@ -75,7 +75,9 @@ def _sync_person_stats(conn: sqlite3.Connection, pid: int | None) -> None:
     cover = conn.execute(
         f"SELECT fa.id FROM faces fa JOIN files f ON f.id=fa.file_id "
         f"WHERE fa.person_id=? AND f.hidden=0 AND {_QUALITY_OK} "
-        f"ORDER BY fa.det_score DESC LIMIT 1",
+        # A cover the user picked outranks the sharpest one we found; same
+        # ordering as faces/cluster.py::_refresh_person_stats.
+        f"ORDER BY fa.manual_cover DESC, fa.det_score DESC LIMIT 1",
         (pid,),
     ).fetchone()
     conn.execute(
@@ -338,6 +340,45 @@ def hide_person(
     conn.execute("DELETE FROM persons WHERE id=?", (person_id,))
     conn.commit()
     return {"ok": True}
+
+
+@writing
+def set_person_cover(
+    conn: sqlite3.Connection, person_id: int | None, face_id: int | None
+) -> dict[str, Any]:
+    """Choose which face represents a person on their card.
+
+    The pin goes on the FACE (``faces.manual_cover``), not just on
+    ``persons.cover_face_id``, because the persons row is deleted and rebuilt by
+    every recluster -- a choice recorded only there would hold until the next
+    detect chunk and then quietly revert to the sharpest face. Every place that
+    picks a cover ranks on this column first.
+    """
+    if not person_id or not face_id:
+        return {"error": "missing person_id or face_id"}
+    fa = conn.execute(
+        f"SELECT id FROM faces WHERE id=? AND person_id=? AND {_quality_ok('faces')}",
+        (face_id, person_id),
+    ).fetchone()
+    if not fa:
+        # Either it is not theirs, or the quality gate hides it -- a cover
+        # nobody can see is not a cover.
+        return {"error": "that face is not one of this person's"}
+    previous = conn.execute("SELECT cover_face_id FROM persons WHERE id=?", (person_id,)).fetchone()
+    conn.execute("UPDATE faces SET manual_cover=0 WHERE person_id=?", (person_id,))
+    conn.execute("UPDATE faces SET manual_cover=1 WHERE id=?", (face_id,))
+    conn.execute("UPDATE persons SET cover_face_id=? WHERE id=?", (face_id, person_id))
+    name = conn.execute("SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
+    edit_log.record(
+        conn,
+        edit_log.PERSON,
+        person_id,
+        name["name"] if name else None,
+        edit_log.SET_COVER,
+        {"face_id": face_id, "from": previous["cover_face_id"] if previous else None},
+    )
+    conn.commit()
+    return {"ok": True, "cover_face_id": face_id}
 
 
 @writing

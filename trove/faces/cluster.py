@@ -163,7 +163,8 @@ def _refresh_person_stats(conn: sqlite3.Connection, pids: Iterable[int]) -> None
             # The cover is the face shown on the person's card, so it must never
             # be one the quality gate rejected.
             "AND COALESCE(fa.quality_tier,'BORDERLINE') != 'LOW_QUALITY' "
-            "ORDER BY fa.det_score DESC LIMIT 1",
+            # A cover the user picked outranks the sharpest one we found.
+            "ORDER BY fa.manual_cover DESC, fa.det_score DESC LIMIT 1",
             (pid,),
         ).fetchone()
         conn.execute(
@@ -227,7 +228,7 @@ def _load_faces(conn: sqlite3.Connection, stats: ClusterStats) -> list[sqlite3.R
     the single gate between the FIQA verdict and clustering.
     """
     rows = conn.execute(
-        """SELECT fa.id, fa.det_score, fa.embedding,
+        """SELECT fa.id, fa.det_score, fa.embedding, fa.manual_cover,
                   COALESCE(fa.quality_tier, 'BORDERLINE') AS tier
            FROM faces fa JOIN files f ON f.id = fa.file_id
            WHERE f.hidden = 0 AND COALESCE(fa.not_person, 0) = 0
@@ -339,12 +340,15 @@ def _write_people(
     kept: list[list[int]],
     X: np.ndarray,
     face_ids: Sequence[int],
-    scores: Sequence[float],
+    scores: Sequence[tuple[int, float]],
     name_of: dict[int, str],
     now: str,
     stats: ClusterStats,
 ) -> None:
-    """Insert one persons row per kept cluster and point its faces at it."""
+    """Insert one persons row per kept cluster and point its faces at it.
+
+    ``scores`` ranks faces for the cover: ``(manual_cover, det_score)``, so a
+    face the user chose wins outright and sharpness settles the rest."""
     import numpy as np
 
     assign: list[tuple[int, int]] = []
@@ -388,7 +392,9 @@ def cluster_faces(
         return _finalize(conn, stats, now, progress)
 
     face_ids = [r["id"] for r in rows]
-    scores = [r["det_score"] or 0.0 for r in rows]
+    # Cover ranking, not detection confidence: a face the user picked as the
+    # cover sorts above every automatic one, and ties fall back to sharpness.
+    scores = [((r["manual_cover"] or 0), r["det_score"] or 0.0) for r in rows]
     X = _matrix(rows)
 
     cores, seeded_from_all = _build_cores(X, rows, cfg, stats, progress)

@@ -94,34 +94,58 @@
   flex: none;
 }
 
-/* "Not this person" control -- person detail page only (see personTile).
-   Hidden until the tile is hovered/focused so it doesn't clutter a page
-   of hundreds of thumbnails at rest. */
-.tile-detach {
+/* A photo's own actions -- person detail page only (see personTile). Hidden
+   until the tile is hovered or focused, so a page of hundreds of thumbnails
+   reads as photographs at rest rather than as a wall of controls. */
+.tile-action {
   position: absolute;
   top: 5px;
-  left: 5px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 999px;
+  padding: 0;
   border: none;
+  border-radius: 999px;
   background: #000a;
   color: #fff;
   font-size: 12px;
   line-height: 22px;
-  padding: 0;
   cursor: pointer;
   opacity: 0;
   transition: opacity .12s, background-color .12s;
+}
+
+.tile-detach {
+  left: 5px;
+}
+
+.tile-cover {
+  right: 5px;
+}
+
+.tile-action svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tile-detach:hover {
   background: #d33;
 }
 
-.tile:hover .tile-detach,
-.tile-detach:focus-visible {
+.tile-cover:hover {
+  background: var(--accent);
+}
+
+.tile:hover .tile-action,
+.tile-action:focus-visible {
   opacity: 1;
 }
 

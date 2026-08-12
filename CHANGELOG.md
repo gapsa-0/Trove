@@ -15,6 +15,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **You choose which photo represents a person.** Trove picked whichever face it
+  judged sharpest, which is not always the one that looks like them, and there
+  was no way to say otherwise. Every photo on a person's page now offers "Make
+  cover photo", and the choice outranks the automatic pick from then on —
+  including across re-clustering, which previously overwrote the card's face
+  every time it ran. The photo's other control, "This is not the person", is the
+  same one that was there before, now labelled rather than a bare ✕.
+
 - **Groups can be hidden, for either of the two reasons people hide them.** The
   People screen offered one way out of a crowded grid — "Not a person" — which
   marks the faces as a doll or an animal and takes them out of grouping for

@@ -189,13 +189,44 @@ function markedName(name, tokens) {
 // toast only if the POST actually fails).
 export function personTile(it, personId) {
   const d = tile(it);
-  const btn = document.createElement("button");
-  btn.type = "button"; btn.className = "tile-detach";
-  btn.title = "Not this person"; btn.setAttribute("aria-label", "Not this person");
-  btn.textContent = "✕";
-  btn.onclick = e => { e.stopPropagation(); detachFromPerson(personId, it.id, d); };
-  d.appendChild(btn);
+  // Two buttons rather than the overflow menu the person cards use, for two
+  // reasons that both come from the tile being a <button>: a <details> inside
+  // one is invalid HTML and does not reliably open, and the tile clips its own
+  // overflow to round the thumbnail, which would cut the panel off. Two
+  // actions fit as two controls, each saying what it does on hover.
+  if (it.face_id) {
+    d.appendChild(tileAction("tile-cover", "Make cover photo",
+      "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='9' r='3.4'/><path d='M5 20c.7-4 3.4-6 7-6s6.3 2 7 6'/></svg>",
+      () => setCover(personId, it.face_id)));
+  }
+  d.appendChild(tileAction("tile-detach", "This is not the person", "✕",
+    () => detachFromPerson(personId, it.id, d)));
   return d;
+}
+function tileAction(cls, label, glyph, onPick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = `tile-action ${cls}`;
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.innerHTML = glyph;
+  btn.onclick = e => { e.stopPropagation(); onPick(); };
+  return btn;
+}
+function setCover(personId, faceId) {
+  jpost("/api/faces/person/cover", { person_id: personId, face_id: faceId })
+    .then(r => {
+      if (!(r && r.ok)) {
+        toast((r && r.error) ? "Couldn’t set the cover: " + r.error : "Couldn’t set the cover.", true);
+        return;
+      }
+      toast("Cover photo set.");
+      // The avatar in the top bar is the cover, so it is the one thing on this
+      // page that the change is visible in.
+      const avatar = document.querySelector(".person-header-avatar");
+      if (avatar && avatar.tagName === "IMG") avatar.src = `/faceThumb/${faceId}?t=${Date.now()}`;
+    })
+    .catch(() => toast("Couldn’t set the cover: connection error", true));
 }
 function detachFromPerson(personId, fileId, tileEl) {
   if (!confirm("Remove this photo from this person? It won’t be suggested for them again.")) return;
