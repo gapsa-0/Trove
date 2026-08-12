@@ -321,9 +321,29 @@ class Config(ArchiveRegistryMixin):
     faces_fiqa_h: float = 2.0
     faces_fiqa_high: float = 0.55  # >= this is HIGH (core-eligible); ~the median
     # face, so about half the archive seeds cores
-    faces_fiqa_low: float = 0.18  # < this is LOW_QUALITY (excluded from
-    # clustering and hidden in the GUI); ~the
-    # bottom decile. In between is BORDERLINE.
+    faces_fiqa_low: float = 0.18  # < this is LOW_QUALITY, for faces scored by the
+    # composite fallback only. A norm-scored face is
+    # discarded on the floor below instead.
+    # The discard line, in RAW norm units of `faces_fiqa_model` — an absolute
+    # judgement of "unusable", not a percentile.
+    #
+    # It replaced `faces_fiqa_low` for norm-scored faces because a threshold on
+    # the *score* cannot express one. The score is a z-score of the norm, so any
+    # fixed cut on it discards a fixed share of the archive however good that
+    # archive is: measured here, 0.18 sat at exactly mean - 1.28 sd and threw
+    # away the bottom 10.5% (2,804 of 26,670 faces) whatever they looked like.
+    # Among them were sharp, frontal, well-lit portraits — one of them the only
+    # face on 754 photos, which then reported no people at all.
+    #
+    # 16.0 is where this archive's norms stop being faces: sampled by band, below
+    # 14 is dolls, motion blur and backs of heads, and real faces appear steadily
+    # from 16 up. Lowering it further does NOT add wrong names — a junk face
+    # attaches to no cluster or an unnamed one (0 of the 71 faces below norm 12
+    # reached a named person) — it only makes more unnamed faces visible.
+    #
+    # Model-specific: norms from a different embedder are a different magnitude,
+    # so this moves with `faces_fiqa_model`.
+    faces_fiqa_floor_norm: float = 16.0
     faces_fiqa_calib_sample: int = 2000  # faces used to fix mean/std, once
 
     # Fused detection (Phase 6/9). People (SCRFD) and animals (YOLOX) are found in

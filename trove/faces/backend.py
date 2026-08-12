@@ -548,7 +548,7 @@ class FaceBackend:
             # quality model would cost.
             if self.assessor is not None:
                 face.fiqa_score = self.assessor.score(face)
-                face.quality_tier = self.assessor.tier(face.fiqa_score)
+                face.quality_tier = self.assessor.tier_of(face, face.fiqa_score)
             report.tiers[face.quality_tier] = report.tiers.get(face.quality_tier, 0) + 1
             report.faces.append(face)
         return report

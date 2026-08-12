@@ -15,6 +15,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **People stop vanishing from photos they are plainly in.** The face quality
+  gate discarded the bottom tenth of every archive by construction: the rule was
+  a cut on a score measured against that archive's own mean and spread, so a
+  fixed share was always thrown away, however good the photographs were. On one
+  100,000-file archive that was 2,804 faces — sharp, well-lit, frontal portraits
+  among them, and on 754 photos the only face found, which then reported no
+  people at all. Whether a face can *start* a person is still judged against the
+  archive; whether it is unusable is now judged on the face itself, against
+  `faces_fiqa_floor_norm`. The same archive discards 2.6% instead of 10.5%.
+  Nothing was ever deleted, so `trove faces --recalibrate-fiqa --recluster` puts
+  the recovered faces back into people without re-reading a single image.
+
 - **An archive whose folder cannot be found says so.** Disconnect the drive an
   archive lives on — or move or rename its folder — and the Library overview
   reported perfect health: green dots, a full file count, "Up to date" in the

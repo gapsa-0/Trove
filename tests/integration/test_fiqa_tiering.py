@@ -104,7 +104,7 @@ def test_retiering_reads_the_stored_norm_and_never_needs_reembedding(tmp_path):
 
     # Moving the gate re-tiers the archive from stored norms alone — no image is
     # touched and no embedding recomputed.
-    cfg.faces_fiqa_low, cfg.faces_fiqa_high = 1.01, 1.02  # nothing is good enough
+    cfg.faces_fiqa_floor_norm, cfg.faces_fiqa_high = 99.0, 1.02  # nothing is good enough
     counts = fiqa.retier_all(conn, cfg)
     assert counts[fiqa.LOW_QUALITY] == total
     assert (
@@ -112,10 +112,47 @@ def test_retiering_reads_the_stored_norm_and_never_needs_reembedding(tmp_path):
         == total
     )
 
-    cfg.faces_fiqa_low, cfg.faces_fiqa_high = 0.0, 0.0  # everything is
+    cfg.faces_fiqa_floor_norm, cfg.faces_fiqa_high = 0.0, 0.0  # everything is
     counts = fiqa.retier_all(conn, cfg)
     assert counts[fiqa.HIGH] == total
     assert counts[fiqa.LOW_QUALITY] == 0
+    conn.close()
+
+
+def test_the_discard_line_is_the_raw_norm_not_the_archive_it_sits_in(tmp_path):
+    """A face is discarded for being unusable, not for being in a good archive.
+
+    The regression: LOW_QUALITY was `score < faces_fiqa_low`, and the score is a
+    z-score of the norm — so the gate was a percentile and threw away a fixed
+    ~10% of every archive however good it was. The same face must keep its tier
+    when the population around it improves.
+    """
+    cfg = Config()
+    cfg.faces_fiqa_calib_sample = 10
+    cfg.faces_fiqa_floor_norm = 16.0
+    conn = _conn(tmp_path)
+    kept = _add_face(conn, 18.0)  # usable, but the worst face in either archive
+    for norm in (19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0):
+        _add_face(conn, norm)
+    fiqa.bootstrap_calibration(conn, cfg)
+    tier_of = lambda fid: conn.execute(  # noqa: E731 - one expression, used twice
+        "SELECT quality_tier FROM faces WHERE id=?", (fid,)
+    ).fetchone()["quality_tier"]
+    assert tier_of(kept) != fiqa.LOW_QUALITY
+
+    # Re-calibrate against a much stronger population. Our face now scores under
+    # `faces_fiqa_low` — the old gate would have thrown it away for the company
+    # it keeps — but it is the same face and stays clusterable.
+    for norm in range(40, 60):
+        _add_face(conn, float(norm))
+    fiqa.recalibrate(conn, cfg)
+    assert fiqa.make_assessor(conn, cfg).score(SimpleNamespace(fiqa_norm=18.0)) < cfg.faces_fiqa_low
+    assert tier_of(kept) != fiqa.LOW_QUALITY
+
+    # And the floor still discards: below it, nothing else can save a face.
+    below = _add_face(conn, 15.9)
+    fiqa.retier_all(conn, cfg)
+    assert tier_of(below) == fiqa.LOW_QUALITY
     conn.close()
 
 

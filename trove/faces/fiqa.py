@@ -19,6 +19,12 @@ and routed to a tier:
                     GUI. Never deleted: the row keeps its score and raw norm, so
                     the decision stays auditable and reversible.
 
+The first two lines are drawn on the score, which is relative to the archive;
+the last is drawn on the raw norm, which is not. That asymmetry is deliberate
+and is argued at ``AdaFaceNormFIQA``: "good enough to seed a cluster" is a
+comparative question, "unusable" is not, and a percentile answering the second
+one discards a fixed share of every archive however good it is.
+
 **The scorer.** ``AdaFaceNormFIQA`` uses the embedder's own feature norm. AdaFace
 (CVPR 2022) is built on the observation that ‖z‖ of a margin-softmax model tracks
 image quality — it is the signal the model uses to scale its adaptive margin — so
@@ -105,6 +111,17 @@ class QualityAssessor:
             return LOW_QUALITY
         return BORDERLINE
 
+    def tier_of(self, face: FaceLike, score: float) -> str:
+        """The tier for a face whose score is already computed.
+
+        Exists because the discard decision is not always a function of the
+        score: ``AdaFaceNormFIQA`` makes it on the raw norm, which the score has
+        already flattened (every norm below ``mean - h*sd`` scores exactly 0.0).
+        Callers have the face in hand either way, so they ask this rather than
+        ``tier`` and the assessor decides what it needs to look at.
+        """
+        return self.tier(score)
+
 
 @dataclass(frozen=True)
 class Calibration:
@@ -124,13 +141,31 @@ class AdaFaceNormFIQA(QualityAssessor):
     persisted archive-wide ones (see the module docstring). ``h`` sets how many
     standard deviations span the usable range: smaller h separates the tiers more
     harshly, larger h makes the score gentler.
+
+    **The discard line is the raw norm, not the score.** HIGH is a comparative
+    question — "is this one of the better faces here, good enough to seed a
+    cluster" — and a percentile answers it. LOW_QUALITY is not: it claims the
+    face is unusable, which is true or false about the face itself and cannot
+    depend on what else was photographed. Scoring flattens exactly the range the
+    claim lives in (everything below ``mean - h*sd`` is 0.0), so the floor reads
+    ``fiqa_norm`` directly. ``low`` still gates the composite fallback, which
+    has no norm to stand on.
     """
 
-    def __init__(self, calibration: Calibration, *, h: float, high: float, low: float) -> None:
+    def __init__(
+        self,
+        calibration: Calibration,
+        *,
+        h: float,
+        high: float,
+        low: float,
+        floor_norm: float = 0.0,
+    ) -> None:
         super().__init__(high=high, low=low)
         self.calibration = calibration
         self.model = calibration.model
         self.h = h if h > 0 else 0.33
+        self.floor_norm = floor_norm
 
     def score(self, face: FaceLike) -> float:
         return self.score_norm(_field(face, "fiqa_norm"))
@@ -145,6 +180,17 @@ class AdaFaceNormFIQA(QualityAssessor):
         z = (float(norm) - self.calibration.mean) / spread
         z = max(-1.0, min(1.0, z))
         return (z + 1.0) / 2.0
+
+    def tier_of(self, face: FaceLike, score: float) -> str:
+        """HIGH on the score, LOW_QUALITY on the raw norm, BORDERLINE between.
+
+        A face at or above the floor is never discarded, however low it scored:
+        the score's bottom is a statement about the archive, and only the floor
+        is a statement about the face.
+        """
+        if _field(face, "fiqa_norm") < self.floor_norm:
+            return LOW_QUALITY
+        return HIGH if score >= self.high else BORDERLINE
 
 
 class CompositeFIQA(QualityAssessor):
@@ -217,8 +263,18 @@ def make_assessor(conn: sqlite3.Connection, cfg: Config) -> QualityAssessor:
     calibration = load_calibration(conn, cfg.faces_fiqa_model)
     if calibration is None:
         return UncalibratedFIQA()
+    return _norm_assessor(calibration, cfg)
+
+
+def _norm_assessor(calibration: Calibration, cfg: Config) -> AdaFaceNormFIQA:
+    """One place the assessor's four knobs are read off the config, so scoring a
+    new face and re-tiering an old one cannot disagree about the gate."""
     return AdaFaceNormFIQA(
-        calibration, h=cfg.faces_fiqa_h, high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low
+        calibration,
+        h=cfg.faces_fiqa_h,
+        high=cfg.faces_fiqa_high,
+        low=cfg.faces_fiqa_low,
+        floor_norm=cfg.faces_fiqa_floor_norm,
     )
 
 
@@ -262,9 +318,7 @@ def retier_all(conn: sqlite3.Connection, cfg: Config) -> dict[str, int]:
     calibration = load_calibration(conn, cfg.faces_fiqa_model)
     if calibration is None:
         return dict.fromkeys(TIERS, 0)
-    assessor = AdaFaceNormFIQA(
-        calibration, h=cfg.faces_fiqa_h, high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low
-    )
+    assessor = _norm_assessor(calibration, cfg)
     fallback = CompositeFIQA(high=cfg.faces_fiqa_high, low=cfg.faces_fiqa_low)
     counts = dict.fromkeys(TIERS, 0)
     updates: list[tuple[float, str, str, int]] = []
@@ -274,10 +328,10 @@ def retier_all(conn: sqlite3.Connection, cfg: Config) -> dict[str, int]:
     ):
         if row["fiqa_norm"] is not None:
             score = assessor.score_norm(row["fiqa_norm"])
-            source, tier = assessor.model, assessor.tier(score)
+            source, tier = assessor.model, assessor.tier_of(row, score)
         else:
             score = fallback.score(row)
-            source, tier = fallback.model, fallback.tier(score)
+            source, tier = fallback.model, fallback.tier_of(row, score)
         counts[tier] += 1
         updates.append((score, source, tier, row["id"]))
     conn.executemany(

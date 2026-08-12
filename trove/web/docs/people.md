@@ -41,13 +41,28 @@ to do:
 
 ```scale
 range 0 1
-band 0 0.18 muted Low quality: excluded from clustering, hidden in the app
-band 0.18 0.55 soft Borderline: may join a person, never start one
+band 0 0.55 soft Borderline: may join a person, never start one
 band 0.55 1 High: may start a person
-mark 0.18 faces_fiqa_low
 mark 0.55 faces_fiqa_high
-note Face image quality, from the AdaFace feature norm, calibrated against this archive's own distribution. Measured on one archive: about 10% low, 40% borderline, 50% high.
+note Face image quality, from the AdaFace feature norm, calibrated against this archive's own distribution. Measured on one archive: about half of all faces reach high.
 ```
+
+**The third tier is measured differently, on purpose.** Whether a face is good
+enough to *start* a person is a comparative question, and the calibrated 0–1
+score answers it. Whether a face is unusable is not: that is true or false about
+the face itself, and must not depend on what else you photographed. So the
+discard line is drawn on the raw feature norm instead, at
+`faces_fiqa_floor_norm`, and a face above it is never thrown away however low it
+scored. Discarded faces are excluded from clustering and hidden in the app —
+never deleted, so moving the line puts them back without re-reading a pixel.
+
+The earlier design drew this line on the score too, and that was a mistake worth
+recording: a fixed cut on a score derived from the archive's own mean and spread
+discards a fixed share of *every* archive, however good it is. On one archive it
+sat at 1.28 standard deviations below the mean and threw away the bottom 10.5%
+of faces regardless of what they looked like — sharp, frontal, well-lit portraits
+among them, and on 754 photos the only face found, which then reported no people
+at all. The floor cuts the same archive to 2.6%.
 
 **Clustering, in two passes.** Only HIGH faces take part in the first pass, so
 every group it builds is pure by construction. Those groups are built in three
@@ -95,7 +110,8 @@ note Cosine similarity between AdaFace embeddings, measured on one real archive.
 | `faces_min_score` | 0.50 | Minimum detector confidence for a face to be kept |
 | `faces_min_px` | 50 | Minimum box side in original pixels; below this there is too little detail to trust |
 | `faces_max_clipped_fraction` | 0.18 | Reject a box mostly outside the frame |
-| `faces_fiqa_low` | 0.18 | Below this a face is excluded from clustering and hidden |
+| `faces_fiqa_floor_norm` | 16.0 | Raw feature norm below which a face is excluded from clustering and hidden |
+| `faces_fiqa_low` | 0.18 | The same line for faces scored without a feature norm, on the 0–1 scale |
 | `faces_fiqa_high` | 0.55 | At or above this a face may seed a group |
 | `faces_fiqa_h` | 2.0 | Half-width, in standard deviations, of the norm-to-score mapping |
 | `faces_fiqa_calib_sample` | 2000 | Faces used once to fix the archive's mean and spread |
@@ -167,10 +183,10 @@ tend to produce a second group. Merging them by hand takes one drag.
 photos, and faces on packaging are all real faces to a detector. The animal
 cross-check removes cats and dogs; nothing removes a mannequin.
 
-**Small and blurry faces disappear.** A face under 50 pixels, or one that
-scores below the quality floor, is excluded entirely rather than clustered
-badly. Someone who only ever appears in the background of group shots may not
-get a page at all.
+**Small and blurry faces disappear.** A face under 50 pixels, or one whose
+feature norm is under `faces_fiqa_floor_norm`, is excluded entirely rather than
+clustered badly. Someone who only ever appears in the background of group shots
+may not get a page at all.
 
 **Look-alikes.** Close relatives at similar ages sit closer together than the
 0.30 that separates typical different people, and are the one case where the
