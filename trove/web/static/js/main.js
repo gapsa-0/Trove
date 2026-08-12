@@ -15,7 +15,8 @@ import {
 } from "./picker.js";
 
 import {
-  applyFilters, applySort, clearFilters, onPeopleFilterChange, onYearChange,
+  applyFilters, applySort, clearFilters, onPeopleFilterChange, onPetsFilterChange,
+  onYearChange,
 } from "./library.js";
 import {
   onSemanticComposerInput, onSemanticComposerKeydown, onSemanticComposerPaste,
@@ -167,7 +168,7 @@ Object.assign(window, {
   highlightFace,
   mergeAskCancel,
   newPlace, onAddPerson,
-  onAddPet, onPeopleFilterChange, onPlaceSelect, onSemanticComposerInput,
+  onAddPet, onPeopleFilterChange, onPetsFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
   openCopy, openDocs, openFeatureSheet, openFileLocation, openItem, openRelated,
   openSettings,

@@ -53,6 +53,37 @@ def _name_tokens(query: str | None) -> list[str]:
     return list(seen)[:_NAME_TOKEN_LIMIT]
 
 
+def _group_clauses(person_ids: list[int], pet_ids: list[int]) -> list[tuple[str, list[Any]]]:
+    """One WHERE clause per selected person and per selected pet.
+
+    A UNION of two ``SELECT file_id`` subqueries inside each IN, so a file
+    tagged by hand (person_files / pet_files, for media where nothing was
+    detected) matches its own group's filter too -- without reshaping this into
+    the correlated-EXISTS the caller's comment warns off.
+
+    One clause each rather than one clause listing them all, which is what makes
+    selecting two mean "both in this photo" rather than "either".
+    """
+    out: list[tuple[str, list[Any]]] = []
+    for pid in person_ids:
+        out.append(
+            (
+                f"f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? AND {_QUALITY_OK} "
+                "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)",
+                [pid, pid],
+            )
+        )
+    for pet_id in pet_ids:
+        out.append(
+            (
+                "f.id IN (SELECT a.file_id FROM animal_detections a WHERE a.pet_id=? "
+                "UNION SELECT pf.file_id FROM pet_files pf WHERE pf.pet_id=?)",
+                [pet_id, pet_id],
+            )
+        )
+    return out
+
+
 def _media_where(
     *,
     root_id: int | None,
@@ -62,6 +93,7 @@ def _media_where(
     month: str | None,
     person_id: int | None,
     person_ids: list[int] | None,
+    pet_ids: list[int] | None,
     cluster_id: int | None,
     indexed: bool | None,
     located: bool | None,
@@ -106,18 +138,9 @@ def _media_where(
     # person's faces on each of the 150k iterations, which pushed the
     # request past 120s and left the grid stuck on a bare "Load more".
     selected_people = list(dict.fromkeys(person_ids or ([person_id] if person_id else [])))
-    for selected_person in selected_people:
-        # UNION of two `SELECT file_id` subqueries inside the same IN, so
-        # manually tagged files (person_files, for media with no detected
-        # face) match the filter too, without reshaping this into the
-        # correlated-EXISTS shape the comment above warns off.
-        where.append(
-            f"f.id IN (SELECT fa.file_id FROM faces fa WHERE fa.person_id=? "
-            f"AND {_QUALITY_OK} "
-            "UNION SELECT pf.file_id FROM person_files pf WHERE pf.person_id=?)"
-        )
-        params.append(selected_person)
-        params.append(selected_person)
+    for clause, bound in _group_clauses(selected_people, list(dict.fromkeys(pet_ids or []))):
+        where.append(clause)
+        params += bound
     if cluster_id:
         where.append(
             "f.id IN (SELECT pcm.file_id FROM place_cluster_members pcm WHERE pcm.cluster_id=?)"
@@ -163,6 +186,7 @@ def media(
     name: str | None = None,
     person_id: int | None = None,
     person_ids: list[int] | None = None,
+    pet_ids: list[int] | None = None,
     cluster_id: int | None = None,
     sort: str = "newest",
     limit: int = 120,
@@ -200,6 +224,7 @@ def media(
         month=month,
         person_id=person_id,
         person_ids=person_ids,
+        pet_ids=pet_ids,
         cluster_id=cluster_id,
         indexed=indexed,
         located=located,
@@ -233,6 +258,45 @@ def media(
     }
 
 
+def _group_options(
+    conn: sqlite3.Connection, rc: str, rp: list[int]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The named people and named pets the Browse filter bar can offer.
+
+    Only *named* groups, and only ones that actually occur in this archive: an
+    unnamed auto-cluster has no name to put in a list, and a hidden person is
+    one the People screen has stopped showing.
+    """
+    people = [
+        {"id": r["id"], "name": r["name"]}
+        for r in conn.execute(
+            f"""SELECT p.id, p.name, COUNT(DISTINCT fa.file_id) c
+            FROM persons p
+            JOIN faces fa ON fa.person_id=p.id
+            JOIN files f ON f.id=fa.file_id
+            WHERE p.name IS NOT NULL AND p.hidden=0 AND {_NOT_HIDDEN}
+                  AND {_QUALITY_OK}{rc}
+            GROUP BY p.id ORDER BY p.name COLLATE NOCASE""",
+            rp,
+        )
+    ]
+    # Named pets that actually occur here, same rule as people above: an
+    # unnamed group is not something to filter by, having no name to offer.
+    pets = [
+        {"id": r["id"], "name": r["name"]}
+        for r in conn.execute(
+            f"""SELECT p.id, p.name, COUNT(DISTINCT a.file_id) c
+            FROM pets p
+            JOIN animal_detections a ON a.pet_id=p.id
+            JOIN files f ON f.id=a.file_id
+            WHERE p.name IS NOT NULL AND {_NOT_HIDDEN}{rc}
+            GROUP BY p.id ORDER BY p.name COLLATE NOCASE""",
+            rp,
+        )
+    ]
+    return people, pets
+
+
 @reading
 def browse_filters(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
     """Options for the Browse filter bar: which year/months, media types, named
@@ -260,19 +324,7 @@ def browse_filters(conn: sqlite3.Connection, root_id: int | None = None) -> dict
             rp,
         )
     ]
-    people = [
-        {"id": r["id"], "name": r["name"]}
-        for r in conn.execute(
-            f"""SELECT p.id, p.name, COUNT(DISTINCT fa.file_id) c
-            FROM persons p
-            JOIN faces fa ON fa.person_id=p.id
-            JOIN files f ON f.id=fa.file_id
-            WHERE p.name IS NOT NULL AND p.hidden=0 AND {_NOT_HIDDEN}
-                  AND {_QUALITY_OK}{rc}
-            GROUP BY p.id ORDER BY p.name COLLATE NOCASE""",
-            rp,
-        )
-    ]
+    people, pets = _group_options(conn, rc, rp)
     if root_id is None:
         place_rows = conn.execute(
             """SELECT id, name FROM place_clusters
@@ -309,6 +361,7 @@ def browse_filters(conn: sqlite3.Connection, root_id: int | None = None) -> dict
         "periods": periods,
         "types": types,
         "people": people,
+        "pets": pets,
         "places": places,
         "indexed_any": indexed_any,
         "located_any": located_any,

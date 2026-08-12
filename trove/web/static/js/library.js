@@ -80,12 +80,12 @@ const GRID_IDS = {
 // grid, and copied across before a reload rather than edited in three places --
 // two grids narrowing by different years is a bug with no symptom until someone
 // notices the totals disagree.
-const SHARED_QUERY_FIELDS = ["year", "month", "type", "people", "inferredPeople", "place",
+const SHARED_QUERY_FIELDS = ["year", "month", "type", "people", "pets", "inferredPeople", "place",
   "rawQuery", "searchedQuery", "query", "expandedQuery", "sort", "topMatchesOnly"];
 function newGrid(kind) {
   return {
     kind, ids: GRID_IDS[kind],
-    offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], inferredPeople: [],
+    offset: 0, loaded: 0, gen: 0, year: "", month: "", type: "", people: [], pets: [], inferredPeople: [],
     place: "", rawQuery: "", searchedQuery: "", query: "",
     expandedQuery: "", sort: "", error: "", topMatchesOnly: true,
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
@@ -349,6 +349,7 @@ function drawFilterBar(f) {
       opt("", "All types") + f.types.map(t => opt(t, cap(typeLabel(t)))).join("") + `</select>`);
   // People is a checkbox menu because several people can be joined together.
   parts.push(peopleFilterHTML("f", f.people || []));
+  parts.push(groupFilterHTML("f", "pets", f.pets || []));
   parts.push(`<select class="fsel" id="f-place" onchange="applyFilters()" ${f.places && f.places.length ? "" : "disabled"} title="${f.places && f.places.length ? "Filter by place" : "Name places in Places to enable this filter"}">` +
     opt("", f.places && f.places.length ? "All places" : "No places named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
   // The result-scope toggle is deliberately not here: it does not narrow the
@@ -423,7 +424,9 @@ function restoreLibraryFilters(g) {
   const type = document.getElementById("f-type"); if (type) type.value = g.type || "";
   const place = document.getElementById("f-place"); if (place) place.value = g.place || "";
   setPeopleChecks("f", g.people || []);
+  setGroupChecks("f", "pets", g.pets || []);
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
+  updateGroupFilterLabel("f", "pets", S.filterOpts.pets || []);
   updateClearBtn();
 }
 export function onYearChange() {
@@ -432,29 +435,69 @@ export function onYearChange() {
   applyFilters();
 }
 export function selVal(id) { const e = document.getElementById(id); return e ? e.value : ""; }
-export function peopleFilterHTML(prefix, people) {
-  if (!people.length)
-    return `<span class="fsel filter-placeholder" title="Name people in People to enable this filter">No people named yet</span>`;
-  return `<details class="multi-filter" id="${prefix}-people-filter">
-    <summary class="fsel"><span id="${prefix}-people-label">Anyone</span></summary>
-    <div class="multi-menu">${people.map(p => `<label class="multi-option">
-      <input type="checkbox" value="${p.id}" onchange="onPeopleFilterChange('${prefix}')"><span>${esc(p.name)}</span>
+/* The words each kind of group filter uses. One widget, two vocabularies:
+   filtering by pet asks the same question of the same shape of data, and
+   saying "Anyone" over a list of dogs would be the giveaway that it was
+   People's control wearing a different hat. */
+const GROUP_FILTERS = {
+  people: {
+    none: "Anyone", empty: "No people named yet",
+    enable: "Name people in People to enable this filter",
+    hint: "Selecting more than one person shows media containing everyone selected.",
+    together: n => `${n} people together`, all: "Only media containing all selected people",
+    // Written out per kind, not built from the kind, so tools/dev/check_handlers.py
+    // can still see which function each control calls -- it reads the source,
+    // and an interpolated name is invisible to it.
+    attr: prefix => `onchange="onPeopleFilterChange('${prefix}')"`,
+  },
+  pets: {
+    none: "Any pet", empty: "No pets named yet",
+    enable: "Name pets in Pets to enable this filter",
+    hint: "Selecting more than one pet shows media containing all of them.",
+    together: n => `${n} pets together`, all: "Only media containing all selected pets",
+    attr: prefix => `onchange="onPetsFilterChange('${prefix}')"`,
+  },
+};
+export function groupFilterHTML(prefix, kind, items) {
+  const words = GROUP_FILTERS[kind];
+  if (!items.length)
+    return `<span class="fsel filter-placeholder" title="${words.enable}">${words.empty}</span>`;
+  return `<details class="multi-filter" id="${prefix}-${kind}-filter">
+    <summary class="fsel"><span id="${prefix}-${kind}-label">${words.none}</span></summary>
+    <div class="multi-menu">${items.map(p => `<label class="multi-option">
+      <input type="checkbox" value="${p.id}" ${words.attr(prefix)}><span>${esc(p.name)}</span>
     </label>`).join("")}
-    <div class="multi-help">Selecting more than one person shows media containing everyone selected.</div></div>
+    <div class="multi-help">${words.hint}</div></div>
   </details>`;
 }
-export function checkedPeople(prefix) {
-  return [...document.querySelectorAll(`#${prefix}-people-filter input:checked`)].map(e => e.value);
+export function setGroupChecks(prefix, kind, ids) {
+  const chosen = new Set(ids.map(String));
+  document.querySelectorAll(`#${prefix}-${kind}-filter input[type="checkbox"]`)
+    .forEach(input => input.checked = chosen.has(input.value));
 }
-export function clearPeopleChecks(prefix) {
-  document.querySelectorAll(`#${prefix}-people-filter input:checked`).forEach(e => e.checked = false);
+export function checkedGroups(prefix, kind) {
+  return [...document.querySelectorAll(`#${prefix}-${kind}-filter input:checked`)].map(e => e.value);
 }
-export function updatePeopleFilterLabel(prefix, people) {
-  const label = document.getElementById(`${prefix}-people-label`); if (!label) return;
-  const ids = checkedPeople(prefix), names = ids.map(id => (people.find(p => String(p.id) === id) || {}).name).filter(Boolean);
-  label.textContent = !names.length ? "Anyone" : names.length === 1 ? names[0] :
-    names.length === 2 ? `${names[0]} + ${names[1]}` : `${names.length} people together`;
-  label.closest("summary").title = names.length > 1 ? "Only media containing all selected people" : names.join("");
+export function clearGroupChecks(prefix, kind) {
+  document.querySelectorAll(`#${prefix}-${kind}-filter input:checked`).forEach(e => e.checked = false);
+}
+export function updateGroupFilterLabel(prefix, kind, items) {
+  const words = GROUP_FILTERS[kind];
+  const label = document.getElementById(`${prefix}-${kind}-label`); if (!label) return;
+  const ids = checkedGroups(prefix, kind),
+    names = ids.map(id => (items.find(p => String(p.id) === id) || {}).name).filter(Boolean);
+  label.textContent = !names.length ? words.none : names.length === 1 ? names[0] :
+    names.length === 2 ? `${names[0]} + ${names[1]}` : words.together(names.length);
+  label.closest("summary").title = names.length > 1 ? words.all : names.join("");
+}
+// The People-shaped calls the timeline and the grid already make.
+export const peopleFilterHTML = (prefix, people) => groupFilterHTML(prefix, "people", people);
+export const checkedPeople = prefix => checkedGroups(prefix, "people");
+export const clearPeopleChecks = prefix => clearGroupChecks(prefix, "people");
+export const updatePeopleFilterLabel = (prefix, people) =>
+  updateGroupFilterLabel(prefix, "people", people);
+export function onPetsFilterChange(prefix) {
+  if (prefix === "tl") applyTimelineFilters(); else applyFilters();
 }
 export function onPeopleFilterChange(prefix) {
   if (prefix === "tl") applyTimelineFilters();
@@ -467,8 +510,10 @@ export function applyFilters() {
   g.month = (g.year && mm) ? `${g.year}-${mm}` : "";
   g.type = selVal("f-type");
   g.people = checkedPeople("f");
+  g.pets = checkedGroups("f", "pets");
   g.place = selVal("f-place");
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
+  updateGroupFilterLabel("f", "pets", S.filterOpts.pets || []);
   updateClearBtn();
   reloadGrids();
 }
@@ -497,6 +542,7 @@ export function mediaRanksQueries() {
 export function clearFilters() {
   ["f-year", "f-type", "f-place"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
   clearPeopleChecks("f");
+  clearGroupChecks("f", "pets");
   S.grid.inferredPeople = [];
   const msel = document.getElementById("f-month");
   if (msel) { msel.innerHTML = '<option value="">All months</option>'; msel.disabled = true; }
@@ -507,7 +553,8 @@ export function updateClearBtn() {
   // Deliberately not counting the result-scope toggle: it is not a filter on
   // the library, it is which slice of one search's ranking is on screen, and
   // it clears with the search rather than with these.
-  if (b) b.style.display = (g.year || g.month || g.type || g.people.length || g.place)
+  if (b) b.style.display = (g.year || g.month || g.type || g.people.length
+    || (g.pets || []).length || g.place)
     ? "inline" : "none";
 }
 /* Why the empty state is painted from the render and not from the response:
@@ -605,6 +652,7 @@ function gridRequest(g, offset) {
   if (g.year) p.set("year", g.year);
   if (g.month) p.set("month", g.month);
   g.people.forEach(id => p.append("person", id));
+  (g.pets || []).forEach(id => p.append("pet", id));
   if (g.place) p.set("place", g.place);
   if (g.sort) p.set("sort", g.sort);
   if (g.kind === "text") {

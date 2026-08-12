@@ -86,9 +86,14 @@ it has one way and that names are always searched.
 
 ## What this does not do
 
-**Filters narrow every group at once.** Year, month, type, person and place
-apply to all of them, so a filtered search is still one question asked three
-ways.
+**Filters narrow every group at once.** Year, month, type, person, pet and
+place apply to all of them, so a filtered search is still one question asked
+three ways.
+
+The person and pet filters work the same way as each other: only groups you
+have named are offered, a photo tagged by hand counts even where nothing was
+detected in it, and selecting two asks for both in the same photo rather than
+either.
 
 **Typing a person's name filters by them.** If a word matches somebody you have
 named in [People](people.md), it becomes a person filter and stops being

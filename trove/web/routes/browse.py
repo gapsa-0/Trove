@@ -52,6 +52,7 @@ def media(req: Request) -> MediaPage:
         # every word of it has to appear in the file's own name.
         name=req.one("name"),
         person_ids=req.many("person"),
+        pet_ids=req.many("pet"),
         cluster_id=req.one("place", int),
         sort="oldest" if req.one("sort") == "oldest" else "newest",
         limit=req.limit(120, 500),

@@ -15,6 +15,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Browse can be filtered by pet.** The filter bar could narrow the grid to a
+  person but not to an animal, though the two are the same question. It now
+  offers your named pets beside your named people, and behaves identically:
+  photos you tagged by hand count even where nothing was detected, and picking
+  two asks for both in the same photo.
+
 - **Merge a group by picking a name, not by dragging.** Dragging one card onto
   another needs both on screen, which stops being possible at a few hundred
   groups — and the common case is precisely that you recognise a group of

@@ -161,7 +161,7 @@ API_GET_CASES = [
     ),
     pytest.param(
         "/api/browse/filters?root={root_id}",
-        {"periods", "types", "people", "places", "indexed_any", "located_any"},
+        {"periods", "types", "people", "pets", "places", "indexed_any", "located_any"},
         id="GET /api/browse/filters",
     ),
     pytest.param("/api/folders?root={root_id}", {"folders"}, id="GET /api/folders"),
