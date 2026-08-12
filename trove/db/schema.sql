@@ -270,8 +270,30 @@ CREATE TABLE IF NOT EXISTS persons (
     cover_face_id INTEGER,            -- representative face for the card
     face_count    INTEGER NOT NULL DEFAULT 0,
     centroid      BLOB,               -- L2-normalized mean embedding (float32); for merge suggestions
+    hidden        INTEGER NOT NULL DEFAULT 0,  -- user hid this cluster; see person_hides
     created_at    TEXT NOT NULL
 );
+
+-- A cluster the user hid as "someone, but not one I want listed" -- a stranger,
+-- a passer-by, a face they would rather not see on the wall.
+--
+-- Distinct from `faces.not_person`, which says the detection is not a human
+-- face at all and takes it out of clustering forever. These ARE people and must
+-- go on clustering exactly as before: hiding is about the list, not the faces.
+--
+-- Which is why `persons.hidden` cannot hold it alone. cluster_faces DELETEs and
+-- rebuilds every persons row on each detect chunk, so the flag is gone by the
+-- next one; this table survives that because it anchors to a FACE id, the same
+-- durable anchor face_links uses, and _reapply_person_hides puts the flag back
+-- afterwards.
+CREATE TABLE IF NOT EXISTS person_hides (
+    id          INTEGER PRIMARY KEY,
+    rep_face_id INTEGER REFERENCES faces(id) ON DELETE CASCADE,
+    person_name TEXT,                  -- name at the time, restored on undo
+    face_ids    TEXT NOT NULL,         -- JSON array, for undo
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_person_hides_face ON person_hides(rep_face_id);
 
 -- One detected face. Embedding is a 512-d float32 vector (AdaFace ir101),
 -- L2-normalized, so cosine similarity is a dot product. Box is in ORIGINAL-image

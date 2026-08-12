@@ -280,15 +280,53 @@ def remove_person_from_file(
 
 @writing
 def hide_person(
-    conn: sqlite3.Connection, person_id: int | None, kind: str = "false_detection"
+    conn: sqlite3.Connection,
+    person_id: int | None,
+    kind: str = "false_detection",
+    reason: str = "not_person",
 ) -> dict[str, Any]:
-    """User marked a cluster as NOT a person (a doll / animal / cartoon face that
-    YuNet detected). Flag its faces so they're excluded from every future cluster,
-    then drop the person. Durable and reversible only by clearing not_person."""
+    """Take a cluster off the People screen, for one of two quite different reasons.
+
+    ``not_person`` is a claim about the DETECTIONS: a doll, a statue, a face on
+    a poster. Those are flagged ``not_person`` and leave clustering for good,
+    and the persons row is deleted -- there was never a person there.
+
+    ``unknown`` is a claim about the LIST: a real person you do not want on it.
+    Their faces are untouched and go on clustering exactly as before, because
+    they are faces of somebody; only the cluster's visibility changes. That is
+    recorded in ``person_hides`` rather than only on the row, because the row
+    does not survive the next recluster (see _reapply_person_hides).
+
+    Collapsing the two would mean telling the clusterer that your neighbour is
+    a doll, and there would be no way back from it.
+    """
     if not person_id:
         return {"error": "missing person_id"}
-    if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+    p = conn.execute(
+        "SELECT id, name, cover_face_id FROM persons WHERE id=?", (person_id,)
+    ).fetchone()
+    if not p:
         return {"error": "unknown person"}
+    if reason == "unknown":
+        face_ids = [
+            int(r[0]) for r in conn.execute("SELECT id FROM faces WHERE person_id=?", (person_id,))
+        ]
+        conn.execute("UPDATE persons SET hidden=1 WHERE id=?", (person_id,))
+        conn.execute(
+            """INSERT INTO person_hides(rep_face_id, person_name, face_ids, created_at)
+               VALUES(?,?,?,?)""",
+            (
+                _rep_face(conn, person_id, p["cover_face_id"]),
+                p["name"],
+                json.dumps(face_ids),
+                db.now_iso(),
+            ),
+        )
+        edit_log.record(
+            conn, edit_log.PERSON, person_id, p["name"], edit_log.HIDE, {"reason": "unknown"}
+        )
+        conn.commit()
+        return {"ok": True}
     allowed = {"animal", "toy", "cartoon", "false_detection"}
     kind = kind if kind in allowed else "false_detection"
     conn.execute(
@@ -298,6 +336,30 @@ def hide_person(
         (kind, person_id),
     )
     conn.execute("DELETE FROM persons WHERE id=?", (person_id,))
+    conn.commit()
+    return {"ok": True}
+
+
+@writing
+def unhide_person(conn: sqlite3.Connection, person_id: int | None) -> dict[str, Any]:
+    """Put a hidden cluster back on the People screen.
+
+    Only the ``unknown`` kind of hiding is reversible this way, and that is the
+    whole reason the two are kept apart: a ``not_person`` verdict deleted the
+    persons row and took its faces out of clustering, so there is no cluster
+    left to unhide -- those come back through the Pets screen's non-human
+    review, which restores the faces and lets the next pass rebuild the group.
+    """
+    if not person_id:
+        return {"error": "missing person_id"}
+    if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+        return {"error": "unknown person"}
+    conn.execute("UPDATE persons SET hidden=0 WHERE id=?", (person_id,))
+    conn.execute(
+        """DELETE FROM person_hides WHERE rep_face_id IN
+           (SELECT id FROM faces WHERE person_id=?)""",
+        (person_id,),
+    )
     conn.commit()
     return {"ok": True}
 

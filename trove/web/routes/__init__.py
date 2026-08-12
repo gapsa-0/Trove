@@ -130,6 +130,7 @@ POST_ROUTES: dict[str, Handler] = {
     "/api/faces/different": people.mark_different,
     "/api/faces/skip": people.skip,
     "/api/faces/hide": people.hide,
+    "/api/faces/unhide": people.unhide,
     "/api/pet/rename": pets.rename_pet,
     "/api/pets/merge": pets.merge,
     "/api/pets/unmerge": pets.unmerge,

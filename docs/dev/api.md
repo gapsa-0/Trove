@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**78 routes**: 36 GET (exact) + 12 GET (prefix) + 30 POST.
+**79 routes**: 36 GET (exact) + 12 GET (prefix) + 31 POST.
 
 ## GET -- exact path
 
@@ -42,7 +42,7 @@ build if this file has drifted from the route tables.
 | `/api/map/cluster/merge-preview` | How spread out a prospective cluster merge would be, so the GUI can warn before it's confirmed. | `trove/web/routes/places.py::merge_preview` |
 | `/api/edit-log` | Recent edits to one person or pet, for the history popover. | `trove/web/routes/people.py::history` |
 | `/api/faces/summary` | Face/person totals for the Faces overview. | `trove/web/routes/people.py::summary` |
-| `/api/faces/persons` | Paginated list of person clusters. | `trove/web/routes/people.py::persons` |
+| `/api/faces/persons` | Paginated list of person clusters. ``?hidden=1`` lists the hidden ones. | `trove/web/routes/people.py::persons` |
 | `/api/faces/suggestions` | The 'same person?' review queue: candidate cluster pairs the automatic pass left apart. | `trove/web/routes/people.py::suggestions` |
 | `/api/pets/summary` | Pet/species totals for the Pets overview. | `trove/web/routes/pets.py::summary` |
 | `/api/pets` | Paginated list of pet-identity groups. | `trove/web/routes/pets.py::groups` |
@@ -93,7 +93,8 @@ see the module docstring in `routes/__init__.py`.
 | `/api/faces/detach` | Release every face of one file from a person and durably block them from drifting back. | `trove/web/routes/people.py::detach` |
 | `/api/faces/different` | Record that two person clusters are confirmed NOT the same, so auto-merge never proposes them again. | `trove/web/routes/people.py::mark_different` |
 | `/api/faces/skip` | Record that a 'same person?' pair was reviewed and left undecided, so it drops out of the suggestions queue. | `trove/web/routes/people.py::skip` |
-| `/api/faces/hide` | Mark a cluster as not a person (animal/toy/cartoon/false detection) and drop it. | `trove/web/routes/people.py::hide` |
+| `/api/faces/hide` | Take a cluster off the People screen. | `trove/web/routes/people.py::hide` |
+| `/api/faces/unhide` | Put a hidden cluster back on the People screen. | `trove/web/routes/people.py::unhide` |
 | `/api/pet/rename` | Rename a pet-identity group. | `trove/web/routes/pets.py::rename_pet` |
 | `/api/pets/merge` | Merge two pet groups the user confirmed are the same animal, immediately and durably. | `trove/web/routes/pets.py::merge` |
 | `/api/pets/unmerge` | Undo a pet merge and, if needed, kick off a recluster. | `trove/web/routes/pets.py::unmerge` |

@@ -56,10 +56,22 @@ def face_summary(
             WHERE {_NOT_HIDDEN} AND fa.not_person=0 AND {_QUALITY_OK}{rc}""",
         rp,
     ).fetchone()[0]
+    # Joined to `persons` only for the hidden flag: this counted straight off
+    # `faces` before, which would have kept counting the clusters the grid had
+    # stopped showing.
     people = conn.execute(
         f"""SELECT COUNT(DISTINCT fa.person_id) FROM faces fa
             JOIN files f ON f.id=fa.file_id
-            WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL AND {_QUALITY_OK}{rc}""",
+            JOIN persons p ON p.id=fa.person_id
+            WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL AND p.hidden=0
+                  AND {_QUALITY_OK}{rc}""",
+        rp,
+    ).fetchone()[0]
+    hidden_people = conn.execute(
+        f"""SELECT COUNT(DISTINCT fa.person_id) FROM faces fa
+            JOIN files f ON f.id=fa.file_id
+            JOIN persons p ON p.id=fa.person_id
+            WHERE {_NOT_HIDDEN} AND p.hidden=1 AND {_QUALITY_OK}{rc}""",
         rp,
     ).fetchone()[0]
     photos_with_faces = conn.execute(
@@ -74,6 +86,7 @@ def face_summary(
         "unscanned": max(0, total_images - scanned),
         "faces": faces,
         "people": people,
+        "hidden_people": hidden_people,
         "photos_with_faces": photos_with_faces,
         "backend_available": fb.available(),
     }
@@ -106,17 +119,26 @@ def _preview_faces(
 
 @reading
 def face_persons(
-    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    limit: int = 120,
+    offset: int = 0,
+    hidden: bool = False,
 ) -> dict[str, Any]:
     """People (clusters) in this archive, named people first and then most faces.
-    Each carries up to 4 preview faces for a collage card + photo/face counts."""
+    Each carries up to 4 preview faces for a collage card + photo/face counts.
+
+    ``hidden`` picks which side of the "hide this person" line to list: the
+    grid asks for the visible ones, the Hidden section asks for the rest. One
+    query either way, so the two lists cannot drift apart in shape."""
     rc, rp = _root_clause(root_id)
     rows = conn.execute(
         f"""SELECT fa.person_id pid, p.name, p.cover_face_id,
                    COUNT(DISTINCT fa.file_id) photos, COUNT(*) faces
             FROM faces fa JOIN files f ON f.id=fa.file_id
             JOIN persons p ON p.id=fa.person_id
-            WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL AND {_QUALITY_OK}{rc}
+            WHERE {_NOT_HIDDEN} AND fa.person_id IS NOT NULL AND {_QUALITY_OK}
+                  AND p.hidden={1 if hidden else 0}{rc}
             GROUP BY fa.person_id
             ORDER BY CASE WHEN NULLIF(TRIM(p.name), '') IS NULL THEN 1 ELSE 0 END,
                      faces DESC, pid
@@ -175,7 +197,10 @@ def face_person(
     UNION ALL files manually tagged with them (person_files) that don't
     already have such a face -- so a file tagged both ways appears once, and
     manual-only items carry face_id=None."""
-    p = conn.execute("SELECT id, name FROM persons WHERE id=?", (person_id,)).fetchone()
+    # A hidden person's page still opens -- that is where Restore lives, and a
+    # link or a history entry can lead here. It reports `hidden` and lets the
+    # page say so, rather than 404ing at somebody who exists.
+    p = conn.execute("SELECT id, name, hidden FROM persons WHERE id=?", (person_id,)).fetchone()
     if not p:
         return None
     rc, rp = _root_clause(root_id)
@@ -234,6 +259,7 @@ def face_person(
     return {
         "id": person_id,
         "name": p["name"],
+        "hidden": bool(p["hidden"]),
         "photos": total,
         "items": items,
         "offset": offset,
@@ -287,9 +313,11 @@ def person_suggestions(
     apart but that look like they could be one person."""
     import numpy as np
 
+    # Hidden clusters are left out: offering to merge someone you have taken
+    # off the screen is asking about a person who is not on it.
     rows = conn.execute(
         "SELECT id,name,cover_face_id,face_count,centroid FROM persons "
-        "WHERE centroid IS NOT NULL AND face_count > 0"
+        "WHERE centroid IS NOT NULL AND face_count > 0 AND hidden=0"
     ).fetchall()
     if len(rows) < 2:
         return {"suggestions": []}

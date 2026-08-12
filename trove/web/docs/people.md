@@ -154,6 +154,13 @@ clustering pass. Undoing the removal from the history restores both.
 **Merge two people.** Drag one card onto another when the same person has ended
 up with two pages. Trove asks first, and the merge can be undone.
 
+**Take a group off the screen.** Each card, and each person's page, offers two
+ways out, and they are not the same thing. *Not a person* is about the
+detections — a doll, a statue, a face on a poster — and takes them out of
+grouping for good. *Unknown person* is about the list: a real person you would
+rather not see on it, whose faces go on grouping exactly as before. Hidden
+groups collect at the foot of the People screen and come back with one click.
+
 **See what you changed.** A person's page keeps a record of the edits made to
 it — merges, names, photos added or dropped by hand — behind the clock in its
 top bar, most recent first, each one offering to undo itself. Undoing does not

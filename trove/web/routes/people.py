@@ -17,9 +17,15 @@ def summary(req: Request) -> dict:
 
 
 def persons(req: Request) -> dict:
-    """Paginated list of person clusters."""
+    """Paginated list of person clusters. ``?hidden=1`` lists the hidden ones."""
     rid = req.root_id
-    return people.face_persons(req.db(rid), rid, limit=req.limit(120, 500), offset=req.offset())
+    return people.face_persons(
+        req.db(rid),
+        rid,
+        limit=req.limit(120, 500),
+        offset=req.offset(),
+        hidden=req.one("hidden", int, 0) == 1,
+    )
 
 
 def suggestions(req: Request) -> dict:
@@ -146,13 +152,28 @@ def skip(req: Request) -> Json:
 
 
 def hide(req: Request) -> Json:
-    """Mark a cluster as not a person (animal/toy/cartoon/false detection) and drop it."""
+    """Take a cluster off the People screen.
+
+    ``reason=not_person`` marks the detections as a doll/animal/cartoon and
+    drops the cluster; ``reason=unknown`` hides a real person, leaving their
+    faces in clustering. See people_edit.hide_person for why those are not the
+    same operation.
+    """
     res = db.write_with_retry(
         lambda: people_edit.hide_person(
             req.db(req.open_root_id),
             req.body.get("person_id"),
             req.body.get("kind", "false_detection"),
+            req.body.get("reason", "not_person"),
         )
+    )
+    return ok_or_error(res)
+
+
+def unhide(req: Request) -> Json:
+    """Put a hidden cluster back on the People screen."""
+    res = db.write_with_retry(
+        lambda: people_edit.unhide_person(req.db(req.open_root_id), req.body.get("person_id"))
     )
     return ok_or_error(res)
 

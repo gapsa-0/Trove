@@ -115,7 +115,8 @@ def _item_pick_lists(
     person_options = [
         {"id": r["id"], "name": r["name"]}
         for r in conn.execute(
-            """SELECT id, name FROM persons WHERE name IS NOT NULL AND name != ''
+            """SELECT id, name FROM persons
+           WHERE name IS NOT NULL AND name != '' AND hidden=0
            ORDER BY name COLLATE NOCASE"""
         )
     ]

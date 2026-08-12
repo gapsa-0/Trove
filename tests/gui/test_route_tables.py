@@ -108,6 +108,7 @@ POST_EXACT = {
     "/api/faces/different",
     "/api/faces/skip",
     "/api/faces/hide",
+    "/api/faces/unhide",
     "/api/pet/rename",
     "/api/pets/merge",
     "/api/pets/unmerge",

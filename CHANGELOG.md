@@ -15,6 +15,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Groups can be hidden, for either of the two reasons people hide them.** The
+  People screen offered one way out of a crowded grid — "Not a person" — which
+  marks the faces as a doll or an animal and takes them out of grouping for
+  good. That is the wrong thing to say about a stranger in the background of a
+  party photo, and there was nothing else to say. Every card and every person's
+  page now carries both: *Not a person*, unchanged, and *Unknown person*, which
+  hides a real group while leaving its faces grouping exactly as before. Hidden
+  groups gather at the foot of the screen and come back with one click. (The
+  old control was also unusable in the desktop app, for the same reason pet
+  renaming was.)
+
 - **A record of what you changed, on every person and pet.** Their pages used to
   carry a list of past merges wedged between the name and the photographs — the
   account of the work sitting on top of the work, and only ever about merges.

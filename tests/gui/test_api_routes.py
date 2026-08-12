@@ -344,6 +344,18 @@ API_POST_CASES = [
         {"ok"},
         id="POST /api/faces/hide",
     ),
+    pytest.param(  # the reversible kind: this hides, the next restores
+        "/api/faces/hide",
+        lambda ids: {"person_id": ids["person_b"], "reason": "unknown"},
+        {"ok"},
+        id="POST /api/faces/hide (unknown)",
+    ),
+    pytest.param(
+        "/api/faces/unhide",
+        lambda ids: {"person_id": ids["person_b"]},
+        {"ok"},
+        id="POST /api/faces/unhide",
+    ),
     pytest.param(
         "/api/pet/rename",
         lambda ids: {"pet_id": ids["pet_a"], "name": "Rocco Renamed"},
@@ -482,35 +494,24 @@ def test_post_item_place_clears_an_assignment(live_server):
 
 
 def test_post_edit_log_undo_round_trips_a_rename(live_server):
-    """The only way to exercise the undo route against a real entry id, which
-    like unmerge's merge_id is only knowable by asking for it after the edit.
-    A rename is the case worth round-tripping here: it is the one action whose
-    reversal the log performs itself rather than handing to a domain table."""
-    ids = live_server.ids
-    base = live_server.base_url
+    """Like unmerge's merge_id, an entry id is only knowable by asking after the
+    edit -- and a rename is the action whose reversal the log performs itself."""
+    ids, base = live_server.ids, live_server.base_url
+    log = f"/api/edit-log?root={ids['root_id']}&entity=person&id={ids['person_a']}"
+    entries = lambda: json.loads(_get(base, log)[2])["entries"]  # noqa: E731 - read four times
 
     status, body = _post(
         base, "/api/faces/person/rename", {"person_id": ids["person_a"], "name": "Renamed Once"}
     )
     assert status == 200, body
+    first = entries()[0]
+    assert (first["action"], first["undoable"]) == ("rename", True)
 
-    _status, _ct, body = _get(
-        base, f"/api/edit-log?root={ids['root_id']}&entity=person&id={ids['person_a']}"
-    )
-    entries = json.loads(body)["entries"]
-    assert entries, "expected the rename just made to be listed"
-    assert entries[0]["action"] == "rename"
-    assert entries[0]["undoable"] is True
+    status, body = _post(base, "/api/edit-log/undo", {"entry_id": first["id"]})
+    assert status == 200, body
+    assert json.loads(body).get("ok") is True
 
-    status, body = _post(base, "/api/edit-log/undo", {"entry_id": entries[0]["id"]})
-    payload = json.loads(body)
-    assert status == 200, payload
-    assert payload.get("ok") is True
-
-    _status, _ct, body = _get(
-        base, f"/api/edit-log?root={ids['root_id']}&entity=person&id={ids['person_a']}"
-    )
-    undone = [e for e in json.loads(body)["entries"] if e["id"] == entries[0]["id"]]
+    undone = [e for e in entries() if e["id"] == first["id"]]
     assert undone and undone[0]["undone"] is True, "the entry should read as undone, not vanish"
 
 

@@ -118,6 +118,37 @@ def test_an_unnamed_person_is_not_offered_a_name_to_remove(open_app):
         assert app.count(".pcard .pmeta-editing .name-clear") == 0
 
 
+def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app):
+    """The whole round trip, through the controls, in one test: the menu opens,
+    the card leaves the grid, the Hidden section appears with it inside, and
+    putting it back returns it. Each half is useless without the other."""
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        before = app.count(".pcard")
+        app.click(".pcard .cardmenu-trigger")
+        app.wait_for(".cardmenu[open] .cardmenu-item")
+        # "Unknown person" is the second item; the first confirms, and a
+        # confirm dialog would block the tab.
+        app.tab.evaluate("document.querySelectorAll('.cardmenu[open] .cardmenu-item')[1].click()")
+        app.tab.wait_for(
+            f"document.querySelectorAll('#peoplegrid .pcard').length === {before - 1}",
+            timeout=10.0,
+            what="the hidden card to leave the grid",
+        )
+        app.wait_for(".hidden-people")
+        assert "Hidden" in app.text("#hiddenwrap")
+
+        app.tab.evaluate("document.querySelector('.hidden-people').setAttribute('open', '')")
+        app.wait_for(".hidden-people .pcard.is-hidden")
+        app.click(".hidden-people .pcard.is-hidden .linkbtn")
+        app.tab.wait_for(
+            f"document.querySelectorAll('#peoplegrid .pcard').length === {before}",
+            timeout=10.0,
+            what="the restored card to come back to the grid",
+        )
+        assert app.errors() == []
+
+
 def test_a_persons_recent_changes_open_from_the_top_bar(open_app):
     """The merge list used to sit permanently between the name and the photos.
 

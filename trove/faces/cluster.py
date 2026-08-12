@@ -172,6 +172,24 @@ def _refresh_person_stats(conn: sqlite3.Connection, pids: Iterable[int]) -> None
         )
 
 
+def _reapply_person_hides(conn: sqlite3.Connection) -> None:
+    """Re-hide the clusters the user hid, after the rebuild above cleared the flag.
+
+    `persons.hidden` is convenient for the read queries but cannot be durable:
+    every row carrying it was just deleted. `person_hides` is the record that
+    survives, anchored to a face id, and this is what turns it back into the
+    flag. Whichever cluster that face landed in this time is the one that gets
+    hidden -- which is the right answer even when clustering has since split or
+    fused the group, for the same reason manual pins follow their face.
+    """
+    conn.execute(
+        """UPDATE persons SET hidden=1 WHERE id IN (
+               SELECT fa.person_id FROM person_hides h
+               JOIN faces fa ON fa.id = h.rep_face_id
+               WHERE fa.person_id IS NOT NULL)"""
+    )
+
+
 def _finalize(
     conn: sqlite3.Connection, stats: ClusterStats, now: str, progress: Progress | None
 ) -> ClusterStats:
@@ -187,6 +205,7 @@ def _finalize(
     goes through, so it's the one place that needs the call."""
     repair_manual_person_files(conn)
     _refresh_person_stats(conn, _apply_manual_pins(conn, now))
+    _reapply_person_hides(conn)
     stats.people = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
     conn.commit()
     if progress is not None:

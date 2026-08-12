@@ -5,6 +5,7 @@
 }
 
 .pcard {
+  position: relative;   /* the card's own action menu anchors to it */
   border: 0;
   border-radius: 14px;
   background: var(--panel);
@@ -468,6 +469,109 @@
   border-color: color-mix(in srgb, var(--bad) 24%, transparent);
   background: color-mix(in srgb, var(--bad) 9%, transparent);
   color: var(--bad)
+}
+
+/* The card's own actions. Held back until the pointer is on the card, because
+   a grid of several hundred of these should read as faces, not as a wall of
+   controls -- and revealed permanently on touch, where there is no hover to
+   reveal it with. */
+.cardmenu {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity .12s
+}
+
+.pcard:hover .cardmenu,
+.cardmenu[open],
+.cardmenu:focus-within {
+  opacity: 1
+}
+
+@media (hover: none) {
+  .cardmenu {
+    opacity: 1
+  }
+}
+
+.cardmenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  list-style: none;
+  cursor: pointer
+}
+
+.cardmenu-trigger::-webkit-details-marker {
+  display: none
+}
+
+.cardmenu-trigger svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  stroke: none
+}
+
+.cardmenu-list {
+  width: 190px
+}
+
+.cardmenu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer
+}
+
+.cardmenu-item:hover {
+  background: var(--panel2)
+}
+
+.cardmenu-item.is-danger:hover {
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  color: var(--bad)
+}
+
+/* Hidden groups: below the grid, shut, and absent entirely when empty. */
+.hidden-people {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line)
+}
+
+.hidden-people>summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600
+}
+
+.hidden-people .pcard.is-hidden {
+  opacity: .72
+}
+
+.hidden-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 12.5px
 }
 
 /* Sits under the field it empties, quiet enough not to compete with saving --

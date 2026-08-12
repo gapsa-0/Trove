@@ -267,7 +267,8 @@ def browse_filters(conn: sqlite3.Connection, root_id: int | None = None) -> dict
             FROM persons p
             JOIN faces fa ON fa.person_id=p.id
             JOIN files f ON f.id=fa.file_id
-            WHERE p.name IS NOT NULL AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc}
+            WHERE p.name IS NOT NULL AND p.hidden=0 AND {_NOT_HIDDEN}
+                  AND {_QUALITY_OK}{rc}
             GROUP BY p.id ORDER BY p.name COLLATE NOCASE""",
             rp,
         )

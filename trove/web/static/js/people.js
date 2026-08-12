@@ -33,6 +33,9 @@ import {
   historyButton, mountHistory,
 } from "./history.js";
 import {
+  cardMenu,
+} from "./menu.js";
+import {
   attachMergeDrag, guardCardClick,
 } from "./merge.js";
 import {
@@ -148,7 +151,9 @@ async function fetchPeoplePage(offset) {
 async function renderPeople() {
   const wrap = document.getElementById("peoplewrap"); if (!wrap) return;
   wrap.innerHTML = `<div id="suggestwrap"></div><div class="people" id="peoplegrid"></div>
-    <div class="infinite-status" id="people-sentinel" aria-live="polite"></div>`;
+    <div class="infinite-status" id="people-sentinel" aria-live="polite"></div>
+    <div id="hiddenwrap"></div>`;
+  renderHidden();
   startInfiniteList("peopleList", {
     sentinelId: "people-sentinel", pageSize: PEOPLE_PAGE_SIZE,
     fetchPage: fetchPeoplePage,
@@ -168,6 +173,49 @@ async function renderPeople() {
       people.forEach(p => grid.appendChild(personCard(p)));
     },
   });
+}
+/* The groups taken off the screen, kept reachable at the foot of it.
+
+   Below the grid and collapsed, because it is a place you go back to rather
+   than something to look at: hidden is what you asked for. It carries its own
+   count so the section can say how much is behind it without being opened, and
+   it is absent entirely when there is nothing hidden -- an empty drawer
+   advertising itself is how the merge panel went wrong. */
+const HIDDEN_PAGE_SIZE = 120;
+async function renderHidden() {
+  const wrap = document.getElementById("hiddenwrap"); if (!wrap) return;
+  const n = (S.faceSum && S.faceSum.hidden_people) || 0;
+  const previous = document.querySelector(".hidden-people");
+  // Restoring one group should not shut the drawer you are working through.
+  const wasOpen = !!previous && previous.hasAttribute("open");
+  if (!n) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `<details class="hidden-people"${wasOpen ? " open" : ""}>
+      <summary>Hidden <span class="muted">· ${n.toLocaleString()} group${n === 1 ? "" : "s"}</span></summary>
+      <div class="people" id="hiddengrid"></div>
+      <div class="infinite-status" id="hidden-sentinel" aria-live="polite"></div>
+    </details>`;
+  startInfiniteList("hiddenPeopleList", {
+    sentinelId: "hidden-sentinel", pageSize: HIDDEN_PAGE_SIZE,
+    fetchPage: async offset => {
+      const res = await jget(`/api/faces/persons?root=${S.arch.id}&hidden=1&offset=${offset}&limit=${HIDDEN_PAGE_SIZE}`);
+      return res.people;
+    },
+    onPage: (people, { first }) => {
+      const grid = document.getElementById("hiddengrid"); if (!grid) return;
+      if (first) grid.innerHTML = "";
+      people.forEach(p => grid.appendChild(hiddenCard(p)));
+    },
+  });
+}
+function hiddenCard(p) {
+  const d = document.createElement("div"); d.className = "pcard is-hidden";
+  d.dataset.syncKey = String(p.id);
+  d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">
+      <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
+      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
+      <button class="linkbtn" type="button">Put back</button></div>`;
+  d.querySelector("button").onclick = e => { e.stopPropagation(); unhidePerson(p.id); };
+  return d;
 }
 /* Patch the people grid to match the server. The server clamps the endpoint
    to 500, so a grid scrolled past that syncs only its first 500 cards; the
@@ -259,9 +307,10 @@ export async function answerSuggest(kind) {
   } else if (kind === 'skip') {
     await jpost('/api/faces/skip', { a: s.a.id, b: s.b.id });
   } else if (kind === 'notpeople') {
-    const reason = chooseNonhumanKind(); if (!reason) return;
-    await jpost('/api/faces/hide', { person_id: s.a.id, kind: reason });
-    await jpost('/api/faces/hide', { person_id: s.b.id, kind: reason });
+    // The queue's own wording already says what these are ("dolls / pets /
+    // cartoons"), so it does not ask a second time.
+    await jpost('/api/faces/hide', { person_id: s.a.id, reason: 'not_person' });
+    await jpost('/api/faces/hide', { person_id: s.b.id, reason: 'not_person' });
     dropRefs([s.a.id, s.b.id]); refreshPeopleGrid();
   }
   if (st.total > 0) st.total--;
@@ -269,20 +318,58 @@ export async function answerSuggest(kind) {
   if (st.idx >= st.list.length) { renderPeople(); return; }  // reload grid + fresh queue
   renderSuggest();
 }
-export async function hidePerson(id) {
-  if (!confirm('Not a person? Its faces get marked as a doll/animal/cartoon and are left out of clustering. It disappears from People.')) return;
-  const kind = chooseNonhumanKind(); if (!kind) return;
-  await jpost('/api/faces/hide', { person_id: id, kind });
-  backToPeople();
+/* The two ways a cluster leaves the People screen, as menu items.
+
+   They are different claims and are worded as such. "Not a person" is about
+   the detections -- a doll, a statue, a face on a poster -- and takes them out
+   of clustering for good, so it asks first. "Unknown" is about the list: a
+   real person whose faces go on clustering exactly as before, reversible from
+   the Hidden section, and so nothing to confirm.
+
+   `after` is what to do once it lands: the grid patches itself in place, a
+   person's own page has nowhere left to be and goes back to the grid. */
+function hideMenuItems(id, after) {
+  return [
+    {
+      label: "Not a person",
+      danger: true,
+      onPick: async () => {
+        if (!confirm("Not a person? Its faces are marked as a doll, animal or cartoon and left out of clustering from now on.")) return;
+        await hideCluster(id, "not_person", after);
+      },
+    },
+    { label: "Unknown person", onPick: () => hideCluster(id, "unknown", after) },
+  ];
 }
-function chooseNonhumanKind() {
-  const answer = prompt("Classification: animal, toy, cartoon, or false_detection", "false_detection");
-  if (answer === null) return null;
-  const value = answer.trim().toLowerCase().replace(/\s+/g, "_");
-  if (!["animal", "toy", "cartoon", "false_detection"].includes(value)) {
-    toast("Use animal, toy, cartoon, or false_detection.", true); return null;
+async function hideCluster(id, reason, after) {
+  let res;
+  try { res = await jpost("/api/faces/hide", { person_id: id, reason }); }
+  catch (e) { res = { error: String(e) }; }
+  if (!res || res.error) { toast("Couldn’t hide this group.", true); return; }
+  if (reason === "unknown") toast("Hidden. Find it under “Hidden” to put it back.");
+  after();
+}
+export async function unhidePerson(id) {
+  let res;
+  try { res = await jpost("/api/faces/unhide", { person_id: id }); }
+  catch (e) { res = { error: String(e) }; }
+  if (!res || res.error) { toast("Couldn’t restore this group.", true); return; }
+  refreshAfterHide();
+}
+/* Both sides of the grid, after a group has crossed between them.
+
+   The counts have to be re-read rather than adjusted by one: `hidden_people`
+   is what decides whether the Hidden section exists at all, and the poll only
+   refreshes the summary while a detection job is running -- so on a settled
+   archive nothing else would ever tell this screen what just happened. */
+async function refreshAfterHide() {
+  await refreshPeopleGrid();
+  const sum = await jget("/api/faces/summary?root=" + S.arch.id).catch(() => null);
+  if (sum) {
+    S.faceSum = sum;
+    setStat("fs-people", sum.people.toLocaleString());
   }
-  return value;
+  await renderHidden();
 }
 // Up to 4 faces as a 2x2 collage (a single face fills the square). `ids` is the
 // person's faces_preview, with cover_face_id as fallback for old payloads.
@@ -321,6 +408,8 @@ function personCard(p) {
   d.dataset.cover = personCoverIds(p).join(",");
   d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">${personMetaInner(p)}</div>`;
   d.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(d, p); };
+  // Hiding from the grid: the card goes and the rest of the grid stays put.
+  cardMenu(d, hideMenuItems(p.id, refreshAfterHide));
   attachMergeDrag(d, d._merge, refreshPeopleGrid);
   return d;
 }
@@ -410,13 +499,15 @@ export async function showPerson(id) {
         <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos === 1 ? "" : "s"}</span>
       </div>
       ${historyButton("person", id, r.name)}
-      <button class="not-person-button" type="button" onclick="hidePerson(${id})" title="Mark as a doll, animal, or cartoon and remove from People">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4 19c.5-3.3 2.5-5 6-5 1.2 0 2.2.2 3 .6M16 15l5 5m0-5-5 5"/></svg>
-        <span>Not a person</span>
-      </button>
+      <div class="ftb-actions" id="personactions"></div>
     </div>
+    ${r.hidden ? `<div class="panel hidden-note">This group is hidden from People.
+      <button class="linkbtn" type="button" onclick="unhidePerson(${id})">Put it back</button></div>` : ""}
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
+  // Hiding from a person's own page leaves nowhere to stand, so it goes back
+  // to the grid -- where the group it just removed is now absent.
+  if (!r.hidden) cardMenu(document.getElementById("personactions"), hideMenuItems(id, backToPeople));
   // Undoing a change alters who this person is, so the page is re-read rather
   // than patched -- the honest response to "that merge never happened".
   mountHistory(() => showPerson(id));

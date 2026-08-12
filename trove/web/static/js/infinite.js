@@ -64,6 +64,6 @@ export function startInfiniteList(stateKey, { sentinelId, pageSize, fetchPage, o
 // switch (resetSectionViews) so no orphaned observer keeps a detached
 // sentinel from a closed archive alive.
 export const INFINITE_LIST_KEYS = [
-  "dupList", "peopleList", "personDetailList",
+  "dupList", "peopleList", "personDetailList", "hiddenPeopleList",
   "petListState", "loosePetState", "nonhumanState", "petDetailList", "placeList",
 ];

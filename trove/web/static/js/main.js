@@ -36,7 +36,7 @@ import {
   applyDupFilters, setDupMetric,
 } from "./dups.js";
 import {
-  answerSuggest, backToPeople, editPersonName, hidePerson,
+  answerSuggest, backToPeople, editPersonName, unhidePerson,
 } from "./people.js";
 import {
   mergeAskCancel, undoMerge,
@@ -163,7 +163,7 @@ Object.assign(window, {
   closeArchiveSetup, closeDocs, closeFeatureSheet, closeModal, closePick, closePlaceCluster,
   closeSettings,
   copyText,
-  editClusterName, editDate, editPersonName, editPlace, hidePerson,
+  editClusterName, editDate, editPersonName, editPlace,
   highlightFace,
   mergeAskCancel,
   newPlace, onAddPerson,
@@ -180,5 +180,5 @@ Object.assign(window, {
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
   togglePipelinePause,
-  toggleStagePause, toggleTheme, undoMerge, zoomReset, zoomStep, zoomToSlider,
+  toggleStagePause, toggleTheme, undoMerge, unhidePerson, zoomReset, zoomStep, zoomToSlider,
 });

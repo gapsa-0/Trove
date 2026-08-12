@@ -110,7 +110,11 @@ module.exports = [
         Node: "readonly",
         alert: "readonly",
         confirm: "readonly",
-        prompt: "readonly",
+        // `prompt` is deliberately NOT here. The desktop shell defines it as a
+        // function that throws, so every call to it is dead code in the shipped
+        // app while working perfectly in a browser -- which is exactly how two
+        // features (renaming a pet, hiding a cluster) shipped broken. Leaving
+        // it undeclared turns the next one into a lint error instead.
         // Leaflet, loaded as a classic script from vendor/ ahead of the module,
         // so it is a real global rather than something a module can import.
         L: "readonly",

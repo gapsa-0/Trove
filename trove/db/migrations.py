@@ -130,6 +130,10 @@ def _migrate_faces(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "faces", "fiqa_source", "TEXT")
     _add_column_if_missing(conn, "faces", "quality_tier", "TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_faces_tier ON faces(quality_tier)")
+    # The live flag behind "hide this person". It is re-derived from
+    # person_hides after every recluster (faces/cluster.py::_reapply_person_hides),
+    # because the rebuild deletes the row it lives on.
+    _add_column_if_missing(conn, "persons", "hidden", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _migrate_scan_counters(conn: sqlite3.Connection) -> None:
