@@ -345,6 +345,29 @@ def _item_neighbours(conn: sqlite3.Connection, f: sqlite3.Row) -> dict[str, Any]
     return {"folder": folder, "folder_count": int(same_folder)}
 
 
+def _item_gps(g: sqlite3.Row | None) -> dict[str, Any] | None:
+    """The coordinate and what produced it, or None for a file with no fix."""
+    if not g:
+        return None
+    return {"lat": g["lat"], "lon": g["lon"], "alt": g["alt"], "source": g["geo_source"]}
+
+
+def _item_takeout(t: sqlite3.Row | None) -> dict[str, Any] | None:
+    """Provenance the panel can put in words.
+
+    The sidecar's title and how it was matched to this file are already-resolved
+    facts; they were simply never sent, so the panel printed "mtime" in grey and
+    left the reader to work out what that meant.
+    """
+    if not t:
+        return None
+    return {
+        "title": t["title"],
+        "match_method": t["match_method"],
+        "match_confidence": t["match_confidence"],
+    }
+
+
 @reading
 def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, Any] | None:
     """The detail-panel payload for one file: its dates, GPS, metadata,
@@ -379,11 +402,7 @@ def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, A
         "date": d["best_datetime"] if d else None,
         "date_source": d["date_source"] if d else None,
         "date_confidence": d["date_confidence"] if d else None,
-        "gps": (
-            {"lat": g["lat"], "lon": g["lon"], "alt": g["alt"], "source": g["geo_source"]}
-            if g
-            else None
-        ),
+        "gps": _item_gps(g),
         "meta": (dict(m) if m else None),
         "description": (t["description"] if t else None),
         "people": people,
@@ -401,19 +420,7 @@ def item(conn: sqlite3.Connection, fid: int, min_media: int = 10) -> dict[str, A
         "text": _item_text(conn, fid),
         "duplicates": _item_duplicates(conn, fid),
         **_item_neighbours(conn, f),
-        # Provenance the panel can put in words. The date's source and the
-        # sidecar's match are already resolved facts; they were simply never
-        # sent, so the panel printed "mtime" in grey and left the user to know
-        # what that meant.
-        "takeout": (
-            {
-                "title": t["title"],
-                "match_method": t["match_method"],
-                "match_confidence": t["match_confidence"],
-            }
-            if t
-            else None
-        ),
+        "takeout": _item_takeout(t),
         # Whether a video the window cannot draw could be re-encoded into one
         # it can. Which turns on the install rather than the file -- the
         # desktop build stages its own ffmpeg, a pip install may have none --
