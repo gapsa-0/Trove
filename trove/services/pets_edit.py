@@ -15,7 +15,7 @@ from collections import Counter
 from typing import Any, cast
 
 from ..db import database as db
-from . import merging
+from . import edit_log, merging
 from ._common import writing
 
 # -- "same pet?" merges (durable) -------------------------------------------
@@ -100,9 +100,18 @@ def _refresh_pet_stats(conn: sqlite3.Connection, pet_id: int, name: str | None) 
 def rename_pet(conn: sqlite3.Connection, pet_id: int | None, name: str) -> dict[str, Any]:
     """Set a pet's display name. Returns ``{"error": "unknown pet"}`` if
     ``pet_id`` doesn't exist."""
-    if not conn.execute("SELECT 1 FROM pets WHERE id=?", (pet_id,)).fetchone():
+    old = conn.execute("SELECT name FROM pets WHERE id=?", (pet_id,)).fetchone()
+    if not old:
         return {"error": "unknown pet"}
     conn.execute("UPDATE pets SET name=? WHERE id=?", (name or None, pet_id))
+    edit_log.record(
+        conn,
+        edit_log.PET,
+        pet_id,
+        name or old["name"],
+        edit_log.RENAME,
+        {"from": old["name"], "to": name or None},
+    )
     conn.commit()
     return {"ok": True, "name": name or None}
 
@@ -298,7 +307,10 @@ def merge_pets(
     else:
         keep, drop = pb, pa
     survivor_name = name or keep["name"] or drop["name"]
-    merging.merge_linked(
+    folded_in = conn.execute(
+        "SELECT COUNT(DISTINCT file_id) FROM animal_detections WHERE pet_id=?", (drop["id"],)
+    ).fetchone()[0]
+    merge_id = merging.merge_linked(
         conn,
         _PET,
         keep,
@@ -307,6 +319,16 @@ def merge_pets(
         rep=lambda c, side: _rep_detection(c, side["id"], side["cover_detection_id"]),
         finish=lambda c, keep_row, chosen: _refresh_pet_stats(c, keep_row["id"], chosen),
         now=db.now_iso(),
+    )
+    edit_log.record(
+        conn,
+        edit_log.PET,
+        keep["id"],
+        survivor_name,
+        edit_log.MERGE,
+        {"dropped_name": drop["name"], "photos": int(folded_in)},
+        "pet_merges",
+        merge_id,
     )
     conn.commit()
     r = conn.execute(
@@ -334,4 +356,6 @@ def unmerge_pets(conn: sqlite3.Connection, merge_id: int | None) -> dict[str, An
     it yet), so there's no name pin to restore -- cluster_pets' own
     name-carryover (best overlap with a still-named pet) sorts the dropped
     name back out on the next rebuild by itself."""
+    if merge_id:
+        edit_log.mark_undone(conn, "pet_merges", merge_id)
     return merging.unmerge_linked(conn, _PET, merge_id)

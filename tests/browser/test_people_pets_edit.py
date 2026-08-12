@@ -55,6 +55,29 @@ def test_a_pet_is_renamed_from_its_own_page(open_app):
         assert app.errors() == []
 
 
+def test_a_persons_recent_changes_open_from_the_top_bar(open_app):
+    """The merge list used to sit permanently between the name and the photos.
+
+    Asserting it is *absent* until asked for is half the point of the change,
+    so the first assertion is that the page opens on the faces.
+    """
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        app.click(".pcard img.face, .pcard .facecollage img")
+        app.wait_for("#histmenu")
+        assert app.count(".hist-menu .hist-row") == 0, "the history should not be open on arrival"
+
+        app.click("#histmenu > summary")
+        app.wait_for(".hist-row, .hist-empty")
+        assert app.errors() == []
+
+        # Escape dismisses it, through main.js's shared popover listeners.
+        app.tab.evaluate(
+            "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))"
+        )
+        assert app.tab.evaluate("!!document.querySelector('#histmenu[open]')") is False
+
+
 def test_a_person_is_still_renamed_from_their_card(open_app):
     """The people path shares nameedit.js now; it must not have regressed."""
     with open_app("people") as app:

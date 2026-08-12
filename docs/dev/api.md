@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**76 routes**: 35 GET (exact) + 12 GET (prefix) + 29 POST.
+**78 routes**: 36 GET (exact) + 12 GET (prefix) + 30 POST.
 
 ## GET -- exact path
 
@@ -40,6 +40,7 @@ build if this file has drifted from the route tables.
 | `/api/map/clusters` | Place clusters (grouped geotagged files) with at least the configured minimum media. | `trove/web/routes/places.py::clusters` |
 | `/api/map/points` | Every geotagged file as a single un-clustered map point. | `trove/web/routes/places.py::points` |
 | `/api/map/cluster/merge-preview` | How spread out a prospective cluster merge would be, so the GUI can warn before it's confirmed. | `trove/web/routes/places.py::merge_preview` |
+| `/api/edit-log` | Recent edits to one person or pet, for the history popover. | `trove/web/routes/people.py::history` |
 | `/api/faces/summary` | Face/person totals for the Faces overview. | `trove/web/routes/people.py::summary` |
 | `/api/faces/persons` | Paginated list of person clusters. | `trove/web/routes/people.py::persons` |
 | `/api/faces/suggestions` | The 'same person?' review queue: candidate cluster pairs the automatic pass left apart. | `trove/web/routes/people.py::suggestions` |
@@ -84,6 +85,7 @@ see the module docstring in `routes/__init__.py`.
 | `/api/archive/remove` | Forget an archive: delete its private database and cache wholesale. | `trove/web/routes/archives.py::remove` |
 | `/api/pipeline/pause` | Pause or resume the whole pipeline, or a single stage's card if `stage` is given. | `trove/web/routes/pipeline.py::pause` |
 | `/api/pipeline/changed` | Files may have arrived in this archive's folder; check sooner than the poll would have. | `trove/web/routes/pipeline.py::changed` |
+| `/api/edit-log/undo` | Reverse one history entry, whatever kind it is. | `trove/web/routes/people.py::undo_edit` |
 | `/api/faces/person/rename` | Rename a person cluster. | `trove/web/routes/people.py::rename_person` |
 | `/api/faces/reassign` | Move one face onto a named person and pin it there so re-clustering keeps it. | `trove/web/routes/people.py::reassign` |
 | `/api/faces/merge` | Merge two person clusters the user confirmed are the same, immediately and durably. | `trove/web/routes/people.py::merge` |

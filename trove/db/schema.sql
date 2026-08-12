@@ -487,6 +487,39 @@ CREATE TABLE IF NOT EXISTS person_merges (
 );
 CREATE INDEX IF NOT EXISTS idx_person_merges_survivor ON person_merges(survivor_id);
 
+-- What the user changed, in the order they changed it, so a person's or a pet's
+-- page can show its recent history and offer to undo any of it.
+--
+-- The division of labour with the tables above is the point. A DOMAIN table
+-- (person_merges, person_files, face_links) holds what an undo or a recluster
+-- needs to do its job; this table holds what the history LIST shows, and points
+-- at the domain row that owns the real undo. Nothing here is load-bearing for
+-- clustering, so a row may be kept after the thing it describes is gone.
+--
+-- That is why `undone_at` exists rather than a DELETE: undoing a merge deletes
+-- its person_merges row (see services/merging.py::unmerge_linked), and a history
+-- that erased itself as you used it would be a poor account of what happened.
+-- The entry stays and is marked.
+--
+-- `entity_id` rots. cluster_faces DELETEs and rebuilds every persons row, so
+-- reads must fall back to `entity_name`, the same durable anchor person_merges
+-- and person_files use (ADR 0008). An unnamed cluster therefore loses its
+-- history at the next recluster, which is already true of its merges.
+CREATE TABLE IF NOT EXISTS edit_log (
+    id          INTEGER PRIMARY KEY,
+    entity      TEXT NOT NULL,           -- 'person' | 'pet'
+    entity_id   INTEGER,                 -- id at the time of the edit; may rot
+    entity_name TEXT,                    -- name at the time; the durable anchor
+    action      TEXT NOT NULL,           -- merge|rename|hide|set_cover|add_photo|remove_photo
+    detail      TEXT,                    -- JSON: what the row reads as, plus what undo needs
+    ref_table   TEXT,                    -- domain table owning the undo, or NULL
+    ref_id      INTEGER,
+    created_at  TEXT NOT NULL,
+    undone_at   TEXT                     -- NULL until undone; set, never deleted
+);
+CREATE INDEX IF NOT EXISTS idx_edit_log_entity ON edit_log(entity, entity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_edit_log_name ON edit_log(entity, entity_name);
+
 -- Same, for pets. Undo is simpler here: cluster_pets rebuilds `pets` wholesale
 -- from pet_links, so deleting the recorded link and reclustering is enough --
 -- no detections need moving by hand.

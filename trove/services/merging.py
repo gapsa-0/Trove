@@ -166,7 +166,7 @@ def merge_linked(
     rep: Callable[[sqlite3.Connection, sqlite3.Row], int | None],
     finish: Callable[[sqlite3.Connection, sqlite3.Row, str | None], None],
     now: str,
-) -> None:
+) -> int:
     """Move the loser's children onto the survivor and record how to undo it.
 
     ``keep``/``drop`` are already chosen by the caller: survivor rules differ
@@ -199,8 +199,10 @@ def merge_linked(
     conn.execute(f"DELETE FROM {spec.entity.table} WHERE id=?", (drop["id"],))
     finish(conn, keep, survivor_name)
     # Recorded so this merge can be undone later: which children moved, what
-    # the losing side was called, and which link row to retract.
-    conn.execute(
+    # the losing side was called, and which link row to retract. The row's id
+    # goes back to the caller, which is what lets an edit_log entry point at
+    # the record that owns the reversal instead of copying it.
+    cur = conn.execute(
         f"""INSERT INTO {spec.merge_table}(survivor_id, survivor_name, dropped_name,
                         {spec.child_ids_column}, link_a, link_b, created_at)
             VALUES(?,?,?,?,?,?,?)""",
@@ -214,6 +216,7 @@ def merge_linked(
             now,
         ),
     )
+    return int(cur.lastrowid or 0)
 
 
 def unmerge_linked(

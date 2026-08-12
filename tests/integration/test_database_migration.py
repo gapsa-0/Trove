@@ -181,6 +181,21 @@ def test_an_older_database_gains_the_document_text_tables_on_upgrade():
     assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
 
 
+def test_an_older_database_gains_the_edit_log_on_upgrade():
+    """The history table arrives the same way the document tables do, so an
+    archive edited before it existed simply starts recording from the next
+    change rather than needing anything rebuilt."""
+    conn = db.connect(":memory:")
+    conn.executescript(db._SCHEMA_SQL.read_text())
+    conn.execute("DROP TABLE edit_log")
+    conn.commit()
+
+    db.init_db(conn)
+
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "edit_log" in tables
+
+
 def test_the_text_index_survives_the_job_start_that_reopens_an_archive():
     """init_db runs at every job start, so creating the index must be a no-op
     once it is there -- and must not lose the rows already written into it."""

@@ -148,6 +148,12 @@ survives every later re-clustering.
 **Merge two people.** Drag one card onto another when the same person has ended
 up with two pages. Trove asks first, and the merge can be undone.
 
+**See what you changed.** A person's page keeps a record of the edits made to
+it — merges, names, photos added or dropped by hand — behind the clock in its
+top bar, most recent first, each one offering to undo itself. Undoing does not
+erase the entry; it marks it, because what you did is as much a part of the
+record as what you took back. Pets keep the same record.
+
 **Answer "Same person?"** At the top of the screen Trove offers pairs it is
 unsure about, with how similar it thinks they are. Answering either way is
 remembered as a rule, not just applied once: a "no" stops those two being

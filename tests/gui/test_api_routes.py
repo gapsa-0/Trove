@@ -57,6 +57,11 @@ API_GET_CASES = [
     ),
     pytest.param("/api/features", {"features"}, id="GET /api/features"),
     pytest.param(
+        "/api/edit-log?root={root_id}&entity=person&id={person_a}",
+        {"entries"},
+        id="GET /api/edit-log",
+    ),
+    pytest.param(
         "/api/summary?root={root_id}",
         {"total", "size", "types", "with_gps", "enriched", "date_min", "date_max"},
         id="GET /api/summary",
@@ -474,6 +479,39 @@ def test_post_item_place_clears_an_assignment(live_server):
     payload = json.loads(body)
     assert status == 200, payload
     assert payload == {"ok": True, "place": None}
+
+
+def test_post_edit_log_undo_round_trips_a_rename(live_server):
+    """The only way to exercise the undo route against a real entry id, which
+    like unmerge's merge_id is only knowable by asking for it after the edit.
+    A rename is the case worth round-tripping here: it is the one action whose
+    reversal the log performs itself rather than handing to a domain table."""
+    ids = live_server.ids
+    base = live_server.base_url
+
+    status, body = _post(
+        base, "/api/faces/person/rename", {"person_id": ids["person_a"], "name": "Renamed Once"}
+    )
+    assert status == 200, body
+
+    _status, _ct, body = _get(
+        base, f"/api/edit-log?root={ids['root_id']}&entity=person&id={ids['person_a']}"
+    )
+    entries = json.loads(body)["entries"]
+    assert entries, "expected the rename just made to be listed"
+    assert entries[0]["action"] == "rename"
+    assert entries[0]["undoable"] is True
+
+    status, body = _post(base, "/api/edit-log/undo", {"entry_id": entries[0]["id"]})
+    payload = json.loads(body)
+    assert status == 200, payload
+    assert payload.get("ok") is True
+
+    _status, _ct, body = _get(
+        base, f"/api/edit-log?root={ids['root_id']}&entity=person&id={ids['person_a']}"
+    )
+    undone = [e for e in json.loads(body)["entries"] if e["id"] == entries[0]["id"]]
+    assert undone and undone[0]["undone"] is True, "the entry should read as undone, not vanish"
 
 
 def test_post_faces_merge_then_unmerge_round_trips(live_server):

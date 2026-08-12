@@ -30,7 +30,10 @@ import {
   esc, toast,
 } from "./dom.js";
 import {
-  attachMergeDrag, guardCardClick, mergesPanel,
+  historyButton, mountHistory,
+} from "./history.js";
+import {
+  attachMergeDrag, guardCardClick,
 } from "./merge.js";
 import {
   inlineNameEdit,
@@ -397,14 +400,17 @@ export async function showPerson(id) {
         </div>
         <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos === 1 ? "" : "s"}</span>
       </div>
+      ${historyButton("person", id, r.name)}
       <button class="not-person-button" type="button" onclick="hidePerson(${id})" title="Mark as a doll, animal, or cartoon and remove from People">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4 19c.5-3.3 2.5-5 6-5 1.2 0 2.2.2 3 .6M16 15l5 5m0-5-5 5"/></svg>
         <span>Not a person</span>
       </button>
     </div>
-    ${mergesPanel(r.merges, "person")}
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
+  // Undoing a change alters who this person is, so the page is re-read rather
+  // than patched -- the honest response to "that merge never happened".
+  mountHistory(() => showPerson(id));
   let firstPage = r.items;
   startInfiniteList("personDetailList", {
     sentinelId: "person-grid-sentinel", pageSize: PERSON_PAGE_SIZE,

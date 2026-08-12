@@ -13,6 +13,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **A record of what you changed, on every person and pet.** Their pages used to
+  carry a list of past merges wedged between the name and the photographs — the
+  account of the work sitting on top of the work, and only ever about merges.
+  That list is now a clock in the top bar, and it covers the rest of it: names,
+  photos added or dropped by hand, and merges, newest first, each offering to
+  undo itself. Undoing marks an entry rather than deleting it, because a history
+  that erased itself as you used it would be a poor account of the afternoon.
+
 ### Fixed
 
 - **Pets can be renamed again.** Neither way of naming a pet worked. On the

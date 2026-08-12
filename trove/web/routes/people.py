@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...db import database as db
-from ...services import people, people_edit
+from ...services import edit_log, people, people_edit
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
@@ -39,6 +39,35 @@ def person(req: Request) -> dict[str, Any] | Json:
         offset=req.offset(),
     )
     return p if p else NOT_FOUND
+
+
+def history(req: Request) -> dict:
+    """Recent edits to one person or pet, for the history popover.
+
+    ``name`` is passed through because an id alone stops resolving after a
+    recluster; see services/edit_log.py.
+    """
+    rid = req.root_id
+    return {
+        "entries": edit_log.entries_for(
+            req.db(rid),
+            req.one("entity", str, edit_log.PERSON),
+            req.one("id", int, 0),
+            req.one("name", str, ""),
+            limit=req.limit(20, 100),
+        )
+    }
+
+
+def undo_edit(req: Request) -> Json:
+    """Reverse one history entry, whatever kind it is."""
+    res = db.write_with_retry(
+        lambda: edit_log.undo(req.db(req.open_root_id), req.body.get("entry_id"))
+    )
+    # An undone merge asks for a recluster the same way unmerge does below.
+    if res.get("recluster") and req.jobs.current_root_id():
+        req.jobs.start("face_cluster", req.jobs.current_root_id())
+    return ok_or_error(res)
 
 
 def rename_person(req: Request) -> Json:

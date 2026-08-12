@@ -21,7 +21,7 @@ import sqlite3
 from typing import Any, cast
 
 from ..db import database as db
-from . import merging
+from . import edit_log, merging
 from ._common import _QUALITY_OK, _quality_ok, writing
 
 _PERSON = merging.LinkedSpec(
@@ -119,6 +119,16 @@ def rename_person(conn: sqlite3.Connection, person_id: int | None, name: str) ->
     # still lands pinned faces on this person.
     if old["name"] and name and old["name"] != name:
         conn.execute("UPDATE faces SET manual_person=? WHERE manual_person=?", (name, old["name"]))
+    # Recorded under the name it now has, so the entry is found again after a
+    # recluster; `from` is what undoing it puts back.
+    edit_log.record(
+        conn,
+        edit_log.PERSON,
+        person_id,
+        name or old["name"],
+        edit_log.RENAME,
+        {"from": old["name"], "to": name or None},
+    )
     conn.commit()
     return {"ok": True, "name": name or None}
 
@@ -211,6 +221,9 @@ def add_person_to_file(
            VALUES(?,?,?,?)""",
         (person_id, file_id, p["name"], db.now_iso()),
     )
+    edit_log.record(
+        conn, edit_log.PERSON, person_id, p["name"], edit_log.ADD_PHOTO, {"file_id": file_id}
+    )
     conn.commit()
     return {"ok": True, "person": {"id": p["id"], "name": p["name"]}}
 
@@ -225,6 +238,15 @@ def remove_person_from_file(
     if not person_id or not file_id:
         return {"error": "missing person_id or file_id"}
     conn.execute("DELETE FROM person_files WHERE person_id=? AND file_id=?", (person_id, file_id))
+    name = conn.execute("SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
+    edit_log.record(
+        conn,
+        edit_log.PERSON,
+        person_id,
+        name["name"] if name else None,
+        edit_log.REMOVE_PHOTO,
+        {"file_id": file_id},
+    )
     conn.commit()
     return {"ok": True}
 
@@ -314,7 +336,12 @@ def merge_persons(
     else:
         keep, drop = pb, pa
     survivor_name = name or keep["name"]
-    merging.merge_linked(
+    # Counted before the merge moves them, which is the only moment the losing
+    # side is still a separate set of photographs.
+    folded_in = conn.execute(
+        "SELECT COUNT(DISTINCT file_id) FROM faces WHERE person_id=?", (drop["id"],)
+    ).fetchone()[0]
+    merge_id = merging.merge_linked(
         conn,
         _PERSON,
         keep,
@@ -323,6 +350,16 @@ def merge_persons(
         rep=lambda c, side: _rep_face(c, side["id"], side["cover_face_id"]),
         finish=_finish_person_merge,
         now=db.now_iso(),
+    )
+    edit_log.record(
+        conn,
+        edit_log.PERSON,
+        keep["id"],
+        survivor_name,
+        edit_log.MERGE,
+        {"dropped_name": drop["name"], "photos": int(folded_in)},
+        "person_merges",
+        merge_id,
     )
     conn.commit()
     r = conn.execute("SELECT id,name,face_count FROM persons WHERE id=?", (keep["id"],)).fetchone()
@@ -357,6 +394,11 @@ def unmerge_persons(conn: sqlite3.Connection, merge_id: int | None) -> dict[str,
     faces/cluster.py's _apply_manual_pins would keep re-pinning it onto the
     survivor forever. See _finish_person_merge's "Load-bearing, not cosmetic"
     comment -- this undoes exactly that."""
+    # Before unmerge_linked, which deletes the person_merges row this points at
+    # and commits. Marking rather than deleting is why the history survives
+    # being used; see services/edit_log.py.
+    if merge_id:
+        edit_log.mark_undone(conn, "person_merges", merge_id)
     return merging.unmerge_linked(conn, _PERSON, merge_id, restore=_restore_person_pins)
 
 

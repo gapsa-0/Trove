@@ -33,7 +33,10 @@ import {
   esc, toast,
 } from "./dom.js";
 import {
-  attachMergeDrag, guardCardClick, mergesPanel,
+  historyButton, mountHistory,
+} from "./history.js";
+import {
+  attachMergeDrag, guardCardClick,
 } from "./merge.js";
 import {
   inlineNameEdit,
@@ -336,12 +339,13 @@ export async function showPet(id) {
     <img class="person-header-avatar" src="/animalThumb/${pet.items[0] && pet.items[0].detection_id || 0}" alt="">
     <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
-    <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div></div>
-    ${mergesPanel(pet.merges, "pet")}
+    <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div>
+    ${historyButton("pet", pet.id, pet.name)}</div>
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="pet-grid-sentinel" aria-live="polite"></div>`;
   document.querySelector("#petname .person-name-button")
     .addEventListener("click", () => editPetName(id, pet.name || ""));
+  mountHistory(() => showPet(id));
   let firstPage = pet.items;
   startInfiniteList("petDetailList", {
     sentinelId: "pet-grid-sentinel", pageSize: PET_DETAIL_PAGE_SIZE,

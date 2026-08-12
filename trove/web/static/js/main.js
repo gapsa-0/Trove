@@ -65,20 +65,25 @@ import {
   S,
 } from "./state.js";
 
-// Checkbox filter menus behave like native popovers: only one stays open, and
-// clicking elsewhere or pressing Escape dismisses it without changing choices.
+// Every <details> used as a popover: the Browse screen's checkbox filters and
+// a person's or pet's recent-changes menu. All of them behave the way a native
+// popover does -- only one stays open, and clicking elsewhere or pressing
+// Escape dismisses it without changing anything. Listed once so a new popover
+// joins the behaviour by naming itself here rather than by repeating these
+// three listeners.
+const POPOVERS = ".multi-filter[open], .histmenu[open]";
 document.addEventListener("pointerdown", event => {
-  document.querySelectorAll(".multi-filter[open]").forEach(menu => {
+  document.querySelectorAll(POPOVERS).forEach(menu => {
     if (!menu.contains(event.target)) menu.removeAttribute("open");
   });
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape")
-    document.querySelectorAll(".multi-filter[open]").forEach(menu => menu.removeAttribute("open"));
+    document.querySelectorAll(POPOVERS).forEach(menu => menu.removeAttribute("open"));
 });
 document.addEventListener("toggle", event => {
-  if (event.target.matches && event.target.matches(".multi-filter[open]"))
-    document.querySelectorAll(".multi-filter[open]").forEach(menu => {
+  if (event.target.matches && event.target.matches(POPOVERS))
+    document.querySelectorAll(POPOVERS).forEach(menu => {
       if (menu !== event.target) menu.removeAttribute("open");
     });
 }, true);
