@@ -149,11 +149,22 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
         assert app.errors() == []
 
 
-def test_a_photo_on_a_persons_page_carries_its_own_actions(open_app):
-    """Both controls exist on the tile, and the cover one changes the avatar.
+def _avatar_face(app):
+    """Which face the person page's avatar is currently drawing."""
+    return app.tab.evaluate(
+        "(() => { const a = document.querySelector('.person-header-avatar');"
+        " const m = a && a.src && a.src.match(/faceThumb\\/(\\d+)/);"
+        " return m ? Number(m[1]) : null; })()"
+    )
 
-    The avatar is the only place on this page the cover is visible, so it is
-    the only thing that can show the choice landed.
+
+def test_a_photo_on_a_persons_page_carries_its_own_actions(open_app):
+    """Both controls exist on the tile, and choosing a cover *sticks*.
+
+    Asserting the avatar is "a face thumbnail" proves nothing -- it always was
+    one. The assertion has to be that it is the face that was chosen, and still
+    is after leaving the page and coming back, because the bug this guards
+    against wrote the choice to the database and drew it from somewhere else.
     """
     with open_app("people") as app:
         app.wait_for_text("Ada")
@@ -162,13 +173,34 @@ def test_a_photo_on_a_persons_page_carries_its_own_actions(open_app):
         assert app.count(".tile .tile-detach") >= 1, "the detach control went missing"
         assert app.count(".tile .tile-cover") >= 1, "no way to choose a cover"
 
-        app.click(".tile .tile-cover")
-        app.tab.wait_for(
-            "(document.querySelector('.person-header-avatar') || {}).src ?"
-            " document.querySelector('.person-header-avatar').src.includes('faceThumb') : false",
-            timeout=10.0,
-            what="the header avatar to show the chosen face",
+        # The LAST photo with a face, so the chosen cover is not also whatever
+        # the page would have drawn anyway -- which is exactly the confusion
+        # the old code hid behind.
+        before = _avatar_face(app)
+        chosen = app.tab.evaluate(
+            "(() => { const t = [...document.querySelectorAll('.tile')]"
+            ".filter(t => t.querySelector('.tile-cover')).pop();"
+            " t.querySelector('.tile-cover').click(); return Number(t.dataset.fileId); })()"
         )
+        assert chosen is not None
+        app.tab.wait_for(
+            "(() => { const a = document.querySelector('.person-header-avatar');"
+            " const m = a && a.src && a.src.match(/faceThumb\\/(\\d+)/);"
+            f" return m ? Number(m[1]) !== {before} : false; }})()",
+            timeout=10.0,
+            what="the header avatar to change to the chosen face",
+        )
+        after = _avatar_face(app)
+        assert after != before
+
+        # Leave and come back: the choice has to survive being re-read.
+        # Scoped to the top bar: index.html has a `.back-control` of its own
+        # that leaves the archive entirely, and it comes first in the document.
+        app.click(".facetopbar .back-control")
+        app.wait_for(".pcard")
+        app.click(".pcard img.face, .pcard .facecollage img")
+        app.wait_for(".tile")
+        assert _avatar_face(app) == after, "the chosen cover did not survive a reload"
         assert app.errors() == []
 
 

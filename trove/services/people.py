@@ -95,8 +95,13 @@ def face_summary(
 def _preview_faces(
     conn: sqlite3.Connection, pids: list[int | None], k: int = 4
 ) -> dict[int, list[int]]:
-    """Up to k sharpest (highest det_score), non-hidden face ids per person, for
-    the 4-up collage on each person card. One window-function query for the page."""
+    """Up to k face ids per person for the 4-up collage on each person card:
+    the one they chose as their cover, then the sharpest of the rest. One
+    window-function query for the page.
+
+    The chosen cover leads, or picking one would change `persons.cover_face_id`
+    and nothing visible: this collage is what a card actually draws, and it
+    ranked on det_score alone."""
     pids = [p for p in pids if p is not None]
     if not pids:
         return {}
@@ -105,7 +110,8 @@ def _preview_faces(
         f"""SELECT person_id, id FROM (
                 SELECT fa.id, fa.person_id,
                        ROW_NUMBER() OVER (PARTITION BY fa.person_id
-                                          ORDER BY fa.det_score DESC, fa.id) rn
+                                          ORDER BY fa.manual_cover DESC,
+                                                   fa.det_score DESC, fa.id) rn
                 FROM faces fa JOIN files f ON f.id=fa.file_id
                 WHERE fa.person_id IN ({marks}) AND f.hidden=0 AND {_QUALITY_OK}
             ) WHERE rn <= ?""",
@@ -185,6 +191,27 @@ def face_persons(
     return {"people": people, "offset": offset, "count": len(people)}
 
 
+def _person_photo_count(conn: sqlite3.Connection, person_id: int, rc: str, rp: list[int]) -> int:
+    """How many files this person appears in, counted the same two ways the
+    listing above unions them: files with a detected face of them, plus files
+    only tagged with them by hand. Split out of face_person for length; the
+    two must stay in step, so a change to one belongs in the other."""
+    return int(
+        conn.execute(
+            f"""SELECT
+                    (SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
+                     JOIN files f ON f.id=fa.file_id
+                     WHERE fa.person_id=? AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc})
+                  + (SELECT COUNT(*) FROM person_files pf
+                     JOIN files f ON f.id=pf.file_id
+                     WHERE pf.person_id=? AND {_NOT_HIDDEN}{rc}
+                       AND pf.file_id NOT IN (
+                           SELECT fa2.file_id FROM faces fa2 WHERE fa2.person_id=?))""",
+            (person_id, *rp, person_id, *rp, person_id),
+        ).fetchone()[0]
+    )
+
+
 @reading
 def face_person(
     conn: sqlite3.Connection,
@@ -200,7 +227,9 @@ def face_person(
     # A hidden person's page still opens -- that is where Restore lives, and a
     # link or a history entry can lead here. It reports `hidden` and lets the
     # page say so, rather than 404ing at somebody who exists.
-    p = conn.execute("SELECT id, name, hidden FROM persons WHERE id=?", (person_id,)).fetchone()
+    p = conn.execute(
+        "SELECT id, name, hidden, cover_face_id FROM persons WHERE id=?", (person_id,)
+    ).fetchone()
     if not p:
         return None
     rc, rp = _root_clause(root_id)
@@ -232,18 +261,7 @@ def face_person(
             LIMIT ? OFFSET ?""",
         (person_id, person_id, *rp, person_id, *rp, person_id, limit, offset),
     ).fetchall()
-    total = conn.execute(
-        f"""SELECT
-                (SELECT COUNT(DISTINCT fa.file_id) FROM faces fa
-                 JOIN files f ON f.id=fa.file_id
-                 WHERE fa.person_id=? AND {_NOT_HIDDEN} AND {_QUALITY_OK}{rc})
-              + (SELECT COUNT(*) FROM person_files pf
-                 JOIN files f ON f.id=pf.file_id
-                 WHERE pf.person_id=? AND {_NOT_HIDDEN}{rc}
-                   AND pf.file_id NOT IN (
-                       SELECT fa2.file_id FROM faces fa2 WHERE fa2.person_id=?))""",
-        (person_id, *rp, person_id, *rp, person_id),
-    ).fetchone()[0]
+    total = _person_photo_count(conn, person_id, rc, rp)
     items: list[MediaItem] = [
         {
             "id": r["id"],
@@ -260,6 +278,9 @@ def face_person(
         "id": person_id,
         "name": p["name"],
         "hidden": bool(p["hidden"]),
+        # What the page's avatar draws. It used to take the first item in the
+        # list instead, so choosing a cover changed nothing anyone could see.
+        "cover_face_id": p["cover_face_id"],
         "photos": total,
         "items": items,
         "offset": offset,

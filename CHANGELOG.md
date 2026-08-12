@@ -15,6 +15,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **The cover photo you choose is the one you see.** Choosing one saved
+  correctly and then displayed nothing: a person's page drew its portrait from
+  the first photo in the list rather than from the cover, and their card in the
+  grid drew a collage ranked purely by sharpness. Both now lead with the face
+  you picked.
+
 - **You choose which photo represents a person.** Trove picked whichever face it
   judged sharpest, which is not always the one that looks like them, and there
   was no way to say otherwise. Every photo on a person's page now offers "Make

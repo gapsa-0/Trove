@@ -330,6 +330,14 @@ def seed(conn, root_id: int, source_dir: Path) -> dict:
         factories.add_face(conn, fid, person_id=person_id)
         conn.execute("UPDATE persons SET face_count=1 WHERE id=?", (person_id,))
         ids[f"person_{name.lower()}"] = person_id
+    # Ada gets a second, less confident face. For the same reason there are two
+    # people: "which photo represents this person" cannot be asked of someone
+    # with one photo, where every answer is the same answer. The lower
+    # det_score keeps it off the cover until something chooses it.
+    ids["face_ada_second"] = factories.add_face(
+        conn, file_ids[4], person_id=ids["person_ada"], det_score=0.4
+    )
+    conn.execute("UPDATE persons SET face_count=2 WHERE id=?", (ids["person_ada"],))
     for name, fid in (("Kira", file_ids[2]), ("Rex", file_ids[3])):
         pet_id = factories.add_pet(conn, name=name)
         factories.add_animal_detection(conn, fid, pet_id=pet_id)

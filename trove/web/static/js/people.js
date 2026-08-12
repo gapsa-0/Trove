@@ -479,7 +479,11 @@ export async function showPerson(id) {
   const nm = r.name ? esc(r.name) : "Name this person";
   const nmCls = r.name ? "nm" : "nm un";
   const safe = (r.name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  const avatarFace = (r.items.find(it => it.face_id) || {}).face_id;
+  // The cover, which is what "Make cover photo" sets. Falling back to the
+  // first face on the page covers a person whose cover has not been derived
+  // yet -- but taking that fallback *first*, as this did, meant the choice
+  // survived in the database and nowhere on the screen.
+  const avatarFace = r.cover_face_id || (r.items.find(it => it.face_id) || {}).face_id;
   const avatar = avatarFace
     ? `<img class="person-header-avatar" src="/faceThumb/${avatarFace}" alt="" onerror="this.style.visibility='hidden'">`
     : `<div class="person-header-avatar" aria-hidden="true"></div>`;
