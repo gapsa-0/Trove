@@ -2,6 +2,10 @@
 // whose controls all compose with one another, and the tile that every grid in
 // the app renders. Search is next door in search.js; this module owns what the
 // grid does with whatever query it is given.
+//
+// What a query comes *back* as -- the group per ranking, its heading and count,
+// the two rows of it the overview shows and the control that opens one in full
+// -- is in results.js, the same seam the stylesheets are split at.
 
 import {
   ACTIVE_SECTION, libraryVisibleAnchor, restoreLibraryAnchor,
@@ -16,15 +20,16 @@ import {
   esc, fmtDate,
 } from "./dom.js";
 import {
+  gridCountLabel, gridPagesFreely, previewCount, previewing, refreshGallery,
+  renderGroupLabels, renderGroupMore, resultsGroup,
+} from "./results.js";
+import {
   onSemanticComposerInput, renderActiveQuery, renderSearchWays, renderSemanticComposer,
-  setPeopleChecks, updateWaysCoverage, warmLocalTranslator,
+  setPeopleChecks, warmLocalTranslator,
 } from "./search.js";
 import {
-  ICONS, S, archiveHasFeature, typeLabel,
+  S, archiveHasFeature, typeLabel,
 } from "./state.js";
-import {
-  setGallery,
-} from "./gallery.js";
 import {
   applyTimelineFilters,
 } from "./timeline.js";
@@ -67,9 +72,9 @@ const FILTER_SKELETON = [108, 120, 104, 98, 116]
    would draw two grids over one ranking. So the readers are what a result is
    labelled with, and the rankings are what gets a group. */
 const GRID_IDS = {
-  name: { grid: "grid-name", top: "grid-name-top", bottom: "grid-name-sentinel", count: "gridcount-name" },
-  media: { grid: "grid", top: "grid-top-sentinel", bottom: "grid-sentinel", count: "gridcount-media" },
-  text: { grid: "grid-text", top: "grid-text-top", bottom: "grid-text-sentinel", count: "gridcount-text" },
+  name: { grid: "grid-name", top: "grid-name-top", bottom: "grid-name-sentinel", count: "gridcount-name", more: "more-name" },
+  media: { grid: "grid", top: "grid-top-sentinel", bottom: "grid-sentinel", count: "gridcount-media", more: "more-media" },
+  text: { grid: "grid-text", top: "grid-text-top", bottom: "grid-text-sentinel", count: "gridcount-text", more: "more-text" },
 };
 // The filter and query state every group searches under. Held once, on the media
 // grid, and copied across before a reload rather than edited in three places --
@@ -85,6 +90,9 @@ function newGrid(kind) {
     expandedQuery: "", sort: "", error: "", topMatchesOnly: true,
     total: null, doneDown: false, doneUp: true, loadingGen: null, observer: null, pages: [],
     anchor: null, savedScrollTop: 0,
+    // How many results the last preview of this group drew. Kept so a width
+    // change can be told from every other reason the screen repaints.
+    previewCap: 0,
   };
 }
 /* Every grid currently on screen, in the order they are drawn.
@@ -110,7 +118,10 @@ function shareQueryState() {
 // grid it happens to be holding.
 export function reloadGrids() {
   shareQueryState();
-  activeGrids().forEach(g => { resetGridResults(g); loadGrid("append", g); });
+  // The observers are re-attached rather than left alone: which group may page
+  // depends on the query and on which one is open, and both can have moved
+  // since they were last hung on these sentinels.
+  activeGrids().forEach(g => { resetGridResults(g); setupGridInfiniteScroll(g); loadGrid("append", g); });
 }
 /* The ways this archive can answer a typed query.
 
@@ -127,37 +138,7 @@ export function reloadGrids() {
 export function liveRankings() {
   return (S.arch && S.arch.ways) || [];
 }
-const rankingFor = kind => liveRankings().find(r => r.id === kind);
-/* One group of results, with the heading that says which ranking produced it.
-
-   The heading is markup rather than a string set later because it holds the
-   ranking's mark, its name and its count, and those are three elements that
-   have to line up; `renderGroupLabels` fills the count and hides the group. */
-function resultsGroup(kind) {
-  const r = rankingFor(kind), ids = GRID_IDS[kind];
-  // The media group is the plain dated listing until something is typed, so it
-  // is on screen from the first paint. Starting it hidden and unhiding it once
-  // the first page landed put the whole grid inside a `display:none` container
-  // while its thumbnails were being requested, which cost some of them.
-  const start = kind === "media" ? ' class="results-group plain"' : ' class="results-group" hidden';
-  // ...and it is the listing even on an archive that cannot rank a query at
-  // all, which is the one case where the media grid has no *way* behind it. It
-  // gets no heading then, because there is no ranking for one to name and the
-  // listing never shows one anyway.
-  const heading = r
-    ? `<h3 class="results-label">
-        <span class="ranking-mark" aria-hidden="true">${ICONS[r.icon]}</span>
-        <span class="ranking-name">${esc(r.label)}</span>
-        <span class="muted" id="${ids.count}"></span>
-      </h3>`
-    : `<h3 class="results-label"><span class="muted" id="${ids.count}"></span></h3>`;
-  return `<section${start} id="group-${kind}">
-      ${heading}
-      <div class="infinite-status top" id="${ids.top}" aria-hidden="true"></div>
-      <div class="grid" id="${ids.grid}"></div>
-      <div class="infinite-status" id="${ids.bottom}" aria-live="polite"></div>
-    </section>`;
-}
+export function rankingFor(kind) { return liveRankings().find(r => r.id === kind); }
 
 export async function renderPhotos(m) {
   const gen = S.nav;
@@ -215,10 +196,11 @@ export async function renderPhotos(m) {
       </div>
     </div>
     <section class="search-ways" id="search-ways" hidden></section>
-    ${resultsGroup("name")}
-    ${runs("text") ? resultsGroup("text") : ""}
-    ${resultsGroup("media")}
-    <p class="nothing-line" id="nothing-line" hidden></p>`;
+    <div class="results-back" id="results-back" hidden></div>
+    <p class="nothing-line" id="nothing-line" hidden></p>
+    ${resultsGroup("name", GRID_IDS.name)}
+    ${runs("text") ? resultsGroup("text", GRID_IDS.text) : ""}
+    ${resultsGroup("media", GRID_IDS.media)}`;
   const composer = document.getElementById("semantic-q");
   composer?.addEventListener("compositionstart", () => S.composerComposing = true);
   composer?.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });
@@ -253,13 +235,17 @@ export async function renderPhotos(m) {
   if (restored) {
     // Only the composer: the rest of the controls do not exist yet.
     restoreLibraryComposer(g);
+    // Labels before pages, because a preview is measured off the laid-out grid
+    // and a group starts its life hidden. Measuring one that is still
+    // `display: none` reads no columns at all.
+    renderGroupLabels();
     activeGrids().forEach(grid => {
       renderGridPages(grid);
       const count = document.getElementById(grid.ids.count);
       if (count && grid.total != null) count.textContent = gridCountLabel(grid);
     });
-    renderGroupLabels();
   }
+  watchPreviewWidth();
   activeGrids().forEach(setupGridInfiniteScroll);
   if (restored && g.pages.length) {
     requestAnimationFrame(() => {
@@ -275,11 +261,14 @@ export async function renderPhotos(m) {
   // the search it is reporting as the person filters they became.
   renderActiveQuery(g);
 }
-function setupGridInfiniteScroll(g) {
+export function setupGridInfiniteScroll(g) {
   const top = document.getElementById(g.ids.top);
   const bottom = document.getElementById(g.ids.bottom);
-  if (!top || !bottom) return;
-  if (g.observer) g.observer.disconnect();
+  if (g.observer) { g.observer.disconnect(); g.observer = null; }
+  // A previewed group does not observe its own sentinels at all. Leaving them
+  // observed is what made the second group unreachable: its heading was always
+  // one screen further down than it had been a moment ago.
+  if (!top || !bottom || !gridPagesFreely(g)) return;
   g.observer = new IntersectionObserver(entries => {
     if (!activeGrids().includes(g) || ACTIVE_SECTION !== "library") return;
     entries.forEach(entry => {
@@ -290,6 +279,32 @@ function setupGridInfiniteScroll(g) {
   }, { root: document.getElementById("main"), rootMargin: "600px 0px" });
   g.observer.observe(top);
   g.observer.observe(bottom);
+}
+/* A preview is measured in rows, and how many results a row holds is a fact
+   about the window. So it has to be redrawn when that changes: widen the window
+   and the last row is left ragged -- which is precisely how a grid says "that
+   is all of them" -- while the button under it offers a number of results the
+   rows above no longer bear out.
+
+   Watched on `#main` rather than on the window because collapsing the nav
+   changes the width of these grids without resizing anything. `#main` outlives
+   every section (the router only ever replaces its children), so this is
+   attached once and left, and the callback asks whether Browse is on screen. */
+let previewWidthObserver = null;
+function watchPreviewWidth() {
+  const main = document.getElementById("main");
+  if (!main || previewWidthObserver) return;
+  previewWidthObserver = new ResizeObserver(() => {
+    if (ACTIVE_SECTION !== "library" || !S.grid) return;
+    activeGrids().forEach(g => {
+      if (!previewing(g)) return;
+      const grid = document.getElementById(g.ids.grid);
+      // Only a change in how many fit is worth a repaint: a ResizeObserver
+      // fires on every pixel of a drag, and on being attached.
+      if (grid && previewCount(grid) !== g.previewCap) renderGridPages(g);
+    });
+  });
+  previewWidthObserver.observe(main);
 }
 function gridSentinelIsNear(direction, g) {
   const sentinel = document.getElementById(direction === "prepend" ? g.ids.top : g.ids.bottom);
@@ -384,18 +399,6 @@ export function renderSortOptions(g) {
   if (!opts.some(([v]) => v === g.sort)) g.sort = "";
   sel.value = g.sort;
 }
-/* What a group's count reads. "Matches" everywhere a query ran, and files only
-   for the plain listing.
-
-   The text group used to count "documents", which stopped being true the day the
-   picture half was added: a hit there can be a photographed receipt. Counting
-   matches says the same thing about the search without claiming anything about
-   what was matched. */
-function gridCountLabel(g) {
-  const n = (g.total || 0).toLocaleString();
-  if (!g.query && g.kind === "media") return `${n} files`;
-  return `${n} match${g.total === 1 ? "" : "es"}`;
-}
 export function applySort() {
   S.grid.sort = selVal("f-sort");
   reloadGrids();
@@ -471,90 +474,16 @@ export function applyFilters() {
 }
 export function resetGridResults(g) {
   g.offset = 0; g.loaded = 0; g.total = null; g.error = ""; g.doneDown = false; g.doneUp = true; g.gen++;
-  g.pages = []; g.anchor = null; g.savedScrollTop = 0;
-  refreshGallery();
+  g.pages = []; g.anchor = null; g.savedScrollTop = 0; g.previewCap = 0;
+  // Emptied before the gallery is rebuilt, because the gallery is read back off
+  // these tiles: rebuilding it first would hand the viewer the very results
+  // this line is about to remove.
   const grid = document.getElementById(g.ids.grid); if (grid) grid.replaceChildren();
+  const more = document.getElementById(g.ids.more); if (more) more.replaceChildren();
+  refreshGallery();
   const count = document.getElementById(g.ids.count); if (count) count.textContent = "";
   const main = document.getElementById("main"); if (main) main.scrollTop = 0;
 }
-/* The viewer walks whatever is on screen, in the order it is on screen -- so
-   with two groups showing it has to be both of them, text first, matching the
-   document order. Rebuilt from the grids rather than appended to, because a
-   group can reload independently of the other. */
-function refreshGallery() {
-  setGallery(activeGrids().flatMap(g => g.pages.flatMap(p => p.items.map(i => i.id))),
-    S.grid && S.grid.query ? "in these results" : "in Browse");
-}
-/* Which groups are on screen, and what the ones that found nothing say.
-
-   Browsing with nothing typed is one grid and no headings at all: a label
-   telling you which of one thing you are looking at is noise, and the media
-   grid is the plain dated listing rather than a result.
-
-   Searching draws a heading over every ranking that found something, and
-   collapses the ones that found nothing into a single line at the foot. Both
-   halves of that matter. A ranking that was searched and came back empty is an
-   answer -- "the documents were looked in" is worth knowing, and its absence is
-   what used to make an archive with one feature wonder whether the others had
-   run. But three empty headings stacked above your photos is worse than the
-   missing label it replaced, so they report as one quiet line instead. */
-function renderGroupLabels() {
-  const searching = !!S.grid.query;
-  const empty = [];
-  activeGrids().forEach(g => {
-    const group = document.getElementById("group-" + g.kind);
-    if (!group) return;
-    const hits = !!g.total;
-    // The media grid with nothing typed is the listing, not a result: it stays
-    // on screen whatever it holds -- an archive filtered down to nothing still
-    // needs somewhere to say so -- and loses its heading, which is what
-    // `.results-group.plain` turns off. Every other group is a ranking, and a
-    // ranking with nothing in it has nothing to show.
-    const listing = g.kind === "media" && !searching;
-    group.hidden = !listing && !hits;
-    group.classList.toggle("plain", listing);
-    // `rankingFor` can be empty for the media grid on an archive with no
-    // description index -- but so is `gridAnswers` there, so a way that was
-    // never consulted is never reported as having found nothing.
-    const way = rankingFor(g.kind);
-    if (searching && !hits && gridAnswers(g) && way) empty.push(way);
-  });
-  // The toolbar's count is the whole answer, not one group's: with results in
-  // three places, a number sitting beside the sort control has to be the total
-  // or it is a figure with no label.
-  const overall = document.getElementById("gridcount");
-  if (overall) {
-    const grids = activeGrids().filter(g => g.total != null && gridAnswers(g));
-    const n = grids.reduce((sum, g) => sum + g.total, 0);
-    overall.textContent = !grids.length ? ""
-      : searching ? `${n.toLocaleString()} result${n === 1 ? "" : "s"}`
-        : `${n.toLocaleString()} files`;
-  }
-  updateWaysCoverage();
-  const line = document.getElementById("nothing-line");
-  if (!line) return;
-  line.hidden = !empty.length;
-  if (!empty.length) { line.replaceChildren(); return; }
-  const anyHits = activeGrids().some(g => g.total);
-  line.replaceChildren(document.createTextNode(
-    anyHits ? "Nothing found by " : "Searched, with nothing found by "));
-  empty.forEach((r, i) => {
-    if (i) line.append(document.createTextNode(i === empty.length - 1 ? " or " : ", "));
-    const item = document.createElement("span");
-    item.className = "nl-item";
-    const glyph = document.createElement("span");
-    glyph.className = "ranking-mark";
-    glyph.setAttribute("aria-hidden", "true");
-    glyph.innerHTML = ICONS[r.icon];
-    item.append(glyph, document.createTextNode(wayNoun(r.label)));
-    line.append(item);
-  });
-}
-/* Every way is called "Search by <what you type against>" (ADR 0021), so the
-   line above says that once and names each by the half that tells it from the
-   others. Nothing is lowercased and nothing retyped: what is left is the noun
-   the feature was named for, minus a prefix the sentence has supplied. */
-function wayNoun(label) { return label.replace(/^Search by /, ""); }
 /* Whether the media grid can rank a typed query at all.
 
    It is the one grid whose job depends on the answer: with Search by
@@ -592,15 +521,26 @@ export function updateClearBtn() {
 function renderGridEmptyState(g, grid) {
   if (g.loaded || g.total == null) return;
   // A search that found nothing hides its whole group and reports on the
-  // collapsed line instead, so the only message left to paint here is the one
-  // no line can carry: the plain listing, filtered down to nothing.
-  if (g.query && !g.error) return;
-  grid.innerHTML = `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${
-    g.error ? esc(g.error) : "No media matches these filters."}</div>`;
+  // collapsed line above instead, so the only messages left to paint here are
+  // the ones no line can carry: the plain listing filtered down to nothing, and
+  // the ranking you are reading on its own, where that line is not drawn and a
+  // filter has since emptied what you came in to read.
+  if (g.query && !g.error && S.onlyWay !== g.kind) return;
+  const message = g.error ? esc(g.error)
+    : g.query ? "No matches under these filters." : "No media matches these filters.";
+  grid.innerHTML =
+    `<div class="muted" style="grid-column:1/-1;padding:40px;text-align:center">${message}</div>`;
 }
-function renderGridPages(g, anchor = null) {
+export function renderGridPages(g, anchor = null) {
   const grid = document.getElementById(g.ids.grid); if (!grid) return;
   grid.replaceChildren();
+  // Read after the grid is emptied and before it is filled: `auto-fill` lays out
+  // its tracks from the width available whether or not anything is in them, so
+  // this is the count the tiles are about to be placed into.
+  const preview = previewing(g);
+  const cap = preview ? previewCount(grid) : Infinity;
+  g.previewCap = preview ? cap : 0;
+  let drawn = 0;
   let lastHeading = null;
   // Which readers can produce a hit in the text group here. With only one of
   // them on, a badge saying so on every tile repeats the heading above it and
@@ -609,11 +549,14 @@ function renderGridPages(g, anchor = null) {
   const mixedReaders = !!textWay && textWay.readers.length > 1;
   const tokens = g.kind === "name" ? nameTokens(g.query) : [];
   g.pages.forEach(page => page.items.forEach((item, itemOffset) => {
+    if (drawn >= cap) return;
     // Month headings belong to the listing and nothing else. A group of results
     // already carries a heading saying which way found them, and a second tier
     // of headings under it -- "Unknown date" in 21px over a single tile -- is
-    // the listing's furniture in a place that is not the listing.
-    if (g.kind === "media" && (!g.query || g.sort)) {
+    // the listing's furniture in a place that is not the listing. Nor in a
+    // preview, where a month name over the two rows on show would read as that
+    // month being the whole of the answer.
+    if (g.kind === "media" && !preview && (!g.query || g.sort)) {
       const heading = item.date ? (item.date.slice(0, 7) || "Unknown date") : "Unknown date";
       if (lastHeading !== heading) {
         const h = document.createElement("div"); h.className = "date-heading";
@@ -625,9 +568,14 @@ function renderGridPages(g, anchor = null) {
       g.kind === "text" ? textTile(item, mixedReaders)
         : g.kind === "name" ? nameTile(item, tokens)
           : tile(item, page.offset + itemOffset, "name"));
+    drawn++;
   }));
-  refreshGallery();
+  // `loaded` stays what was fetched rather than what was drawn: it is the
+  // paging window's own bookkeeping, and the empty state below reads it to tell
+  // "this ranking is empty" from "this ranking is showing you two rows of it".
   g.loaded = g.pages.reduce((n, page) => n + page.items.length, 0);
+  renderGroupMore(g, drawn);
+  refreshGallery();
   renderGridEmptyState(g, grid);
   if (anchor) restoreLibraryAnchor(anchor);
 }
@@ -640,7 +588,7 @@ function renderGridPages(g, anchor = null) {
    the entire library.
 
    The other two are rankings and nothing else: no query, no request. */
-function gridAnswers(g) {
+export function gridAnswers(g) {
   if (g.kind === "media") return !g.query || mediaRanksQueries();
   return !!g.query;
 }
@@ -731,12 +679,19 @@ export async function loadGrid(direction = "append", g = S.grid) {
     g.doneUp = !g.pages.length || g.pages[0].offset === 0;
     g.doneDown = !!g.error || !windowLast ||
       windowLast.offset + windowLast.items.length >= g.total;
-    renderGridPages(g, anchor);
+    // Labels first: they decide whether this group is on screen at all, and a
+    // preview is measured off the laid-out grid -- a group still hidden from
+    // before its first result landed has no columns to count.
     renderGroupLabels();
+    renderGridPages(g, anchor);
     const gc = document.getElementById(g.ids.count);
     if (gc) gc.textContent = gridCountLabel(g);
     const bottom = document.getElementById(g.ids.bottom);
-    if (bottom) bottom.textContent = g.doneDown ? "" : "Scroll to load more";
+    // A previewed group has a button under it, not a sentinel: it is not
+    // waiting to be scrolled into, and saying so would promise paging that this
+    // group is deliberately not doing.
+    if (bottom) bottom.textContent =
+      (g.doneDown || !gridPagesFreely(g)) ? "" : "Scroll to load more";
   } catch {
     failed = true;
     if (activeGrids().includes(g) && g.gen === gen && sentinel)
@@ -750,7 +705,8 @@ export async function loadGrid(direction = "append", g = S.grid) {
       requestAnimationFrame(() => {
         const done = direction === "prepend" ? g.doneUp : g.doneDown;
         if (!failed && activeGrids().includes(g) && g.gen === gen && !done &&
-          ACTIVE_SECTION === "library" && gridSentinelIsNear(direction, g))
+          ACTIVE_SECTION === "library" && gridPagesFreely(g) &&
+          gridSentinelIsNear(direction, g))
           loadGrid(direction, g);
       });
     }

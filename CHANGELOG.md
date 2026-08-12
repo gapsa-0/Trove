@@ -119,6 +119,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **A search shows you a bit of every way it looked, and lets you open one.**
+  Browse answers in up to three groups — what your filenames matched, what your
+  documents said, what your pictures look like — and they were stacked in one
+  scroll, each loading more of itself as you reached its end. So the documents
+  group sat below every filename match there was, and moved further down with
+  every one that loaded: on a search with thousands of hits the later groups
+  could not be reached at all. Each group now shows its top two rows with a
+  **Show all 2,847** under it; pressing that gives the screen to that ranking
+  alone, with **Back** to return. Filtering and sorting leave you inside the
+  ranking you are reading — only a new search returns you to the summary.
+
+- **"Nothing found by …" now sits above your results rather than under them.**
+  The line naming the ways that were searched and came back empty was printed at
+  the foot of Browse, below every photo that did match — so on any search with
+  more than a screenful of results, the reader wondering whether their documents
+  had been searched at all had to scroll past the answer to find it. It is now
+  the first thing under the search box, where it qualifies the groups that
+  follow.
+
 - **Two smaller things on the Library overview.** Each headline tile opens a
   screen, and now says so — a chevron, and a label that names where it goes
   rather than announcing a bare number to a screen reader. And **Manage

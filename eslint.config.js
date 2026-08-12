@@ -97,6 +97,7 @@ module.exports = [
         URLSearchParams: "readonly",
         Image: "readonly",
         IntersectionObserver: "readonly",
+        getComputedStyle: "readonly",
         history: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",

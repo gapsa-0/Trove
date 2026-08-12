@@ -82,6 +82,15 @@ export const S = {
   // The text-results group, present only for an archive that reads its
   // documents. Null everywhere else, which is what activeGrids() reads.
   textGrid: null,
+  // Which single ranking Browse is showing on its own, or "" for the overview
+  // that previews every ranking. Screen state rather than query state: it is
+  // deliberately not in SHARED_QUERY_FIELDS, because narrowing a filter while
+  // reading one ranking should leave you reading that ranking. Only a new
+  // search puts you back on the overview.
+  onlyWay: "",
+  // Where the overview was scrolled to when a ranking was opened from it, so
+  // coming back returns to the group you left rather than to the top.
+  overviewScrollTop: 0,
   // `gpoll` is the one pipeline poller's interval handle (pipeline.js). There
   // used to be a second slot beside it, `poll`, that the Overview, People and
   // Pets screens all wrote in turn -- one timer shared by three modules, which

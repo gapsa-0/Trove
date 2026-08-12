@@ -81,11 +81,31 @@ That is a cost the name path already accepted for itself (`services/browse.py`:
 `instr` over a computed basename cannot use an index), and it buys back a way of
 searching that the most-configured archives had lost.
 
+### Why the groups are previewed rather than stacked
+
+Each group pages itself as its own foot scrolls into view. Three of them in one
+scroller is therefore not three lists but one: the second group sits below the
+whole of the first, and every page the first loads pushes it further down, so
+the third is unreachable in practice. Stacked groups and infinite scroll cannot
+both be right, and the group order (above) is fixed by explainability, so the
+ranking that answers you best is not reliably the one you can reach.
+
+So a search answers with two rows of each ranking and a control that opens one
+in full — at which point it is the only group on screen and the only one that
+pages. The cap is measured in rows read off the laid-out grid rather than in
+results: a fixed count lands mid-row at every window width but one, and a
+half-filled last row is exactly how a grid says "that is all of them".
+
+Which ranking is open is view state, not query state (`S.onlyWay`, deliberately
+outside `SHARED_QUERY_FIELDS`): filtering, sorting and widening the result scope
+leave you where you are reading, and only a new query returns you to the
+summary, because which way answers you best is a property of what you typed.
+
 ### Why an empty group still reports
 
-A group that found nothing is hidden and named on one line at the foot
-("Nothing found in *what your photos show*"). Both halves of that are the
-decision. Saying nothing is what left an archive with one feature unable to tell
+A group that found nothing is hidden and named on one collapsed line above the
+groups that did land ("Nothing found in *what your photos show*"). Both halves
+of that are the decision. Saying nothing is what left an archive with one feature unable to tell
 whether the others had run; but three empty headings stacked above the results
 that did land is worse than the missing label it replaced.
 

@@ -45,15 +45,28 @@ ordered by how explainable they are: a name match is the most literal thing
 Browse can show you, a passage with your word in it is next, and a picture that
 merely looks like what you described is last.
 
+**You see the top two rows of each, and open the one you want.** Under a group
+holding more than that is a **Show all** with the number it found; pressing it
+gives the screen to that ranking alone, and **Back** above it returns you to
+the summary. Whichever ranking you are reading, the filters, the sort and the
+result scope still apply to it — only typing a new search returns you to the
+summary, since which way answers you best depends on what you asked.
+
+This is why the groups are capped rather than simply stacked: results load as
+you scroll, so three groups each growing under your thumb means the second one
+sits below the whole of the first and the third is never reached. Two rows each,
+and then one ranking at a time, is what makes all three of them reachable.
+
 **Every way links to what documents it.** The panel draws one mark per feature
 feeding a way; pressing it opens that feature's page. The shared way has two,
 which is why they are marks rather than a row of link text.
 
-**A way that found nothing still reports.** It collapses into one line at the
-foot ("Nothing found by filename or description") rather than a heading over
-an empty row. That line is there because "the documents were searched and none
-matched" is an answer, and its absence used to leave people wondering whether a
-feature had run at all.
+**A way that found nothing still reports.** It collapses into one line above
+the results ("Nothing found by filename or description") rather than a heading
+over an empty row. That line is there because "the documents were searched and
+none matched" is an answer, and its absence used to leave people wondering
+whether a feature had run at all. It sits above the groups because it qualifies
+them: what follows is what the remaining ways found.
 
 **Only the text group carries a badge**, and only for the one fact that varies
 inside it: which reader produced the text, when both are on. A file's own words

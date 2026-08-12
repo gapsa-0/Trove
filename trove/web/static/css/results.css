@@ -19,8 +19,8 @@
    literal thing Browse can show you, a cosine the least.
 
    A group that found nothing is hidden entirely and reports on the collapsed
-   line at the foot instead. Three empty headings stacked above your photos is
-   worse than the missing label that rule replaced. */
+   line above the groups instead. Three empty headings stacked above your photos
+   is worse than the missing label that rule replaced. */
 .results-group[hidden] {
   display: none;
 }
@@ -48,17 +48,112 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Two rows, and the way past them ------------------------------------
+
+   A search answers in up to three rankings, and the overview shows the top two
+   rows of each. What the cap is really for is the paging: three groups stacked
+   in one scroller, each extending itself as its own foot comes into view, means
+   the second is behind the whole of the first and the third cannot be reached
+   at all. So the overview previews, and one group at a time is opened in full.
+
+   The control that opens one runs the width of the group it belongs to and is
+   drawn as an open edge rather than a button sitting in space: a dashed rule
+   across the bottom of two full rows is the shape of a cut, which is what it is
+   reporting. It fills in on hover, where it is an ordinary button again. */
+.group-more:empty {
+  display: none;
+}
+
+.group-more {
+  margin: 10px 0 2px;
+}
+
+.more-btn {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+
+.more-btn:hover {
+  border-style: solid;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.more-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The way back out, above the one group on screen. It sits where the collapsed
+   "nothing found by" line sits on the overview -- the same slot under the
+   search panel, saying what this screenful is -- and neither is ever drawn at
+   the same time as the other. */
+.results-back {
+  display: flex;
+  align-items: center;
+  margin: 0 0 2px;
+  padding: 0 2px;
+}
+
+.results-back[hidden] {
+  display: none;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.back-btn:hover {
+  background: var(--panel);
+}
+
+.back-btn .back-arrow {
+  font-size: 14px;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more-btn {
+    transition: none;
+  }
+}
+
 /* Which ways were searched and came back with nothing. One line rather than
    one heading each, so "the documents were looked in" is still answered
-   without pushing the results that did land off the screen. */
+   without pushing the results that did land off the screen.
+
+   It sits directly under the search panel, above the first group it qualifies.
+   No rule of its own: the panel above it is already a bordered card, and a
+   second line drawn a few pixels below that border reads as a mistake. What
+   separates it from the results is the heading's own 22px. */
 .nothing-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 7px;
-  margin: 22px 0 6px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  margin: 0 0 2px;
+  padding: 0 2px;
   font-size: 12.5px;
   color: var(--faint);
 }

@@ -100,6 +100,8 @@ export function resetSectionViews() {
   disposeMap();
   if (S.grid && S.grid.observer) S.grid.observer.disconnect();
   S.grid = null; S.gallery = [];
+  // Browse's view of its own results goes with the grids it described.
+  S.onlyWay = ""; S.overviewScrollTop = 0;
   INFINITE_LIST_KEYS.forEach(key => {
     if (S[key] && S[key].observer) S[key].observer.disconnect();
     S[key] = null;

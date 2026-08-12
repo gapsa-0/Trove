@@ -8,6 +8,9 @@ import {
   updateClearBtn, updatePeopleFilterLabel,
 } from "./library.js";
 import {
+  renderGroupLabels,
+} from "./results.js";
+import {
   jget,
 } from "./api.js";
 import {
@@ -439,6 +442,19 @@ export async function semanticSubmit(ev) {
   // used. Keep rawQuery intact for the composer, but normalize the text sent
   // through translation and semantic embedding.
   g.query = semanticTextWithoutPeople(rawQuery, mentions).toLocaleLowerCase();
+  /* A new search always lands on the overview, whichever ranking the last one
+     was left open at. Which way answers you best is a property of what you
+     typed -- the question that put you inside the filenames is not the question
+     you are asking now -- so a new one gets the summary of every way and lets
+     you choose again.
+
+     Deliberately here and not in `reloadGrids`, which the filters, the sort and
+     the result scope all go through as well: narrowing what you are reading is
+     not a reason to stop reading it. */
+  S.onlyWay = "";
+  // Said on screen now rather than when the results land: the way back out is
+  // pointing at a set of groups that is already being replaced.
+  renderGroupLabels();
   renderSemanticComposer(true);
   renderSortOptions(g);
   renderActiveQuery(g);
