@@ -25,6 +25,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Merging no longer throws away your place.** Merging two pets rebuilt the
+  entire Pets screen, and merging two people rebuilt the grid from its first
+  page — so the scroll position and every page loaded into it went, once per
+  merge, on the screens where merging is something you do dozens of times in a
+  row. Both now patch the cards that changed and leave the rest alone, which is
+  what the background refresh has always done while a scan is running.
+
 - **A name you take off a person stays off.** Clearing the name worked and then
   quietly undid itself: any face you had moved onto that person by hand still
   carried the name, those moves are remembered *by* name, and the next

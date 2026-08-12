@@ -55,6 +55,39 @@ def test_a_pet_is_renamed_from_its_own_page(open_app):
         assert app.errors() == []
 
 
+def test_an_edit_patches_the_people_grid_instead_of_rebuilding_it(open_app):
+    """Node identity is the assertion, not the card count.
+
+    A rebuild produces a grid that *looks* right -- same names, same order --
+    so counting cards passes either way. Marking the cards and checking an
+    untouched one is still the same DOM node afterwards is what distinguishes
+    a patch from a teardown, and the teardown is what threw away the scroll
+    position and every loaded page on a screen with hundreds of clusters.
+
+    Driven through a rename because that is a real click; it runs
+    ``refreshPeopleGrid``, which is the same function ``attachMergeDrag`` and
+    the "Same person?" queue hand their merges to.
+    """
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        app.wait_for(".pcard")
+        assert app.count(".pcard") >= 2, "this asserts about a card other than the edited one"
+        app.tab.evaluate(
+            "[...document.querySelectorAll('.pcard')].forEach((c, i) => { c.__mark = i; })"
+        )
+        # Rename the first card; the second is the one under test.
+        app.tab.evaluate("document.querySelector('.pcard .pname').click()")
+        app.wait_for(".pcard .pmeta-editing input")
+        _type_into(app, ".pcard .pmeta-editing input", "Ada Lovelace")
+        app.wait_for_text("Ada Lovelace")
+
+        survivors = app.tab.evaluate(
+            "[...document.querySelectorAll('.pcard')].filter(c => c.__mark !== undefined).length"
+        )
+        assert survivors >= 1, "every card was replaced -- the grid was rebuilt, not patched"
+        assert app.errors() == []
+
+
 def test_a_named_person_can_be_made_unnamed_again(open_app):
     """Emptying the field always did this; nothing said so."""
     with open_app("people") as app:

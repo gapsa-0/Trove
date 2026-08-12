@@ -6,7 +6,7 @@ import {
   detectStatusRow, syncCardGrid,
 } from "./cards.js";
 import {
-  ACTIVE_SECTION, showSection,
+  ACTIVE_SECTION,
 } from "./router.js";
 import {
   tile,
@@ -158,7 +158,7 @@ function petCard(p) {
   // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
   // re-running attachMergeDrag (which would stack a second set of listeners).
   card._merge = { kind: "pet", id: p.id, name: p.name, photos: p.photos };
-  attachMergeDrag(card, card._merge, () => showSection("pets", true));
+  attachMergeDrag(card, card._merge, refreshPetGrids);
   return card;
 }
 // In-place refresh of one already-rendered pet card. The cover <img> is
@@ -233,6 +233,20 @@ function nonhumanCard(item) {
 const PET_SYNC_LIMIT = 500;
 async function syncPetGrids() {
   if (ACTIVE_SECTION !== "pets" || S.petSyncing) return;   // one in flight at a time
+  await patchPetGrids();
+}
+/* The same patch, after the user merged two pets rather than on the clock.
+
+   This is what merging used to do instead: showSection("pets", true), which
+   calls replaceChildren on the whole section and drops its cached view -- the
+   entire screen torn down and rebuilt, losing the scroll position and every
+   loaded page, once per merge. Sorting a shelf of animals into pets is dozens
+   of merges in a row, so it was the worst place in the app to do the most
+   destructive possible refresh. */
+async function refreshPetGrids() {
+  await patchPetGrids();
+}
+async function patchPetGrids() {
   const st = { pets: S.petListState, loose: S.loosePetState, nonhuman: S.nonhumanState };
   if (!st.pets || !st.loose || !st.nonhuman) return;       // first render still in flight
   const root = S.arch.id;

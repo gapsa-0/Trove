@@ -182,6 +182,22 @@ async function syncPeopleGrid() {
     if (S.faceSum && S.faceSum.people > 0) renderPeople();
     return;
   }
+  await patchPeopleGrid();
+}
+/* The same patch, run because the user just changed something rather than
+   because the clock came round.
+
+   It skips the poll's guards on purpose. Merging used to rebuild the grid from
+   the first page, which on a screen with hundreds of clusters threw away the
+   scroll position and every page loaded into it -- and merging is the one
+   thing here you do dozens of times in a row. It does not skip the fetch: an
+   optimistic removal would be undone by whichever poll had already asked the
+   server before the merge landed. */
+export async function refreshPeopleGrid() {
+  if (!document.getElementById("peoplegrid")) return;
+  await patchPeopleGrid();
+}
+async function patchPeopleGrid() {
   const st = S.peopleList; if (!st) return;
   const limit = Math.min(PEOPLE_SYNC_LIMIT, Math.max(PEOPLE_PAGE_SIZE, st.offset));
   S.peopleSyncing = true;
@@ -237,7 +253,7 @@ export async function answerSuggest(kind) {
   if (kind === 'same') {
     const res = await jpost('/api/faces/merge', { a: s.a.id, b: s.b.id });
     if (res && res.error) { alert(res.error); return; }
-    if (res && res.person) { const kept = res.person.id, dropped = (s.a.id === kept ? s.b.id : s.a.id); dropRefs([dropped]); renderPeopleGrid(); }
+    if (res && res.person) { const kept = res.person.id, dropped = (s.a.id === kept ? s.b.id : s.a.id); dropRefs([dropped]); refreshPeopleGrid(); }
   } else if (kind === 'different') {
     await jpost('/api/faces/different', { a: s.a.id, b: s.b.id });
   } else if (kind === 'skip') {
@@ -246,24 +262,12 @@ export async function answerSuggest(kind) {
     const reason = chooseNonhumanKind(); if (!reason) return;
     await jpost('/api/faces/hide', { person_id: s.a.id, kind: reason });
     await jpost('/api/faces/hide', { person_id: s.b.id, kind: reason });
-    dropRefs([s.a.id, s.b.id]); renderPeopleGrid();
+    dropRefs([s.a.id, s.b.id]); refreshPeopleGrid();
   }
   if (st.total > 0) st.total--;
   st.idx++;
   if (st.idx >= st.list.length) { renderPeople(); return; }  // reload grid + fresh queue
   renderSuggest();
-}
-async function renderPeopleGrid() {
-  if (!document.getElementById("peoplegrid")) return;
-  startInfiniteList("peopleList", {
-    sentinelId: "people-sentinel", pageSize: PEOPLE_PAGE_SIZE,
-    fetchPage: fetchPeoplePage,
-    onPage: (people, { first }) => {
-      const grid = document.getElementById("peoplegrid");
-      if (first) grid.innerHTML = "";
-      people.forEach(p => grid.appendChild(personCard(p)));
-    },
-  });
 }
 export async function hidePerson(id) {
   if (!confirm('Not a person? Its faces get marked as a doll/animal/cartoon and are left out of clustering. It disappears from People.')) return;
@@ -317,7 +321,7 @@ function personCard(p) {
   d.dataset.cover = personCoverIds(p).join(",");
   d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">${personMetaInner(p)}</div>`;
   d.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(d, p); };
-  attachMergeDrag(d, d._merge, renderPeopleGrid);
+  attachMergeDrag(d, d._merge, refreshPeopleGrid);
   return d;
 }
 // In-place refresh of one already-rendered card. Only the parts that actually
@@ -359,7 +363,12 @@ async function savePersonCardName(card, p, name, input) {
   if (!result || result.error) {
     toast("Couldn’t save the person’s name.", true); card.replaceWith(personCard(p)); return;
   }
-  await renderPeopleGrid();
+  // Out of editing state first, and with the new name already on it. The grid
+  // patch that follows deliberately refuses to touch a card mid-rename
+  // (updatePersonCard), so leaving this one in that state would leave the name
+  // it was just given off the screen until the next poll.
+  card.replaceWith(personCard({ ...p, name: name || null }));
+  await refreshPeopleGrid();
 }
 const PERSON_PAGE_SIZE = 120;
 /* Whose photos the arrows are walking, for the viewer's position readout.
