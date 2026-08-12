@@ -45,6 +45,7 @@ GET_EXACT = {
     "/api/map/points",
     "/api/map/cluster/merge-preview",
     "/api/edit-log",
+    "/api/merge-targets",
     "/api/faces/summary",
     "/api/pets/summary",
     "/api/pets",

@@ -84,6 +84,7 @@ GET_ROUTES: dict[str, Handler] = {
     "/api/map/points": places.points,
     "/api/map/cluster/merge-preview": places.merge_preview,
     "/api/edit-log": people.history,
+    "/api/merge-targets": people.merge_targets,
     "/api/faces/summary": people.summary,
     "/api/faces/persons": people.persons,
     "/api/faces/suggestions": people.suggestions,

@@ -154,6 +154,11 @@ clustering pass. Undoing the removal from the history restores both.
 **Merge two people.** Drag one card onto another when the same person has ended
 up with two pages. Trove asks first, and the merge can be undone.
 
+**Or merge by name.** Every card's ⋯ menu, and every person's own page, offers
+"Merge with…" and a list of the people you have already named. Dragging needs
+both cards on screen; this is for the other case, where the group you
+recognise is hundreds of cards away.
+
 **Fix one photo.** Each photo on a person's page carries two controls of its
 own. *This is not the person* takes the photo off them and stops it being
 suggested for them again. *Make cover photo* chooses which face represents them

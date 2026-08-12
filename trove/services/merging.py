@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..db import database as db
+from ._common import reading
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,40 @@ class EntitySpec:
     plural: str
     table: str
     columns: str
+
+
+# Which table each kind of cluster lives in, for the one read below. The same
+# names the three LinkedSpecs carry, kept here too because this is the only
+# function that has to answer for all three at once without being handed one.
+_CLUSTER_TABLES = {"person": "persons", "pet": "pets", "place": "place_clusters"}
+
+
+@reading
+def named_targets(
+    conn: sqlite3.Connection, entity: str, exclude_id: int | None = None
+) -> list[dict[str, Any]]:
+    """The clusters a "Merge with…" picker can offer, for any of the three kinds.
+
+    Only NAMED ones, which is the whole point of the control: drag-to-merge
+    already handles "these two anonymous groups are the same", and needs the
+    other card on screen to do it. Picking from a list is for the other
+    direction -- you are looking at a group of strangers and recognise one of
+    them as somebody you have already named, who may be thousands of cards away.
+
+    An unnamed target would also be a poor thing to choose from a list, having
+    nothing to identify it by, and an ephemeral one: its id does not survive the
+    next recluster.
+    """
+    table = _CLUSTER_TABLES.get(entity)
+    if table is None:
+        return []
+    rows = conn.execute(
+        f"""SELECT id, name FROM {table}
+            WHERE NULLIF(TRIM(name), '') IS NOT NULL AND id IS NOT ?
+            ORDER BY name COLLATE NOCASE""",
+        (exclude_id,),
+    ).fetchall()
+    return [{"id": r["id"], "name": r["name"]} for r in rows]
 
 
 def load_sides(

@@ -36,7 +36,7 @@ import {
   cardMenu,
 } from "./menu.js";
 import {
-  attachMergeDrag, guardCardClick,
+  attachMergeDrag, guardCardClick, mergeWithPicker,
 } from "./merge.js";
 import {
   inlineNameEdit,
@@ -328,6 +328,16 @@ export async function answerSuggest(kind) {
 
    `after` is what to do once it lands: the grid patches itself in place, a
    person's own page has nowhere left to be and goes back to the grid. */
+function clusterMenuItems(p, after, onMerged) {
+  return [
+    {
+      label: "Merge with…",
+      submenu: host => mergeWithPicker(
+        host, { kind: "person", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
+    },
+    ...hideMenuItems(p.id, after),
+  ];
+}
 function hideMenuItems(id, after) {
   return [
     {
@@ -395,8 +405,8 @@ function personCard(p) {
   d.dataset.cover = personCoverIds(p).join(",");
   d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">${personMetaInner(p)}</div>`;
   d.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(d, p); };
-  // Hiding from the grid: the card goes and the rest of the grid stays put.
-  cardMenu(d, hideMenuItems(p.id, refreshAfterHide));
+  // Hiding or merging from the grid: the card goes and the rest stays put.
+  cardMenu(d, clusterMenuItems(p, refreshAfterHide, refreshPeopleGrid));
   attachMergeDrag(d, d._merge, refreshPeopleGrid);
   return d;
 }
@@ -498,7 +508,13 @@ export async function showPerson(id) {
     <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
   // Hiding from a person's own page leaves nowhere to stand, so it goes back
   // to the grid -- where the group it just removed is now absent.
-  if (!r.hidden) cardMenu(document.getElementById("personactions"), hideMenuItems(id, backToPeople));
+  // From the page itself, a merge follows the survivor rather than dropping
+  // you back on the grid: it is still the group you were looking at.
+  if (!r.hidden) {
+    cardMenu(document.getElementById("personactions"),
+      clusterMenuItems({ id, name: r.name, photos: r.photos }, backToPeople,
+        merged => (merged && merged.id ? showPerson(merged.id) : backToPeople())));
+  }
   // Undoing a change alters who this person is, so the page is re-read rather
   // than patched -- the honest response to "that merge never happened".
   mountHistory(() => showPerson(id));

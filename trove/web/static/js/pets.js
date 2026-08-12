@@ -6,7 +6,7 @@ import {
   detectStatusRow, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
-  ACTIVE_SECTION,
+  ACTIVE_SECTION, showSection,
 } from "./router.js";
 import {
   petTile,
@@ -36,8 +36,11 @@ import {
   historyButton, mountHistory,
 } from "./history.js";
 import {
-  attachMergeDrag, guardCardClick,
+  attachMergeDrag, guardCardClick, mergeWithPicker,
 } from "./merge.js";
+import {
+  cardMenu,
+} from "./menu.js";
 import {
   inlineNameEdit,
 } from "./nameedit.js";
@@ -149,6 +152,14 @@ function petMetaInner(p) {
       <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
       <span class="pet-species">${esc(p.species)}</span>`;
 }
+/* "Merge with…", the same item on a pet's card and on its own page. */
+function petMergeItem(p, onMerged) {
+  return {
+    label: "Merge with\u2026",
+    submenu: host => mergeWithPicker(
+      host, { kind: "pet", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
+  };
+}
 function petCoverIds(p) {
   return (p.detections_preview && p.detections_preview.length
     ? p.detections_preview : [p.cover_detection_id]).filter(Boolean).slice(0, 4);
@@ -160,6 +171,7 @@ function petCard(p) {
   card.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb")
     + `<div class="pmeta">${petMetaInner(p)}</div>`;
   card.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
+  cardMenu(card, [petMergeItem(p, refreshPetGrids)]);
   // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
   // re-running attachMergeDrag (which would stack a second set of listeners).
   card._merge = { kind: "pet", id: p.id, name: p.name, photos: p.photos };
@@ -366,11 +378,14 @@ export async function showPet(id) {
     <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
     <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div>
-    ${historyButton("pet", pet.id, pet.name)}</div>
+    ${historyButton("pet", pet.id, pet.name)}
+    <div class="ftb-actions" id="petactions"></div></div>
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="pet-grid-sentinel" aria-live="polite"></div>`;
   document.querySelector("#petname .person-name-button")
     .addEventListener("click", () => editPetName(id, pet.name || ""));
+  cardMenu(document.getElementById("petactions"),
+    [petMergeItem(pet, merged => (merged && merged.id ? showPet(merged.id) : showSection("pets", true)))]);
   mountHistory(() => showPet(id));
   let firstPage = pet.items;
   startInfiniteList("petDetailList", {

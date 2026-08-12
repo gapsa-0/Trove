@@ -15,6 +15,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Merge a group by picking a name, not by dragging.** Dragging one card onto
+  another needs both on screen, which stops being possible at a few hundred
+  groups — and the common case is precisely that you recognise a group of
+  strangers as somebody you named long ago, whose card is nowhere near. Every
+  card's ⋯ menu and every group's own page now offers "Merge with…" and a list
+  of the groups you have already named. On People, Pets and Places.
+
 - **Pets get everything People has for photos.** A pet's card showed a single
   thumbnail, and its photos carried no controls at all. Cards now show a collage
   of up to four, each photo offers "Make cover photo" and "This is not the pet",

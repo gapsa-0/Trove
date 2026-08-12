@@ -19,8 +19,11 @@ import {
   openItem,
 } from "./item.js";
 import {
-  attachMergeDrag, guardCardClick, mergesPanel,
+  attachMergeDrag, guardCardClick, mergeWithPicker, mergesPanel,
 } from "./merge.js";
+import {
+  cardMenu,
+} from "./menu.js";
 import {
   jget, jpost,
 } from "./api.js";
@@ -271,6 +274,16 @@ function renderPlaceGallery() {
     return aUnnamed - bUnnamed || b.count - a.count || a.id - b.id;
   }).forEach(place => grid.appendChild(placeCard(place)));
 }
+/* "Merge with…", on a place's card and in its side panel. */
+function placeMergeItem(place, onMerged) {
+  return {
+    label: "Merge with\u2026",
+    submenu: host => mergeWithPicker(
+      host,
+      { kind: "place", id: place.id, name: place.name, photos: place.count || place.total || 0 },
+      onMerged),
+  };
+}
 function placeCard(place) {
   const card = document.createElement("div"); card.className = "pcard";
   card.onclick = guardCardClick(() => showPlaceFromGallery(place.id));
@@ -283,6 +296,7 @@ function placeCard(place) {
     editPlaceCardName(card, place);
   };
   attachMergeDrag(card, { kind: "place", id: place.id, name: place.name, photos: place.count }, refreshPlacesAfterMerge);
+  cardMenu(card, [placeMergeItem(place, refreshPlacesAfterMerge)]);
   return card;
 }
 function showPlaceFromGallery(id) {
@@ -344,11 +358,16 @@ async function selectPlaceCluster(id) {
     <div class="mapside-name" id="mapsidename">
       <div class="mapside-title"><button class="person-name-button ${c.name ? "" : "un"}" onclick="editClusterName(${id},'${safeName}')">${displayName}</button>
         <span class="muted">${c.total.toLocaleString()} item${c.total === 1 ? "" : "s"}</span></div>
-      <div class="mapside-actions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" title="Close place">×</button></div>
+      <div class="mapside-actions" id="placeactions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" title="Close place">×</button></div>
     </div>
     ${mergesPanel(c.merges, "place")}
     <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>
     <div class="infinite-status" id="mapside-sentinel" aria-live="polite"></div>`;
+  // Prepended, so the close button stays last in the corner it lives in.
+  cardMenu(document.getElementById("placeactions"),
+    [placeMergeItem({ id, name: c.name, count: c.total }, refreshPlacesAfterMerge)]);
+  const actions = document.getElementById("placeactions");
+  actions.insertBefore(actions.lastElementChild, actions.firstElementChild);
   let firstPage = c.members;
   startInfiniteList("placeList", {
     sentinelId: "mapside-sentinel", pageSize: PLACE_PAGE_SIZE, root: side,

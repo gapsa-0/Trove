@@ -246,3 +246,42 @@ export async function undoMerge(mergeId, kind) {
   else if (kind === "place") { refreshPlacesAfterMerge(); }
   else if (S.facePerson != null) showPerson(S.facePerson);
 }
+
+/* "Merge with…": pick a named group from a list instead of dragging onto it.
+
+   Drag-to-merge answers "these two anonymous groups on screen are the same".
+   This answers the other question, which a grid of several hundred cards makes
+   the common one: you are looking at a group of strangers, you recognise one as
+   somebody already named, and their card is nowhere near this one.
+
+   Only named groups are offered -- an unnamed one has nothing to identify it by
+   in a list, and its id does not survive the next recluster anyway. The merge
+   itself goes through runMerge, so the confirmation, the name resolution and
+   the places wide-area warning are the ones drag-merge already uses. */
+export async function mergeWithPicker(host, source, onMerged) {
+  let res;
+  try {
+    res = await jget(`/api/merge-targets?root=${S.arch.id}&entity=${source.kind}&exclude=${source.id}`);
+  } catch { res = null; }
+  const targets = (res && res.targets) || [];
+  const panel = host.querySelector(".hist-menu");
+  if (!targets.length) {
+    panel.innerHTML = `<div class="hist-empty">Nothing to merge with yet — name another
+      ${source.kind === "pet" ? "pet" : source.kind === "place" ? "place" : "person"} first.</div>`;
+    return;
+  }
+  panel.innerHTML = targets
+    .map(t => `<button class="cardmenu-item" type="button" data-id="${t.id}">${esc(t.name)}</button>`)
+    .join("");
+  panel.querySelectorAll("button[data-id]").forEach(button => {
+    button.onclick = async e => {
+      e.stopPropagation();
+      host.removeAttribute("open");
+      const target = targets.find(t => String(t.id) === button.dataset.id);
+      // photos is only used to word the confirmation; the list does not carry
+      // counts, and asking for them per row would be a query per named group.
+      await runMerge(source, { kind: source.kind, id: target.id, name: target.name, photos: 0 },
+        onMerged || (() => {}));
+    };
+  });
+}

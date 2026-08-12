@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**82 routes**: 36 GET (exact) + 12 GET (prefix) + 34 POST.
+**83 routes**: 37 GET (exact) + 12 GET (prefix) + 34 POST.
 
 ## GET -- exact path
 
@@ -41,6 +41,7 @@ build if this file has drifted from the route tables.
 | `/api/map/points` | Every geotagged file as a single un-clustered map point. | `trove/web/routes/places.py::points` |
 | `/api/map/cluster/merge-preview` | How spread out a prospective cluster merge would be, so the GUI can warn before it's confirmed. | `trove/web/routes/places.py::merge_preview` |
 | `/api/edit-log` | Recent edits to one person or pet, for the history popover. | `trove/web/routes/people.py::history` |
+| `/api/merge-targets` | The named clusters a "Merge with…" picker can offer. | `trove/web/routes/people.py::merge_targets` |
 | `/api/faces/summary` | Face/person totals for the Faces overview. | `trove/web/routes/people.py::summary` |
 | `/api/faces/persons` | Paginated list of person clusters. ``?hidden=1`` lists the hidden ones. | `trove/web/routes/people.py::persons` |
 | `/api/faces/suggestions` | The 'same person?' review queue: candidate cluster pairs the automatic pass left apart. | `trove/web/routes/people.py::suggestions` |

@@ -37,6 +37,11 @@ export function cardMenu(host, items, { label = "More actions" } = {}) {
     button.textContent = item.label;
     button.onclick = event => {
       event.stopPropagation();
+      // A `submenu` item replaces the menu's contents rather than acting and
+      // closing -- "Merge with…" has to ask which one before it can do
+      // anything, and the answer is a list too long for the menu to carry
+      // until it is asked for.
+      if (item.submenu) { item.submenu(box); return; }
       box.removeAttribute("open");
       item.onPick();
     };

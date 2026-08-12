@@ -81,6 +81,11 @@ re-clustering.
 has ended up with two pages. This is the common correction, because the
 thresholds prefer splitting to merging.
 
+**Or merge by name.** Every card's ⋯ menu, and every pet's own page, offers
+"Merge with…" and a list of the pets you have already named. Dragging needs
+both cards on screen; this is for the other case, where the group you
+recognise is hundreds of cards away.
+
 **Fix one photo,** exactly as on the People screen. Each photo on a pet's page
 offers *Make cover photo*, which chooses the picture its card shows, and *This
 is not the pet*, which takes the photo off them and stops it being grouped back.

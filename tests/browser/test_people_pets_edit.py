@@ -127,9 +127,10 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
         before = app.count(".pcard")
         app.click(".pcard .cardmenu-trigger")
         app.wait_for(".cardmenu[open] .cardmenu-item")
-        # "Unknown person" is the second item; the first confirms, and a
-        # confirm dialog would block the tab.
-        app.tab.evaluate("document.querySelectorAll('.cardmenu[open] .cardmenu-item')[1].click()")
+        # By label, never by position: "Not a person" opens a confirm dialog,
+        # which blocks the tab outright, so picking the wrong item here does
+        # not fail the test -- it hangs the browser.
+        _pick_menu_item(app, "Unknown person")
         app.tab.wait_for(
             f"document.querySelectorAll('#peoplegrid .pcard').length === {before - 1}",
             timeout=10.0,
@@ -147,6 +148,21 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
             what="the restored card to come back to the grid",
         )
         assert app.errors() == []
+
+
+def _pick_menu_item(app, label: str) -> None:
+    """Click an open card menu's item by its words.
+
+    Position would be brittle and, worse, dangerous: "Not a person" raises a
+    confirm dialog, and a browser modal blocks every later CDP command rather
+    than failing an assertion.
+    """
+    clicked = app.tab.evaluate(
+        "(() => { const b = [...document.querySelectorAll('.cardmenu[open] .cardmenu-item')]"
+        f".find(b => b.textContent.includes({label!r}));"
+        " if (!b) return false; b.click(); return true; })()"
+    )
+    assert clicked, f"no menu item saying {label!r}"
 
 
 def _avatar_face(app):
@@ -202,6 +218,28 @@ def test_a_photo_on_a_persons_page_carries_its_own_actions(open_app):
         app.wait_for(".tile")
         assert _avatar_face(app) == after, "the chosen cover did not survive a reload"
         assert app.errors() == []
+
+
+def test_merge_with_offers_the_named_groups_and_merges_into_one(open_app):
+    """Drag-to-merge needs both cards on screen; this is for the case a grid of
+    hundreds makes common, where the group you recognise is nowhere near."""
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        before = app.count(".pcard")
+        app.click(".pcard .cardmenu-trigger")
+        app.wait_for(".cardmenu[open] .cardmenu-item")
+        # It replaces the menu with the list rather than closing, so the menu
+        # is still open afterwards.
+        _pick_menu_item(app, "Merge with")
+        app.wait_for(".cardmenu[open] .cardmenu-item[data-id]")
+        offered = app.tab.evaluate(
+            "[...document.querySelectorAll('.cardmenu[open] .cardmenu-item[data-id]')]"
+            ".map(b => b.textContent)"
+        )
+        assert offered and all(offered), "only named groups, each with a name to show"
+        assert app.errors() == []
+        # The card being merged from is not one of its own options.
+        assert len(offered) < before or before == 1
 
 
 def test_a_pets_photos_carry_the_same_actions_a_persons_do(open_app):

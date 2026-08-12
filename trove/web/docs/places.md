@@ -55,6 +55,10 @@ two are further apart than 20 km it says so, because that is well past the
 distance a genuine "one place got split in two" merge covers. Nothing is
 refused, and a merge can be undone.
 
+**Or merge by name.** Every card's ⋯ menu, and an open place's panel, offers
+"Merge with…" and a list of the places you have already named — for when the
+two are not on screen together.
+
 **Create a place by hand,** and add photos to it that carry no coordinates of
 their own. This is how scanned photos and anything that came through a
 messaging app get onto the map at all.

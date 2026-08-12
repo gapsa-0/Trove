@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...db import database as db
-from ...services import edit_log, people, people_edit
+from ...services import edit_log, merging, people, people_edit
 from ._request import NOT_FOUND, Json, Request, ok_or_error
 
 
@@ -45,6 +45,22 @@ def person(req: Request) -> dict[str, Any] | Json:
         offset=req.offset(),
     )
     return p if p else NOT_FOUND
+
+
+def merge_targets(req: Request) -> dict | Json:
+    """The named clusters a "Merge with…" picker can offer.
+
+    One route for people, pets and places because it is one question asked of
+    three tables, and services/merging.py is where that symmetry already lives.
+    """
+    rid = req.root_id
+    return {
+        "targets": merging.named_targets(
+            req.db(rid),
+            req.one("entity", str, "person"),
+            req.one("exclude", int, 0) or None,
+        )
+    }
 
 
 def history(req: Request) -> dict:

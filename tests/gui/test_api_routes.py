@@ -55,6 +55,11 @@ API_GET_CASES = [
     ),
     pytest.param("/api/features", {"features"}, id="GET /api/features"),
     pytest.param(
+        "/api/merge-targets?root={root_id}&entity=person&exclude={person_a}",
+        {"targets"},
+        id="GET /api/merge-targets",
+    ),
+    pytest.param(
         "/api/edit-log?root={root_id}&entity=person&id={person_a}",
         {"entries"},
         id="GET /api/edit-log",
