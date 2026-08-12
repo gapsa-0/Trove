@@ -204,6 +204,18 @@ def test_a_photo_on_a_persons_page_carries_its_own_actions(open_app):
         assert app.errors() == []
 
 
+def test_a_pets_photos_carry_the_same_actions_a_persons_do(open_app):
+    """The Pets screen was a generation behind: one thumbnail per card and no
+    per-photo controls at all."""
+    with open_app("pets") as app:
+        app.wait_for_text("Kira")
+        app.click(".pcard img.face, .pcard .facecollage img")
+        app.wait_for(".tile")
+        assert app.count(".tile .tile-detach") >= 1, "no way to remove a photo from a pet"
+        assert app.count(".tile .tile-cover") >= 1, "no way to choose a pet's cover"
+        assert app.errors() == []
+
+
 def test_a_persons_recent_changes_open_from_the_top_bar(open_app):
     """The merge list used to sit permanently between the name and the photos.
 

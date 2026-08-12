@@ -81,6 +81,12 @@ re-clustering.
 has ended up with two pages. This is the common correction, because the
 thresholds prefer splitting to merging.
 
+**Fix one photo,** exactly as on the People screen. Each photo on a pet's page
+offers *Make cover photo*, which chooses the picture its card shows, and *This
+is not the pet*, which takes the photo off them and stops it being grouped back.
+Both survive re-clustering. Until a cover is chosen, the card shows a collage of
+up to four photos rather than a single thumbnail.
+
 **Review non-human faces.** The face pipeline drops any face that sits mostly
 inside an animal box, and this screen lists what it dropped. If it took a face
 that really was a person, you can say so.

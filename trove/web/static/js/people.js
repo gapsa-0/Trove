@@ -3,7 +3,7 @@
 // the single-person page. Merging is drag-to-merge's job, not this module's.
 
 import {
-  detectStatusRow, syncCardGrid,
+  detectStatusRow, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
   renderNav,
@@ -371,23 +371,10 @@ async function refreshAfterHide() {
   }
   await renderHidden();
 }
-// Up to 4 faces as a 2x2 collage (a single face fills the square). `ids` is the
-// person's faces_preview, with cover_face_id as fallback for old payloads.
-function faceCollage(ids) {
-  ids = (ids || []).filter(Boolean).slice(0, 4);
-  if (ids.length <= 1) {
-    const id = ids[0];
-    // draggable=false: these images sit inside merge-draggable person cards
-    // and would otherwise hijack the card drag with their own payload.
-    return id ? `<img class="face" src="/faceThumb/${id}" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'">`
-      : `<div class="face"></div>`;
-  }
-  let cells = "";
-  for (let i = 0; i < 4; i++) cells += ids[i]
-    ? `<img src="/faceThumb/${ids[i]}" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'">`
-    : `<div class="cempty"></div>`;
-  return `<div class="facecollage">${cells}</div>`;
-}
+// Up to 4 faces as a 2x2 collage. `ids` is the person's faces_preview, with
+// cover_face_id as fallback for old payloads. Shared with the Pets grid, which
+// draws the same card from a different endpoint.
+const faceCollage = ids => thumbCollage(ids, "/faceThumb");
 // The preview face ids a card's collage is built from, as a string, so
 // syncPeopleGrid can tell "same faces, new count" from "new faces".
 function personCoverIds(p) {

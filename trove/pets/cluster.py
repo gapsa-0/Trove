@@ -189,7 +189,12 @@ def _write_pet(
     best_name = _carried_name(ids, old_members)
     centroid = V[group].mean(axis=0)
     centroid /= np.linalg.norm(centroid) + 1e-9
-    cover = max((emb_rows[i] for i in group), key=lambda row: row["det_score"])
+    # A cover the user chose wins over the best-scoring detection; the rebuild
+    # deletes every pets row, so this is what carries the choice across it.
+    cover = max(
+        (emb_rows[i] for i in group),
+        key=lambda row: (row["manual_cover"] or 0, row["det_score"]),
+    )
     cursor = conn.execute(
         """INSERT INTO pets
            (name,species,cover_detection_id,detection_count,centroid,created_at)

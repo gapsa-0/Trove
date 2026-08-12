@@ -86,6 +86,36 @@ def pet_summary(
     }
 
 
+def _preview_detections(
+    conn: sqlite3.Connection, pids: list[int | None], k: int = 4
+) -> dict[int, list[int]]:
+    """Up to k detection ids per pet for the collage on its card: the one they
+    chose as the cover, then the best-scoring of the rest.
+
+    The people-side twin is ``people._preview_faces``; a pet's card used to show
+    a single thumbnail, which said less about a group of twenty photos than four
+    of them do."""
+    pids = [p for p in pids if p is not None]
+    if not pids:
+        return {}
+    marks = ",".join("?" * len(pids))
+    rows = conn.execute(
+        f"""SELECT pet_id, id FROM (
+                SELECT a.id, a.pet_id,
+                       ROW_NUMBER() OVER (PARTITION BY a.pet_id
+                                          ORDER BY a.manual_cover DESC,
+                                                   a.det_score DESC, a.id) rn
+                FROM animal_detections a JOIN files f ON f.id=a.file_id
+                WHERE a.pet_id IN ({marks}) AND f.hidden=0
+            ) WHERE rn <= ?""",
+        (*pids, k),
+    ).fetchall()
+    out: dict[int, list[int]] = {}
+    for r in rows:
+        out.setdefault(r["pet_id"], []).append(r["id"])
+    return out
+
+
 @reading
 def pet_groups(
     conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
@@ -109,6 +139,7 @@ def pet_groups(
     # second small query scoped to this page's pet ids, counting only
     # files not already reachable through animal_detections for that pet.
     pids = [row["pet_id"] for row in rows]
+    prev = _preview_detections(conn, pids)
     manual_counts: dict[int, int] = {}
     if pids:
         marks = ",".join("?" for _ in pids)
@@ -132,6 +163,7 @@ def pet_groups(
                 "name": row["name"],
                 "species": row["species"],
                 "cover_detection_id": row["cover_detection_id"],
+                "detections_preview": prev.get(row["pet_id"], []),
                 "detections": row["detections"],
                 "photos": row["photos"] + manual_counts.get(row["pet_id"], 0),
             }
@@ -193,7 +225,9 @@ def pet_group(
     files manually tagged with them (pet_files) that don't already have such
     a detection -- mirrors face_person. Manual-only items carry
     detection_id=None."""
-    pet = conn.execute("SELECT id,name,species FROM pets WHERE id=?", (pet_id,)).fetchone()
+    pet = conn.execute(
+        "SELECT id,name,species,cover_detection_id FROM pets WHERE id=?", (pet_id,)
+    ).fetchone()
     if not pet:
         return None
     rc, rp = _root_clause(root_id)
@@ -246,6 +280,8 @@ def pet_group(
         "id": pet["id"],
         "name": pet["name"],
         "species": pet["species"],
+        # What the page's portrait draws, so choosing a cover shows somewhere.
+        "cover_detection_id": pet["cover_detection_id"],
         "photos": total,
         "items": items,
         "offset": offset,

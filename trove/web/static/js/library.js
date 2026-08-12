@@ -37,9 +37,9 @@ import {
 // here, and the split is about where the code lives, not about churning every
 // call site. library.js renders with them too, hence the import as well.
 import {
-  nameTile, nameTokens, personTile, textTile, tile,
+  nameTile, nameTokens, personTile, petTile, textTile, tile,
 } from "./tiles.js";
-export { nameTile, personTile, textTile, tile };
+export { nameTile, personTile, petTile, textTile, tile };
 
 export const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
   "August", "September", "October", "November", "December"];

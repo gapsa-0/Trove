@@ -189,3 +189,24 @@ def test_post_map_cluster_merge_then_unmerge_round_trips(live_server):
     assert payload.keys() == {"ok", "place_id"}
     assert payload["ok"] is True
     assert isinstance(payload["place_id"], int)
+
+
+def test_post_pet_detach_removes_a_photo_from_its_pet(live_server):
+    """Destructive: it empties the seeded pet, so it cannot be a single-shot
+    case beside the others that still need that pet to exist."""
+    ids, base = live_server.ids, live_server.base_url
+
+    status, body = _post(
+        base, "/api/pet/detach", {"pet_id": ids["pet_a"], "file_id": ids["pet_a_photo"]}
+    )
+    payload = json.loads(body)
+    assert status == 200, payload
+    assert payload.get("ok") is True
+    assert payload["detached_detections"] >= 1
+
+    # Asking twice is not an error the user can act on, but it is no longer
+    # a photo of that pet, so the second answer says so rather than "ok".
+    _status, body = _post(
+        base, "/api/pet/detach", {"pet_id": ids["pet_a"], "file_id": ids["pet_a_photo"]}
+    )
+    assert "error" in json.loads(body)

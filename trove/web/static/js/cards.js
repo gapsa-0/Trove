@@ -61,3 +61,26 @@ export function renderUnknownSection(m, id) {
     <p>There is no “${esc(id)}” screen in this version of Trove.</p>
     <p class="muted">Pick a section from the sidebar.</p></div>`;
 }
+
+/* Up to 4 thumbnails as a 2x2 collage, one filling the square. Used by a
+   person's card and a pet's, which differ only in which endpoint draws a
+   crop -- so `endpoint` is the argument rather than two near-identical copies.
+
+   The first id leads, and the caller orders them: both screens put the cover
+   the user chose at the front, so the card opens on the picture they picked
+   and fills the rest with the sharpest of what is left. */
+export function thumbCollage(ids, endpoint) {
+  ids = (ids || []).filter(Boolean).slice(0, 4);
+  const img = id =>
+    `<img src="${endpoint}/${id}" loading="lazy" draggable="false" onerror="this.style.visibility='hidden'">`;
+  if (ids.length <= 1) {
+    // draggable=false: these sit inside merge-draggable cards and would
+    // otherwise hijack the card drag with their own payload.
+    return ids[0]
+      ? img(ids[0]).replace("<img ", '<img class="face" ')
+      : '<div class="face"></div>';
+  }
+  let cells = "";
+  for (let i = 0; i < 4; i++) cells += ids[i] ? img(ids[i]) : '<div class="cempty"></div>';
+  return `<div class="facecollage">${cells}</div>`;
+}

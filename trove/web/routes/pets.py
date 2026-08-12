@@ -54,6 +54,26 @@ def group(req: Request) -> dict[str, Any] | Json:
     return g if g else NOT_FOUND
 
 
+def set_cover(req: Request) -> Json:
+    """Choose which of a pet's photos represents it."""
+    res = db.write_with_retry(
+        lambda: pets_edit.set_pet_cover(
+            req.db(req.open_root_id), req.body.get("pet_id"), req.body.get("detection_id")
+        )
+    )
+    return ok_or_error(res)
+
+
+def detach(req: Request) -> Json:
+    """Release every detection of one file from a pet, durably."""
+    res = db.write_with_retry(
+        lambda: pets_edit.detach_file_from_pet(
+            req.db(req.open_root_id), req.body.get("pet_id"), req.body.get("file_id")
+        )
+    )
+    return ok_or_error(res)
+
+
 def rename_pet(req: Request) -> Json:
     """Rename a pet-identity group."""
     res = db.write_with_retry(

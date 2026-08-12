@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**80 routes**: 36 GET (exact) + 12 GET (prefix) + 32 POST.
+**82 routes**: 36 GET (exact) + 12 GET (prefix) + 34 POST.
 
 ## GET -- exact path
 
@@ -96,6 +96,8 @@ see the module docstring in `routes/__init__.py`.
 | `/api/faces/skip` | Record that a 'same person?' pair was reviewed and left undecided, so it drops out of the suggestions queue. | `trove/web/routes/people.py::skip` |
 | `/api/faces/hide` | Take a cluster off the People screen. | `trove/web/routes/people.py::hide` |
 | `/api/faces/unhide` | Put a hidden cluster back on the People screen. | `trove/web/routes/people.py::unhide` |
+| `/api/pet/cover` | Choose which of a pet's photos represents it. | `trove/web/routes/pets.py::set_cover` |
+| `/api/pet/detach` | Release every detection of one file from a pet, durably. | `trove/web/routes/pets.py::detach` |
 | `/api/pet/rename` | Rename a pet-identity group. | `trove/web/routes/pets.py::rename_pet` |
 | `/api/pets/merge` | Merge two pet groups the user confirmed are the same animal, immediately and durably. | `trove/web/routes/pets.py::merge` |
 | `/api/pets/unmerge` | Undo a pet merge and, if needed, kick off a recluster. | `trove/web/routes/pets.py::unmerge` |

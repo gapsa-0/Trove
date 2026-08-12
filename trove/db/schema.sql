@@ -411,6 +411,11 @@ CREATE TABLE IF NOT EXISTS animal_detections (
     embedding      BLOB,
     pet_id         INTEGER REFERENCES pets(id) ON DELETE SET NULL,
     manual_pet     TEXT,
+    -- 1 = the user chose this detection as their pet's cover. On the detection
+    -- rather than on pets.cover_detection_id, for the reason faces.manual_cover
+    -- is on the face: cluster_pets rebuilds every pets row, so a choice
+    -- recorded there lasts only until the next clustering pass.
+    manual_cover   INTEGER NOT NULL DEFAULT 0,
     model_source   TEXT NOT NULL,
     frame_offset   TEXT,            -- sampled-keyframe offset for videos; NULL for photos (see faces.frame_offset)
     created_at     TEXT NOT NULL

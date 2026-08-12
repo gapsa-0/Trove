@@ -15,6 +15,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Pets get everything People has for photos.** A pet's card showed a single
+  thumbnail, and its photos carried no controls at all. Cards now show a collage
+  of up to four, each photo offers "Make cover photo" and "This is not the pet",
+  and both choices survive re-clustering. Removing a pet's last photo removes
+  the group, as it already did for a person.
+
 - **The cover photo you choose is the one you see.** Choosing one saved
   correctly and then displayed nothing: a person's page drew its portrait from
   the first photo in the list rather than from the cover, and their card in the

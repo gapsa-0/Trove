@@ -66,21 +66,32 @@ def _refresh_pet_stats(conn: sqlite3.Connection, pet_id: int, name: str | None) 
     import numpy as np
 
     rows = conn.execute(
-        "SELECT id, species, det_score, embedding FROM animal_detections WHERE pet_id=?", (pet_id,)
+        "SELECT id, species, det_score, embedding, manual_cover "
+        "FROM animal_detections WHERE pet_id=?",
+        (pet_id,),
     ).fetchall()
-    cover = max(rows, key=lambda r: r["det_score"]) if rows else None
+    if not rows:
+        # A pet with no detections left is not a pet. Detaching its last photo
+        # is the only way to reach this -- a merge always leaves the survivor
+        # holding both sides -- and there is nothing to recompute from, not even
+        # a species, which the schema requires. Same rule, and the same reason,
+        # as _sync_person_stats deleting an emptied person.
+        conn.execute("DELETE FROM pets WHERE id=?", (pet_id,))
+        return
+    # A cover the user picked outranks the best-scoring detection; same ordering
+    # as pets/cluster.py's group writer, so a merge and the rebuild after it
+    # agree about which picture the card shows.
+    cover = max(rows, key=lambda r: (r["manual_cover"] or 0, r["det_score"]))
     # Majority species among the merged detections, ties broken by the
     # best-scoring detection among the tied species -- the same rule
     # cluster_pets applies to a pet_links-merged group, so a merge and the
     # rebuild that follows it agree (a dog once misdetected as a cat merges in).
-    species = None
-    if rows:
-        counts = Counter(r["species"] for r in rows)
-        top = max(counts.values())
-        tied = {sp for sp, c in counts.items() if c == top}
-        species = max((r for r in rows if r["species"] in tied), key=lambda r: r["det_score"])[
-            "species"
-        ]
+    counts = Counter(r["species"] for r in rows)
+    top = max(counts.values())
+    tied = {sp for sp, c in counts.items() if c == top}
+    species = max((r for r in rows if r["species"] in tied), key=lambda r: r["det_score"])[
+        "species"
+    ]
     emb_rows = [r for r in rows if r["embedding"]]
     centroid = None
     if emb_rows:
@@ -94,6 +105,83 @@ def _refresh_pet_stats(conn: sqlite3.Connection, pet_id: int, name: str | None) 
                           detection_count=?, centroid=? WHERE id=?""",
         (name, species, cover["id"] if cover else None, len(rows), centroid, pet_id),
     )
+
+
+@writing
+def set_pet_cover(
+    conn: sqlite3.Connection, pet_id: int | None, detection_id: int | None
+) -> dict[str, Any]:
+    """Choose which photo represents a pet on its card. Twin of
+    ``people_edit.set_person_cover``; the pin lives on the DETECTION for the
+    same reason, cluster_pets rebuilding every pets row."""
+    if not pet_id or not detection_id:
+        return {"error": "missing pet_id or detection_id"}
+    owned = conn.execute(
+        "SELECT id FROM animal_detections WHERE id=? AND pet_id=?", (detection_id, pet_id)
+    ).fetchone()
+    if not owned:
+        return {"error": "that photo is not one of this pet's"}
+    previous = conn.execute(
+        "SELECT name, cover_detection_id FROM pets WHERE id=?", (pet_id,)
+    ).fetchone()
+    conn.execute("UPDATE animal_detections SET manual_cover=0 WHERE pet_id=?", (pet_id,))
+    conn.execute("UPDATE animal_detections SET manual_cover=1 WHERE id=?", (detection_id,))
+    conn.execute("UPDATE pets SET cover_detection_id=? WHERE id=?", (detection_id, pet_id))
+    edit_log.record(
+        conn,
+        edit_log.PET,
+        pet_id,
+        previous["name"] if previous else None,
+        edit_log.SET_COVER,
+        {
+            "detection_id": detection_id,
+            "from": previous["cover_detection_id"] if previous else None,
+        },
+    )
+    conn.commit()
+    return {"ok": True, "cover_detection_id": detection_id}
+
+
+@writing
+def detach_file_from_pet(
+    conn: sqlite3.Connection, pet_id: int | None, file_id: int | None
+) -> dict[str, Any]:
+    """ "This photo isn't them", for a pet.
+
+    Mirrors ``people_edit.detach_file_from_person`` exactly, and needs the same
+    durable cannot-link for the same reason: cluster_pets rebuilds `pets`
+    wholesale from the embeddings, so merely unassigning the detection would
+    let the next pass put it straight back.
+    """
+    if not pet_id or not file_id:
+        return {"error": "missing pet_id or file_id"}
+    p = conn.execute(
+        "SELECT id, name, cover_detection_id FROM pets WHERE id=?", (pet_id,)
+    ).fetchone()
+    if not p:
+        return {"error": "unknown pet"}
+    dets = conn.execute(
+        "SELECT id FROM animal_detections WHERE file_id=? AND pet_id=?", (file_id, pet_id)
+    ).fetchall()
+    if not dets:
+        return {"error": "this file has no detection assigned to that pet"}
+    rep = _rep_detection(conn, pet_id, p["cover_detection_id"])
+    now = db.now_iso()
+    det_ids = [r["id"] for r in dets]
+    for det_id in det_ids:
+        merging.record_link(conn, _PET, rep, det_id, "different", now)
+    marks = ",".join("?" for _ in det_ids)
+    conn.execute(
+        f"UPDATE animal_detections SET pet_id=NULL, manual_pet=NULL WHERE id IN ({marks})",
+        det_ids,
+    )
+    conn.execute("DELETE FROM pet_files WHERE pet_id=? AND file_id=?", (pet_id, file_id))
+    _refresh_pet_stats(conn, pet_id, p["name"])
+    edit_log.record(
+        conn, edit_log.PET, pet_id, p["name"], edit_log.REMOVE_PHOTO, {"file_id": file_id}
+    )
+    conn.commit()
+    return {"ok": True, "detached_detections": len(det_ids)}
 
 
 @writing

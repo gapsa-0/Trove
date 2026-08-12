@@ -3,13 +3,13 @@
 // poll. The single-pet page lives here too.
 
 import {
-  detectStatusRow, syncCardGrid,
+  detectStatusRow, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
   ACTIVE_SECTION,
 } from "./router.js";
 import {
-  tile,
+  petTile,
 } from "./library.js";
 import {
   galleryFromGrid,
@@ -149,11 +149,16 @@ function petMetaInner(p) {
       <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
       <span class="pet-species">${esc(p.species)}</span>`;
 }
+function petCoverIds(p) {
+  return (p.detections_preview && p.detections_preview.length
+    ? p.detections_preview : [p.cover_detection_id]).filter(Boolean).slice(0, 4);
+}
 function petCard(p) {
   const card = document.createElement("div"); card.className = "pcard"; card.onclick = guardCardClick(() => showPet(p.id));
   card.dataset.syncKey = String(p.id);
-  card.innerHTML = `<img class="face" src="/animalThumb/${p.cover_detection_id}" data-det="${p.cover_detection_id}" loading="lazy" draggable="false">
-      <div class="pmeta">${petMetaInner(p)}</div>`;
+  card.dataset.cover = petCoverIds(p).join(",");
+  card.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb")
+    + `<div class="pmeta">${petMetaInner(p)}</div>`;
   card.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
   // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
   // re-running attachMergeDrag (which would stack a second set of listeners).
@@ -169,10 +174,12 @@ function updatePetCard(card, p) {
   // Mid-rename: leave the card alone entirely, or the poll eats what is being
   // typed into it. Same guard, and the same reason, as updatePersonCard.
   if (meta && meta.classList.contains("pmeta-editing")) return false;
-  const img = card.querySelector("img.face");
-  if (img && img.dataset.det !== String(p.cover_detection_id)) {
-    img.dataset.det = String(p.cover_detection_id);
-    img.src = `/animalThumb/${p.cover_detection_id}`;
+  // An unchanged collage keeps its <img> nodes, so a pet whose photo count
+  // ticked up mid-run does not visibly blink its thumbnails.
+  const cover = petCoverIds(p).join(",");
+  if (card.dataset.cover !== cover) {
+    card.dataset.cover = cover;
+    card.firstElementChild.outerHTML = thumbCollage(petCoverIds(p), "/animalThumb");
   }
   if (meta) {
     meta.innerHTML = petMetaInner(p);
@@ -342,6 +349,11 @@ async function reviewNonhuman(id, verdict, card) {
   toast(verdict === "human" ? "Restored to People for the next clustering pass." : "Confirmed as non-human.");
 }
 const PET_DETAIL_PAGE_SIZE = 120;
+/* The cover, which is what "Make cover photo" sets; the first photo with a
+   detection only until one has been derived. Taking that fallback first is
+   what kept a chosen cover off the People page for a while. */
+const petAvatar = pet =>
+  pet.cover_detection_id || (pet.items.find(it => it.detection_id) || {}).detection_id || 0;
 export async function showPet(id) {
   stopPetPoll(); const m = document.getElementById("main");
   m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
@@ -350,7 +362,7 @@ export async function showPet(id) {
   S.currentPet = pet;
   const name = pet.name || "Name this pet";
   m.innerHTML = `<div class="facetopbar"><button class="back back-control" onclick="showSection('pets',true)">← <span>Pets</span></button>
-    <img class="person-header-avatar" src="/animalThumb/${pet.items[0] && pet.items[0].detection_id || 0}" alt="">
+    <img class="person-header-avatar" src="/animalThumb/${petAvatar(pet)}" alt="">
     <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
     <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div>
@@ -371,7 +383,7 @@ export async function showPet(id) {
     onPage: (items, { first }) => {
       const grid = document.getElementById("grid");
       if (first) grid.replaceChildren();
-      items.forEach(item => grid.appendChild(tile(item)));
+      items.forEach(item => grid.appendChild(petTile(item, id)));
       galleryFromGrid("grid", (S.currentPet && S.currentPet.name)
         ? `in ${S.currentPet.name}\u2019s photos` : "in this pet\u2019s photos");
     },

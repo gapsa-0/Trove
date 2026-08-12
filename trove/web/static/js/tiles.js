@@ -188,19 +188,45 @@ function markedName(name, tokens) {
 // (mirrors reassignFace's discipline: mutate/repaint first, roll back +
 // toast only if the POST actually fails).
 export function personTile(it, personId) {
+  return clusterTile(it, {
+    crop: it.face_id,
+    detachLabel: "This is not the person",
+    confirm: "Remove this photo from this person? It won’t be suggested for them again.",
+    setCover: () => jpost("/api/faces/person/cover",
+      { person_id: personId, face_id: it.face_id }),
+    coverThumb: `/faceThumb/${it.face_id}`,
+    detach: () => jpost("/api/faces/detach", { person_id: personId, file_id: it.id }),
+  });
+}
+/* The same tile for a pet's page. A pet's photo is identified by its detection
+   rather than by a face, and the endpoints differ; nothing else does. */
+export function petTile(it, petId) {
+  return clusterTile(it, {
+    crop: it.detection_id,
+    detachLabel: "This is not the pet",
+    confirm: "Remove this photo from this pet? It won’t be suggested for them again.",
+    setCover: () => jpost("/api/pet/cover", { pet_id: petId, detection_id: it.detection_id }),
+    coverThumb: `/animalThumb/${it.detection_id}`,
+    detach: () => jpost("/api/pet/detach", { pet_id: petId, file_id: it.id }),
+  });
+}
+/* A library tile plus the two things you can say about one photo of a group:
+   that it represents them, and that it isn't them.
+
+   Two buttons rather than the overflow menu the cards use, for two reasons
+   that both come from the tile being a <button>: a <details> inside one is
+   invalid HTML and does not reliably open, and the tile clips its own overflow
+   to round the thumbnail, which would cut the panel off. */
+function clusterTile(it, opts) {
   const d = tile(it);
-  // Two buttons rather than the overflow menu the person cards use, for two
-  // reasons that both come from the tile being a <button>: a <details> inside
-  // one is invalid HTML and does not reliably open, and the tile clips its own
-  // overflow to round the thumbnail, which would cut the panel off. Two
-  // actions fit as two controls, each saying what it does on hover.
-  if (it.face_id) {
+  // No crop means a photo tagged by hand, with no detection in it to stand for
+  // the group -- there is nothing for a cover to show.
+  if (opts.crop) {
     d.appendChild(tileAction("tile-cover", "Make cover photo",
       "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='9' r='3.4'/><path d='M5 20c.7-4 3.4-6 7-6s6.3 2 7 6'/></svg>",
-      () => setCover(personId, it.face_id)));
+      () => setCover(opts)));
   }
-  d.appendChild(tileAction("tile-detach", "This is not the person", "✕",
-    () => detachFromPerson(personId, it.id, d)));
+  d.appendChild(tileAction("tile-detach", opts.detachLabel, "✕", () => detachTile(opts, d)));
   return d;
 }
 function tileAction(cls, label, glyph, onPick) {
@@ -213,32 +239,34 @@ function tileAction(cls, label, glyph, onPick) {
   btn.onclick = e => { e.stopPropagation(); onPick(); };
   return btn;
 }
-function setCover(personId, faceId) {
-  jpost("/api/faces/person/cover", { person_id: personId, face_id: faceId })
+function setCover(opts) {
+  opts.setCover()
     .then(r => {
       if (!(r && r.ok)) {
         toast((r && r.error) ? "Couldn’t set the cover: " + r.error : "Couldn’t set the cover.", true);
         return;
       }
       toast("Cover photo set.");
-      // The avatar in the top bar is the cover, so it is the one thing on this
-      // page that the change is visible in.
+      // The portrait in the top bar is the cover, so it is the one thing on
+      // this page the change is visible in.
       const avatar = document.querySelector(".person-header-avatar");
-      if (avatar && avatar.tagName === "IMG") avatar.src = `/faceThumb/${faceId}?t=${Date.now()}`;
+      if (avatar && avatar.tagName === "IMG") avatar.src = `${opts.coverThumb}?t=${Date.now()}`;
     })
     .catch(() => toast("Couldn’t set the cover: connection error", true));
 }
-function detachFromPerson(personId, fileId, tileEl) {
-  if (!confirm("Remove this photo from this person? It won’t be suggested for them again.")) return;
+/* Optimistic: the tile goes first and comes back if the request fails, which
+   is reassignFace's discipline -- repaint, then roll back and say so. */
+function detachTile(opts, tileEl) {
+  if (!confirm(opts.confirm)) return;
   const parent = tileEl.parentNode, next = tileEl.nextSibling;
-  tileEl.remove();   // optimistic
-  jpost("/api/faces/detach", { person_id: personId, file_id: fileId })
+  tileEl.remove();
+  opts.detach()
     .then(r => {
       if (!(r && r.ok)) {
         if (parent) parent.insertBefore(tileEl, next);   // roll back
         toast((r && r.error) ? "Couldn’t detach: " + r.error : "Couldn’t detach that photo.", true);
       } else {
-        toast("Removed from this person.");
+        toast("Removed.");
       }
     })
     .catch(() => {

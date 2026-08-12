@@ -137,6 +137,7 @@ def _migrate_faces(conn: sqlite3.Connection) -> None:
     # The user's chosen cover, kept on the face for the same reason
     # `manual_person` is: it has to outlive the persons row.
     _add_column_if_missing(conn, "faces", "manual_cover", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "animal_detections", "manual_cover", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _migrate_scan_counters(conn: sqlite3.Connection) -> None:
