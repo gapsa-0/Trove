@@ -33,9 +33,6 @@ import {
   highlightFace, toggleBoxes,
 } from "./boxes.js";
 import {
-  renamePet,
-} from "./pets.js";
-import {
   applyDupFilters, setDupMetric,
 } from "./dups.js";
 import {
@@ -172,7 +169,7 @@ Object.assign(window, {
   reassignFace,
   removeFeature, removeManualPerson,
   removeManualPet,
-  renamePet, renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
+  renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
   setDupMetric, setMapView,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,

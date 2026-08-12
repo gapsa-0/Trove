@@ -33,6 +33,9 @@ import {
   attachMergeDrag, guardCardClick, mergesPanel,
 } from "./merge.js";
 import {
+  inlineNameEdit,
+} from "./nameedit.js";
+import {
   onSnapshot,
 } from "./pipeline.js";
 import {
@@ -336,20 +339,15 @@ function editPersonCardName(card, p) {
   card.onclick = null;
   card.draggable = false;   // don't let an in-progress rename start a merge-drag
   meta.className = "pmeta pmeta-editing";
-  meta.innerHTML = `<input value="${esc(p.name || "")}" placeholder="Person’s name" aria-label="Person’s name">
-    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"} · Enter or click away to save</div>`;
-  const input = meta.querySelector("input");
-  input.onclick = e => e.stopPropagation();
-  let finished = false;
-  input.addEventListener("blur", () => { if (!finished) { finished = true; savePersonCardName(card, p, input); } });
-  input.addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-    if (e.key === "Escape") { finished = true; card.replaceWith(personCard(p)); }
+  inlineNameEdit(meta, {
+    value: p.name,
+    label: "Person’s name",
+    after: `<div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"} · Enter or click away to save</div>`,
+    onSave: (name, input) => savePersonCardName(card, p, name, input),
+    onCancel: () => card.replaceWith(personCard(p)),
   });
-  input.focus(); input.select();
 }
-async function savePersonCardName(card, p, input) {
-  const name = input.value.trim();
+async function savePersonCardName(card, p, name, input) {
   if (name === (p.name || "")) { card.replaceWith(personCard(p)); return; }
   input.disabled = true;
   let result;
@@ -428,17 +426,15 @@ export async function showPerson(id) {
 export function backToPeople() { renderFaces(document.getElementById("main")); }
 export function editPersonName(id, current) {
   const box = document.getElementById("personname"); if (!box) return;
-  box.innerHTML = `<input class="detail-name-input" id="personnameinput" value="${esc(current)}" placeholder="Person’s name" aria-label="Person’s name">`;
-  const inp = document.getElementById("personnameinput"); inp.focus(); inp.select();
-  let finished = false;
-  inp.addEventListener("blur", () => { if (!finished) { finished = true; savePersonName(id, inp); } });
-  inp.addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
-    if (e.key === "Escape") { finished = true; showPerson(id); }
+  inlineNameEdit(box, {
+    value: current,
+    label: "Person’s name",
+    className: "detail-name-input",
+    onSave: (name, input) => savePersonName(id, name, input),
+    onCancel: () => showPerson(id),
   });
 }
-async function savePersonName(id, inp) {
-  const name = inp.value.trim();
+async function savePersonName(id, name, inp) {
   inp.disabled = true;
   let r;
   try { r = await jpost("/api/faces/person/rename", { person_id: id, name }); }

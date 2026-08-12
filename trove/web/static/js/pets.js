@@ -36,6 +36,9 @@ import {
   attachMergeDrag, guardCardClick, mergesPanel,
 } from "./merge.js";
 import {
+  inlineNameEdit,
+} from "./nameedit.js";
+import {
   onSnapshot,
 } from "./pipeline.js";
 import {
@@ -139,7 +142,7 @@ export async function renderPets(m) {
   startPetPoll();
 }
 function petMetaInner(p) {
-  return `<div class="pname ${p.name ? "" : "un"}">${esc(p.name || "Name this pet")}</div>
+  return `<button class="pname ${p.name ? "" : "un"}" type="button">${esc(p.name || "Name this pet")}</button>
       <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
       <span class="pet-species">${esc(p.species)}</span>`;
 }
@@ -148,8 +151,7 @@ function petCard(p) {
   card.dataset.syncKey = String(p.id);
   card.innerHTML = `<img class="face" src="/animalThumb/${p.cover_detection_id}" data-det="${p.cover_detection_id}" loading="lazy" draggable="false">
       <div class="pmeta">${petMetaInner(p)}</div>`;
-  // Pet cards have no inline rename in this grid (rename is a prompt() on
-  // the pet detail page), so there's no editing state to guard here.
+  card.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
   // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
   // re-running attachMergeDrag (which would stack a second set of listeners).
   card._merge = { kind: "pet", id: p.id, name: p.name, photos: p.photos };
@@ -160,15 +162,45 @@ function petCard(p) {
 // only reswapped when the cover detection actually changes, so a pet whose
 // photo count ticked up mid-run doesn't visibly blink its thumbnail.
 function updatePetCard(card, p) {
+  const meta = card.querySelector(".pmeta");
+  // Mid-rename: leave the card alone entirely, or the poll eats what is being
+  // typed into it. Same guard, and the same reason, as updatePersonCard.
+  if (meta && meta.classList.contains("pmeta-editing")) return false;
   const img = card.querySelector("img.face");
   if (img && img.dataset.det !== String(p.cover_detection_id)) {
     img.dataset.det = String(p.cover_detection_id);
     img.src = `/animalThumb/${p.cover_detection_id}`;
   }
-  const meta = card.querySelector(".pmeta");
-  if (meta) meta.innerHTML = petMetaInner(p);
+  if (meta) {
+    meta.innerHTML = petMetaInner(p);
+    meta.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
+  }
   Object.assign(card._merge, { name: p.name, photos: p.photos });
   return true;
+}
+function editPetCardName(card, p) {
+  const meta = card.querySelector(".pmeta"); if (!meta) return;
+  card.onclick = null;
+  card.draggable = false;   // don't let an in-progress rename start a merge-drag
+  meta.className = "pmeta pmeta-editing";
+  inlineNameEdit(meta, {
+    value: p.name,
+    label: "Pet’s name",
+    after: `<div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"} · Enter or click away to save</div>`,
+    onSave: (name, input) => savePetCardName(card, p, name, input),
+    onCancel: () => card.replaceWith(petCard(p)),
+  });
+}
+async function savePetCardName(card, p, name, input) {
+  if (name === (p.name || "")) { card.replaceWith(petCard(p)); return; }
+  input.disabled = true;
+  let result;
+  try { result = await jpost("/api/pet/rename", { pet_id: p.id, name }); }
+  catch (e) { result = { error: String(e) }; }
+  if (!result || result.error) {
+    toast("Couldn’t save the pet’s name.", true); card.replaceWith(petCard(p)); return;
+  }
+  card.replaceWith(petCard({ ...p, name: name || null }));
 }
 function looseAnimalCard(a) {
   const card = document.createElement("div"); card.className = "pcard"; card.onclick = () => openItem(a.id);
@@ -302,11 +334,14 @@ export async function showPet(id) {
   const name = pet.name || "Name this pet";
   m.innerHTML = `<div class="facetopbar"><button class="back back-control" onclick="showSection('pets',true)">← <span>Pets</span></button>
     <img class="person-header-avatar" src="/animalThumb/${pet.items[0] && pet.items[0].detection_id || 0}" alt="">
-    <div class="ftb-identity"><div class="ftb-name"><button class="person-name-button" onclick="renamePet(${pet.id})"><span>${esc(name)}</span></button></div>
+    <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
     <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div></div>
     ${mergesPanel(pet.merges, "pet")}
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="pet-grid-sentinel" aria-live="polite"></div>`;
+  document.querySelector("#petname .person-name-button")
+    .addEventListener("click", () => editPetName(id, pet.name || ""));
   let firstPage = pet.items;
   startInfiniteList("petDetailList", {
     sentinelId: "pet-grid-sentinel", pageSize: PET_DETAIL_PAGE_SIZE,
@@ -324,8 +359,23 @@ export async function showPet(id) {
     },
   });
 }
-export async function renamePet(id) {
-  const name = prompt("Pet name", (S.currentPet && S.currentPet.name) || ""); if (name === null) return;
-  const result = await jpost("/api/pet/rename", { pet_id: id, name: name.trim() });
-  if (result.error) { toast(result.error, true); return; } showPet(id);
+function editPetName(id, current) {
+  const box = document.getElementById("petname"); if (!box) return;
+  inlineNameEdit(box, {
+    value: current,
+    label: "Pet’s name",
+    className: "detail-name-input",
+    onSave: (name, input) => savePetName(id, name, input),
+    onCancel: () => showPet(id),
+  });
+}
+async function savePetName(id, name, inp) {
+  inp.disabled = true;
+  let r;
+  try { r = await jpost("/api/pet/rename", { pet_id: id, name }); }
+  catch (e) { r = { error: String(e) }; }
+  if (!r || r.error) {
+    toast((r && r.error) ? ("Couldn’t save: " + r.error) : "Couldn’t save the pet’s name.", true);
+  }
+  showPet(id);
 }

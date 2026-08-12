@@ -15,6 +15,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Pets can be renamed again.** Neither way of naming a pet worked. On the
+  Pets grid the name looked editable — it highlights under the pointer, like a
+  person's does — but nothing was listening to it; the control had never been
+  built. On a pet's own page the name opened a system text box, which the
+  desktop window does not provide, so clicking it did nothing at all. Both now
+  do what the People screen has always done: the name becomes a field where it
+  sits, and Enter or clicking away saves it.
+
 - **People stop vanishing from photos they are plainly in.** The face quality
   gate discarded the bottom tenth of every archive by construction: the rule was
   a cut on a score measured against that archive's own mean and spread, so a
