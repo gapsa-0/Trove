@@ -17,6 +17,9 @@ import {
 import {
   esc, toast,
 } from "./dom.js";
+import {
+  S,
+} from "./state.js";
 
 /* The trigger, for a detail page's top bar. `entity` is "person" or "pet". */
 export function historyButton(entity, id, name) {
@@ -45,9 +48,17 @@ async function loadHistory(box, onUndone) {
   const panel = box.querySelector(".hist-menu");
   let res;
   try {
-    res = await jget(`/api/edit-log?entity=${entity}&id=${id}&name=${encodeURIComponent(name)}`);
+    // `root` is not optional: every archive is its own database, and the route
+    // refuses rather than guessing. Omitting it made this panel answer "No
+    // changes yet" to every question it was ever asked.
+    res = await jget(`/api/edit-log?root=${S.arch.id}&entity=${entity}&id=${id}`
+      + `&name=${encodeURIComponent(name)}`);
   } catch { res = null; }
-  const entries = (res && res.entries) || [];
+  if (!res || res.error) {
+    panel.innerHTML = '<div class="hist-empty">Couldn’t load recent changes.</div>';
+    return;
+  }
+  const entries = res.entries || [];
   if (!entries.length) {
     panel.innerHTML = '<div class="hist-empty">No changes yet.</div>';
     return;

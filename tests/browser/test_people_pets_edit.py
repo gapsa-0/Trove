@@ -177,15 +177,28 @@ def test_a_persons_recent_changes_open_from_the_top_bar(open_app):
 
     Asserting it is *absent* until asked for is half the point of the change,
     so the first assertion is that the page opens on the faces.
+
+    The second half has to be a real entry, made first so there is something to
+    find. Accepting "either a row or the empty state" is what let this panel
+    ship answering "No changes yet" to every question: the request was being
+    refused for want of a ``root``, and an assertion that tolerates the empty
+    state cannot tell a working panel from a broken one.
     """
     with open_app("people") as app:
         app.wait_for_text("Ada")
+        # An edit worth finding again.
+        app.click(".pcard .pname")
+        app.wait_for(".pcard .pmeta-editing input")
+        _type_into(app, ".pcard .pmeta-editing input", "Ada L")
+        app.wait_for_text("Ada L")
+
         app.click(".pcard img.face, .pcard .facecollage img")
         app.wait_for("#histmenu")
         assert app.count(".hist-menu .hist-row") == 0, "the history should not be open on arrival"
 
         app.click("#histmenu > summary")
-        app.wait_for(".hist-row, .hist-empty")
+        app.wait_for(".hist-menu .hist-row")
+        assert "Ada L" in app.text(".hist-menu"), "the rename just made should be listed"
         assert app.errors() == []
 
         # Escape dismisses it, through main.js's shared popover listeners.
