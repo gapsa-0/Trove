@@ -25,6 +25,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A name you take off a person stays off.** Clearing the name worked and then
+  quietly undid itself: any face you had moved onto that person by hand still
+  carried the name, those moves are remembered *by* name, and the next
+  clustering pass read one as an instruction and rebuilt the person — same
+  name, new group. Clearing a name now releases those faces too, and the
+  editor says "Remove name" rather than leaving you to discover that an empty
+  field means the same thing. Undoing it from the history puts both back.
+
 - **Pets can be renamed again.** Neither way of naming a pet worked. On the
   Pets grid the name looked editable — it highlights under the pointer, like a
   person's does — but nothing was listening to it; the control had never been

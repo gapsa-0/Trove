@@ -55,6 +55,36 @@ def test_a_pet_is_renamed_from_its_own_page(open_app):
         assert app.errors() == []
 
 
+def test_a_named_person_can_be_made_unnamed_again(open_app):
+    """Emptying the field always did this; nothing said so."""
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        app.click(".pcard .pname")
+        app.wait_for(".pcard .pmeta-editing .name-clear")
+        app.tab.evaluate(
+            "document.querySelector('.pcard .pmeta-editing .name-clear')"
+            ".dispatchEvent(new Event('pointerdown', {bubbles: true}))"
+        )
+        app.wait_for_text("Name this person")
+        assert app.errors() == []
+
+
+def test_an_unnamed_person_is_not_offered_a_name_to_remove(open_app):
+    """The control is about undoing a name, so it belongs only where there is
+    one; on an unnamed cluster it would be a button that does nothing."""
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        unnamed = app.tab.evaluate(
+            "(() => { const c = [...document.querySelectorAll('.pcard')]"
+            ".find(c => c.querySelector('.pname.un')); if (!c) return false;"
+            " c.querySelector('.pname').click(); return true; })()"
+        )
+        if not unnamed:
+            return  # the seed has no unnamed cluster; nothing to assert
+        app.wait_for(".pcard .pmeta-editing input")
+        assert app.count(".pcard .pmeta-editing .name-clear") == 0
+
+
 def test_a_persons_recent_changes_open_from_the_top_bar(open_app):
     """The merge list used to sit permanently between the name and the photos.
 

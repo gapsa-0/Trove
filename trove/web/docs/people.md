@@ -145,6 +145,12 @@ face be recognised as one.
 **Name someone.** Click the name under their photo and type. That name is what
 survives every later re-clustering.
 
+**Take a name back off.** The same editor offers "Remove name", which returns
+the group to being an unnamed cluster. It also releases any face you had moved
+onto that person by hand: those moves are remembered by name, so leaving them
+in place would rebuild the person, under the name you just removed, at the next
+clustering pass. Undoing the removal from the history restores both.
+
 **Merge two people.** Drag one card onto another when the same person has ended
 up with two pages. Trove asks first, and the merge can be undone.
 

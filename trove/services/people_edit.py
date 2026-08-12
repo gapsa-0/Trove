@@ -105,29 +105,56 @@ def _update_person_centroid(conn: sqlite3.Connection, pid: int) -> None:
 
 
 @writing
-def rename_person(conn: sqlite3.Connection, person_id: int | None, name: str) -> dict[str, Any]:
-    """Set a person's display name, carrying any existing manual face-pins
-    over to the new name. Returns ``{"error": ...}`` if ``person_id`` is
-    missing or unknown."""
+def rename_person(
+    conn: sqlite3.Connection,
+    person_id: int | None,
+    name: str,
+    pins: list[int] | None = None,
+) -> dict[str, Any]:
+    """Set a person's display name, keeping the manual face-pins in step.
+
+    Pins are stored by NAME (``faces.manual_person``), which is what makes a
+    user's "move this face to Mari" survive the DELETE/rebuild in
+    ``faces/cluster.py``. So a rename has to move them and clearing a name has
+    to RELEASE them: a pin left behind naming a person who no longer carries
+    that name is not inert, it is an instruction, and ``_apply_manual_pins``
+    obeys it by recreating the person on the next recluster -- under the name
+    just removed, with a new id.
+
+    ``pins`` re-pins the named faces, and exists for undo: the log records
+    which pins a clearing released so putting the name back can put those back
+    too. Restoring the name alone would scatter, at the next recluster, exactly
+    the faces the name was placed on by hand.
+
+    Returns ``{"error": ...}`` if ``person_id`` is missing or unknown.
+    """
     if not person_id:
         return {"error": "missing person_id"}
     old = conn.execute("SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
     if not old:
         return {"error": "not found"}
     conn.execute("UPDATE persons SET name=? WHERE id=?", (name or None, person_id))
-    # Keep manual face-pins (stored by NAME) tracking the rename so re-clustering
-    # still lands pinned faces on this person.
+    released: list[int] = []
     if old["name"] and name and old["name"] != name:
         conn.execute("UPDATE faces SET manual_person=? WHERE manual_person=?", (name, old["name"]))
+    elif old["name"] and not name:
+        released = [
+            int(r[0])
+            for r in conn.execute("SELECT id FROM faces WHERE manual_person=?", (old["name"],))
+        ]
+        conn.execute("UPDATE faces SET manual_person=NULL WHERE manual_person=?", (old["name"],))
+    if pins and name:
+        marks = ",".join("?" for _ in pins)
+        conn.execute(f"UPDATE faces SET manual_person=? WHERE id IN ({marks})", (name, *pins))
     # Recorded under the name it now has, so the entry is found again after a
-    # recluster; `from` is what undoing it puts back.
+    # recluster; `from` and `pins` are what undoing it puts back.
     edit_log.record(
         conn,
         edit_log.PERSON,
         person_id,
         name or old["name"],
         edit_log.RENAME,
-        {"from": old["name"], "to": name or None},
+        {"from": old["name"], "to": name or None, "pins": released},
     )
     conn.commit()
     return {"ok": True, "name": name or None}

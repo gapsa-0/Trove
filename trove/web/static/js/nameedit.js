@@ -26,25 +26,38 @@ import {
    photo-count hint line). `className` is for the callers whose input is
    styled -- the two detail pages share `.detail-name-input`. `onSave` is
    given the trimmed value and the input itself, so it can disable the field
-   while the request is in flight. */
+   while the request is in flight.
+
+   Something already named also gets a way to stop being named. Emptying the
+   field has always done it, but only if you guessed that it would; making a
+   cluster anonymous again is a real thing to want -- a stranger you named by
+   mistake, someone you would rather not have listed -- and it deserves to be
+   visible rather than discovered. */
 export function inlineNameEdit(host, { value = "", label, className = "", after = "", onSave, onCancel }) {
   host.innerHTML =
     `<input${className ? ` class="${className}"` : ""} value="${esc(value || "")}"
-       placeholder="${esc(label)}" aria-label="${esc(label)}">${after}`;
+       placeholder="${esc(label)}" aria-label="${esc(label)}">${after}`
+    + (value ? '<button class="linkbtn name-clear" type="button">Remove name</button>' : "");
   const input = host.querySelector("input");
   // A card is a click target that opens the thing it describes; clicking into
   // the field to position the cursor must not also open it.
   input.onclick = e => e.stopPropagation();
   let finished = false;
-  input.addEventListener("blur", () => {
-    if (finished) return;
-    finished = true;
-    onSave(input.value.trim(), input);
-  });
+  const commit = value => { finished = true; onSave(value, input); };
+  input.addEventListener("blur", () => { if (!finished) commit(input.value.trim()); });
   input.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); input.blur(); }
     if (e.key === "Escape") { finished = true; onCancel(); }
   });
+  const clear = host.querySelector(".name-clear");
+  // pointerdown, not click: the input's own blur fires first otherwise and
+  // commits the unchanged name, so the button is never reached.
+  if (clear) {
+    clear.addEventListener("pointerdown", e => {
+      e.preventDefault(); e.stopPropagation();
+      commit("");
+    });
+  }
   input.focus(); input.select();
   return input;
 }

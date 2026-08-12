@@ -470,6 +470,14 @@
   color: var(--bad)
 }
 
+/* Sits under the field it empties, quiet enough not to compete with saving --
+   which is what almost every visit to this editor is for. */
+.name-clear {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 11px
+}
+
 /* Recent changes. A quiet icon that stays out of the way of the name beside
    it -- the history is worth reaching for, not worth announcing -- opening the
    same panel surface the Browse filters use. */

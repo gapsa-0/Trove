@@ -51,7 +51,8 @@ def test_a_rename_is_recorded_and_can_be_taken_back(tmp_path):
 
     entries = _entries(db_path)
     assert [e["action"] for e in entries] == ["rename"]
-    assert entries[0]["detail"] == {"from": "Ana", "to": "Ana María"}
+    assert entries[0]["detail"]["from"] == "Ana"
+    assert entries[0]["detail"]["to"] == "Ana María"
     assert entries[0]["undoable"] is True
 
     assert edit_log.undo(db_path, entries[0]["id"]).get("ok") is True

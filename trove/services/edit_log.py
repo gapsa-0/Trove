@@ -179,8 +179,18 @@ def undo(db_path: str, entry_id: int | None) -> dict[str, Any]:
         unmerge = pets_edit.unmerge_pets if is_pet else people_edit.unmerge_persons
         return dict(unmerge(db_path, row["ref_id"]))
     if row["action"] == RENAME:
-        rename = pets_edit.rename_pet if is_pet else people_edit.rename_person
-        result = dict(rename(db_path, row["entity_id"], detail.get("from") or ""))
+        result = (
+            dict(pets_edit.rename_pet(db_path, row["entity_id"], detail.get("from") or ""))
+            if is_pet
+            # `pins` are the manual pins that clearing the name released. Put
+            # the name back without them and the next recluster scatters the
+            # faces it was placed on by hand.
+            else dict(
+                people_edit.rename_person(
+                    db_path, row["entity_id"], detail.get("from") or "", detail.get("pins")
+                )
+            )
+        )
         if not result.get("error"):
             # Two rows now describe one name: this one, marked undone, and the
             # rename that just reversed it. That is what happened, and it keeps
