@@ -327,3 +327,52 @@ def test_a_person_is_still_renamed_from_their_card(open_app):
         _type_into(app, ".pcard .pmeta-editing input", "Ada L")
         app.wait_for_text("Ada L")
         assert app.errors() == []
+
+
+def _scroll_and_return(app, open_selector: str, back_selector: str) -> tuple[int, int]:
+    """Scroll the grid, open a group, come back; report the scroll either side."""
+    # A seeded archive has two cards, so there is nothing to scroll; a spacer
+    # inside the scroller gives it somewhere to go. It rides along in the
+    # stashed fragment, which is exactly what is under test.
+    app.tab.evaluate(
+        "(() => { const m = document.getElementById('main');"
+        " const pad = document.createElement('div');"
+        " pad.style.height = '1200px'; pad.id = 'scrollpad';"
+        " m.appendChild(pad); m.scrollTop = 400; })()"
+    )
+    before = app.tab.evaluate("document.getElementById('main').scrollTop")
+    app.click(open_selector)
+    app.wait_for(back_selector)
+    app.click(back_selector)
+    app.wait_for(".pcard")
+    app.tab.wait_for(
+        "document.getElementById('main').scrollTop > 0 || true", timeout=5.0, what="the grid back"
+    )
+    return before, app.tab.evaluate("document.getElementById('main').scrollTop")
+
+
+def test_the_people_grid_keeps_its_place_while_you_open_someone(open_app):
+    """Coming back rebuilt the screen, which dropped both the scroll position
+    and every page the infinite list had loaded -- most of what you were
+    looking at, on a screen of several hundred groups."""
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        app.wait_for(".pcard")
+        before, after = _scroll_and_return(
+            app, ".pcard img.face, .pcard .facecollage img", ".facetopbar .back-control"
+        )
+        assert before > 0, "the grid did not scroll, so this proves nothing"
+        assert after == before, f"scroll reset: was {before}, came back {after}"
+        assert app.errors() == []
+
+
+def test_the_pets_grid_keeps_its_place_too(open_app):
+    with open_app("pets") as app:
+        app.wait_for_text("Kira")
+        app.wait_for(".pcard")
+        before, after = _scroll_and_return(
+            app, ".pcard img.face, .pcard .facecollage img", ".facetopbar .back-control"
+        )
+        assert before > 0, "the grid did not scroll, so this proves nothing"
+        assert after == before, f"scroll reset: was {before}, came back {after}"
+        assert app.errors() == []

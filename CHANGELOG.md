@@ -69,6 +69,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Opening a group no longer loses your place in the grid.** Scrolling through
+  People or Pets, opening someone, and coming back put you at the top again —
+  and threw away every page the grid had loaded on the way down, which on a
+  screen of several hundred groups is most of what you were looking at. The
+  grid is now set aside while a group's page is open and put back as it was,
+  reconciled against anything you changed while you were in there.
+
 - **Merging no longer throws away your place.** Merging two pets rebuilt the
   entire Pets screen, and merging two people rebuilt the grid from its first
   page — so the scroll position and every page loaded into it went, once per

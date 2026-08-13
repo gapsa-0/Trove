@@ -58,6 +58,7 @@ function scannedFigure(sum) {
 export async function renderFaces(m) {
   const gen = S.nav, root = S.arch.id;
   S.facePerson = null;
+  STASHED_PEOPLE = null;   // a full render replaces whatever was set aside
   const sum = await jget("/api/faces/summary?root=" + root);
   if (gen !== S.nav) return;
   if (!sum.backend_available) {
@@ -470,11 +471,26 @@ let PERSON_NAME = "";
 function personGalleryLabel() {
   return PERSON_NAME ? `in ${PERSON_NAME}\u2019s photos` : "in this person\u2019s photos";
 }
+/* The grid, set aside while a person's page is open.
+   Opening a person is not a section change, so the router's own stash does not
+   cover it -- and rebuilding the grid on the way back drops the scroll position
+   AND every page the infinite list had loaded, which on a screen of several
+   hundred groups is most of what you were looking at. Same trick the router
+   uses between sections: keep the nodes, put them back. */
+let STASHED_PEOPLE = null;
+function stashPeopleGrid(main) {
+  if (STASHED_PEOPLE) return;
+  const fragment = document.createDocumentFragment();
+  const scrollTop = main.scrollTop;
+  while (main.firstChild) fragment.appendChild(main.firstChild);
+  STASHED_PEOPLE = { fragment, scrollTop };
+}
 export async function showPerson(id) {
   stopFacePoll();
   S.section = "people"; renderNav(); S.facePerson = id;
   if (S.arch) location.hash = `/archive/${S.arch.id}/people`;
   const m = document.getElementById("main");
+  stashPeopleGrid(m);
   m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
   const r = await jget(`/api/faces/person/${id}?root=${S.arch.id}&limit=${PERSON_PAGE_SIZE}`);
   if (!r || r.error) { m.innerHTML = '<div class="soonbox">Person not found.</div>'; return; }
@@ -542,7 +558,22 @@ export async function showPerson(id) {
     },
   });
 }
-export function backToPeople() { renderFaces(document.getElementById("main")); }
+export function backToPeople() {
+  const m = document.getElementById("main");
+  if (!STASHED_PEOPLE) { renderFaces(m); return; }
+  S.facePerson = null;
+  const saved = STASHED_PEOPLE; STASHED_PEOPLE = null;
+  m.replaceChildren();
+  m.appendChild(saved.fragment);
+  // Scroll after the nodes are laid out, or the position is set against a
+  // height the browser has not worked out yet.
+  requestAnimationFrame(() => { m.scrollTop = saved.scrollTop; });
+  startFacePoll();
+  // The page just left may have renamed, hidden or merged this group, so the
+  // restored grid is reconciled against the server -- in place, which is what
+  // keeps the scroll position that was the point of restoring it.
+  refreshAfterHide();
+}
 export function editPersonName(id, current) {
   const box = document.getElementById("personname"); if (!box) return;
   inlineNameEdit(box, {

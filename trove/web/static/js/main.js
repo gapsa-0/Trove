@@ -37,6 +37,9 @@ import {
   applyDupFilters, setDupMetric,
 } from "./dups.js";
 import {
+  backToPets,
+} from "./pets.js";
+import {
   answerSuggest, backToPeople, editPersonName, unhidePerson,
 } from "./people.js";
 import {
@@ -160,7 +163,8 @@ loadPicker().then(applyHash);
 // `tools/dev/check_handlers.py` fails the build if the two ever disagree.
 Object.assign(window, {
   addArchiveFromForm, answerSuggest, applyFilters,
-  applyDupFilters, applySort, applyTimelineFilters, backToPeople, clearFilters, clearTimelineFilters,
+  applyDupFilters, applySort, applyTimelineFilters, backToPeople, backToPets,
+  clearFilters, clearTimelineFilters,
   closeArchiveSetup, closeDocs, closeFeatureSheet, closeModal, closePick, closePlaceCluster,
   closeSettings,
   copyText,

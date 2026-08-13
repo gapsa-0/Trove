@@ -66,6 +66,7 @@ function scannedFigure(sum) {
 
 export async function renderPets(m) {
   const gen = S.nav, root = S.arch.id;
+  STASHED_PETS = null;   // a full render replaces whatever was set aside
   const sum = await jget("/api/pets/summary?root=" + root);
   if (gen !== S.nav) return;
   S.petSum = sum;
@@ -442,14 +443,35 @@ const PET_DETAIL_PAGE_SIZE = 120;
    what kept a chosen cover off the People page for a while. */
 const petAvatar = pet =>
   pet.cover_detection_id || (pet.items.find(it => it.detection_id) || {}).detection_id || 0;
+/* The three grids, set aside while a pet's page is open. See the People
+   screen's twin for why: opening a pet is not a section change, so nothing
+   else keeps the scroll position or the pages already loaded. */
+let STASHED_PETS = null;
+export function backToPets() {
+  const m = document.getElementById("main");
+  if (!STASHED_PETS) { showSection("pets", true); return; }
+  const saved = STASHED_PETS; STASHED_PETS = null;
+  m.replaceChildren();
+  m.appendChild(saved.fragment);
+  requestAnimationFrame(() => { m.scrollTop = saved.scrollTop; });
+  startPetPoll();
+  // The page just left may have renamed, hidden or merged this group.
+  refreshPetGrids();
+}
 export async function showPet(id) {
   stopPetPoll(); const m = document.getElementById("main");
+  if (!STASHED_PETS) {
+    const fragment = document.createDocumentFragment();
+    const scrollTop = m.scrollTop;
+    while (m.firstChild) fragment.appendChild(m.firstChild);
+    STASHED_PETS = { fragment, scrollTop };
+  }
   m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
   const pet = await jget(`/api/pet/${id}?root=${S.arch.id}&limit=${PET_DETAIL_PAGE_SIZE}`);
   if (!pet || pet.error) { m.innerHTML = '<div class="soonbox">Pet not found.</div>'; return; }
   S.currentPet = pet;
   const name = pet.name || "Name this pet";
-  m.innerHTML = `<div class="facetopbar"><button class="back back-control" onclick="showSection('pets',true)">← <span>Pets</span></button>
+  m.innerHTML = `<div class="facetopbar"><button class="back back-control" onclick="backToPets()">← <span>Pets</span></button>
     <img class="person-header-avatar" src="/animalThumb/${petAvatar(pet)}" alt="">
     <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
@@ -462,8 +484,8 @@ export async function showPet(id) {
     .addEventListener("click", () => editPetName(id, pet.name || ""));
   cardMenu(document.getElementById("petactions"), petMenuItems(
     pet,
-    () => showSection("pets", true),
-    merged => (merged && merged.id ? showPet(merged.id) : showSection("pets", true)),
+    backToPets,
+    merged => (merged && merged.id ? showPet(merged.id) : backToPets()),
   ));
   mountHistory(() => showPet(id));
   let firstPage = pet.items;
