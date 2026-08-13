@@ -471,58 +471,76 @@
   color: var(--bad)
 }
 
-/* The card's own actions. Held back until the pointer is on the card, because
-   a grid of several hundred of these should read as faces, not as a wall of
-   controls -- and revealed permanently on touch, where there is no hover to
-   reveal it with. */
-.cardmenu {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 3;
-  opacity: 0;
-  transition: opacity .12s
+/* The card's own actions.
+   In the meta row rather than over the picture: these cards are photographs
+   first, and a translucent chip on a face is a sticker stuck to the image. A
+   mark on the line that already carries the name and the count is part of the
+   card, needs no glass, and is there for a finger as well as a pointer.
+
+   A flex row rather than an absolutely-positioned mark over reserved padding:
+   the text column takes the space it needs and the button takes what is left
+   at the right of it, so the control can never squeeze a name into wrapping
+   and can never add a line to the card's height. */
+.pcard .pmeta {
+  display: flex;
+  align-items: center;
+  gap: 6px
 }
 
-.pcard:hover .cardmenu,
-.cardmenu[open],
-.cardmenu:focus-within {
-  opacity: 1
+.pcard .pmeta-text {
+  flex: 1;
+  min-width: 0
 }
 
-@media (hover: none) {
-  .cardmenu {
-    opacity: 1
-  }
+/* The rename editor replaces the whole row, so it opts out of the row layout. */
+.pcard .pmeta-editing {
+  display: block
 }
 
 .cardmenu-trigger {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter: blur(8px);
-  color: var(--text);
-  list-style: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer
 }
 
-.cardmenu-trigger::-webkit-details-marker {
-  display: none
-}
-
 .cardmenu-trigger svg {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   fill: currentColor;
   stroke: none
 }
 
-.cardmenu-list {
-  width: 190px
+.cardmenu-trigger:hover,
+.cardmenu-trigger[aria-expanded] {
+  background: var(--panel2);
+  color: var(--text)
+}
+
+/* Appended to the document, not to the card: a card clips its own overflow to
+   round the thumbnail and lifts on hover with a transform, so a panel nested
+   inside it is both cut off and painted under its neighbours. Fixed, because
+   it is positioned against the trigger's rectangle in the viewport. */
+.cardmenu-panel {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  max-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md)
 }
 
 .cardmenu-item {
@@ -536,6 +554,9 @@
   font: inherit;
   font-size: 12.5px;
   text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer
 }
 
@@ -546,6 +567,31 @@
 .cardmenu-item.is-danger:hover {
   background: color-mix(in srgb, var(--bad) 10%, transparent);
   color: var(--bad)
+}
+
+.cardmenu-empty {
+  padding: 9px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35
+}
+
+/* On a detail page's action row the trigger sits inline, not pinned to a
+   corner, because there is no card meta row for it to hang off. */
+.ftb-actions,
+.mapside-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto
+}
+
+.ftb-actions .cardmenu-trigger,
+.mapside-actions .cardmenu-trigger {
+  position: static;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px
 }
 
 /* Hidden groups: below the grid, shut, and absent entirely when empty. */

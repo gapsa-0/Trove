@@ -332,8 +332,8 @@ function clusterMenuItems(p, after, onMerged) {
   return [
     {
       label: "Merge with…",
-      submenu: host => mergeWithPicker(
-        host, { kind: "person", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
+      submenu: (panel, close) => mergeWithPicker(
+        panel, close, { kind: "person", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
     },
     ...hideMenuItems(p.id, after),
   ];
@@ -393,8 +393,11 @@ function personCoverIds(p) {
 }
 function personMetaInner(p) {
   const nm = p.name ? esc(p.name) : "Name this person";
-  return `<button class="pname ${p.name ? "" : "un"}" type="button">${nm}</button>
-    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>`;
+  // The text is its own column so the actions menu can sit beside it in the
+  // space to its right, rather than over the photograph or under the count.
+  return `<div class="pmeta-text">
+    <button class="pname ${p.name ? "" : "un"}" type="button">${nm}</button>
+    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div></div>`;
 }
 function personCard(p) {
   const d = document.createElement("div"); d.className = "pcard"; d.onclick = guardCardClick(() => showPerson(p.id));
@@ -405,8 +408,9 @@ function personCard(p) {
   d.dataset.cover = personCoverIds(p).join(",");
   d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">${personMetaInner(p)}</div>`;
   d.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(d, p); };
-  // Hiding or merging from the grid: the card goes and the rest stays put.
-  cardMenu(d, clusterMenuItems(p, refreshAfterHide, refreshPeopleGrid));
+  // In the meta row, not over the photograph, and appended after the name so
+  // it sits at the end of the line the count is on.
+  cardMenu(d.querySelector(".pmeta"), clusterMenuItems(p, refreshAfterHide, refreshPeopleGrid));
   attachMergeDrag(d, d._merge, refreshPeopleGrid);
   return d;
 }
@@ -424,6 +428,8 @@ function updatePersonCard(card, p) {
   }
   meta.innerHTML = personMetaInner(p);
   meta.querySelector(".pname").onclick = e => { e.stopPropagation(); editPersonCardName(card, p); };
+  // Rewriting the row drops the menu with it, so it goes back on.
+  cardMenu(meta, clusterMenuItems(p, refreshAfterHide, refreshPeopleGrid));
   Object.assign(card._merge, { name: p.name, photos: p.photos });
   return true;
 }

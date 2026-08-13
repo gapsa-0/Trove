@@ -258,15 +258,14 @@ export async function undoMerge(mergeId, kind) {
    in a list, and its id does not survive the next recluster anyway. The merge
    itself goes through runMerge, so the confirmation, the name resolution and
    the places wide-area warning are the ones drag-merge already uses. */
-export async function mergeWithPicker(host, source, onMerged) {
+export async function mergeWithPicker(panel, close, source, onMerged) {
   let res;
   try {
     res = await jget(`/api/merge-targets?root=${S.arch.id}&entity=${source.kind}&exclude=${source.id}`);
   } catch { res = null; }
   const targets = (res && res.targets) || [];
-  const panel = host.querySelector(".hist-menu");
   if (!targets.length) {
-    panel.innerHTML = `<div class="hist-empty">Nothing to merge with yet — name another
+    panel.innerHTML = `<div class="cardmenu-empty">Nothing to merge with yet — name another
       ${source.kind === "pet" ? "pet" : source.kind === "place" ? "place" : "person"} first.</div>`;
     return;
   }
@@ -276,7 +275,7 @@ export async function mergeWithPicker(host, source, onMerged) {
   panel.querySelectorAll("button[data-id]").forEach(button => {
     button.onclick = async e => {
       e.stopPropagation();
-      host.removeAttribute("open");
+      close();
       const target = targets.find(t => String(t.id) === button.dataset.id);
       // photos is only used to word the confirmation; the list does not carry
       // counts, and asking for them per row would be a query per named group.

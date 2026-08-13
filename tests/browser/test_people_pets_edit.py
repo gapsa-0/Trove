@@ -126,7 +126,8 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
         app.wait_for_text("Ada")
         before = app.count(".pcard")
         app.click(".pcard .cardmenu-trigger")
-        app.wait_for(".cardmenu[open] .cardmenu-item")
+        app.wait_for(".cardmenu-panel .cardmenu-item")
+        _assert_menu_usable(app)
         # By label, never by position: "Not a person" opens a confirm dialog,
         # which blocks the tab outright, so picking the wrong item here does
         # not fail the test -- it hangs the browser.
@@ -158,11 +159,36 @@ def _pick_menu_item(app, label: str) -> None:
     than failing an assertion.
     """
     clicked = app.tab.evaluate(
-        "(() => { const b = [...document.querySelectorAll('.cardmenu[open] .cardmenu-item')]"
+        "(() => { const b = [...document.querySelectorAll('.cardmenu-panel .cardmenu-item')]"
         f".find(b => b.textContent.includes({label!r}));"
         " if (!b) return false; b.click(); return true; })()"
     )
     assert clicked, f"no menu item saying {label!r}"
+
+
+def _assert_menu_usable(app) -> None:
+    """The menu is on screen and nothing is covering it.
+
+    Presence in the DOM proves nothing here, and that is not hypothetical: the
+    panel first shipped nested inside a card that clips its own overflow and
+    lifts on hover with a transform, so every item existed, none could be seen,
+    and a test asserting existence passed the whole time. elementFromPoint is
+    what tells the difference -- it answers with whatever is actually painted
+    at the centre of the first item.
+    """
+    verdict = app.tab.evaluate(
+        "(() => { const item = document.querySelector('.cardmenu-panel .cardmenu-item');"
+        " if (!item) return 'no menu items';"
+        " const r = item.getBoundingClientRect();"
+        " if (r.width < 40 || r.height < 10) return 'menu item has no size: ' + JSON.stringify(r);"
+        " if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth)"
+        "   return 'menu is off screen: ' + JSON.stringify(r);"
+        " const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
+        " if (!hit || !hit.closest('.cardmenu-panel'))"
+        "   return 'something covers the menu: ' + (hit ? hit.className : 'nothing');"
+        " return 'ok'; })()"
+    )
+    assert verdict == "ok", verdict
 
 
 def _avatar_face(app):
@@ -227,13 +253,15 @@ def test_merge_with_offers_the_named_groups_and_merges_into_one(open_app):
         app.wait_for_text("Ada")
         before = app.count(".pcard")
         app.click(".pcard .cardmenu-trigger")
-        app.wait_for(".cardmenu[open] .cardmenu-item")
+        app.wait_for(".cardmenu-panel .cardmenu-item")
+        _assert_menu_usable(app)
         # It replaces the menu with the list rather than closing, so the menu
         # is still open afterwards.
         _pick_menu_item(app, "Merge with")
-        app.wait_for(".cardmenu[open] .cardmenu-item[data-id]")
+        app.wait_for(".cardmenu-panel .cardmenu-item[data-id]")
+        _assert_menu_usable(app)
         offered = app.tab.evaluate(
-            "[...document.querySelectorAll('.cardmenu[open] .cardmenu-item[data-id]')]"
+            "[...document.querySelectorAll('.cardmenu-panel .cardmenu-item[data-id]')]"
             ".map(b => b.textContent)"
         )
         assert offered and all(offered), "only named groups, each with a name to show"

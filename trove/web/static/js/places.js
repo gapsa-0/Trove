@@ -278,8 +278,8 @@ function renderPlaceGallery() {
 function placeMergeItem(place, onMerged) {
   return {
     label: "Merge with\u2026",
-    submenu: host => mergeWithPicker(
-      host,
+    submenu: (panel, close) => mergeWithPicker(
+      panel, close,
       { kind: "place", id: place.id, name: place.name, photos: place.count || place.total || 0 },
       onMerged),
   };
@@ -288,15 +288,15 @@ function placeCard(place) {
   const card = document.createElement("div"); card.className = "pcard";
   card.onclick = guardCardClick(() => showPlaceFromGallery(place.id));
   const name = place.name ? esc(place.name) : "Name this place";
-  card.innerHTML = placeCollage(place.thumb_ids) + `<div class="pmeta">
+  card.innerHTML = placeCollage(place.thumb_ids) + `<div class="pmeta"><div class="pmeta-text">
     <button class="pname ${place.name ? "" : "un"}" type="button">${name}</button>
-    <div class="pcount">${place.count.toLocaleString()} photo${place.count === 1 ? "" : "s"}</div></div>`;
+    <div class="pcount">${place.count.toLocaleString()} photo${place.count === 1 ? "" : "s"}</div></div></div>`;
   card.querySelector(".pname").onclick = event => {
     event.stopPropagation();
     editPlaceCardName(card, place);
   };
   attachMergeDrag(card, { kind: "place", id: place.id, name: place.name, photos: place.count }, refreshPlacesAfterMerge);
-  cardMenu(card, [placeMergeItem(place, refreshPlacesAfterMerge)]);
+  cardMenu(card.querySelector(".pmeta"), [placeMergeItem(place, refreshPlacesAfterMerge)]);
   return card;
 }
 function showPlaceFromGallery(id) {

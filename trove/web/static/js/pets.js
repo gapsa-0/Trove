@@ -148,16 +148,17 @@ export async function renderPets(m) {
   startPetPoll();
 }
 function petMetaInner(p) {
-  return `<button class="pname ${p.name ? "" : "un"}" type="button">${esc(p.name || "Name this pet")}</button>
+  return `<div class="pmeta-text">
+      <button class="pname ${p.name ? "" : "un"}" type="button">${esc(p.name || "Name this pet")}</button>
       <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
-      <span class="pet-species">${esc(p.species)}</span>`;
+      <span class="pet-species">${esc(p.species)}</span></div>`;
 }
 /* "Merge with…", the same item on a pet's card and on its own page. */
 function petMergeItem(p, onMerged) {
   return {
     label: "Merge with\u2026",
-    submenu: host => mergeWithPicker(
-      host, { kind: "pet", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
+    submenu: (panel, close) => mergeWithPicker(
+      panel, close, { kind: "pet", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
   };
 }
 function petCoverIds(p) {
@@ -171,7 +172,7 @@ function petCard(p) {
   card.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb")
     + `<div class="pmeta">${petMetaInner(p)}</div>`;
   card.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
-  cardMenu(card, [petMergeItem(p, refreshPetGrids)]);
+  cardMenu(card.querySelector(".pmeta"), [petMergeItem(p, refreshPetGrids)]);
   // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
   // re-running attachMergeDrag (which would stack a second set of listeners).
   card._merge = { kind: "pet", id: p.id, name: p.name, photos: p.photos };
@@ -196,6 +197,7 @@ function updatePetCard(card, p) {
   if (meta) {
     meta.innerHTML = petMetaInner(p);
     meta.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
+    cardMenu(meta, [petMergeItem(p, refreshPetGrids)]);
   }
   Object.assign(card._merge, { name: p.name, photos: p.photos });
   return true;
