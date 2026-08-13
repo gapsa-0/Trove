@@ -64,10 +64,20 @@ def pet_summary(
             WHERE {_NOT_HIDDEN} AND a.species!='teddy bear'{rc}""",
         rp,
     ).fetchone()[0]
+    # Joined to `pets` only for the hidden flag, so the tile cannot keep
+    # counting the groups the grid has stopped showing.
     groups = conn.execute(
         f"""SELECT COUNT(DISTINCT a.pet_id) FROM animal_detections a
             JOIN files f ON f.id=a.file_id
-            WHERE {_NOT_HIDDEN} AND a.pet_id IS NOT NULL{rc}""",
+            JOIN pets p ON p.id=a.pet_id
+            WHERE {_NOT_HIDDEN} AND a.pet_id IS NOT NULL AND p.hidden=0{rc}""",
+        rp,
+    ).fetchone()[0]
+    hidden_pets = conn.execute(
+        f"""SELECT COUNT(DISTINCT a.pet_id) FROM animal_detections a
+            JOIN files f ON f.id=a.file_id
+            JOIN pets p ON p.id=a.pet_id
+            WHERE {_NOT_HIDDEN} AND p.hidden=1{rc}""",
         rp,
     ).fetchone()[0]
     nonhuman = conn.execute(
@@ -81,6 +91,7 @@ def pet_summary(
         "unscanned": max(0, total - scanned),
         "detections": detections,
         "pets": groups,
+        "hidden_pets": hidden_pets,
         "nonhuman_faces": nonhuman,
         "backend_available": pet_backend.available(),
     }
@@ -118,17 +129,24 @@ def _preview_detections(
 
 @reading
 def pet_groups(
-    conn: sqlite3.Connection, root_id: int | None = None, limit: int = 120, offset: int = 0
+    conn: sqlite3.Connection,
+    root_id: int | None = None,
+    limit: int = 120,
+    offset: int = 0,
+    hidden: bool = False,
 ) -> dict[str, Any]:
     """Pet clusters (identities) in this archive, named ones first and then
-    most detections, each with its detection/photo counts."""
+    most detections, each with its detection/photo counts.
+
+    ``hidden`` picks which side of the "hide this group" line to list, as
+    ``people.face_persons`` does."""
     rc, rp = _root_clause(root_id)
     rows = conn.execute(
         f"""SELECT a.pet_id,p.name,p.species,p.cover_detection_id,
                    COUNT(*) detections,COUNT(DISTINCT a.file_id) photos
             FROM animal_detections a JOIN pets p ON p.id=a.pet_id
             JOIN files f ON f.id=a.file_id
-            WHERE {_NOT_HIDDEN}{rc}
+            WHERE {_NOT_HIDDEN} AND p.hidden={1 if hidden else 0}{rc}
             GROUP BY a.pet_id
             ORDER BY CASE WHEN NULLIF(TRIM(p.name),'') IS NULL THEN 1 ELSE 0 END,
                      detections DESC,a.pet_id

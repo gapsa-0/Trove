@@ -65,5 +65,6 @@ export function startInfiniteList(stateKey, { sentinelId, pageSize, fetchPage, o
 // sentinel from a closed archive alive.
 export const INFINITE_LIST_KEYS = [
   "dupList", "peopleList", "personDetailList", "hiddenPeopleList",
-  "petListState", "loosePetState", "nonhumanState", "petDetailList", "placeList",
+  "petListState", "loosePetState", "nonhumanState", "petDetailList", "hiddenPetList",
+  "placeList",
 ];

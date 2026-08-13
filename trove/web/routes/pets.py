@@ -18,9 +18,15 @@ def summary(req: Request) -> dict:
 
 
 def groups(req: Request) -> dict:
-    """Paginated list of pet-identity groups."""
+    """Paginated list of pet-identity groups. ``?hidden=1`` lists the hidden ones."""
     rid = req.root_id
-    return pets.pet_groups(req.db(rid), rid, limit=req.limit(120, 500), offset=req.offset())
+    return pets.pet_groups(
+        req.db(rid),
+        rid,
+        limit=req.limit(120, 500),
+        offset=req.offset(),
+        hidden=req.one("hidden", int, 0) == 1,
+    )
 
 
 def detections(req: Request) -> dict:
@@ -52,6 +58,27 @@ def group(req: Request) -> dict[str, Any] | Json:
         offset=req.offset(),
     )
     return g if g else NOT_FOUND
+
+
+def hide(req: Request) -> Json:
+    """Take a pet group off the Pets screen. See pets_edit.hide_pet for why
+    ``not_animal`` and ``unknown`` are not the same operation."""
+    res = db.write_with_retry(
+        lambda: pets_edit.hide_pet(
+            req.db(req.open_root_id),
+            req.body.get("pet_id"),
+            req.body.get("reason", "not_animal"),
+        )
+    )
+    return ok_or_error(res)
+
+
+def unhide(req: Request) -> Json:
+    """Put a hidden pet group back."""
+    res = db.write_with_retry(
+        lambda: pets_edit.unhide_pet(req.db(req.open_root_id), req.body.get("pet_id"))
+    )
+    return ok_or_error(res)
 
 
 def set_cover(req: Request) -> Json:

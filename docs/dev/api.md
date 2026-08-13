@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**83 routes**: 37 GET (exact) + 12 GET (prefix) + 34 POST.
+**85 routes**: 37 GET (exact) + 12 GET (prefix) + 36 POST.
 
 ## GET -- exact path
 
@@ -46,7 +46,7 @@ build if this file has drifted from the route tables.
 | `/api/faces/persons` | Paginated list of person clusters. ``?hidden=1`` lists the hidden ones. | `trove/web/routes/people.py::persons` |
 | `/api/faces/suggestions` | The 'same person?' review queue: candidate cluster pairs the automatic pass left apart. | `trove/web/routes/people.py::suggestions` |
 | `/api/pets/summary` | Pet/species totals for the Pets overview. | `trove/web/routes/pets.py::summary` |
-| `/api/pets` | Paginated list of pet-identity groups. | `trove/web/routes/pets.py::groups` |
+| `/api/pets` | Paginated list of pet-identity groups. ``?hidden=1`` lists the hidden ones. | `trove/web/routes/pets.py::groups` |
 | `/api/pet/detections` | Paginated gallery of animal detections, optionally limited to those with no pet assigned. | `trove/web/routes/pets.py::detections` |
 | `/api/nonhuman` | The non-human review queue: detections not yet confirmed as animal vs. restored to People. | `trove/web/routes/pets.py::nonhuman` |
 | `/` | The single-page app shell HTML. | `trove/web/routes/static.py::index` |
@@ -98,6 +98,8 @@ see the module docstring in `routes/__init__.py`.
 | `/api/faces/hide` | Take a cluster off the People screen. | `trove/web/routes/people.py::hide` |
 | `/api/faces/unhide` | Put a hidden cluster back on the People screen. | `trove/web/routes/people.py::unhide` |
 | `/api/pet/cover` | Choose which of a pet's photos represents it. | `trove/web/routes/pets.py::set_cover` |
+| `/api/pet/hide` | Take a pet group off the Pets screen. See pets_edit.hide_pet for why ``not_animal`` and ``unknown`` are not the same operation. | `trove/web/routes/pets.py::hide` |
+| `/api/pet/unhide` | Put a hidden pet group back. | `trove/web/routes/pets.py::unhide` |
 | `/api/pet/detach` | Release every detection of one file from a pet, durably. | `trove/web/routes/pets.py::detach` |
 | `/api/pet/rename` | Rename a pet-identity group. | `trove/web/routes/pets.py::rename_pet` |
 | `/api/pets/merge` | Merge two pet groups the user confirmed are the same animal, immediately and durably. | `trove/web/routes/pets.py::merge` |

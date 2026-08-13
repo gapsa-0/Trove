@@ -372,6 +372,18 @@ API_POST_CASES = [
         id="POST /api/pet/cover",
     ),
     pytest.param(
+        "/api/pet/hide",
+        lambda ids: {"pet_id": ids["pet_a"], "reason": "unknown"},
+        {"ok"},
+        id="POST /api/pet/hide (unknown)",
+    ),
+    pytest.param(
+        "/api/pet/unhide",
+        lambda ids: {"pet_id": ids["pet_a"]},
+        {"ok"},
+        id="POST /api/pet/unhide",
+    ),
+    pytest.param(
         "/api/pet/rename",
         lambda ids: {"pet_id": ids["pet_a"], "name": "Rocco Renamed"},
         {"ok", "name"},

@@ -396,8 +396,23 @@ CREATE TABLE IF NOT EXISTS pets (
     cover_detection_id INTEGER,
     detection_count INTEGER NOT NULL DEFAULT 0,
     centroid       BLOB,
+    hidden         INTEGER NOT NULL DEFAULT 0,  -- user hid this group; see pet_hides
     created_at     TEXT NOT NULL
 );
+
+-- A pet group the user hid as "an animal, but not one I want listed" -- a dog
+-- in the background of a park photo, someone else's cat. The people-side twin
+-- is person_hides, and it is a separate table for the same reason: cluster_pets
+-- DELETEs and rebuilds every pets row, so the flag cannot be durable on its
+-- own. This anchors to a DETECTION id, which survives that.
+CREATE TABLE IF NOT EXISTS pet_hides (
+    id               INTEGER PRIMARY KEY,
+    rep_detection_id INTEGER REFERENCES animal_detections(id) ON DELETE CASCADE,
+    pet_name         TEXT,
+    detection_ids    TEXT NOT NULL,   -- JSON array, for undo
+    created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pet_hides_det ON pet_hides(rep_detection_id);
 
 CREATE TABLE IF NOT EXISTS animal_detections (
     id             INTEGER PRIMARY KEY,
@@ -416,6 +431,12 @@ CREATE TABLE IF NOT EXISTS animal_detections (
     -- is on the face: cluster_pets rebuilds every pets row, so a choice
     -- recorded there lasts only until the next clustering pass.
     manual_cover   INTEGER NOT NULL DEFAULT 0,
+    -- 1 = the user said this is not an animal (a soft toy, a picture of a dog,
+    -- a stone lion). Excluded from clustering thereafter, never deleted, so the
+    -- call stays reviewable. The faces twin is `not_person`; a cannot-link
+    -- cannot do this job, because pet_links only blocks groups being merged and
+    -- never splits one the automatic pass formed on its own.
+    not_animal     INTEGER NOT NULL DEFAULT 0,
     model_source   TEXT NOT NULL,
     frame_offset   TEXT,            -- sampled-keyframe offset for videos; NULL for photos (see faces.frame_offset)
     created_at     TEXT NOT NULL

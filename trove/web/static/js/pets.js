@@ -86,6 +86,7 @@ export async function renderPets(m) {
     <div class="place-gallery-head"><h3>Likely pet identities</h3><span class="muted">Conservative visual grouping</span></div>
     <div class="people" id="petgrid"></div>
     <div class="infinite-status" id="pet-list-sentinel" aria-live="polite"></div>
+    <div id="pethiddenwrap"></div>
     <div class="place-gallery-head"><h3>Unassigned animals</h3><span class="muted">Single or uncertain sightings</span></div>
     <div class="people" id="loosepetgrid"></div>
     <div class="infinite-status" id="loose-pet-sentinel" aria-live="polite"></div>
@@ -145,7 +146,45 @@ export async function renderPets(m) {
     },
   });
 
+  renderHiddenPets();
   startPetPoll();
+}
+/* The groups taken off the screen, kept reachable at the foot of it. Twin of
+   the People screen's Hidden section, down to being absent when empty. */
+const HIDDEN_PET_PAGE_SIZE = 120;
+async function renderHiddenPets() {
+  const wrap = document.getElementById("pethiddenwrap"); if (!wrap) return;
+  const n = (S.petSum && S.petSum.hidden_pets) || 0;
+  const previous = document.querySelector(".hidden-people");
+  const wasOpen = !!previous && previous.hasAttribute("open");
+  if (!n) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `<details class="hidden-people"${wasOpen ? " open" : ""}>
+      <summary>Hidden <span class="muted">\u00b7 ${n.toLocaleString()} group${n === 1 ? "" : "s"}</span></summary>
+      <div class="people" id="hiddenpetgrid"></div>
+      <div class="infinite-status" id="hidden-pet-sentinel" aria-live="polite"></div>
+    </details>`;
+  startInfiniteList("hiddenPetList", {
+    sentinelId: "hidden-pet-sentinel", pageSize: HIDDEN_PET_PAGE_SIZE,
+    fetchPage: async offset => {
+      const res = await jget(`/api/pets?root=${S.arch.id}&hidden=1&offset=${offset}&limit=${HIDDEN_PET_PAGE_SIZE}`);
+      return res.pets;
+    },
+    onPage: (pets, { first }) => {
+      const grid = document.getElementById("hiddenpetgrid"); if (!grid) return;
+      if (first) grid.innerHTML = "";
+      pets.forEach(p => grid.appendChild(hiddenPetCard(p)));
+    },
+  });
+}
+function hiddenPetCard(p) {
+  const d = document.createElement("div"); d.className = "pcard is-hidden";
+  d.dataset.syncKey = String(p.id);
+  d.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb") + `<div class="pmeta"><div class="pmeta-text">
+      <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
+      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
+      <button class="linkbtn" type="button">Put back</button></div></div>`;
+  d.querySelector("button").onclick = e => { e.stopPropagation(); unhidePet(p.id); };
+  return d;
 }
 function petMetaInner(p) {
   return `<div class="pmeta-text">
@@ -153,13 +192,42 @@ function petMetaInner(p) {
       <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
       <span class="pet-species">${esc(p.species)}</span></div>`;
 }
-/* "Merge with…", the same item on a pet's card and on its own page. */
-function petMergeItem(p, onMerged) {
-  return {
-    label: "Merge with\u2026",
-    submenu: (panel, close) => mergeWithPicker(
-      panel, close, { kind: "pet", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
-  };
+/* What a pet's card and its own page can do to the whole group. The People
+   screen's twin is clusterMenuItems; the wording differs because the claims
+   do -- "Not an animal" is about the detections, "Unknown animal" is about
+   whether you want the group listed. */
+function petMenuItems(p, after, onMerged) {
+  return [
+    {
+      label: "Merge with\u2026",
+      submenu: (panel, close) => mergeWithPicker(
+        panel, close, { kind: "pet", id: p.id, name: p.name, photos: p.photos || 0 }, onMerged),
+    },
+    {
+      label: "Not an animal",
+      danger: true,
+      onPick: async () => {
+        if (!confirm("Not an animal? Its photos are left out of pet grouping from now on.")) return;
+        await hidePetGroup(p.id, "not_animal", after);
+      },
+    },
+    { label: "Unknown animal", onPick: () => hidePetGroup(p.id, "unknown", after) },
+  ];
+}
+async function hidePetGroup(id, reason, after) {
+  let res;
+  try { res = await jpost("/api/pet/hide", { pet_id: id, reason }); }
+  catch (e) { res = { error: String(e) }; }
+  if (!res || res.error) { toast("Couldn\u2019t hide this group.", true); return; }
+  if (reason === "unknown") toast("Hidden. Find it under \u201cHidden\u201d to put it back.");
+  after();
+}
+export async function unhidePet(id) {
+  let res;
+  try { res = await jpost("/api/pet/unhide", { pet_id: id }); }
+  catch (e) { res = { error: String(e) }; }
+  if (!res || res.error) { toast("Couldn\u2019t restore this group.", true); return; }
+  refreshPetGrids();
 }
 function petCoverIds(p) {
   return (p.detections_preview && p.detections_preview.length
@@ -172,7 +240,7 @@ function petCard(p) {
   card.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb")
     + `<div class="pmeta">${petMetaInner(p)}</div>`;
   card.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
-  cardMenu(card.querySelector(".pmeta"), [petMergeItem(p, refreshPetGrids)]);
+  cardMenu(card.querySelector(".pmeta"), petMenuItems(p, refreshPetGrids, refreshPetGrids));
   // Mutable so syncPetGrids can refresh a renamed/re-counted pet without
   // re-running attachMergeDrag (which would stack a second set of listeners).
   card._merge = { kind: "pet", id: p.id, name: p.name, photos: p.photos };
@@ -197,7 +265,7 @@ function updatePetCard(card, p) {
   if (meta) {
     meta.innerHTML = petMetaInner(p);
     meta.querySelector(".pname").onclick = e => { e.stopPropagation(); editPetCardName(card, p); };
-    cardMenu(meta, [petMergeItem(p, refreshPetGrids)]);
+    cardMenu(meta, petMenuItems(p, refreshPetGrids, refreshPetGrids));
   }
   Object.assign(card._merge, { name: p.name, photos: p.photos });
   return true;
@@ -266,6 +334,12 @@ async function syncPetGrids() {
    destructive possible refresh. */
 async function refreshPetGrids() {
   await patchPetGrids();
+  // hidden_pets is what decides whether the Hidden section exists at all, and
+  // the poll only refreshes the summary while a detect job runs -- so on a
+  // settled archive nothing else would tell this screen what just happened.
+  const sum = await jget("/api/pets/summary?root=" + S.arch.id).catch(() => null);
+  if (sum) { S.petSum = sum; setStat("ps-pets", sum.pets.toLocaleString()); }
+  await renderHiddenPets();
 }
 async function patchPetGrids() {
   const st = { pets: S.petListState, loose: S.loosePetState, nonhuman: S.nonhumanState };
@@ -386,8 +460,11 @@ export async function showPet(id) {
     <div class="infinite-status" id="pet-grid-sentinel" aria-live="polite"></div>`;
   document.querySelector("#petname .person-name-button")
     .addEventListener("click", () => editPetName(id, pet.name || ""));
-  cardMenu(document.getElementById("petactions"),
-    [petMergeItem(pet, merged => (merged && merged.id ? showPet(merged.id) : showSection("pets", true)))]);
+  cardMenu(document.getElementById("petactions"), petMenuItems(
+    pet,
+    () => showSection("pets", true),
+    merged => (merged && merged.id ? showPet(merged.id) : showSection("pets", true)),
+  ));
   mountHistory(() => showPet(id));
   let firstPage = pet.items;
   startInfiniteList("petDetailList", {

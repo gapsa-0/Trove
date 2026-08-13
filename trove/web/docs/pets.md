@@ -92,6 +92,14 @@ is not the pet*, which takes the photo off them and stops it being grouped back.
 Both survive re-clustering. Until a cover is chosen, the card shows a collage of
 up to four photos rather than a single thumbnail.
 
+**Take a group off the screen.** Each card, and each pet's page, offers two
+ways out, and they mean different things. *Not an animal* is about the
+detections — a soft toy, a stone lion, a dog printed on a mug — and takes them
+out of grouping for good. *Unknown animal* is about the list: a real animal,
+somebody else's, that you would rather not have a page for; its photos go on
+grouping exactly as before. Hidden groups collect at the foot of the screen and
+come back with one click.
+
 **Review non-human faces.** The face pipeline drops any face that sits mostly
 inside an animal box, and this screen lists what it dropped. If it took a face
 that really was a person, you can say so.

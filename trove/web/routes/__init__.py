@@ -134,6 +134,8 @@ POST_ROUTES: dict[str, Handler] = {
     "/api/faces/hide": people.hide,
     "/api/faces/unhide": people.unhide,
     "/api/pet/cover": pets.set_cover,
+    "/api/pet/hide": pets.hide,
+    "/api/pet/unhide": pets.unhide,
     "/api/pet/detach": pets.detach,
     "/api/pet/rename": pets.rename_pet,
     "/api/pets/merge": pets.merge,

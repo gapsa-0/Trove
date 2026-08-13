@@ -217,6 +217,22 @@ def _write_pet(
     stats.names_preserved += int(best_name is not None)
 
 
+def _reapply_pet_hides(conn: sqlite3.Connection) -> None:
+    """Re-hide the groups the user hid, after the rebuild above cleared the flag.
+
+    `pets.hidden` is what the read queries filter on and cannot be durable --
+    every row carrying it was just deleted. `pet_hides` survives because it
+    anchors to a detection id, and this turns it back into the flag. Twin of
+    faces/cluster.py::_reapply_person_hides.
+    """
+    conn.execute(
+        """UPDATE pets SET hidden=1 WHERE id IN (
+               SELECT a.pet_id FROM pet_hides h
+               JOIN animal_detections a ON a.id = h.rep_detection_id
+               WHERE a.pet_id IS NOT NULL)"""
+    )
+
+
 def cluster_pets(
     conn: sqlite3.Connection, cfg: Config, root_id: int | None = None
 ) -> PetClusterStats:
@@ -228,6 +244,7 @@ def cluster_pets(
     rows = conn.execute(
         """SELECT a.* FROM animal_detections a JOIN files f ON f.id=a.file_id
             WHERE f.present=1 AND f.hidden=0 AND a.species!='teddy bear'
+                  AND COALESCE(a.not_animal, 0) = 0
             ORDER BY a.species,a.id"""
     ).fetchall()
     stats.detections = len(rows)
@@ -250,6 +267,7 @@ def cluster_pets(
     if not emb_rows:
         stats.unassigned = stats.detections
         repair_manual_pet_files(conn)
+        _reapply_pet_hides(conn)
         conn.commit()
         return stats
     V = np.array([np.frombuffer(row["embedding"], "float32") for row in emb_rows], dtype="float32")
@@ -263,5 +281,6 @@ def cluster_pets(
 
     stats.unassigned = stats.detections - stats.clustered
     repair_manual_pet_files(conn)
+    _reapply_pet_hides(conn)
     conn.commit()
     return stats

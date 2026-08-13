@@ -138,6 +138,10 @@ def _migrate_faces(conn: sqlite3.Connection) -> None:
     # `manual_person` is: it has to outlive the persons row.
     _add_column_if_missing(conn, "faces", "manual_cover", "INTEGER NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "animal_detections", "manual_cover", "INTEGER NOT NULL DEFAULT 0")
+    # The pets twin of persons.hidden, re-derived from pet_hides after every
+    # rebuild (pets/cluster.py::_reapply_pet_hides).
+    _add_column_if_missing(conn, "pets", "hidden", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "animal_detections", "not_animal", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _migrate_scan_counters(conn: sqlite3.Connection) -> None:

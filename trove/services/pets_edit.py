@@ -10,6 +10,7 @@ pets, people and places, which is what services/merging.py exists to collapse.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections import Counter
 from typing import Any, cast
@@ -105,6 +106,77 @@ def _refresh_pet_stats(conn: sqlite3.Connection, pet_id: int, name: str | None) 
                           detection_count=?, centroid=? WHERE id=?""",
         (name, species, cover["id"] if cover else None, len(rows), centroid, pet_id),
     )
+
+
+@writing
+def hide_pet(
+    conn: sqlite3.Connection, pet_id: int | None, reason: str = "not_animal"
+) -> dict[str, Any]:
+    """Take a pet group off the Pets screen, for one of two different reasons.
+
+    Twin of ``people_edit.hide_person``, and the same distinction: ``not_animal``
+    is a claim about the DETECTIONS -- a soft toy, a picture of a dog on a mug,
+    a stone lion -- and takes them out of clustering for good. ``unknown`` is a
+    claim about the LIST: a real animal, somebody else's, that you would rather
+    not have a page for. Its detections keep clustering exactly as before.
+
+    Both are recorded in ``pet_hides``, anchored to a detection id, so neither
+    can be quietly undone by the rebuild that follows.
+    """
+    if not pet_id:
+        return {"error": "missing pet_id"}
+    p = conn.execute(
+        "SELECT id, name, cover_detection_id FROM pets WHERE id=?", (pet_id,)
+    ).fetchone()
+    if not p:
+        return {"error": "unknown pet"}
+    det_ids = [
+        int(r[0])
+        for r in conn.execute("SELECT id FROM animal_detections WHERE pet_id=?", (pet_id,))
+    ]
+    rep = _rep_detection(conn, pet_id, p["cover_detection_id"])
+    conn.execute(
+        """INSERT INTO pet_hides(rep_detection_id, pet_name, detection_ids, created_at)
+           VALUES(?,?,?,?)""",
+        (rep, p["name"], json.dumps(det_ids), db.now_iso()),
+    )
+    if reason == "not_animal":
+        # Flagged out of clustering entirely, exactly as hide_person does with
+        # faces.not_person. A cannot-link cannot serve here: pet_links only
+        # blocks two groups being merged and never splits one the automatic
+        # pass formed on its own, so the next rebuild would reform this group
+        # out of the same detections.
+        conn.execute(
+            "UPDATE animal_detections SET not_animal=1, pet_id=NULL WHERE pet_id=?", (pet_id,)
+        )
+        conn.execute("DELETE FROM pets WHERE id=?", (pet_id,))
+    else:
+        conn.execute("UPDATE pets SET hidden=1 WHERE id=?", (pet_id,))
+    edit_log.record(conn, edit_log.PET, pet_id, p["name"], edit_log.HIDE, {"reason": reason})
+    conn.commit()
+    return {"ok": True}
+
+
+@writing
+def unhide_pet(conn: sqlite3.Connection, pet_id: int | None) -> dict[str, Any]:
+    """Put a hidden pet group back on the Pets screen.
+
+    Only the ``unknown`` kind comes back this way; a not-an-animal verdict
+    deleted the group and cannot-linked its detections, so there is nothing left
+    to unhide -- exactly as on the People side.
+    """
+    if not pet_id:
+        return {"error": "missing pet_id"}
+    if not conn.execute("SELECT 1 FROM pets WHERE id=?", (pet_id,)).fetchone():
+        return {"error": "unknown pet"}
+    conn.execute("UPDATE pets SET hidden=0 WHERE id=?", (pet_id,))
+    conn.execute(
+        """DELETE FROM pet_hides WHERE rep_detection_id IN
+           (SELECT id FROM animal_detections WHERE pet_id=?)""",
+        (pet_id,),
+    )
+    conn.commit()
+    return {"ok": True}
 
 
 @writing
