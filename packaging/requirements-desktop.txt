@@ -8,7 +8,7 @@ Pillow==12.3.0
 pillow-heif==1.5.0
 ImageHash==4.3.2
 pyexiftool==0.5.6
-numpy==2.5.1
+numpy==2.5.2
 # The headless variant: same OpenCV version and sources as opencv-python, built
 # without the highgui backend. Nothing in the shipped package uses a GUI or video
 # symbol — cv2 appears only as cvtColor/resize/Laplacian/dnn, and video frames come
@@ -17,7 +17,7 @@ numpy==2.5.1
 # If a cv2.imshow/VideoCapture ever lands in trove/, this pin has to go
 # back to opencv-python; tests/unit/test_opencv_headless.py fails the build if it does.
 opencv-python-headless==5.0.0.93
-onnxruntime==1.27.0
+onnxruntime==1.28.0
 scikit-learn==1.9.0
 # Face detection/recognition backend (SCRFD det_10g + ArcFace w600k_r50 from the
 # buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
@@ -45,7 +45,7 @@ shapely==2.1.2
 # is authoritative -- so a build that somehow lacked it would be slower to notice
 # a new folder of photos and nothing else.
 watchfiles==1.2.0
-PyInstaller==6.21.0
+PyInstaller==6.22.0
 # ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
 # (packaging/tools/manifest.json). ML model weights are staged separately too
 # (packaging/models/manifest.json).
