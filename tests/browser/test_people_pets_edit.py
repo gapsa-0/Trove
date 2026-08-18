@@ -345,8 +345,16 @@ def _scroll_and_return(app, open_selector: str, back_selector: str) -> tuple[int
     app.wait_for(back_selector)
     app.click(back_selector)
     app.wait_for(".pcard")
+    # The position is put back in a requestAnimationFrame -- the nodes have to be
+    # laid out before a scrollTop means anything (backToPeople) -- so reading it
+    # straight after the cards appear races that frame. This used to "wait" on
+    # `scrollTop > 0 || true`, which is true before anything has happened at all,
+    # and the tests below duly failed whenever the machine was busy enough for
+    # the frame to land after the read.
     app.tab.wait_for(
-        "document.getElementById('main').scrollTop > 0 || true", timeout=5.0, what="the grid back"
+        f"document.getElementById('main').scrollTop === {before}",
+        timeout=5.0,
+        what="the grid's scroll position to be put back",
     )
     return before, app.tab.evaluate("document.getElementById('main').scrollTop")
 
