@@ -69,6 +69,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A feature card in Manage features is as big as what it has to say.** Resting
+  on one showed its description in a panel two-thirds larger than the card,
+  hanging over the row beneath and covering the cards there. The cards are now
+  as tall as the longest description among them, and all the same height, so
+  turning one over changes nothing but that card.
+
 - **The Timeline notices the people you have just named.** Naming people and
   stepping over to the Timeline still offered the list of names from before you
   named them, while Browse's identical filter was correct — the Timeline keeps

@@ -340,3 +340,39 @@ def test_reading_a_features_page_comes_back_to_the_sheet(open_app, archive):
         # ...with the decision that was half made still half made.
         assert _switch(app, "places") == "false"
         assert app.errors() == []
+
+
+def test_a_cards_description_fits_the_card_it_comes_out_of(open_app):
+    """Turning a card over must not spill it onto the ones underneath.
+
+    The shelf these cards are forked from lets a description hang past the
+    bottom edge, which buys a shorter card there. Here the card is 142px and
+    the descriptions run past 240, so most of what you were reading sat on top
+    of the row below -- a panel two-thirds larger than the thing it came out of.
+
+    Asserted against the card rather than against a number, so a description
+    added tomorrow that needs more room grows the card instead of failing.
+    """
+    with open_app("overview") as app:
+        _open_sheet(app)
+        spills = app.tab.evaluate(
+            "[...document.querySelectorAll('.fsheet .set-card.fcard')].map(c => {"
+            " const b = c.querySelector('.set-back');"
+            " return {name: (c.querySelector('.set-card-name') || {}).textContent.trim(),"
+            "         over: b.scrollHeight - c.getBoundingClientRect().height}; })"
+            ".filter(r => r.over > 0)"
+        )
+        assert spills == [], f"descriptions taller than their cards: {spills}"
+        assert app.errors() == []
+
+
+def test_every_card_in_the_sheet_is_the_same_height(open_app):
+    """...and they are levelled by the tallest, so turning one over moves none
+    of the others -- the promise the fixed height used to keep."""
+    with open_app("overview") as app:
+        _open_sheet(app)
+        heights = app.tab.evaluate(
+            "[...document.querySelectorAll('.fsheet .set-card.fcard')]"
+            ".map(c => Math.round(c.getBoundingClientRect().height))"
+        )
+        assert len(set(heights)) == 1, f"cards are ragged: {sorted(set(heights))}"

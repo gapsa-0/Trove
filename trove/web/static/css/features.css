@@ -111,8 +111,44 @@
 
    The pointer cursor and the lift on hover come from the shared card and are
    earned here: pressing the front of one switches its feature. */
+/* Here the card is as tall as the taller of its two faces, and the description
+   fills it exactly rather than hanging past it.
+
+   The shelf's bargain (setup.css's .set-back) is that a card may be as short as
+   the front it spends its life showing, and the description lifts off it and
+   over the row below. On a 258px shelf card that overhang is a few lines; on
+   this 142px one the descriptions run to 241px, so most of what you were
+   reading sat on top of the cards underneath -- a panel two-thirds larger than
+   the thing it came out of.
+
+   Stacking the two faces in one grid cell is what sizes the card, rather than a
+   number here that a longer description would quietly outgrow again: the cell
+   is as tall as its tallest occupant, whichever face that is. `1fr` auto rows
+   then level every card in the sheet against the tallest of them, so turning
+   one over still moves nothing. */
+.set-cards.fcards {
+  grid-auto-rows: 1fr
+}
+
 .set-card.fcard {
-  height: 142px
+  height: auto;
+  min-height: 142px;
+  display: grid;
+  grid-template-areas: "face"
+}
+
+.set-card.fcard>.set-face {
+  grid-area: face
+}
+
+/* In the flow now, so it needs neither the absolute placement that put it on
+   the card's border nor the min-height that made it at least as tall as the
+   card. The negative margin is the same trick for the same reason: it lays this
+   panel's border exactly over the card's rather than 1px inside it. */
+.set-card.fcard>.set-back {
+  position: static;
+  min-height: 0;
+  margin: -1px
 }
 
 /* Except where there is nothing to switch -- a required feature, or one whose
