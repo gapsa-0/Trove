@@ -62,10 +62,16 @@ function openMenu(trigger, items, label) {
   OPEN = { panel, trigger };
   trigger.setAttribute("aria-expanded", "true");
   place(panel, trigger);
-  // Scrolling would leave a fixed panel behind where the card no longer is, so
-  // the menu closes rather than chasing it.
-  window.addEventListener("scroll", closeMenu, { capture: true, once: true });
+  // Scrolling the SCREEN would leave a fixed panel behind where the card no
+  // longer is, so the menu closes rather than chasing it. Scrolling the panel
+  // is the opposite of that and must not: capture on the window sees a scroll
+  // of any element, the panel's own included, so "Merge with…" -- the one list
+  // here long enough to need scrolling -- shut itself the moment you tried,
+  // and only the first few names were ever reachable.
+  const onScroll = event => { if (!OPEN.panel.contains(event.target)) closeMenu(); };
+  window.addEventListener("scroll", onScroll, { capture: true });
   window.addEventListener("resize", closeMenu, { once: true });
+  OPEN.onScroll = onScroll;
 }
 
 function fillMenu(panel, items) {
@@ -112,6 +118,9 @@ function place(panel, trigger) {
 
 export function closeMenu() {
   if (!OPEN) return;
+  // The scroll listener outlives `once` now that it can decline to act, so it
+  // is taken off with the panel it belongs to.
+  window.removeEventListener("scroll", OPEN.onScroll, { capture: true });
   OPEN.panel.remove();
   OPEN.trigger.removeAttribute("aria-expanded");
   OPEN = null;

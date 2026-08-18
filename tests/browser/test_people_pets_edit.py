@@ -465,3 +465,36 @@ def test_the_card_can_still_be_dragged_to_merge(open_app):
         _watch_drags(app)
         _press_and_nudge(app, ".pcard .facecollage, .pcard img")
         assert _drags(app) == 1, "a press on the card's picture no longer drags it"
+
+
+def test_the_merge_list_can_be_scrolled_without_the_menu_shutting(open_app):
+    """ "Merge with…" is the one list here long enough to need scrolling.
+
+    The menu is pinned to a card's rectangle, so it closes when the screen
+    scrolls out from under it rather than chasing it. That listener captures at
+    the window, which sees a scroll of *any* element -- including the panel's
+    own -- so scrolling the list shut it, and only the first few names were ever
+    reachable.
+
+    Scroll events are dispatched rather than provoked because the seeded archive
+    has too few named groups to overflow the panel; what is under test is which
+    scrolls the handler acts on, and that is exactly what this asks it.
+    """
+    with open_app("people") as app:
+        app.wait_for(".pcard .cardmenu-trigger")
+        app.click(".pcard .cardmenu-trigger")
+        app.wait_for(".cardmenu-panel .cardmenu-item")
+        app.tab.evaluate(
+            "document.querySelector('.cardmenu-panel')"
+            ".dispatchEvent(new Event('scroll', {bubbles: false}))"
+        )
+        assert app.count(".cardmenu-panel") == 1, "scrolling the menu closed it"
+        app.tab.evaluate(
+            "document.getElementById('main').dispatchEvent(new Event('scroll', {bubbles: false}))"
+        )
+        app.tab.wait_for(
+            "document.querySelectorAll('.cardmenu-panel').length === 0",
+            timeout=5.0,
+            what="the menu to close when the screen behind it scrolls",
+        )
+        assert app.errors() == []

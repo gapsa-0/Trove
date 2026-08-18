@@ -536,6 +536,10 @@
   max-width: 260px;
   max-height: 320px;
   overflow-y: auto;
+  /* A long list of names reaches its end and stops there. Without this the
+     wheel carries on into the screen behind, which scrolls the grid the panel
+     is pinned to -- and that closes the menu (see menu.js's scroll handler). */
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 12px;

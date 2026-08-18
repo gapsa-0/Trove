@@ -69,6 +69,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **"Merge with…" can be scrolled to the name you want.** The list shut itself
+  the moment you tried to scroll it, so on an archive with more than a handful
+  of named groups only the first few were ever reachable. The menu is pinned to
+  its card and closes when the screen scrolls out from under it, and that was
+  reading a scroll of the list itself as a scroll of the screen.
+
 - **A group's name and its ⋯ menu answer the first press again.** Pressing the
   name of a person, pet or place on its card, or the ⋯ beside it, often did
   nothing at all: the card is draggable so that one can be dropped onto another
