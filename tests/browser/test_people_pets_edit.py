@@ -539,3 +539,26 @@ def test_a_group_counts_itself_in_files_not_photographs(open_app):
             for text in counts:
                 assert "photo" not in text, f"{section} card still counts photographs: {text!r}"
                 assert "file" in text, f"{section} card counts nothing recognisable: {text!r}"
+
+
+def test_a_person_with_a_quotation_mark_in_their_name_can_be_renamed(open_app):
+    """The page's rename button carried the name inside a click attribute.
+
+    It escaped a backslash and an apostrophe for the JavaScript string, and
+    nothing for the HTML attribute around it, so a quotation mark ended the
+    attribute early: the button rendered, looked exactly right, and did
+    nothing. Named through the app's own editor rather than through the API,
+    so what is under test is the page drawn from a name the app itself stored.
+    """
+    with open_app("people") as app:
+        app.wait_for_text("Ada")
+        app.click(".pcard .pname")
+        app.wait_for(".pcard .pmeta-editing input")
+        _type_into(app, ".pcard .pmeta-editing input", 'Ana "Nana"')
+        app.wait_for_text('Ana "Nana"')
+
+        app.click(".pcard img.face, .pcard .facecollage img")
+        app.wait_for("#personname .person-name-button")
+        app.click("#personname .person-name-button")
+        app.wait_for("#personname input")
+        assert app.errors() == []

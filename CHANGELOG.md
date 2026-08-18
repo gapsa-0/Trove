@@ -69,6 +69,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A name with a quotation mark in it can still be changed.** On a person's
+  own page the rename button was built with their name written into its click
+  handler, escaped for the JavaScript inside it but not for the HTML around it.
+  A name like `Ana "Nana"` ended the attribute early, so the button rendered,
+  looked right, and did nothing at all — with no way back, since renaming was
+  the thing it did.
+
 - **A person, pet or place counts its files, not its photographs.** The number
   under a name has always been a count of distinct files, and a face is found in
   a video as readily as in a photograph — so a group holding two clips called

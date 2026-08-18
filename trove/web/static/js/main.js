@@ -40,7 +40,7 @@ import {
   backToPets,
 } from "./pets.js";
 import {
-  answerSuggest, backToPeople, editPersonName, unhidePerson,
+  answerSuggest, backToPeople, unhidePerson,
 } from "./people.js";
 import {
   mergeAskCancel, undoMerge,
@@ -168,7 +168,7 @@ Object.assign(window, {
   closeArchiveSetup, closeDocs, closeFeatureSheet, closeModal, closePick, closePlaceCluster,
   closeSettings,
   copyText,
-  editClusterName, editDate, editPersonName, editPlace,
+  editClusterName, editDate, editPlace,
   highlightFace,
   mergeAskCancel,
   newPlace, onAddPerson,

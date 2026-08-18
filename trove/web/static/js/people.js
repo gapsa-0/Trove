@@ -497,7 +497,6 @@ export async function showPerson(id) {
   PERSON_NAME = r.name || "";
   const nm = r.name ? esc(r.name) : "Name this person";
   const nmCls = r.name ? "nm" : "nm un";
-  const safe = (r.name || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   // The cover, which is what "Make cover photo" sets. Falling back to the
   // first face on the page covers a person whose cover has not been derived
   // yet -- but taking that fallback *first*, as this did, meant the choice
@@ -514,7 +513,7 @@ export async function showPerson(id) {
       ${avatar}
       <div class="ftb-identity">
         <div class="ftb-name" id="personname">
-          <button class="person-name-button ${nmCls}" onclick="editPersonName(${id},'${safe}')" title="Rename this person">
+          <button class="person-name-button ${nmCls}" type="button" title="Rename this person">
             <span>${nm}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg>
           </button>
@@ -528,6 +527,15 @@ export async function showPerson(id) {
       <button class="linkbtn" type="button" onclick="unhidePerson(${id})">Put it back</button></div>` : ""}
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
+  // A closure, rather than an inline click attribute with the person's name
+  // written into the call. That needed the name escaped for a JavaScript string
+  // sitting inside a double-quoted HTML attribute, and it escaped a backslash
+  // and an apostrophe but not a quotation mark -- so anyone with one in their
+  // name (Ana "Nana") ended the attribute early and had no rename button at
+  // all. This is what the Pets page already does; escaping a name correctly for
+  // two nested grammars at once is a problem worth not having.
+  document.querySelector("#personname .person-name-button")
+    .addEventListener("click", () => editPersonName(id, r.name || ""));
   // Hiding from a person's own page leaves nowhere to stand, so it goes back
   // to the grid -- where the group it just removed is now absent.
   // From the page itself, a merge follows the survivor rather than dropping
@@ -574,7 +582,7 @@ export function backToPeople() {
   // keeps the scroll position that was the point of restoring it.
   refreshAfterHide();
 }
-export function editPersonName(id, current) {
+function editPersonName(id, current) {
   const box = document.getElementById("personname"); if (!box) return;
   inlineNameEdit(box, {
     value: current,
