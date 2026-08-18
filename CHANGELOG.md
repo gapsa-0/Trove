@@ -69,6 +69,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Collapsing the sidebar no longer puts a scrollbar down its side.** The
+  Settings button kept its full-width label in a rail two-thirds narrower than
+  the label, so the sidebar overflowed and grew a horizontal scrollbar on every
+  screen. It now shows the gear alone, as every other item in the rail does.
+
 - **"Merge with…" can be scrolled to the name you want.** The list shut itself
   the moment you tried to scroll it, so on an archive with more than a handful
   of named groups only the first few were ever reachable. The menu is pinned to

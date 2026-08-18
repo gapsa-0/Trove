@@ -103,3 +103,28 @@ def test_the_library_grid_pages_in_more_media_when_scrolled(open_app):
             what="a second page of tiles after scrolling",
         )
         assert app.errors() == []
+
+
+def test_the_collapsed_sidebar_fits_the_rail_it_collapses_to(open_app):
+    """Nothing in the rail may be wider than the rail.
+
+    ``nav`` scrolls its own overflow, so one label that does not shrink is not
+    a clipped label -- it is a horizontal scrollbar down the side of the
+    sidebar, on every screen. Asserted as the overflow rather than on any one
+    control, because the next control added to the rail should fail this too.
+    """
+    with open_app("overview") as app:
+        app.tab.evaluate("toggleNav()")
+        app.tab.wait_for(
+            "document.getElementById('nav').classList.contains('collapsed')",
+            timeout=5.0,
+            what="the sidebar to collapse",
+        )
+        widths = app.tab.evaluate(
+            "(() => { const n = document.getElementById('nav');"
+            " return [n.scrollWidth, n.clientWidth]; })()"
+        )
+        assert widths[0] <= widths[1], (
+            f"the collapsed rail overflows: {widths[0]}px of content in {widths[1]}px"
+        )
+        assert app.errors() == []
