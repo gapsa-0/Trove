@@ -121,7 +121,13 @@ export function reloadGrids() {
   // The observers are re-attached rather than left alone: which group may page
   // depends on the query and on which one is open, and both can have moved
   // since they were last hung on these sentinels.
-  activeGrids().forEach(g => { resetGridResults(g); setupGridInfiniteScroll(g); loadGrid("append", g); });
+  //
+  // Hands back the loads it starts, for the one caller that has to wait on
+  // them: a reload that must not move the reader can only put them back once
+  // there is something under them again (setResultScope).
+  return Promise.all(activeGrids().map(g => {
+    resetGridResults(g); setupGridInfiniteScroll(g); return loadGrid("append", g);
+  }));
 }
 /* The ways this archive can answer a typed query.
 
@@ -402,6 +408,7 @@ export function renderSortOptions(g) {
 }
 export function applySort() {
   S.grid.sort = selVal("f-sort");
+  scrollResultsToTop();   // a different order is a different list to read
   reloadGrids();
 }
 /* Coming back to the Library puts the user's controls back the way they left
@@ -515,6 +522,7 @@ export function applyFilters() {
   updatePeopleFilterLabel("f", S.filterOpts.people || []);
   updateGroupFilterLabel("f", "pets", S.filterOpts.pets || []);
   updateClearBtn();
+  scrollResultsToTop();   // a narrower list is a different list to read
   reloadGrids();
 }
 export function resetGridResults(g) {
@@ -527,6 +535,17 @@ export function resetGridResults(g) {
   const more = document.getElementById(g.ids.more); if (more) more.replaceChildren();
   refreshGallery();
   const count = document.getElementById(g.ids.count); if (count) count.textContent = "";
+}
+/* Back to the top of the results, for the callers that mean it.
+
+   This used to be the last line of resetGridResults, which made emptying a
+   group's pages and moving the reader one act. They are not one act: a new
+   search or a changed filter replaces what you are reading and belongs at the
+   top, while widening the relevance cut only adds results BELOW the ones
+   already on screen and has to leave you where you were. Same distinction the
+   search writes out for `S.onlyWay` (search.js) -- narrowing what you are
+   reading is not a reason to stop reading it. */
+export function scrollResultsToTop() {
   const main = document.getElementById("main"); if (main) main.scrollTop = 0;
 }
 /* Whether the media grid can rank a typed query at all.

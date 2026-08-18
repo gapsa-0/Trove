@@ -69,6 +69,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **"All results" stops throwing you back to the top.** Widening a description
+  search from its top matches to everything only adds results *below* the ones
+  already on screen — it is the same ranking in the same order with the
+  relevance floor taken off — so being scrolled to the top for it was the screen
+  answering "show me more" by taking away what you had. Coming back out of one
+  ranking to the overview also holds your place more reliably: it now waits for
+  the results it re-fetched instead of putting you back a frame before they
+  arrive.
+
 - **The drawer of set-aside groups is called "Unknown", not "Hidden".** It holds
   exactly the groups you marked *Unknown person* or *Unknown animal*, and named
   itself after what happened to them rather than after what you said about them.

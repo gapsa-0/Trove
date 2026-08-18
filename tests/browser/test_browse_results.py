@@ -440,3 +440,51 @@ def test_a_photograph_found_by_its_writing_says_so(open_app):
         app.wait_for("#grid-text .found-by")
         assert "text in pictures" in app.text("#grid-text .found-by")
         assert app.errors() == []
+
+
+def test_widening_to_all_results_leaves_you_where_you_were_reading(open_app):
+    """ "All results" adds results below the ones already on screen.
+
+    It is the same ranking in the same order with the relevance floor taken off
+    (routes/search.py), so everything you were looking at is still there and
+    still in that place. Being thrown to the top for it was the screen
+    answering "show me more" by taking away what you had.
+
+    The scroller is given something to scroll that is not the results
+    themselves: this tier has no embedding model, so a description search comes
+    back empty and there would be no height to hold a position in. The padding
+    sits outside every group, which is exactly what makes it survive the reload
+    under test. Half of the travel rather than a round number, and read back
+    rather than assumed, so neither this screen's height nor the few pixels the
+    reload takes off it can decide whether the test passes.
+    """
+    with open_app("library") as app:
+        app.wait_for("#f-clear")
+        _search(app, "the beach")
+        app.wait_for(".aq-scope")
+        # The search's own pages are still landing, and each one re-anchors the
+        # scroll as it renders. Scrolling into that races it.
+        app.wait_until_settled()
+        before = app.tab.evaluate(
+            "(() => { const m = document.getElementById('main');"
+            " const pad = document.createElement('div');"
+            " pad.style.height = '4000px'; m.appendChild(pad);"
+            " m.scrollTop = Math.floor((m.scrollHeight - m.clientHeight) / 2);"
+            " return m.scrollTop; })()"
+        )
+        assert before > 0, "the results screen did not scroll, so this proves nothing"
+
+        app.click(".aq-scope button:last-child")
+
+        assert app.tab.evaluate("document.getElementById('main').scrollTop") == before, (
+            "widening the cut scrolled back to the top"
+        )
+        # ...and still there once the reload has landed and had its say.
+        app.tab.wait_for(
+            "document.querySelector('.aq-scope button[aria-pressed=\"true\"]')"
+            ".textContent === 'All results'",
+            timeout=5.0,
+            what="the scope control to settle on All results",
+        )
+        assert app.tab.evaluate("document.getElementById('main').scrollTop") == before
+        assert app.errors() == []

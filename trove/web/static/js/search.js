@@ -5,6 +5,7 @@
 
 import {
   checkedPeople, liveRankings, mediaRanksQueries, reloadGrids, renderSortOptions,
+  scrollResultsToTop,
   updateClearBtn, updatePeopleFilterLabel,
 } from "./library.js";
 import {
@@ -470,6 +471,11 @@ export async function semanticSubmit(ev) {
   renderActiveQuery(g);
   if (submit) { submit.disabled = false; submit.textContent = oldLabel; }
   updateClearBtn();
+  // A new search is a new thing to read, so it is read from the start. Here for
+  // the same reason `S.onlyWay` is cleared here rather than in `reloadGrids`:
+  // the filters, the sort and the result scope all go through that too, and
+  // only some of them are replacing what you are reading.
+  scrollResultsToTop();
   reloadGrids();
   // The ways panel and the result headings are the same list in two states, so
   // the only thing that switches between them is a query arriving or leaving.
@@ -547,15 +553,32 @@ function resultScopeControl(g) {
     });
   return wrap;
 }
-function setResultScope(trimmed) {
+async function setResultScope(trimmed) {
   const g = S.grid;
   if (g.topMatchesOnly === trimmed) return;
   g.topMatchesOnly = trimmed;
   renderActiveQuery(g);
-  // The scope control only widens the description ranking -- a text match is a
-  // match, with no cut to relax -- but both groups reload so their totals stay
-  // answers to the same request.
-  reloadGrids();
+  /* Widening the cut does not move the reader.
+
+     "All results" is the same ranking in the same order with the floor taken
+     off (routes/search.py drops min_similarity and the relative floor), so
+     every result you were already looking at is still there, still in that
+     place, with more of them underneath. Being thrown to the top for it was the
+     screen answering "show me more" by taking away what you had.
+
+     Put back after the loads rather than in the next frame: the groups are
+     emptied and re-fetched, so until the first page lands there is nothing
+     under the reader to hold them up and the position clamps to nothing. Deep
+     enough in and it still clamps -- only the first page is re-fetched -- but
+     the trimmed list this widens is a short one, which is why it is being
+     widened. */
+    const main = document.getElementById("main");
+    const wasAt = main ? main.scrollTop : 0;
+    // The scope control only widens the description ranking -- a text match is a
+    // match, with no cut to relax -- but both groups reload so their totals stay
+    // answers to the same request.
+    await reloadGrids();
+    if (main) requestAnimationFrame(() => { main.scrollTop = wasAt; });
 }
 function clearSearch() {
   const composer = document.getElementById("semantic-q");

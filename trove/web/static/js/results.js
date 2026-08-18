@@ -121,27 +121,45 @@ function showOnlyWay(kind) {
   S.onlyWay = kind;
   renderGroupLabels();
   activeGrids().forEach(g => { renderGridPages(g); setupGridInfiniteScroll(g); });
+  /* The one place here a jump to the top is not a reset.
+
+     Every group above the one being opened comes off the screen with this, so
+     the ranking you pressed on IS the top afterwards -- holding its heading
+     where it was and scrolling to nought are the same instruction, and the
+     second is the one that says so. What must not be lost is where you were
+     reading, and that is kept above and put back by showAllWays. */
   if (main) main.scrollTop = 0;
 }
 function showAllWays() {
   S.onlyWay = "";
   renderGroupLabels();
+  const refetched = [];
   activeGrids().forEach(g => {
     /* A ranking scrolled deep no longer holds its own first results: the window
        is capped at GRID_MAX_PAGES and the early pages have been dropped off the
        top of it. A preview showing results 481 to 494 of a ranking is not a
        preview of that ranking, so a group that was paged through is put back to
        its first page. Only that group, and only when it actually moved. */
-    if (g.pages.length && g.pages[0].offset > 0) { resetGridResults(g); loadGrid("append", g); }
-    else renderGridPages(g);
+    if (g.pages.length && g.pages[0].offset > 0) {
+      resetGridResults(g); refetched.push(loadGrid("append", g));
+    } else renderGridPages(g);
     setupGridInfiniteScroll(g);
   });
+  /* Back where you were reading before you opened one ranking.
+
+     Waited on rather than done in the next frame, which is what made this fail
+     in exactly the case it exists for: a ranking you actually read through is
+     one that paged, and a group that paged is emptied and re-fetched above. Its
+     results are still in flight one frame later, so the screen is short, the
+     position clamps to whatever fits, and the pages then land under a reader
+     who has already been moved to the top. */
   const main = document.getElementById("main");
-  // After the paint, and after resetGridResults' own scroll to the top: the
-  // group you came back from is where you were reading.
-  if (main) requestAnimationFrame(() => {
+  if (!main) return;
+  const restore = () => requestAnimationFrame(() => {
     if (ACTIVE_SECTION === "library" && !S.onlyWay) main.scrollTop = S.overviewScrollTop || 0;
   });
+  if (refetched.length) Promise.all(refetched).then(restore);
+  else restore();
 }
 /* The viewer walks whatever is on screen, in the order it is on screen -- so
    with two groups showing it has to be both of them, text first, matching the
