@@ -75,7 +75,9 @@ detail of a scene.
 ## What you can do on the Pets screen
 
 **Name a pet,** the same way you name a person, and the name survives
-re-clustering.
+re-clustering: it goes to the one rebuilt group that best inherited the old
+one, so a pet whose photos split in two comes back named once rather than
+twice.
 
 **Merge two pets** by dragging one card onto another, for when the same animal
 has ended up with two pages. This is the common correction, because the

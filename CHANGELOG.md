@@ -96,6 +96,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   picture saved differently — now sits under the *Redundant copies* count it
   qualifies.
 
+- **One pet, one name.** Grouping rebuilds every pet after each batch of photos,
+  and each new group took the name of any old pet it shared a photo with — so a
+  cat whose photos split into two groups came back as two cats called Kira, and
+  a name could wander onto a group that had swept up a single stray photograph
+  of it. A name now goes to the one group that best inherited it, as it already
+  did for people.
+
 - **A name you give a small group is not lost the next time faces are grouped.**
   Grouping rebuilds every person from scratch each time it runs, and a name
   survived only if the pass could work out which new group inherited the old one

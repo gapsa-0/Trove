@@ -162,15 +162,43 @@ def _majority_species(emb_rows: list[sqlite3.Row], group: list[int]) -> str:
     return winner
 
 
-def _carried_name(ids: set[int], old_members: dict[int, dict[str, Any]]) -> str | None:
-    """The previous name that best explains this group, by detection overlap."""
-    best_name: str | None = None
-    best_overlap = 0
-    for old in old_members.values():
-        overlap = len(ids & old["ids"])
-        if overlap > best_overlap:
-            best_name, best_overlap = old["name"], overlap
-    return best_name
+def _carry_names(
+    groups: list[set[int]], old_members: dict[int, dict[str, Any]], floor: int
+) -> dict[int, str]:
+    """Give each previously-used name to the one new group it best explains.
+
+    Sort every (name, group) overlap descending and assign greedily, each name
+    used once and each group named once. The one-to-one rule is the whole point,
+    and this asked the question per group instead: every group that overlapped
+    an old pet at all took its name, so one cat split in two came back as two
+    cats of the same name, and the Pets screen showed both.
+
+    The floor rejects an overlap too small to mean anything -- a single shared
+    detection between a group of many and an old pet of many is a coincidence,
+    not an inheritance. It is `pets_min_detections`, the smallest a group is
+    allowed to be, so "at least a whole group's worth" is the bar either way.
+
+    Deliberately NOT also gated on the name covering a majority of the new
+    group: a pet that was split and is now reunited had its name on only one of
+    the halves, so a majority test would drop the name exactly when the grouping
+    got better. Same reasoning as faces/cluster.py::_carry_names, which this is
+    the pet-side copy of.
+    """
+    triples = [
+        (len(ids & old["ids"]), old["name"], index)
+        for index, ids in enumerate(groups)
+        for old in old_members.values()
+        if len(ids & old["ids"]) >= floor
+    ]
+    triples.sort(reverse=True)
+    name_of: dict[int, str] = {}
+    used: set[str] = set()
+    for _overlap, name, index in triples:
+        if name in used or index in name_of:
+            continue
+        name_of[index] = name
+        used.add(name)
+    return name_of
 
 
 def _write_pet(
@@ -178,15 +206,17 @@ def _write_pet(
     V: np.ndarray,
     emb_rows: list[sqlite3.Row],
     group: list[int],
-    old_members: dict[int, dict[str, Any]],
+    best_name: str | None,
     now: str,
     stats: PetClusterStats,
 ) -> None:
-    """Insert one pets row for a surviving group and point its detections at it."""
+    """Insert one pets row for a surviving group and point its detections at it.
+
+    Handed its name rather than working one out: which old name best explains
+    this group cannot be decided from this group alone (see _carry_names)."""
     import numpy as np
 
     ids = {emb_rows[i]["id"] for i in group}
-    best_name = _carried_name(ids, old_members)
     centroid = V[group].mean(axis=0)
     centroid /= np.linalg.norm(centroid) + 1e-9
     # A cover the user chose wins over the best-scoring detection; the rebuild
@@ -275,9 +305,17 @@ def cluster_pets(
 
     # Fold in the user's "same pet?" answers, THEN filter/finalize.
     groups = _apply_links(conn, _species_groups(V, emb_rows, cfg), emb_rows)
-    for group in groups:
-        if len(group) >= cfg.pets_min_detections:
-            _write_pet(conn, V, emb_rows, group, old_members, now, stats)
+    kept = [group for group in groups if len(group) >= cfg.pets_min_detections]
+    # Named before any of them is written: a name goes to the group that best
+    # explains it out of all of them, which is not a question one group can be
+    # asked on its own.
+    name_of = _carry_names(
+        [{emb_rows[i]["id"] for i in group} for group in kept],
+        old_members,
+        cfg.pets_min_detections,
+    )
+    for index, group in enumerate(kept):
+        _write_pet(conn, V, emb_rows, group, name_of.get(index), now, stats)
 
     stats.unassigned = stats.detections - stats.clustered
     repair_manual_pet_files(conn)
