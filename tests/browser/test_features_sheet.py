@@ -22,6 +22,7 @@ it -- so the things worth pinning here are the ones that make it a fork:
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 
 
@@ -376,3 +377,58 @@ def test_every_card_in_the_sheet_is_the_same_height(open_app):
             ".map(c => Math.round(c.getBoundingClientRect().height))"
         )
         assert len(set(heights)) == 1, f"cards are ragged: {sorted(set(heights))}"
+
+
+def _settled_card_shot(app, box) -> str:
+    """A PNG of that rectangle, once it has stopped changing.
+
+    The card lifts under the pointer and its description fades in, both on
+    transitions, so a shot taken the moment the panel turns visible catches it
+    mid-animation. Two identical captures in a row is the settled state, and the
+    rectangle is measured once by the caller so both shots frame the same pixels.
+    """
+    shot = lambda: app.tab.call(  # noqa: E731
+        "Page.captureScreenshot", {"format": "png", "clip": box}
+    )["result"]["data"]
+    previous = shot()
+    for _ in range(60):
+        time.sleep(0.05)
+        current = shot()
+        if current == previous:
+            return current
+        previous = current
+    raise AssertionError("the card never stopped changing")
+
+
+def test_the_description_covers_the_front_it_is_drawn_over(open_app):
+    """Both faces carry the fact and the switch on purpose (features.js): the
+    description covers the card, and a switch printed only on the front would
+    vanish the moment you pointed at it. That only works while the description
+    is genuinely on top of the front.
+
+    In flow with no stacking context of its own it is not, and not in a way
+    hit-testing shows: a background paints in an earlier phase than the CONTENT
+    of its siblings, so the front's switch came up through the description and
+    one card showed two knobs, one live and one dead. `elementFromPoint` names
+    the description at that spot either way, which is why this compares ink.
+
+    The front is hidden rather than removed so the card is laid out identically
+    in both shots and the only thing that can differ is what the front drew.
+    """
+    with open_app("overview") as app:
+        _open_sheet(app)
+        card = '.fcard[data-feature="people"]'
+        app.hover(card)
+        app.wait_shown(f"{card} .set-back")
+        box = app.tab.evaluate(
+            f"(() => {{ const r = document.querySelector({card!r}).getBoundingClientRect();"
+            " return {x: r.x, y: r.y, width: r.width, height: r.height, scale: 1}; })()"
+        )
+        with_front = _settled_card_shot(app, box)
+        app.tab.evaluate(
+            f"document.querySelector('{card} .set-face:not(.set-back)').style.visibility = 'hidden'"
+        )
+        without_front = _settled_card_shot(app, box)
+
+        assert with_front == without_front, "the front draws through the description covering it"
+        assert app.errors() == []

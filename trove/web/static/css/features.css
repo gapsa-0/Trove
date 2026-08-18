@@ -144,9 +144,18 @@
 /* In the flow now, so it needs neither the absolute placement that put it on
    the card's border nor the min-height that made it at least as tall as the
    card. The negative margin is the same trick for the same reason: it lays this
-   panel's border exactly over the card's rather than 1px inside it. */
+   panel's border exactly over the card's rather than 1px inside it.
+
+   `relative` and a z-index, though, not `static`. Both faces carry the fact and
+   the switch on purpose (features.js), because the description covers the card
+   and a switch printed only on the front would vanish the moment you pointed at
+   it. In flow with no stacking context of its own, this panel's background
+   paints in the background phase while the front's CONTENT paints in the phase
+   after it -- so the front's switch came through the description on top of the
+   description's own, and one card showed two knobs. */
 .set-card.fcard>.set-back {
-  position: static;
+  position: relative;
+  z-index: 1;
   min-height: 0;
   margin: -1px
 }
