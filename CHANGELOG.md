@@ -67,6 +67,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   undo itself. Undoing marks an entry rather than deleting it, because a history
   that erased itself as you used it would be a poor account of the afternoon.
 
+- **A place's name can be taken back off, like a person's or a pet's.** The
+  Places grid had its own copy of the name editor rather than the shared one, so
+  it never got the "Remove name" the others have — even though an unnamed place
+  is a state Trove has always been able to store.
+
 - **Name someone from the photograph they are in.** The panel beside a photo
   could only ever point a face at somebody you had already named somewhere else
   — so on a fresh archive it had nothing to offer but a sentence sending you to

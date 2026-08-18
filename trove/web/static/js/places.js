@@ -37,6 +37,9 @@ import {
   esc, fileCount, toast,
 } from "./dom.js";
 import {
+  inlineNameEdit,
+} from "./nameedit.js";
+import {
   S,
 } from "./state.js";
 
@@ -305,25 +308,27 @@ function showPlaceFromGallery(id) {
   selectPlaceCluster(id);
   document.getElementById("lmap")?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
+/* The shared editor, which this was the one grid not using.
+
+   It had its own copy of the same twenty lines -- the commit latch that stops
+   blur and Enter both saving, the Escape, the click that must not open the card
+   -- and being a copy is what kept it from having the one thing the others got:
+   a way to take a name back off. A place can be unnamed (rename_place_cluster
+   writes NULL for an empty name); only this editor never offered it. */
 function editPlaceCardName(card, place) {
   const meta = card.querySelector(".pmeta"); if (!meta) return;
   card.onclick = null;
   card.draggable = false;   // don't let an in-progress rename start a merge-drag
   meta.className = "pmeta pmeta-editing";
-  meta.innerHTML = `<input value="${esc(place.name || "")}" placeholder="Place name" aria-label="Place name">
-    <div class="pcount">${fileCount(place.count)} · Enter or click away to save</div>`;
-  const input = meta.querySelector("input");
-  input.onclick = event => event.stopPropagation();
-  let finished = false;
-  input.addEventListener("blur", () => { if (!finished) { finished = true; savePlaceCardName(card, place, input); } });
-  input.addEventListener("keydown", event => {
-    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
-    if (event.key === "Escape") { finished = true; card.replaceWith(placeCard(place)); }
+  inlineNameEdit(meta, {
+    value: place.name,
+    label: "Place name",
+    after: `<div class="pcount">${fileCount(place.count)} · Enter or click away to save</div>`,
+    onSave: (name, input) => savePlaceCardName(card, place, name, input),
+    onCancel: () => card.replaceWith(placeCard(place)),
   });
-  input.focus(); input.select();
 }
-async function savePlaceCardName(card, place, input) {
-  const name = input.value.trim();
+async function savePlaceCardName(card, place, name, input) {
   if (name === (place.name || "")) { card.replaceWith(placeCard(place)); return; }
   input.disabled = true;
   let result;
