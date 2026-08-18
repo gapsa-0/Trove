@@ -384,3 +384,84 @@ def test_the_pets_grid_keeps_its_place_too(open_app):
         assert before > 0, "the grid did not scroll, so this proves nothing"
         assert after == before, f"scroll reset: was {before}, came back {after}"
         assert app.errors() == []
+
+
+def _press_and_nudge(app, selector: str) -> None:
+    """Press a control, travel past the drag threshold, release still inside it.
+
+    An ordinary click: nobody presses a button without the mouse moving a few
+    pixels. Driven through ``Input.dispatchMouseEvent`` rather than ``.click()``
+    because the travel is the whole point -- a synthetic click never moves, so
+    it can never be mistaken for the start of a drag.
+    """
+    x, y = app.tab.evaluate(
+        f"(() => {{ const r = document.querySelector({selector!r}).getBoundingClientRect();"
+        " return [r.x + r.width / 2, r.y + r.height / 2]; })()"
+    )
+    for kind, dx, dy in (
+        ("mousePressed", 0, 0),
+        ("mouseMoved", 4, 2),
+        ("mouseMoved", 8, 3),
+        ("mouseReleased", 8, 3),
+    ):
+        app.tab.call(
+            "Input.dispatchMouseEvent",
+            {
+                "type": kind,
+                "x": x + dx,
+                "y": y + dy,
+                "button": "left",
+                "clickCount": 1,
+                "buttons": 0 if kind == "mouseReleased" else 1,
+            },
+        )
+
+
+def _watch_drags(app) -> None:
+    app.tab.evaluate(
+        "window.__drags = 0; addEventListener('dragstart', () => { window.__drags++; }, true);"
+    )
+
+
+def _drags(app) -> int:
+    return app.tab.evaluate("window.__drags")
+
+
+def test_pressing_the_name_does_not_start_a_merge_drag(open_app):
+    """The card is draggable for merge, and that used to swallow this click.
+
+    Asserted on the drag rather than on the editor, and that is not a weaker
+    check -- it is the only honest one this browser can make. A real Chrome
+    that starts a drag enters a modal loop and delivers no click at all, which
+    is the failure; headless synthetic input never enters that loop, so the
+    editor opens here either way and an assertion about it would pass against
+    the bug. That no drag begins is the same fact, observable.
+    """
+    with open_app("people") as app:
+        app.wait_for(".pcard .pname")
+        _watch_drags(app)
+        _press_and_nudge(app, ".pcard .pname")
+        app.wait_for(".pcard .pmeta-editing input")
+        assert _drags(app) == 0, "pressing the name began a merge-drag of the card"
+        assert app.errors() == []
+
+
+def test_pressing_the_actions_menu_does_not_start_a_merge_drag(open_app):
+    """The same gesture, on the other control every card carries."""
+    with open_app("people") as app:
+        app.wait_for(".pcard .cardmenu-trigger")
+        _watch_drags(app)
+        _press_and_nudge(app, ".pcard .cardmenu-trigger")
+        app.wait_for(".cardmenu-panel .cardmenu-item")
+        assert _drags(app) == 0, "pressing the actions menu began a merge-drag"
+        assert app.errors() == []
+
+
+def test_the_card_can_still_be_dragged_to_merge(open_app):
+    """...and the press that is a grab still is one, or the fix above is a
+    feature removal wearing a bug fix's clothes."""
+    with open_app("people") as app:
+        app.wait_for(".pcard img, .pcard .facecollage")
+        _watch_drags(app)
+        _press_and_nudge(app, ".pcard .facecollage, .pcard img")
+        assert _drags(app) == 1, "a press on the card's picture no longer drags it"

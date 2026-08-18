@@ -56,6 +56,31 @@ export function attachMergeDrag(card, info, onMerged) {
     MERGE_DROP_GUARD = true; setTimeout(() => { MERGE_DROP_GUARD = false; }, 0);
   };
   const isValidTarget = () => DRAG_MERGE && DRAG_MERGE.kind === info.kind && DRAG_MERGE.id !== info.id;
+  /* A press on one of the card's own controls -- its name, its actions menu,
+     the Hidden section's "Put back" -- is a click on that control and never a
+     grab of the card. The card is draggable, though, so a few pixels of travel
+     between pressing and releasing was enough for the browser to make a drag
+     of the gesture instead: no click was ever delivered, and the rename editor
+     simply did not open. That is what "renaming a person doesn't always work"
+     actually was, and it was never the saving.
+
+     So the card stops being draggable for the length of the press. Cancelling
+     `dragstart` does not work and is the obvious thing to try: by the time it
+     fires the gesture has already been taken away from the click, so all that
+     buys is a drag that does nothing AND a control that still does nothing.
+
+     Only ever restores what it turned off, which is what keeps it out of the
+     way of the rename editor -- that turns `draggable` off for as long as the
+     field is open (editPersonCardName), and pressing into the field must not
+     hand the card back its drag. */
+  let suppressed = false;
+  const restoreDrag = () => { if (suppressed) { suppressed = false; card.draggable = true; } };
+  card.addEventListener("pointerdown", e => {
+    suppressed = card.draggable && !!e.target.closest("button,input,select,a,label");
+    if (suppressed) card.draggable = false;
+  });
+  card.addEventListener("pointerup", restoreDrag);
+  card.addEventListener("pointercancel", restoreDrag);
   card.addEventListener("dragstart", e => {
     if (!card.draggable) { e.preventDefault(); return; }
     DRAG_MERGE = info;

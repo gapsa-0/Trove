@@ -69,6 +69,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A group's name and its ⋯ menu answer the first press again.** Pressing the
+  name of a person, pet or place on its card, or the ⋯ beside it, often did
+  nothing at all: the card is draggable so that one can be dropped onto another
+  to merge them, and a press that travelled the few pixels any real click
+  travels was read as the start of that drag instead. No click was ever
+  delivered, so the rename editor never opened — which is what "renaming
+  doesn't always work" was, and it was never the saving. A press that starts on
+  one of the card's own controls no longer arms the drag; a press anywhere else
+  on the card still does.
+
 - **Opening a group no longer loses your place in the grid.** Scrolling through
   People or Pets, opening someone, and coming back put you at the top again —
   and threw away every page the grid had loaded on the way down, which on a
