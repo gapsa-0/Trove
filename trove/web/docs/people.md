@@ -143,7 +143,8 @@ face be recognised as one.
 ## What you can do on the People screen
 
 **Name someone.** Click the name under their photo and type. That name is what
-survives every later re-clustering. Tab saves it and opens the next card's name,
+survives every later re-clustering: it is anchored to the face on the group's
+card, so it comes back even when the grouping that produced the group does not. Tab saves it and opens the next card's name,
 so a screenful can be named without reaching for the mouse; Shift+Tab steps
 back.
 

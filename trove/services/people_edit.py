@@ -132,13 +132,37 @@ def rename_person(
     """
     if not person_id:
         return {"error": "missing person_id"}
-    old = conn.execute("SELECT name FROM persons WHERE id=?", (person_id,)).fetchone()
+    old = conn.execute(
+        "SELECT name, cover_face_id FROM persons WHERE id=?", (person_id,)
+    ).fetchone()
     if not old:
         return {"error": "not found"}
     conn.execute("UPDATE persons SET name=? WHERE id=?", (name or None, person_id))
     released: list[int] = []
     if old["name"] and name and old["name"] != name:
         conn.execute("UPDATE faces SET manual_person=? WHERE manual_person=?", (name, old["name"]))
+    elif not old["name"] and name:
+        # Naming a group for the first time anchors the name to one of its
+        # faces. Without that the name lives only in `persons.name`, which the
+        # next clustering pass DELETEs -- and it then depends entirely on
+        # `_carry_names` guessing which new cluster inherited the old one, a
+        # guess that needs three faces of overlap and comes up empty for a group
+        # whose faces no longer cluster together at all. Which is exactly the
+        # group somebody was most likely to have named by hand.
+        #
+        # One face, not all of them. A pin is an instruction the rebuild obeys
+        # whatever the embeddings say, so pinning the group would make a named
+        # person un-splittable for good -- too high a price for typing a name.
+        # One anchor is a floor under the guess rather than a replacement for
+        # it: where `_carry_names` does find the cluster, the pinned face is
+        # already in it and this changes nothing.
+        #
+        # The card's own face, where there is one: that is the face somebody was
+        # looking at when they typed the name, and the one they can still point
+        # at afterwards to see where the name went.
+        anchor = _rep_face(conn, person_id, old["cover_face_id"])
+        if anchor:
+            conn.execute("UPDATE faces SET manual_person=? WHERE id=?", (name, anchor))
     elif old["name"] and not name:
         released = [
             int(r[0])

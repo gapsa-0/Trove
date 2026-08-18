@@ -96,6 +96,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   picture saved differently — now sits under the *Redundant copies* count it
   qualifies.
 
+- **A name you give a small group is not lost the next time faces are grouped.**
+  Grouping rebuilds every person from scratch each time it runs, and a name
+  survived only if the pass could work out which new group inherited the old one
+  — a guess that needs three photographs of overlap and finds none at all for a
+  group whose faces no longer group together, which is exactly the kind you
+  named by hand. Naming a group now anchors the name to the face on its card, so
+  the name comes back whatever grouping does. Taking the name off releases the
+  anchor with it.
+
 ### Fixed
 
 - **"All results" stops throwing you back to the top.** Widening a description
