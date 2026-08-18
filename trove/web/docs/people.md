@@ -145,6 +145,14 @@ face be recognised as one.
 **Name someone.** Click the name under their photo and type. That name is what
 survives every later re-clustering.
 
+**...or name them from a photograph they are in.** Every face the panel beside a
+photo lists carries *Name*, whether or not anybody has been named yet. What that
+does depends on the face: it names the group the face belongs to, or puts the
+face with the person who already carries the name you typed, or — for a face too
+alone to have formed a group, which is most of what detection finds — makes a
+person out of it. The name is pinned to the face either way, so it survives the
+next clustering pass exactly as one given here does.
+
 **Take a name back off.** The same editor offers "Remove name", which returns
 the group to being an unnamed cluster. It also releases any face you had moved
 onto that person by hand: those moves are remembered by name, so leaving them

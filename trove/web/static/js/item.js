@@ -31,6 +31,9 @@ import {
   esc, toast,
 } from "./dom.js";
 import {
+  inlineNameEdit,
+} from "./nameedit.js";
+import {
   releaseStage, videoStage,
 } from "./item-video.js";
 import {
@@ -563,6 +566,42 @@ export function reassignFace(faceId, pid, sel) {
   };
   saveOrRevert("/api/faces/reassign", { face_id: faceId, person_id: +pid },
     revert, "Couldn’t reassign that face");
+}
+/* Naming the person in the photograph, from the photograph. The row becomes a
+   field the way a person's card does, and one endpoint works out what naming
+   this face means (services/people_edit.py::name_face).
+
+   Not optimistic, unlike its neighbours: until the reply lands the panel cannot
+   know which person the face ended up in. Re-read rather than patched, because
+   naming somebody also changes who every OTHER face here may be pointed at --
+   `person_options` is part of the payload. */
+export function nameFace(faceId) {
+  const row = document.querySelector(`.facerow[data-face-id="${faceId}"]`);
+  if (!row || !MITEM) return;
+  const id = MITEM.id;
+  const host = document.createElement("div");
+  host.className = "inline-name-editor";
+  row.replaceChildren(host);
+  inlineNameEdit(host, {
+    value: "", label: "Who is this?",
+    onSave: (name, input) => {
+      if (!name) { renderInfo(); return; }
+      input.disabled = true;
+      qpost("/api/faces/name-face", { face_id: faceId, name })
+        .then(r => (r && r.ok) ? null : Promise.reject(r && r.error))
+        .catch(why => toast("Couldn’t save that name: " + (why || "try again"), true))
+        .finally(() => refreshItem(id));
+    },
+    onCancel: () => renderInfo(),
+  });
+}
+// Re-read the open file and redraw the panel, leaving the stage alone: what
+// changed is what Trove knows about it, not the picture.
+function refreshItem(id) {
+  if (!stillOpen(id)) return;
+  jget(`/api/item/${id}${S.arch ? `?root=${S.arch.id}` : ""}`).then(fresh => {
+    if (stillOpen(id) && fresh && !fresh.error) { MITEM = fresh; renderInfo(); drawBoxes(); }
+  });
 }
 function flashSaved(el) {
   const o = el.style.borderColor; el.style.transition = "border-color .2s";

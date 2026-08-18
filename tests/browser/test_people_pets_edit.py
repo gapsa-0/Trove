@@ -562,3 +562,31 @@ def test_a_person_with_a_quotation_mark_in_their_name_can_be_renamed(open_app):
         app.click("#personname .person-name-button")
         app.wait_for("#personname input")
         assert app.errors() == []
+
+
+def test_a_face_nobody_has_named_can_be_named_from_the_photo(open_app, archive):
+    """The panel could only ever point a face at somebody already named.
+
+    On an archive where nobody is named that left it with nothing to offer but
+    a sentence sending you to another screen -- and a face belonging to no group
+    at all, which is most of what detection finds, had no way to be named from
+    anywhere. This is the whole round trip: the control, the field, the save,
+    and the panel coming back with the name on it.
+    """
+    with open_app("library", wait_for=".tile") as app:
+        app.tab.evaluate(f"openItem({archive.ids['file_unnamed_face']})")
+        app.wait_for("#minfo .facerow .facename")
+
+        app.click("#minfo .facerow .facename")
+        app.wait_for("#minfo .facerow .inline-name-editor input")
+        app.tab.evaluate(
+            "(() => { const i = document.querySelector('#minfo .inline-name-editor input');"
+            " i.value = 'Bruno'; i.dispatchEvent(new Event('blur')); })()"
+        )
+
+        app.tab.wait_for(
+            "document.getElementById('minfo').textContent.includes('Bruno')",
+            timeout=10.0,
+            what="the name to come back on the panel",
+        )
+        assert app.errors() == []

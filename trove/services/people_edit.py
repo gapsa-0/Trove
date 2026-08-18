@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Any
+from typing import Any, cast
 
 from ..db import database as db
 from . import edit_log, merging
@@ -403,3 +403,65 @@ def unhide_person(conn: sqlite3.Connection, person_id: int | None) -> dict[str, 
     )
     conn.commit()
     return {"ok": True}
+
+
+@writing
+def name_face(conn: sqlite3.Connection, face_id: int | None, name: str) -> dict[str, Any]:
+    """ "This face is Ana", said from the photograph rather than from People.
+
+    The panel could only ever point a face at somebody *already* named, so on an
+    archive where nobody is named yet it had nothing to offer at all -- and the
+    face in front of you is exactly where you know who somebody is.
+
+    Three things can be true of the face being named, and each wants a different
+    answer:
+
+    * **Somebody already carries this name.** Then this is ``reassign_face`` to
+      them: the face moves and is pinned there by name.
+    * **The face is in a group nobody has named.** Then this names that group,
+      which is the same act as typing into its card on the People screen -- the
+      face you pointed at is one of theirs, and so are the rest.
+    * **Neither.** The face is one the clusterer left on its own (a group needs
+      ``faces_min_faces`` to exist at all), so there is no group to name and one
+      is made for it.
+
+    Every branch pins the named face by NAME (``faces.manual_person``), which is
+    what carries the answer through the DELETE/rebuild every clustering pass
+    does -- see ``rename_person`` for why a pin is an instruction rather than a
+    note, and ``faces/cluster.py::_apply_manual_pins`` for what obeys it.
+    """
+    name = (name or "").strip()
+    if not face_id or not name:
+        return {"error": "missing face_id or name"}
+    fa = conn.execute("SELECT id, person_id FROM faces WHERE id=?", (face_id,)).fetchone()
+    if not fa:
+        return {"error": "unknown face"}
+    old_pid = fa["person_id"]
+    # NOCASE so "ana" does not quietly become a second Ana; the picker orders
+    # its options the same way (services/item_detail.py).
+    taken = conn.execute(
+        "SELECT id, name FROM persons WHERE name=? COLLATE NOCASE", (name,)
+    ).fetchone()
+    if taken:
+        pid, name = int(taken["id"]), taken["name"]
+    elif (
+        old_pid
+        and not conn.execute("SELECT name FROM persons WHERE id=?", (old_pid,)).fetchone()["name"]
+    ):
+        pid = int(old_pid)
+        conn.execute("UPDATE persons SET name=? WHERE id=?", (name, pid))
+    else:
+        cur = conn.execute(
+            "INSERT INTO persons(name, cover_face_id, face_count, created_at) VALUES(?,?,0,?)",
+            (name, face_id, db.now_iso()),
+        )
+        # An INSERT that didn't raise always sets lastrowid; see
+        # db.database.get_or_create_root for why typeshed still widens it.
+        pid = cast(int, cur.lastrowid)
+    conn.execute("UPDATE faces SET person_id=?, manual_person=? WHERE id=?", (pid, name, face_id))
+    _sync_person_stats(conn, pid)
+    if old_pid and old_pid != pid:
+        _sync_person_stats(conn, old_pid)
+    edit_log.record(conn, edit_log.PERSON, pid, name, edit_log.RENAME, {"from": None, "to": name})
+    conn.commit()
+    return {"ok": True, "person": {"id": pid, "name": name}}

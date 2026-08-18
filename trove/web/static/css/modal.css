@@ -126,6 +126,32 @@
   font-size: 12.5px;
 }
 
+/* "Name", beside the picker rather than instead of it: pointing a face at
+   somebody already named and naming somebody new are different acts, and the
+   second was not available at all. Fixed width so the pickers beside it stay
+   in one column down the list. */
+.facerow .facename {
+  flex: none;
+  font-size: 12px;
+}
+
+/* The row while it holds a name field: the field takes the width the picker had.
+   Fills the row rather than the crop's leftovers, so what is being typed is not
+   in a 60px box. */
+.facerow .inline-name-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Where a face has no name and there is nobody named to point it at either --
+   the state an archive starts in, which used to be a sentence sending you to
+   another screen. */
+.facerow .facerow-none {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
 .info .fsel {
   max-width: none;
   width: 100%;

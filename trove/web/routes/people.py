@@ -104,6 +104,18 @@ def rename_person(req: Request) -> Json:
     return ok_or_error(res)
 
 
+def name_face(req: Request) -> Json:
+    """Name the person a face in the open photo belongs to, from the photo."""
+    res = db.write_with_retry(
+        lambda: people_edit.name_face(
+            req.db(req.open_root_id),
+            req.body.get("face_id"),
+            (req.body.get("name") or "").strip(),
+        )
+    )
+    return ok_or_error(res)
+
+
 def reassign(req: Request) -> Json:
     """Move one face onto a named person and pin it there so re-clustering keeps it."""
     res = db.write_with_retry(

@@ -103,6 +103,7 @@ POST_EXACT = {
     "/api/edit-log/undo",
     "/api/faces/person/cover",
     "/api/faces/person/rename",
+    "/api/faces/name-face",
     "/api/faces/reassign",
     "/api/faces/merge",
     "/api/faces/unmerge",

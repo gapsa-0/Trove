@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**85 routes**: 37 GET (exact) + 12 GET (prefix) + 36 POST.
+**86 routes**: 37 GET (exact) + 12 GET (prefix) + 37 POST.
 
 ## GET -- exact path
 
@@ -89,6 +89,7 @@ see the module docstring in `routes/__init__.py`.
 | `/api/edit-log/undo` | Reverse one history entry, whatever kind it is. | `trove/web/routes/people.py::undo_edit` |
 | `/api/faces/person/cover` | Choose which of a person's photos represents them. | `trove/web/routes/people.py::set_cover` |
 | `/api/faces/person/rename` | Rename a person cluster. | `trove/web/routes/people.py::rename_person` |
+| `/api/faces/name-face` | Name the person a face in the open photo belongs to, from the photo. | `trove/web/routes/people.py::name_face` |
 | `/api/faces/reassign` | Move one face onto a named person and pin it there so re-clustering keeps it. | `trove/web/routes/people.py::reassign` |
 | `/api/faces/merge` | Merge two person clusters the user confirmed are the same, immediately and durably. | `trove/web/routes/people.py::merge` |
 | `/api/faces/unmerge` | Undo a person merge and, if needed, kick off a recluster. | `trove/web/routes/people.py::unmerge` |

@@ -302,6 +302,20 @@ def seed_unplayable_videos(conn, root_id: int, source_dir: Path) -> dict[str, in
     return ids
 
 
+def seed_unnamed_face(conn, file_id: int) -> dict[str, int]:
+    """A face belonging to nobody at all.
+
+    Not an edge case: a group needs `faces_min_faces` faces to exist, so most of
+    what a real archive detects looks exactly like this -- and it is the state
+    the photo panel had nothing whatever to say about until a face could be
+    named from there.
+    """
+    return {
+        "face_unnamed": factories.add_face(conn, file_id),
+        "file_unnamed_face": file_id,
+    }
+
+
 def seed(conn, root_id: int, source_dir: Path) -> dict:
     """A small archive with something on every screen.
 
@@ -338,6 +352,7 @@ def seed(conn, root_id: int, source_dir: Path) -> dict:
         conn, file_ids[4], person_id=ids["person_ada"], det_score=0.4
     )
     conn.execute("UPDATE persons SET face_count=2 WHERE id=?", (ids["person_ada"],))
+    ids.update(seed_unnamed_face(conn, file_ids[7]))
     for name, fid in (("Kira", file_ids[2]), ("Rex", file_ids[3])):
         pet_id = factories.add_pet(conn, name=name)
         factories.add_animal_detection(conn, fid, pet_id=pet_id)

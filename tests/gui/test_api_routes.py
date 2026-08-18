@@ -318,6 +318,12 @@ API_POST_CASES = [
         id="POST /api/faces/person/rename",
     ),
     pytest.param(
+        "/api/faces/name-face",
+        lambda ids: {"face_id": ids["face_a"], "name": "Named From The Photo"},
+        {"ok", "person"},
+        id="POST /api/faces/name-face",
+    ),
+    pytest.param(
         "/api/faces/reassign",
         lambda ids: {"face_id": ids["face_a"], "person_id": ids["person_b"]},
         {"ok", "person"},

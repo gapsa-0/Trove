@@ -388,17 +388,33 @@ function fmtDuration(s) {
 function faceRow(it, f) {
   const named = it.person_options || [];
   const isNamed = f.person_id && f.name;
-  let opts = isNamed ? "" : `<option value="" selected>${f.name ? esc(f.name) : "unknown"}</option>`;
+  // "Not named yet", not "unknown". Unknown is now a claim the user makes about
+  // a group -- the drawer at the foot of People holds the ones they marked
+  // Unknown person -- and this face has had nothing claimed about it at all.
+  let opts = isNamed ? "" : `<option value="" selected>${f.name ? esc(f.name) : "Not named yet"}</option>`;
   named.forEach(p => { opts += `<option value="${p.id}"${p.id === f.person_id ? " selected" : ""}>${esc(p.name)}</option>`; });
-  if (!named.length && !isNamed)
-    return `<div class="facerow"><img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
-      <span class="muted" style="font-size:12px">Name people in the People section to label them here.</span></div>`;
+  const crop = `<img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">`;
+  /* Giving a name, as against pointing at one already given.
+
+     The select can only offer people who have been named somewhere else, so on
+     an archive where nobody has been named it had nothing to say but "go and do
+     it on another screen" -- and the face in front of you is the moment you
+     actually know who somebody is. Offered wherever the face has no name, which
+     covers both a group nobody has named and a face too alone to have made a
+     group at all; what happens to each is people_edit.name_face's business. */
+  const nameIt = isNamed ? ""
+    : `<button class="linkbtn facename" type="button" title="Name this person"
+        onclick="nameFace(${f.face_id})">Name</button>`;
+  if (!named.length)
+    return `<div class="facerow" data-face-id="${f.face_id}"
+        onmouseenter="highlightFace(${f.face_id})" onmouseleave="highlightFace(null)">
+      ${crop}<span class="imuted facerow-none">Not named yet</span>${nameIt}</div>`;
   // `data-face-id` is what lets hovering the row highlight that person's box
   // on the photo -- the only way to tell which box is whose in a group shot.
   return `<div class="facerow" data-face-id="${f.face_id}"
       onmouseenter="highlightFace(${f.face_id})" onmouseleave="highlightFace(null)">
-    <img class="facecrop" src="/faceThumb/${f.face_id}" loading="lazy" onerror="this.style.visibility='hidden'">
-    <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select></div>`;
+    ${crop}
+    <select class="fsel" title="Reassign this face" onchange="reassignFace(${f.face_id},this.value,this)">${opts}</select>${nameIt}</div>`;
 }
 function manualPersonRow(p) {
   return `<div class="facerow">

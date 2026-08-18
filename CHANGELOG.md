@@ -67,6 +67,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   undo itself. Undoing marks an entry rather than deleting it, because a history
   that erased itself as you used it would be a poor account of the afternoon.
 
+- **Name someone from the photograph they are in.** The panel beside a photo
+  could only ever point a face at somebody you had already named somewhere else
+  — so on a fresh archive it had nothing to offer but a sentence sending you to
+  the People screen, and a face too alone to have formed a group could not be
+  named from anywhere at all. Every unnamed face now carries *Name*, and typing
+  there does the right one of three things: names the group the face is in, puts
+  the face with the person who already has that name, or makes a person for a
+  face that had none. The name sticks through re-clustering either way.
+
 ### Fixed
 
 - **"All results" stops throwing you back to the top.** Widening a description

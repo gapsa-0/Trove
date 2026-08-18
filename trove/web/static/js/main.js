@@ -25,7 +25,7 @@ import {
 
 import {
   MITEM, closeModal, closePick, copyText, editDate,
-  editPlace, newPlace, onAddPerson, onAddPet, openCopy, openFileLocation, onPlaceSelect,
+  editPlace, nameFace, newPlace, onAddPerson, onAddPet, openCopy, openFileLocation, onPlaceSelect,
   openItem, openRelated, reassignFace,
   removeManualPerson, removeManualPet, renderInfo, saveDate, saveNewPlace, showRelated,
   stepItem, toggleInspector, viewerBack, zoomReset, zoomStep, zoomToSlider,
@@ -171,7 +171,7 @@ Object.assign(window, {
   editClusterName, editDate, editPlace,
   highlightFace,
   mergeAskCancel,
-  newPlace, onAddPerson,
+  nameFace, newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPetsFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,
   openCopy, openDocs, openFeatureSheet, openFileLocation, openItem, openRelated,
