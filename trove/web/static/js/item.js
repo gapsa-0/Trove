@@ -561,9 +561,8 @@ export function reassignFace(faceId, pid, sel) {
     if (sel.isConnected) sel.value = (prev && prev.name) ? String(prev.person_id) : "";
     toast(msg, true);
   };
-  qpost("/api/faces/reassign", { face_id: faceId, person_id: +pid })
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t reassign that face: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t reassign that face: connection error"));
+  saveOrRevert("/api/faces/reassign", { face_id: faceId, person_id: +pid },
+    revert, "Couldn’t reassign that face");
 }
 function flashSaved(el) {
   const o = el.style.borderColor; el.style.transition = "border-color .2s";
@@ -574,75 +573,67 @@ function flashSaved(el) {
    named people/pets are offered (person_options/pet_options already
    filter to named ones), same discipline as reassignFace: mutate MITEM
    and repaint now, POST in the background, roll back + toast only on an
-   actual failure, bail via stillOpen if the user has moved on. ----- */
-export function onAddPerson(pid) {
+   actual failure, bail via stillOpen if the user has moved on.
+
+   One pair of functions rather than four. Adding a pet by hand and adding a
+   person by hand differ in five strings and nothing else -- the option list to
+   look the id up in, the array on the item, the key inside it, the endpoint,
+   and the noun in the apology -- so the four copies had drifted into four
+   places to fix anything about manual tagging. Those five strings are the
+   table below. ----- */
+const TAG_KINDS = {
+  person: {
+    options: "person_options", list: "manual_people", key: "person_id",
+    add: "/api/item/person/add", remove: "/api/item/person/remove", noun: "person",
+  },
+  pet: {
+    options: "pet_options", list: "manual_pets", key: "pet_id",
+    add: "/api/item/pet/add", remove: "/api/item/pet/remove", noun: "pet",
+  },
+};
+/* Persist an optimistic edit, and undo it on screen if the write does not land.
+
+   Every flow here has the same tail -- one POST, one rollback, one apology
+   worded for what was being done -- and had it written out five times. */
+function saveOrRevert(url, body, revert, what) {
+  qpost(url, body)
+    .then(r => { if (!(r && r.ok)) revert(`${what}: ` + ((r && r.error) || "try again")); })
+    .catch(() => revert(`${what}: connection error`));
+}
+function addManualTag(kind, pid) {
   if (!pid) return;
-  const it = MITEM, id = it.id;
-  const opt = (it.person_options || []).find(p => p.id === +pid);
+  const k = TAG_KINDS[kind], it = MITEM, id = it.id;
+  const opt = (it[k.options] || []).find(p => p.id === +pid);
   if (!opt) return;
-  it.manual_people = it.manual_people || [];
-  it.manual_people.push({ person_id: opt.id, name: opt.name });
+  it[k.list] = it[k.list] || [];
+  it[k.list].push({ [k.key]: opt.id, name: opt.name });
   renderInfo();
   const revert = (msg) => {
     if (stillOpen(id)) {
-      it.manual_people = it.manual_people.filter(p => p.person_id !== opt.id);
+      it[k.list] = it[k.list].filter(p => p[k.key] !== opt.id);
       renderInfo();
     }
     toast(msg, true);
   };
-  qpost("/api/item/person/add", { person_id: +pid, file_id: id })
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t add that person: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t add that person: connection error"));
+  saveOrRevert(k.add, { [k.key]: +pid, file_id: id }, revert, `Couldn’t add that ${k.noun}`);
 }
-export function removeManualPerson(pid) {
-  const it = MITEM, id = it.id;
-  const idx = (it.manual_people || []).findIndex(p => p.person_id === pid);
+function removeManualTag(kind, pid) {
+  const k = TAG_KINDS[kind], it = MITEM, id = it.id;
+  const idx = (it[k.list] || []).findIndex(p => p[k.key] === pid);
   if (idx < 0) return;
-  const removed = it.manual_people[idx];
-  it.manual_people.splice(idx, 1);
+  const removed = it[k.list][idx];
+  it[k.list].splice(idx, 1);
   renderInfo();
   const revert = (msg) => {
-    if (stillOpen(id)) { it.manual_people.splice(idx, 0, removed); renderInfo(); }
+    if (stillOpen(id)) { it[k.list].splice(idx, 0, removed); renderInfo(); }
     toast(msg, true);
   };
-  qpost("/api/item/person/remove", { person_id: pid, file_id: id })
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t remove that tag: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t remove that tag: connection error"));
+  saveOrRevert(k.remove, { [k.key]: pid, file_id: id }, revert, "Couldn’t remove that tag");
 }
-export function onAddPet(pid) {
-  if (!pid) return;
-  const it = MITEM, id = it.id;
-  const opt = (it.pet_options || []).find(p => p.id === +pid);
-  if (!opt) return;
-  it.manual_pets = it.manual_pets || [];
-  it.manual_pets.push({ pet_id: opt.id, name: opt.name });
-  renderInfo();
-  const revert = (msg) => {
-    if (stillOpen(id)) {
-      it.manual_pets = it.manual_pets.filter(p => p.pet_id !== opt.id);
-      renderInfo();
-    }
-    toast(msg, true);
-  };
-  qpost("/api/item/pet/add", { pet_id: +pid, file_id: id })
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t add that pet: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t add that pet: connection error"));
-}
-export function removeManualPet(pid) {
-  const it = MITEM, id = it.id;
-  const idx = (it.manual_pets || []).findIndex(p => p.pet_id === pid);
-  if (idx < 0) return;
-  const removed = it.manual_pets[idx];
-  it.manual_pets.splice(idx, 1);
-  renderInfo();
-  const revert = (msg) => {
-    if (stillOpen(id)) { it.manual_pets.splice(idx, 0, removed); renderInfo(); }
-    toast(msg, true);
-  };
-  qpost("/api/item/pet/remove", { pet_id: pid, file_id: id })
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t remove that tag: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t remove that tag: connection error"));
-}
+export function onAddPerson(pid) { addManualTag("person", pid); }
+export function removeManualPerson(pid) { removeManualTag("person", pid); }
+export function onAddPet(pid) { addManualTag("pet", pid); }
+export function removeManualPet(pid) { removeManualTag("pet", pid); }
 export function editDate() {
   const p = (MITEM.date || "").split("T")[0].split("-");
   document.getElementById("dateval").innerHTML = `
@@ -670,9 +661,7 @@ export function saveDate() {
     if (stillOpen(id)) { MITEM.date = prev.date; MITEM.date_source = prev.src; renderInfo(); }
     toast(msg, true);
   };
-  qpost("/api/item/date", { file_id: id, datetime: v })
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t save the date: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t save the date: connection error"));
+  saveOrRevert("/api/item/date", { file_id: id, datetime: v }, revert, "Couldn’t save the date");
 }
 export function editPlace() {
   // The editor replaces the whole of #placeval, and on a geotagged file that
@@ -694,9 +683,7 @@ export function onPlaceSelect(pid) {
   renderInfo();   // instant; collapses the editor back to display
   const body = pid ? { file_id: id, place_id: +pid } : { file_id: id, clear: true };
   const revert = (msg) => { if (stillOpen(id)) { MITEM.place = prev; renderInfo(); } toast(msg, true); };
-  qpost("/api/item/place", body)
-    .then(r => { if (!(r && r.ok)) revert("Couldn’t update the place: " + ((r && r.error) || "try again")); })
-    .catch(() => revert("Couldn’t update the place: connection error"));
+  saveOrRevert("/api/item/place", body, revert, "Couldn’t update the place");
 }
 let MPICK = null, MPICK_TILES = null, MPICK_MARK = null, MPICK_LL = null;
 export function closePick() { if (MPICK) { MPICK.remove(); MPICK = null; } MPICK_TILES = null; MPICK_MARK = null; MPICK_LL = null; }
