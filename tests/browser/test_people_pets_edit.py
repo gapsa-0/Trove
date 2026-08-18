@@ -427,6 +427,27 @@ def _drags(app) -> int:
     return app.tab.evaluate("window.__drags")
 
 
+def _abandon_drag(app) -> None:
+    """Escape out of the drag this test deliberately started.
+
+    A drag is a browser-wide modal gesture, not a page one, and releasing the
+    button through the input pipeline does not end it. Left in progress it
+    outlives the tab, and the next test to open one gets a browser that will
+    not play a video -- which cost an afternoon of blaming the video player.
+    """
+    for kind in ("keyDown", "keyUp"):
+        app.tab.call(
+            "Input.dispatchKeyEvent",
+            {
+                "type": kind,
+                "key": "Escape",
+                "code": "Escape",
+                "windowsVirtualKeyCode": 27,
+                "nativeVirtualKeyCode": 27,
+            },
+        )
+
+
 def test_pressing_the_name_does_not_start_a_merge_drag(open_app):
     """The card is draggable for merge, and that used to swallow this click.
 
@@ -465,6 +486,7 @@ def test_the_card_can_still_be_dragged_to_merge(open_app):
         _watch_drags(app)
         _press_and_nudge(app, ".pcard .facecollage, .pcard img")
         assert _drags(app) == 1, "a press on the card's picture no longer drags it"
+        _abandon_drag(app)
 
 
 def test_the_merge_list_can_be_scrolled_without_the_menu_shutting(open_app):
