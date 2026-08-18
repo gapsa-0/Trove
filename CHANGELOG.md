@@ -69,6 +69,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The drawer of set-aside groups is called "Unknown", not "Hidden".** It holds
+  exactly the groups you marked *Unknown person* or *Unknown animal*, and named
+  itself after what happened to them rather than after what you said about them.
+  ("Not a person" and "Not an animal" never appear there — those leave grouping
+  altogether and have no group left to put back.)
+
 - **A feature card in Manage features is as big as what it has to say.** Resting
   on one showed its description in a panel two-thirds larger than the card,
   hanging over the row beneath and covering the cards there. The cards are now

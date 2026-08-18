@@ -57,7 +57,7 @@ export function attachMergeDrag(card, info, onMerged) {
   };
   const isValidTarget = () => DRAG_MERGE && DRAG_MERGE.kind === info.kind && DRAG_MERGE.id !== info.id;
   /* A press on one of the card's own controls -- its name, its actions menu,
-     the Hidden section's "Put back" -- is a click on that control and never a
+     the Unknown section's "Put back" -- is a click on that control and never a
      grab of the card. The card is draggable, though, so a few pixels of travel
      between pressing and releasing was enough for the browser to make a drag
      of the gesture instead: no click was ever delivered, and the rename editor

@@ -120,7 +120,7 @@ def test_an_unnamed_person_is_not_offered_a_name_to_remove(open_app):
 
 def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app):
     """The whole round trip, through the controls, in one test: the menu opens,
-    the card leaves the grid, the Hidden section appears with it inside, and
+    the card leaves the grid, the Unknown section appears with it inside, and
     putting it back returns it. Each half is useless without the other."""
     with open_app("people") as app:
         app.wait_for_text("Ada")
@@ -138,7 +138,7 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
             what="the hidden card to leave the grid",
         )
         app.wait_for(".hidden-people")
-        assert "Hidden" in app.text("#hiddenwrap")
+        assert "Unknown" in app.text("#hiddenwrap")
 
         app.tab.evaluate("document.querySelector('.hidden-people').setAttribute('open', '')")
         app.wait_for(".hidden-people .pcard.is-hidden")

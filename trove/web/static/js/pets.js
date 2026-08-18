@@ -151,7 +151,7 @@ export async function renderPets(m) {
   startPetPoll();
 }
 /* The groups taken off the screen, kept reachable at the foot of it. Twin of
-   the People screen's Hidden section, down to being absent when empty. */
+   the People screen's Unknown section, down to being absent when empty. */
 const HIDDEN_PET_PAGE_SIZE = 120;
 async function renderHiddenPets() {
   const wrap = document.getElementById("pethiddenwrap"); if (!wrap) return;
@@ -160,7 +160,7 @@ async function renderHiddenPets() {
   const wasOpen = !!previous && previous.hasAttribute("open");
   if (!n) { wrap.innerHTML = ""; return; }
   wrap.innerHTML = `<details class="hidden-people"${wasOpen ? " open" : ""}>
-      <summary>Hidden <span class="muted">\u00b7 ${n.toLocaleString()} group${n === 1 ? "" : "s"}</span></summary>
+      <summary>Unknown <span class="muted">\u00b7 ${n.toLocaleString()} group${n === 1 ? "" : "s"}</span></summary>
       <div class="people" id="hiddenpetgrid"></div>
       <div class="infinite-status" id="hidden-pet-sentinel" aria-live="polite"></div>
     </details>`;
@@ -220,7 +220,7 @@ async function hidePetGroup(id, reason, after) {
   try { res = await jpost("/api/pet/hide", { pet_id: id, reason }); }
   catch (e) { res = { error: String(e) }; }
   if (!res || res.error) { toast("Couldn\u2019t hide this group.", true); return; }
-  if (reason === "unknown") toast("Hidden. Find it under \u201cHidden\u201d to put it back.");
+  if (reason === "unknown") toast("Moved to \u201cUnknown\u201d, at the foot of the screen. Put it back from there.");
   after();
 }
 export async function unhidePet(id) {
@@ -335,7 +335,7 @@ async function syncPetGrids() {
    destructive possible refresh. */
 async function refreshPetGrids() {
   await patchPetGrids();
-  // hidden_pets is what decides whether the Hidden section exists at all, and
+  // hidden_pets is what decides whether the Unknown section exists at all, and
   // the poll only refreshes the summary while a detect job runs -- so on a
   // settled archive nothing else would tell this screen what just happened.
   const sum = await jget("/api/pets/summary?root=" + S.arch.id).catch(() => null);

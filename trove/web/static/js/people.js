@@ -191,7 +191,7 @@ async function renderHidden() {
   const wasOpen = !!previous && previous.hasAttribute("open");
   if (!n) { wrap.innerHTML = ""; return; }
   wrap.innerHTML = `<details class="hidden-people"${wasOpen ? " open" : ""}>
-      <summary>Hidden <span class="muted">· ${n.toLocaleString()} group${n === 1 ? "" : "s"}</span></summary>
+      <summary>Unknown <span class="muted">· ${n.toLocaleString()} group${n === 1 ? "" : "s"}</span></summary>
       <div class="people" id="hiddengrid"></div>
       <div class="infinite-status" id="hidden-sentinel" aria-live="polite"></div>
     </details>`;
@@ -325,7 +325,7 @@ export async function answerSuggest(kind) {
    the detections -- a doll, a statue, a face on a poster -- and takes them out
    of clustering for good, so it asks first. "Unknown" is about the list: a
    real person whose faces go on clustering exactly as before, reversible from
-   the Hidden section, and so nothing to confirm.
+   the Unknown section, and so nothing to confirm.
 
    `after` is what to do once it lands: the grid patches itself in place, a
    person's own page has nowhere left to be and goes back to the grid. */
@@ -357,7 +357,7 @@ async function hideCluster(id, reason, after) {
   try { res = await jpost("/api/faces/hide", { person_id: id, reason }); }
   catch (e) { res = { error: String(e) }; }
   if (!res || res.error) { toast("Couldn’t hide this group.", true); return; }
-  if (reason === "unknown") toast("Hidden. Find it under “Hidden” to put it back.");
+  if (reason === "unknown") toast("Moved to “Unknown”, at the foot of the screen. Put it back from there.");
   after();
 }
 export async function unhidePerson(id) {
@@ -370,7 +370,7 @@ export async function unhidePerson(id) {
 /* Both sides of the grid, after a group has crossed between them.
 
    The counts have to be re-read rather than adjusted by one: `hidden_people`
-   is what decides whether the Hidden section exists at all, and the poll only
+   is what decides whether the Unknown section exists at all, and the poll only
    refreshes the summary while a detection job is running -- so on a settled
    archive nothing else would ever tell this screen what just happened. */
 async function refreshAfterHide() {

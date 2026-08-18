@@ -170,8 +170,10 @@ on, including after re-clustering.
 ways out, and they are not the same thing. *Not a person* is about the
 detections — a doll, a statue, a face on a poster — and takes them out of
 grouping for good. *Unknown person* is about the list: a real person you would
-rather not see on it, whose faces go on grouping exactly as before. Hidden
-groups collect at the foot of the People screen and come back with one click.
+rather not see on it, whose faces go on grouping exactly as before. They
+collect under *Unknown* at the foot of the People screen -- named for what you
+said about them rather than for what became of them -- and come back with one
+click.
 
 **See what you changed.** A person's page keeps a record of the edits made to
 it — merges, names, photos added or dropped by hand — behind the clock in its

@@ -97,8 +97,9 @@ ways out, and they mean different things. *Not an animal* is about the
 detections — a soft toy, a stone lion, a dog printed on a mug — and takes them
 out of grouping for good. *Unknown animal* is about the list: a real animal,
 somebody else's, that you would rather not have a page for; its photos go on
-grouping exactly as before. Hidden groups collect at the foot of the screen and
-come back with one click.
+grouping exactly as before. They collect under *Unknown* at the foot of the
+screen -- named for what you said about them rather than for what became of
+them -- and come back with one click.
 
 **Review non-human faces.** The face pipeline drops any face that sits mostly
 inside an animal box, and this screen lists what it dropped. If it took a face
