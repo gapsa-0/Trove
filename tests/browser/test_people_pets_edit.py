@@ -520,3 +520,22 @@ def test_the_merge_list_can_be_scrolled_without_the_menu_shutting(open_app):
             what="the menu to close when the screen behind it scrolls",
         )
         assert app.errors() == []
+
+
+def test_a_group_counts_itself_in_files_not_photographs(open_app):
+    """A face is found in a video as readily as in a photograph.
+
+    The count under a name is a count of distinct files, so a group holding a
+    clip called itself "11 photos" and was wrong about two things at once --
+    what it holds, and what the screen it opens can show.
+    """
+    for section in ("people", "pets"):
+        with open_app(section) as app:
+            app.wait_for(".pcard .pcount")
+            counts = app.tab.evaluate(
+                "[...document.querySelectorAll('.pcard .pcount')].map(e => e.textContent)"
+            )
+            assert counts, f"no counts on the {section} cards to read"
+            for text in counts:
+                assert "photo" not in text, f"{section} card still counts photographs: {text!r}"
+                assert "file" in text, f"{section} card counts nothing recognisable: {text!r}"

@@ -34,7 +34,7 @@ import {
   setStat, why,
 } from "./statwhy.js";
 import {
-  esc, toast,
+  esc, fileCount, toast,
 } from "./dom.js";
 import {
   S,
@@ -290,7 +290,7 @@ function placeCard(place) {
   const name = place.name ? esc(place.name) : "Name this place";
   card.innerHTML = placeCollage(place.thumb_ids) + `<div class="pmeta"><div class="pmeta-text">
     <button class="pname ${place.name ? "" : "un"}" type="button">${name}</button>
-    <div class="pcount">${place.count.toLocaleString()} photo${place.count === 1 ? "" : "s"}</div></div></div>`;
+    <div class="pcount">${fileCount(place.count)}</div></div></div>`;
   card.querySelector(".pname").onclick = event => {
     event.stopPropagation();
     editPlaceCardName(card, place);
@@ -311,7 +311,7 @@ function editPlaceCardName(card, place) {
   card.draggable = false;   // don't let an in-progress rename start a merge-drag
   meta.className = "pmeta pmeta-editing";
   meta.innerHTML = `<input value="${esc(place.name || "")}" placeholder="Place name" aria-label="Place name">
-    <div class="pcount">${place.count.toLocaleString()} photo${place.count === 1 ? "" : "s"} · Enter or click away to save</div>`;
+    <div class="pcount">${fileCount(place.count)} · Enter or click away to save</div>`;
   const input = meta.querySelector("input");
   input.onclick = event => event.stopPropagation();
   let finished = false;

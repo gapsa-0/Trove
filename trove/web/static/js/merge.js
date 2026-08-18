@@ -13,7 +13,7 @@ import {
   jget, jpost,
 } from "./api.js";
 import {
-  esc, toast,
+  esc, fileCount, toast,
 } from "./dom.js";
 import {
   refreshPlacesAfterMerge,
@@ -163,8 +163,8 @@ async function runMerge(source, target, onMerged) {
   const merged = target.kind === "pet" ? res.pet : target.kind === "place" ? res.place : res.person;
   const count = (merged && (target.kind === "pet" ? merged.detections
     : target.kind === "place" ? merged.count : merged.face_count)) || 0;
-  toast(merged && merged.name ? `Merged · “${merged.name}” now has ${count.toLocaleString()} photos`
-    : `Merged · ${count.toLocaleString()} photos`);
+  toast(merged && merged.name ? `Merged · “${merged.name}” now has ${fileCount(count)}`
+    : `Merged · ${fileCount(count)}`);
   onMerged(merged);   // places' onMerged (refreshPlacesAfterMerge) uses this to follow the survivor; others ignore it
 }
 // Small centered confirm dialog for the both-named drag-merge case. Resolves
@@ -200,7 +200,7 @@ function askMergeName({ title, body, options, preselect, warning }) {
     optsEl.style.display = opts.length ? "" : "none";
     optsEl.innerHTML = opts.map(o => `<label class="mergeask-opt">
         <input type="radio" name="mergeask-name" value="${esc(o.value)}" ${o.value === preselect ? "checked" : ""}>
-        <span>${esc(o.label)}</span><span class="muted">${o.count.toLocaleString()} photo${o.count === 1 ? "" : "s"}</span>
+        <span>${esc(o.label)}</span><span class="muted">${fileCount(o.count)}</span>
       </label>`).join("");
     // With no radios there's nothing to read from the DOM: resolve
     // straight to preselect (the single candidate name, or "" when
@@ -252,7 +252,7 @@ export function mergesPanel(merges, kind) {
     const label = m.dropped_name ? `“${esc(m.dropped_name)}”` : "an unnamed group";
     const n = m.photos_folded_in;
     return `<div class="merge-row">
-        <span>Merged in ${label} · ${n.toLocaleString()} photo${n === 1 ? "" : "s"}</span>
+        <span>Merged in ${label} · ${fileCount(n)}</span>
         <button class="linkbtn" type="button" onclick="undoMerge(${m.id},'${kind}')">Undo</button>
       </div>`;
   }).join("");

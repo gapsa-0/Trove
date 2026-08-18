@@ -30,7 +30,7 @@ import {
   setStat, why,
 } from "./statwhy.js";
 import {
-  esc, toast,
+  esc, fileCount, toast,
 } from "./dom.js";
 import {
   historyButton, mountHistory,
@@ -182,7 +182,7 @@ function hiddenPetCard(p) {
   d.dataset.syncKey = String(p.id);
   d.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb") + `<div class="pmeta"><div class="pmeta-text">
       <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
-      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
+      <div class="pcount">${fileCount(p.photos)}</div>
       <button class="linkbtn" type="button">Put back</button></div></div>`;
   d.querySelector("button").onclick = e => { e.stopPropagation(); unhidePet(p.id); };
   return d;
@@ -190,7 +190,7 @@ function hiddenPetCard(p) {
 function petMetaInner(p) {
   return `<div class="pmeta-text">
       <button class="pname ${p.name ? "" : "un"}" type="button">${esc(p.name || "Name this pet")}</button>
-      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
+      <div class="pcount">${fileCount(p.photos)}</div>
       <span class="pet-species">${esc(p.species)}</span></div>`;
 }
 /* What a pet's card and its own page can do to the whole group. The People
@@ -279,7 +279,7 @@ function editPetCardName(card, p) {
   inlineNameEdit(meta, {
     value: p.name,
     label: "Pet’s name",
-    after: `<div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"} · Enter or click away to save</div>`,
+    after: `<div class="pcount">${fileCount(p.photos)} · Enter or click away to save</div>`,
     onSave: (name, input) => savePetCardName(card, p, name, input),
     onCancel: () => card.replaceWith(petCard(p)),
   });
@@ -475,7 +475,7 @@ export async function showPet(id) {
     <img class="person-header-avatar" src="/animalThumb/${petAvatar(pet)}" alt="">
     <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
-    <span class="muted ftb-count">${esc(pet.species)} · ${pet.photos.toLocaleString()} photos</span></div>
+    <span class="muted ftb-count">${esc(pet.species)} · ${fileCount(pet.photos)}</span></div>
     ${historyButton("pet", pet.id, pet.name)}
     <div class="ftb-actions" id="petactions"></div></div>
     <div class="grid" id="grid"></div>

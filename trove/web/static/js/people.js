@@ -27,7 +27,7 @@ import {
   setStat, why,
 } from "./statwhy.js";
 import {
-  esc, toast,
+  esc, fileCount, toast,
 } from "./dom.js";
 import {
   historyButton, mountHistory,
@@ -213,7 +213,7 @@ function hiddenCard(p) {
   d.dataset.syncKey = String(p.id);
   d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">
       <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
-      <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div>
+      <div class="pcount">${fileCount(p.photos)}</div>
       <button class="linkbtn" type="button">Put back</button></div>`;
   d.querySelector("button").onclick = e => { e.stopPropagation(); unhidePerson(p.id); };
   return d;
@@ -398,7 +398,7 @@ function personMetaInner(p) {
   // space to its right, rather than over the photograph or under the count.
   return `<div class="pmeta-text">
     <button class="pname ${p.name ? "" : "un"}" type="button">${nm}</button>
-    <div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"}</div></div>`;
+    <div class="pcount">${fileCount(p.photos)}</div></div>`;
 }
 function personCard(p) {
   const d = document.createElement("div"); d.className = "pcard"; d.onclick = guardCardClick(() => showPerson(p.id));
@@ -442,7 +442,7 @@ function editPersonCardName(card, p) {
   inlineNameEdit(meta, {
     value: p.name,
     label: "Person’s name",
-    after: `<div class="pcount">${p.photos.toLocaleString()} photo${p.photos === 1 ? "" : "s"} · Enter or click away to save</div>`,
+    after: `<div class="pcount">${fileCount(p.photos)} · Enter or click away to save</div>`,
     onSave: (name, input) => savePersonCardName(card, p, name, input),
     onCancel: () => card.replaceWith(personCard(p)),
   });
@@ -519,7 +519,7 @@ export async function showPerson(id) {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg>
           </button>
         </div>
-        <span class="muted ftb-count">${r.photos.toLocaleString()} photo${r.photos === 1 ? "" : "s"}</span>
+        <span class="muted ftb-count">${fileCount(r.photos)}</span>
       </div>
       ${historyButton("person", id, r.name)}
       <div class="ftb-actions" id="personactions"></div>

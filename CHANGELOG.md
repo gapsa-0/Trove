@@ -69,6 +69,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A person, pet or place counts its files, not its photographs.** The number
+  under a name has always been a count of distinct files, and a face is found in
+  a video as readily as in a photograph — so a group holding two clips called
+  eleven of them "11 photos", which is wrong about what it holds and about what
+  opening it will show you. Every place that prints it — the card, the card
+  while you are renaming it, the group's own page and the toast after a merge —
+  now says "11 files".
+
 - **Collapsing the sidebar no longer puts a scrollbar down its side.** The
   Settings button kept its full-width label in a rail two-thirds narrower than
   the label, so the sidebar overflowed and grew a horizontal scrollbar on every

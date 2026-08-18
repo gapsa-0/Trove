@@ -16,6 +16,20 @@ export function esc(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 export function setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+/* What a person, a pet or a place is counted in.
+
+   "Files", not "photos". The number behind it is a count of distinct FILES
+   (services/people.py: `COUNT(DISTINCT fa.file_id)`), and a face is found in a
+   video as readily as in a photograph -- so a group of eleven that includes two
+   clips was calling itself "11 photos" and was wrong twice: about two of them,
+   and about what the screen can hold.
+
+   One function because four screens print this number -- a card, a card
+   mid-rename, a group's own page, and the toast after a merge -- and a count
+   that names itself differently on two of them reads as two different counts. */
+export function fileCount(n) {
+  return `${(n || 0).toLocaleString()} file${n === 1 ? "" : "s"}`;
+}
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export function fmtDate(v) {
   if (!v) return "-";
