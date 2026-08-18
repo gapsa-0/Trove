@@ -9,7 +9,7 @@ of the bugs this whole batch of work is about.
 from trove.config import Config
 from trove.db import database as db
 from trove.faces import cluster as fc
-from trove.services import edit_log, people_edit
+from trove.services import edit_log, people_edit, people_merge
 
 
 def _archive(tmp_path):
@@ -78,7 +78,7 @@ def test_an_undone_entry_is_marked_rather_than_deleted(tmp_path):
 
 def test_a_merge_is_recorded_against_the_row_that_owns_its_undo(tmp_path):
     db_path = _archive(tmp_path)
-    people_edit.merge_persons(db_path, 1, 2, name="Ana")
+    people_merge.merge_persons(db_path, 1, 2, name="Ana")
 
     entry = _entries(db_path)[0]
     assert entry["action"] == "merge"
@@ -89,7 +89,7 @@ def test_a_merge_is_recorded_against_the_row_that_owns_its_undo(tmp_path):
     check = db.open_readonly(db_path)
     merge_id = check.execute("SELECT id FROM person_merges").fetchone()["id"]
     check.close()
-    assert people_edit.unmerge_persons(db_path, merge_id).get("ok") is True
+    assert people_merge.unmerge_persons(db_path, merge_id).get("ok") is True
     # unmerge_linked deletes the person_merges row; the log entry must not go
     # with it, only be marked.
     assert _entries(db_path, name="Ana")[0]["undone"] is True

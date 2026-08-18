@@ -161,7 +161,7 @@ def undo(db_path: str, entry_id: int | None) -> dict[str, Any]:
     the body. The cycle is real, and the repo breaks it this way elsewhere
     (``people.face_summary`` imports ``faces.backend`` in its own body).
     """
-    from . import people_edit, pets_edit
+    from . import people_edit, people_merge, pets_edit
 
     if not entry_id:
         return {"error": "missing entry_id"}
@@ -176,7 +176,7 @@ def undo(db_path: str, entry_id: int | None) -> dict[str, Any]:
     if row["action"] == MERGE and row["ref_id"]:
         # The domain undo marks this entry itself, through mark_undone, so that
         # a merge undone from anywhere lands in the history the same way.
-        unmerge = pets_edit.unmerge_pets if is_pet else people_edit.unmerge_persons
+        unmerge = pets_edit.unmerge_pets if is_pet else people_merge.unmerge_persons
         return dict(unmerge(db_path, row["ref_id"]))
     if row["action"] == RENAME:
         result = (

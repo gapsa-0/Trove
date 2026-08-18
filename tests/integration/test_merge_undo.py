@@ -15,7 +15,7 @@ import pytest
 
 from trove.db import database as db
 from trove.pets import cluster as pets_cluster
-from trove.services import people_edit, pets_edit
+from trove.services import people_edit, people_merge, pets_edit
 
 np = pytest.importorskip("numpy")
 
@@ -87,7 +87,7 @@ def _catalog_with_named_persons(tmp_path):
 
 def test_merge_persons_records_a_person_merges_row(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    ok = people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
+    ok = people_merge.merge_persons(str(db_path), 1, 2, name="Ana")
     assert ok["ok"] is True
 
     check = db.open_readonly(db_path)
@@ -145,12 +145,12 @@ def test_merge_pets_records_a_pet_merges_row(tmp_path):
 
 def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_merge.merge_persons(str(db_path), 1, 2, name="Ana")
 
     merge_row = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()
     merge_id = merge_row["id"]
 
-    undo = people_edit.unmerge_persons(str(db_path), merge_id)
+    undo = people_merge.unmerge_persons(str(db_path), merge_id)
     assert undo["ok"] is True
     assert undo["recluster"] is True
 
@@ -171,16 +171,16 @@ def test_unmerge_persons_reverses_the_link_and_restores_names(tmp_path):
 
 def test_unmerge_persons_twice_errors_cleanly(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
-    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_merge.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
 
-    first = people_edit.unmerge_persons(str(db_path), merge_id)
+    first = people_merge.unmerge_persons(str(db_path), merge_id)
     assert first["ok"] is True
-    second = people_edit.unmerge_persons(str(db_path), merge_id)
+    second = people_merge.unmerge_persons(str(db_path), merge_id)
     assert "error" in second
 
     # a bogus id (never existed) is likewise a clean error, not a crash
-    assert "error" in people_edit.unmerge_persons(str(db_path), 999999)
+    assert "error" in people_merge.unmerge_persons(str(db_path), 999999)
 
 
 def test_recluster_after_undo_does_not_remerge(tmp_path):
@@ -191,9 +191,9 @@ def test_recluster_after_undo_does_not_remerge(tmp_path):
     from trove.faces.cluster import _apply_links
 
     db_path = _catalog_with_named_persons(tmp_path)
-    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_merge.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
-    people_edit.unmerge_persons(str(db_path), merge_id)
+    people_merge.unmerge_persons(str(db_path), merge_id)
 
     conn = db.connect(db_path)
     # Simulate the clusterer having (re)split the two faces into separate

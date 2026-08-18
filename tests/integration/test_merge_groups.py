@@ -11,7 +11,7 @@ import pytest
 from trove.config import Config
 from trove.db import database as db
 from trove.pets import cluster
-from trove.services import people_edit, pets_edit
+from trove.services import people_merge, pets_edit
 
 np = pytest.importorskip("numpy")
 
@@ -137,11 +137,11 @@ def _catalog_with_named_persons(tmp_path):
 def test_merge_persons_with_explicit_name_succeeds_and_rewrites_pins(tmp_path):
     db_path = _catalog_with_named_persons(tmp_path)
 
-    refused = people_edit.merge_persons(str(db_path), 1, 2)
+    refused = people_merge.merge_persons(str(db_path), 1, 2)
     assert "error" in refused
     assert "Ana" in refused["error"] and "Beto" in refused["error"]
 
-    ok = people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
+    ok = people_merge.merge_persons(str(db_path), 1, 2, name="Ana")
     assert ok["ok"] is True
     assert ok["person"]["name"] == "Ana"
     assert ok["person"]["face_count"] == 2

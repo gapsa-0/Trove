@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 
 from trove.db import database as db
-from trove.services import people_edit, pets_edit, places_edit
+from trove.services import people_merge, pets_edit, places_edit
 
 np = pytest.importorskip("numpy")
 
@@ -165,7 +165,7 @@ def _insert_place(conn, cid, root_id, name, lat, lon, count, pinned=0):
 
 # -- Gap 1: survivor-selection chains (people vs. pets) ----------------------
 #
-# people_edit.merge_persons and pets_edit.merge_pets both chain "named beats unnamed,
+# people_merge.merge_persons and pets_edit.merge_pets both chain "named beats unnamed,
 # else the larger cluster", but resolve a tie differently: people compares
 # face_count with `>=` and has NO id tiebreak, so on a tie the survivor is
 # whichever id was passed as the FIRST argument; pets compares
@@ -182,7 +182,7 @@ def test_merge_persons_named_beats_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2)
+    ok = people_merge.merge_persons(str(db_path), 1, 2)
     assert ok["person"]["id"] == 1
     assert ok["person"]["name"] == "Ana"
 
@@ -194,7 +194,7 @@ def test_merge_persons_named_beats_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok2 = people_edit.merge_persons(str(db_path2), 2, 1)  # args swapped
+    ok2 = people_merge.merge_persons(str(db_path2), 2, 1)  # args swapped
     assert ok2["person"]["id"] == 1  # named side still wins
     assert ok2["person"]["name"] == "Ana"
 
@@ -206,7 +206,7 @@ def test_merge_persons_larger_count_wins_when_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2)
+    ok = people_merge.merge_persons(str(db_path), 1, 2)
     assert ok["person"]["id"] == 1
 
     sub = tmp_path / "swapped"
@@ -217,7 +217,7 @@ def test_merge_persons_larger_count_wins_when_unnamed_both_orders(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok2 = people_edit.merge_persons(str(db_path2), 2, 1)  # args swapped
+    ok2 = people_merge.merge_persons(str(db_path2), 2, 1)  # args swapped
     assert ok2["person"]["id"] == 1  # the larger cluster still wins
 
 
@@ -233,7 +233,7 @@ def test_merge_persons_equal_count_tie_keeps_the_lower_id(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2)
+    ok = people_merge.merge_persons(str(db_path), 1, 2)
     assert ok["person"]["id"] == 1
 
     sub = tmp_path / "swapped"
@@ -244,7 +244,7 @@ def test_merge_persons_equal_count_tie_keeps_the_lower_id(tmp_path):
     conn.commit()
     db_path2 = sub / "archive.db"
     conn.close()
-    ok2 = people_edit.merge_persons(str(db_path2), 2, 1)  # args swapped
+    ok2 = people_merge.merge_persons(str(db_path2), 2, 1)  # args swapped
     assert ok2["person"]["id"] == 1  # the lower id wins either way round
 
 
@@ -332,12 +332,12 @@ def test_merge_pets_equal_count_tie_keeps_lower_id_both_orders(tmp_path):
 
 def test_merge_persons_error_strings(tmp_path):
     db_path = _empty_db(tmp_path)
-    assert people_edit.merge_persons(str(db_path), None, 1) == {
+    assert people_merge.merge_persons(str(db_path), None, 1) == {
         "error": "need two distinct persons"
     }
-    assert people_edit.merge_persons(str(db_path), 0, 1) == {"error": "need two distinct persons"}
-    assert people_edit.merge_persons(str(db_path), 5, 5) == {"error": "need two distinct persons"}
-    assert people_edit.merge_persons(str(db_path), 1, 2) == {"error": "unknown person"}
+    assert people_merge.merge_persons(str(db_path), 0, 1) == {"error": "need two distinct persons"}
+    assert people_merge.merge_persons(str(db_path), 5, 5) == {"error": "need two distinct persons"}
+    assert people_merge.merge_persons(str(db_path), 1, 2) == {"error": "unknown person"}
 
 
 def test_merge_pets_error_strings(tmp_path):
@@ -364,9 +364,9 @@ def test_merge_place_clusters_error_strings(tmp_path):
 
 def test_unmerge_persons_error_strings(tmp_path):
     db_path = _empty_db(tmp_path)
-    assert people_edit.unmerge_persons(str(db_path), None) == {"error": "missing merge_id"}
-    assert people_edit.unmerge_persons(str(db_path), 0) == {"error": "missing merge_id"}
-    assert people_edit.unmerge_persons(str(db_path), 999999) == {"error": "merge not found"}
+    assert people_merge.unmerge_persons(str(db_path), None) == {"error": "missing merge_id"}
+    assert people_merge.unmerge_persons(str(db_path), 0) == {"error": "missing merge_id"}
+    assert people_merge.unmerge_persons(str(db_path), 999999) == {"error": "merge not found"}
 
 
 def test_unmerge_pets_error_strings(tmp_path):
@@ -407,7 +407,7 @@ def test_merge_persons_response_shape(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2)
+    ok = people_merge.merge_persons(str(db_path), 1, 2)
     assert set(ok.keys()) == {"ok", "person"}
     assert ok["ok"] is True
     assert set(ok["person"].keys()) == {"id", "name", "face_count"}
@@ -446,9 +446,9 @@ def test_unmerge_persons_response_shape(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    people_edit.merge_persons(str(db_path), 1, 2, name="Ana")
+    people_merge.merge_persons(str(db_path), 1, 2, name="Ana")
     merge_id = db.open_readonly(db_path).execute("SELECT id FROM person_merges").fetchone()["id"]
-    undo = people_edit.unmerge_persons(str(db_path), merge_id)
+    undo = people_merge.unmerge_persons(str(db_path), merge_id)
     assert undo == {"ok": True, "recluster": True}
 
 
@@ -503,7 +503,7 @@ def test_merge_persons_survivor_name_explicit_overrides(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2, name="Zoe")
+    ok = people_merge.merge_persons(str(db_path), 1, 2, name="Zoe")
     assert ok["person"]["name"] == "Zoe"
 
 
@@ -514,7 +514,7 @@ def test_merge_persons_survivor_name_keeps_named_side_when_loser_unnamed(tmp_pat
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2)
+    ok = people_merge.merge_persons(str(db_path), 1, 2)
     assert ok["person"]["name"] == "Ana"
 
 
@@ -525,7 +525,7 @@ def test_merge_persons_survivor_name_is_none_when_both_unnamed(tmp_path):
     conn.commit()
     db_path = tmp_path / "archive.db"
     conn.close()
-    ok = people_edit.merge_persons(str(db_path), 1, 2)
+    ok = people_merge.merge_persons(str(db_path), 1, 2)
     assert ok["person"]["name"] is None
 
 
