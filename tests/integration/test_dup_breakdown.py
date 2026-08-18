@@ -1,14 +1,19 @@
-"""The Duplicates page's breakdown of what the redundant copies are (#35).
+"""The Duplicates page's split of what the redundant copies are (#35).
 
-Two cuts of the same rows -- by match (byte-identical vs merely visual) and by
-media type -- which must reconcile exactly with the headline counts sitting
-right above them on the page.
+Byte-identical to the copy that was kept, or merely visually the same -- which
+is what decides whether the space is safe to reclaim, and it has to reconcile
+exactly with the count sitting right above it on the page.
 
 The case that makes this non-trivial: a *perceptual* group routinely also
 contains byte-identical copies, so the split has to be decided per member from
 its sha256, not from the group's `method`. That is also the rule the duplicate
-tiles label themselves with (dups.dup_groups' match_type), so the panel can
-never contradict the tiles below it.
+tiles label themselves with (dups.dup_groups' match_type), so the line under the
+tile can never contradict the tiles below it.
+
+Two further breakdowns, both by media type, were dropped when the panel of
+stacked bars became this one line: nothing read them, and the unique-files one
+cost a GROUP BY over every file in the archive on every poll to say what the
+Overview's storage panel already says.
 """
 
 from trove.db import database as db
@@ -69,16 +74,12 @@ def _catalog_with_duplicates(tmp_path):
     return db_path
 
 
-def test_breakdowns_reconcile_with_the_headline_numbers(tmp_path):
+def test_the_split_reconciles_with_the_headline_numbers(tmp_path):
     result = dups.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
 
     assert (result["groups"], result["duplicates"]) == (3, 4)
-    for cut in ("by_match", "by_media"):
-        assert sum(i["count"] for i in result[cut]) == result["duplicates"]
-        assert sum(i["bytes"] for i in result[cut]) == result["reclaimable"]
-    # The third cut answers a different question and so reconciles with a
-    # different headline: the unique files, not the copies they hid.
-    assert sum(i["count"] for i in result["by_unique"]) == result["unique"]
+    assert sum(i["count"] for i in result["by_match"]) == result["duplicates"]
+    assert sum(i["bytes"] for i in result["by_match"]) == result["reclaimable"]
 
 
 def test_identical_copies_inside_a_perceptual_group_count_as_identical(tmp_path):
@@ -94,41 +95,7 @@ def test_identical_copies_inside_a_perceptual_group_count_as_identical(tmp_path)
     assert [i["key"] for i in result["by_match"]] == ["identical", "visual"]
 
 
-def test_media_split_separates_the_few_heavy_videos(tmp_path):
-    result = dups.dup_summary(str(_catalog_with_duplicates(tmp_path)), root_id=1)
-
-    by_media = {i["key"]: i for i in result["by_media"]}
-    assert by_media["image"] == {"key": "image", "count": 3, "bytes": 100 + 120 + 300}
-    assert by_media["video"] == {"key": "video", "count": 1, "bytes": 1000}
-    # Most copies first, so the bar and its legend read in the same order.
-    assert [i["key"] for i in result["by_media"]] == ["image", "video"]
-
-
-def test_unique_split_counts_a_group_once_not_once_per_copy(tmp_path):
-    """The per-type unique counts are the population the "Unique files" tile
-    shows: every group contributes only the copy dedup kept.
-
-    The fixture's own files are all still visible (nothing has been hidden),
-    so this hides the four non-canonical copies the way a real dedup run does
-    and checks the split follows -- otherwise a per-type row would quietly be
-    counting the copies the two rows above it already account for."""
-    db_path = _catalog_with_duplicates(tmp_path)
-    conn = db.connect(db_path)
-    conn.execute("UPDATE files SET hidden=1 WHERE id IN (2,4,5,7)")
-    conn.commit()
-    conn.close()
-
-    result = dups.dup_summary(str(db_path), root_id=1)
-
-    # Kept: images 1 and 3, video 6.
-    assert result["unique"] == 3
-    assert result["by_unique"] == [
-        {"key": "image", "count": 2, "bytes": 100 + 300},
-        {"key": "video", "count": 1, "bytes": 1000},
-    ]
-
-
-def test_an_archive_with_no_duplicates_reports_empty_breakdowns(tmp_path):
+def test_an_archive_with_no_duplicates_reports_an_empty_split(tmp_path):
     db_path = tmp_path / "empty.db"
     conn = db.connect(db_path)
     db.init_db(conn)
@@ -139,7 +106,5 @@ def test_an_archive_with_no_duplicates_reports_empty_breakdowns(tmp_path):
     result = dups.dup_summary(str(db_path), root_id=1)
 
     assert result["duplicates"] == 0
-    assert result["by_match"] == [] and result["by_media"] == []
-    # And no files at all, so nothing unique to split either -- the panel has
-    # nothing to draw and leaves the screen its "no groups yet" shape.
-    assert result["by_unique"] == []
+    # Nothing to split, so the tile says its number and nothing under it.
+    assert result["by_match"] == []

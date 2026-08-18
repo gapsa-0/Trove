@@ -1,5 +1,4 @@
-// The Duplicates screen: the summary stats, the breakdown of what the redundant
-// copies are, and one row per group.
+// The Duplicates screen: the summary stats, and one row per group.
 
 import {
   startInfiniteList,
@@ -14,7 +13,7 @@ import {
   esc, fmtBytes,
 } from "./dom.js";
 import {
-  S, TYPE_COL, typeLabel,
+  S,
 } from "./state.js";
 import {
   setGallery,
@@ -71,13 +70,13 @@ export async function renderDedup(m) {
         ${why("Unique files", (ds.unique || 0).toLocaleString(), "Every file you have, counting each group of copies only once.")}</div>
       <div class="stat"><div><div class="k">Duplicate groups</div><div class="v" id="dup-groups">${ds.groups.toLocaleString()}</div></div>
         ${why("Duplicate groups", ds.groups.toLocaleString(), "Sets of files found to be the same thing. One is kept; the rest are copies.")}</div>
-      <div class="stat"><div><div class="k">Redundant copies</div><div class="v" id="dup-copies">${ds.duplicates.toLocaleString()}</div></div>
-        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies inside those groups. Still on disk, hidden from Browse.")}</div>
+      <div class="stat"><div><div class="k">Redundant copies</div><div class="v" id="dup-copies">${ds.duplicates.toLocaleString()}</div>
+        <div class="statsub" id="dup-split">${matchSplit(ds)}</div></div>
+        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies inside those groups. Still on disk, hidden from Browse. Identical means byte for byte; a visual match is the same picture saved differently.")}</div>
       <div class="stat"><div><div class="k">Reclaimable</div><div class="v" id="dup-reclaimable">${fmtBytes(ds.reclaimable)}</div></div>
         ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together. Trove never deletes them; this is what you would get back if you did.")}</div>
     </div>
     <div class="panel" id="dup-status">${dedupStatusRow(ds)}</div>
-    <div id="dup-breakdown">${dupBreakdownPanel(ds)}</div>
     ${ds.groups ? `<p class="dup-lede">Each group is one thing you have more than once. The <span class="dup-lede-kept">✓ Kept</span> copy is the one Browse shows; the rest are hidden, never deleted. To free the space, delete them yourself — every copy below says which folder it is in.</p>
     ${dupControls()}` : ""}
     <div id="dupgroups">${ds.groups ? "" : DUP_EMPTY}</div>
@@ -86,6 +85,26 @@ export async function renderDedup(m) {
   loadDupGroups();
 }
 
+/* What the redundant copies are, under the count of them.
+
+   All that survives of a panel of three stacked bars that sat between the tiles
+   and the list. Two of its rows were about media type -- what kind of file the
+   copies are, and what kind the unique files are -- and the second of those is
+   the Overview's storage panel said again, one screen away. The one thing only
+   this screen knows is which KIND of copy it found, and that is a phrase rather
+   than a chart: identical means byte for byte, a visual match is the same
+   picture saved differently, and knowing the mix is what tells you whether the
+   space is safe to reclaim.
+
+   Silent when there is nothing to split -- an archive with no copies, or one
+   where every copy is the same kind -- because "2,410 identical" under
+   "2,410" is the number twice. */
+function matchSplit(ds) {
+  const parts = (ds.by_match || []).filter(m => m.count > 0);
+  if (parts.length < 2) return "";
+  return parts.map(m => `${m.count.toLocaleString()} ${MATCH_WORDS[m.key] || m.key}`).join(" · ");
+}
+const MATCH_WORDS = { identical: "identical", visual: "visual" };
 /* Redraw the figures from a fresh summary, without rebuilding the screen.
 
    Everything here writes into an id that renderDedup laid down, so scroll
@@ -113,8 +132,7 @@ async function refreshDedup(rebuildList = false) {
   setStat("dup-copies", ds.duplicates.toLocaleString());
   setStat("dup-reclaimable", fmtBytes(ds.reclaimable));
   document.getElementById("dup-status").innerHTML = dedupStatusRow(ds);
-  const breakdown = document.getElementById("dup-breakdown");
-  if (breakdown) breakdown.innerHTML = dupBreakdownPanel(ds);
+  setStat("dup-split", matchSplit(ds));
   if (rebuildList && ds.groups && dupListTotal !== ds.groups) loadDupGroups();
 }
 
@@ -283,86 +301,6 @@ function dedupStatusRow(ds) {
 // near the same news about disk space. Size is the default here because
 // "Reclaimable" is the figure the screen opens with.
 //
-// The last row is the other half of that question -- how much of each type
-// survives deduplication -- and it is deliberately measured against its OWN
-// total. Its bar sums to `unique` (the tile above, one file per group) while
-// the two copy rows sum to `duplicates`, so segments must not be read across
-// rows; the label says so and a rule separates it for exactly that reason.
-const DUP_MATCH_LABEL = { identical: "Identical copies", visual: "Visual matches" };
-const DUP_MATCH_COL = { identical: "#30d158", visual: "#5b8cff" };
-const DUP_METRICS = {
-  size: { label: "Size", value: i => i.bytes || 0, text: i => fmtBytes(i.bytes || 0) },
-  files: { label: "Files", value: i => i.count, text: i => i.count.toLocaleString() },
-};
-const dupMetric = () => (DUP_METRICS[S.dupMetric] ? S.dupMetric : "size");
-export function setDupMetric(key) {
-  S.dupMetric = key;
-  const el = document.getElementById("dup-breakdown");
-  if (el && S.dupsum) el.innerHTML = dupBreakdownPanel(S.dupsum);
-}
-function dupBreakdownPanel(ds) {
-  const key = dupMetric(), metric = DUP_METRICS[key];
-  const mediaName = k => typeLabel(k), mediaCol = k => TYPE_COL[k] || TYPE_COL.other;
-  // Sorted by whichever metric is on screen, so a bar reads biggest-first
-  // whichever way the switch is set and its legend reads in the same order --
-  // the server ranks by count, which under "Size" drew a segment smaller than
-  // the one after it. Match is the exception and keeps the server's fixed
-  // identical-then-visual order: those two are a pair with a fixed pair of
-  // colours, and letting them swap places as the figures move is how a colour
-  // stops meaning one thing.
-  const ranked = items => [...items].sort((a, b) => metric.value(b) - metric.value(a));
-  const rows = [
-    { label: "Copies, by match", items: ds.by_match,
-      name: k => DUP_MATCH_LABEL[k] || k, colour: k => DUP_MATCH_COL[k] || "#8e8e93" },
-    { label: "Copies, by media", items: ranked(ds.by_media || []), name: mediaName, colour: mediaCol },
-    { label: "Unique files, by media", items: ranked(ds.by_unique || []),
-      name: mediaName, colour: mediaCol, apart: true },
-  ].filter(r => (r.items || []).length);
-  if (!rows.length) return "";       // older payload, or nothing to break down
-  // A row's own total, so each bar is a whole and no reader has to work out
-  // which denominator it is looking at.
-  const share = (item, total) => {
-    const p = 100 * metric.value(item) / (total || 1);
-    return p > 0 && p < 0.1 ? "<0.1%" : `${p.toFixed(1)}%`;
-  };
-  const section = r => {
-    const total = r.items.reduce((sum, i) => sum + metric.value(i), 0);
-    return `<div class="type-bar-row${r.apart ? " type-bar-apart" : ""}">
-      <span class="type-bar-label">${r.label}</span>
-      <div class="type-summary-bar">${r.items.map(i =>
-      `<div class="type-summary-segment" style="width:${100 * metric.value(i) / (total || 1)}%;background:${r.colour(i.key)}" title="${esc(r.name(i.key))}: ${i.count.toLocaleString()} · ${fmtBytes(i.bytes)}"></div>`
-    ).join("")}</div></div>
-    <div class="type-summary-legend">${r.items.map(i =>
-      `<span><span class="type-summary-key" style="background:${r.colour(i.key)}"></span>${esc(r.name(i.key))} <span class="muted">· ${metric.text(i)} (${share(i, total)})</span></span>`
-    ).join("")}</div>`;
-  };
-  // A single-segment bar is a rectangle that says 100%: no comparison in it,
-  // and three labels above it saying so. An archive with one kind of file in
-  // it gets the sentence instead.
-  const only = rows.length === 1 && rows[0].items.length === 1;
-  if (only) {
-    const i = rows[0].items[0];
-    return `<div class="panel dup-breakdown"><div class="panel-heading"><div>
-        <h3>What the archive holds</h3>
-        <p>${i.count.toLocaleString()} ${typeLabel(i.key)} file${i.count === 1 ? "" : "s"}, ${fmtBytes(i.bytes)}, and nothing else yet.</p>
-      </div></div></div>`;
-  }
-  // Headed by what the panel actually holds: with no groups yet the two copy
-  // rows are empty and only the unique breakdown is left, and calling that
-  // "what the copies are" would describe a row that is not about copies.
-  const dups = rows.some(r => !r.apart);
-  const other = key === "size" ? "files" : "size";
-  const sw = Object.entries(DUP_METRICS).map(([id, m]) =>
-    `<button type="button" class="${id === key ? "on" : ""}"
-        onclick="setDupMetric('${id === key ? other : id}')">${m.label}</button>`).join("");
-  return `<div class="panel dup-breakdown"><div class="panel-heading"><div>
-      <h3>${dups ? "What the copies are" : "What the archive holds"}</h3>
-      <p>${dups
-    ? "Every redundant copy, split two ways, beside the unique files they sit among"
-    : "Unique files by media"}</p></div>
-      <div class="metric-switch" id="dup-metric-switch">${sw}</div></div>
-    ${rows.map(section).join("")}</div>`;
-}
 /* Open a copy with the arrows bounded by ITS group.
 
    The viewer walks S.gallery, so what goes in it is a claim about what "next"

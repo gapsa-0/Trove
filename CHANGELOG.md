@@ -87,6 +87,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the face with the person who already has that name, or makes a person for a
   face that had none. The name sticks through re-clustering either way.
 
+- **Duplicates says what the copies are in a line, not a panel of charts.** The
+  three stacked bars between the tiles and the list were mostly saying things
+  said elsewhere: what kind of file the unique ones are is the Overview's
+  storage panel, one screen away, and it cost a pass over every file in the
+  archive on every refresh to repeat it. The one thing only this screen knows —
+  how many of the copies are byte-identical and how many are merely the same
+  picture saved differently — now sits under the *Redundant copies* count it
+  qualifies.
+
 ### Fixed
 
 - **"All results" stops throwing you back to the top.** Widening a description

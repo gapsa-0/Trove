@@ -34,7 +34,7 @@ import {
   highlightFace, toggleBoxes,
 } from "./boxes.js";
 import {
-  applyDupFilters, setDupMetric,
+  applyDupFilters,
 } from "./dups.js";
 import {
   backToPets,
@@ -180,7 +180,7 @@ Object.assign(window, {
   removeFeature, removeManualPerson,
   removeManualPet,
   renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
-  setDupMetric, setMapView,
+  setMapView,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,

@@ -101,15 +101,13 @@ copy Trove kept, not the files that turned out to have no duplicates. A photo
 sitting on four hidden copies is one unique file. Before duplicate detection
 has ever run nothing is hidden, so the number is simply every file you have.
 
-Below that, a breakdown of what the copies actually are, split two ways: by
-match, separating byte-identical copies from visual matches, and by media kind.
-The distinction matters. An identical copy is safe and boring. A visual match
-is a judgement, and it is the one worth glancing at.
+Under **redundant copies** sits the one thing the count alone does not say:
+how many of them are byte-identical to the copy that was kept, and how many are
+only visually the same. The distinction matters. An identical copy is safe and
+boring. A visual match is a judgement, and it is the one worth glancing at.
 
-A third bar, marked *unique*, splits the unique files themselves by kind, so
-you can read a hundred redundant videos against how many videos you actually
-have. It is a share of **unique files**, not of the redundant copies above it,
-which is why it sits below a rule: the segments of the two do not compare.
+To read the copies against what kind of file the archive is made of, the
+Overview's storage panel is the place: it splits every file you have by kind.
 
 Then one row per group, biggest saving first. Each row shows every copy with
 its file name and the folder it lives in, and the one Trove keeps wears a

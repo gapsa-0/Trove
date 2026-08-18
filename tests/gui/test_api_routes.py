@@ -150,7 +150,7 @@ API_GET_CASES = [
     ),
     pytest.param(
         "/api/dups/summary?root={root_id}",
-        {"groups", "duplicates", "reclaimable", "by_match", "by_media"},
+        {"groups", "duplicates", "reclaimable", "by_match"},
         id="GET /api/dups/summary",
     ),
     pytest.param("/api/dups?root={root_id}", {"groups", "offset", "count"}, id="GET /api/dups"),

@@ -367,14 +367,18 @@ table.types .share {
   font-size: 12px;
 }
 
-/* Same bars on the Duplicates page; the last legend shouldn't add a gap
-   above the group list. */
-.dup-breakdown {
-  margin-bottom: 16px;
+/* A second line under a tile's number, qualifying it: what the redundant
+   copies are, under how many there are. Sized as a caption rather than a
+   figure, so the number stays the thing the tile says. */
+.stat .statsub {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
 }
 
-.dup-breakdown .type-summary-legend:last-child {
-  margin-bottom: 0;
+.stat .statsub:empty {
+  display: none;
 }
 
 .type-summary-key {
