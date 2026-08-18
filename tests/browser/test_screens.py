@@ -224,3 +224,40 @@ def test_a_way_says_what_it_holds_rather_than_how_much_was_done_to_it(open_app):
         # A backlog is still worth saying: it is the part that will change.
         assert "queued" in text
         assert app.errors() == []
+
+
+def test_the_timeline_offers_a_person_named_since_it_was_last_open(open_app):
+    """The Timeline's people filter is built once and then set aside with the
+    screen, so naming someone in People never reached it.
+
+    Browse looks right for a reason that does not apply here: its DOM is
+    released when you leave rather than stashed, so its bar is rebuilt from
+    nothing every visit. The Timeline keeps its chart and its scroll, and kept
+    its stale list of names along with them.
+    """
+    with open_app("timeline") as app:
+        app.wait_for("#tl-people-filter")
+        before = app.tab.evaluate(
+            "[...document.querySelectorAll('#tl-people-filter .multi-option')]"
+            ".map(e => e.textContent.trim())"
+        )
+        assert "Newly Named" not in before
+
+        app.show_section("people")
+        app.wait_for(".pcard .pname")
+        app.tab.evaluate("document.querySelector('.pcard .pname').click()")
+        app.wait_for(".pcard .pmeta-editing input")
+        app.tab.evaluate(
+            "(() => { const i = document.querySelector('.pcard .pmeta-editing input');"
+            " i.value = 'Newly Named'; i.dispatchEvent(new Event('blur')); })()"
+        )
+        app.wait_for_text("Newly Named")
+
+        app.tab.evaluate("showSection('timeline')")
+        app.tab.wait_for(
+            "[...document.querySelectorAll('#tl-people-filter .multi-option')]"
+            ".some(e => e.textContent.includes('Newly Named'))",
+            timeout=10.0,
+            what="the newly named person to reach the Timeline's filter",
+        )
+        assert app.errors() == []

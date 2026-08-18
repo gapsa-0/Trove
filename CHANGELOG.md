@@ -69,6 +69,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The Timeline notices the people you have just named.** Naming people and
+  stepping over to the Timeline still offered the list of names from before you
+  named them, while Browse's identical filter was correct — the Timeline keeps
+  its chart and its place while you are away, and was keeping its stale list of
+  people along with them. It now asks again on the way back, holding whatever
+  you had narrowed it to.
+
 - **A name with a quotation mark in it can still be changed.** On a person's
   own page the rename button was built with their name written into its click
   handler, escaped for the JavaScript inside it but not for the HTML around it.

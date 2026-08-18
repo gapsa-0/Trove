@@ -49,7 +49,7 @@ import {
   stopPipelinePoll,
 } from "./pipeline.js";
 import {
-  renderTimeline,
+  renderTimeline, resumeTimeline,
 } from "./timeline.js";
 
 export function applyHash() {
@@ -168,6 +168,9 @@ function resumeSection(id) {
   else if (id === "people" && document.getElementById("facejob")) startFacePoll();
   else if (id === "pets" && document.getElementById("petjob")) startPetPoll();
   else if (id === "places" && MAP) setTimeout(() => { MAP.invalidateSize(); drawMap(); }, 0);
+  // The one filter bar built from data that changes while you are away: naming
+  // someone in People has to reach the list of people to narrow by here.
+  else if (id === "timeline") resumeTimeline();
   // Duplicates has no poll of its own: it rides the pipeline snapshot, which
   // only reaches it while it is the section on show. So what a stashed screen
   // missed while the user was elsewhere is asked for once, here, on the way

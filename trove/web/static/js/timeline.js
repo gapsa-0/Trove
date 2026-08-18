@@ -4,6 +4,7 @@
 
 import {
   MONTH_NAMES, checkedPeople, clearPeopleChecks, peopleFilterHTML, selVal,
+  setGroupChecks,
   updatePeopleFilterLabel,
 } from "./library.js";
 import {
@@ -84,19 +85,57 @@ async function buildTimelineFilterBar() {
   bar.innerHTML = parts.join("");
   S.timelineOpts = f;
 }
-export function onTimelineYearChange() {
-  const year = selVal("tl-year-filter");
-  const msel = document.getElementById("tl-month-filter");
-  if (msel) {
-    if (!year) { msel.innerHTML = '<option value="">All months</option>'; msel.disabled = true; }
-    else {
-      const months = [...new Set((S.timelineOpts.periods || [])
-        .filter(p => p.slice(0, 4) === year).map(p => p.slice(5, 7)).filter(Boolean))].sort();
-      msel.innerHTML = '<option value="">All months</option>' +
-        months.map(mm => `<option value="${mm}">${MONTH_NAMES[+mm - 1]}</option>`).join("");
-      msel.disabled = false;
-    }
+/* Which months the chosen year actually has, and which of them is picked.
+
+   Split out of onTimelineYearChange so the resume below can rebuild the list
+   without also announcing a change the user did not make. Mirrors the
+   Library's setLibraryMonthOptions, down to taking the selection as an
+   argument for exactly that reason. */
+function setTimelineMonthOptions(year, selected = "") {
+  const msel = document.getElementById("tl-month-filter"); if (!msel) return;
+  if (!year) {
+    msel.innerHTML = '<option value="">All months</option>';
+    msel.disabled = true;
+    return;
   }
+  // .filter(Boolean): a year-only period ("2024", from a manual year-precision
+  // date) yields an empty month slice, so drop it rather than offer a blank.
+  const months = [...new Set((S.timelineOpts.periods || [])
+    .filter(p => p.slice(0, 4) === year).map(p => p.slice(5, 7)).filter(Boolean))].sort();
+  msel.innerHTML = '<option value="">All months</option>' +
+    months.map(mm => `<option value="${mm}">${MONTH_NAMES[+mm - 1]}</option>`).join("");
+  msel.disabled = false;
+  msel.value = selected;
+}
+export function onTimelineYearChange() {
+  setTimelineMonthOptions(selVal("tl-year-filter"));
+  applyTimelineFilters();
+}
+/* Ask again on the way back to this screen.
+
+   The shell sets a section's DOM aside while you are elsewhere and replays it
+   when you return, which is what keeps the chart and the scroll -- and what
+   left this filter bar as the list of people it was built from. Name three
+   people in People, come back, and the filter still offered the names from
+   before. Browse looked right only because its DOM is released rather than
+   stashed, so it is rebuilt from nothing every time.
+
+   The selections are put back from `S.timeline` rather than read off the
+   markup being replaced. Anyone renamed away or hidden meanwhile is simply not
+   there to re-check, and applyTimelineFilters folds that back into the filter
+   -- which is the honest answer, rather than a chart narrowed by somebody the
+   archive no longer has. */
+export async function resumeTimeline() {
+  if (!document.getElementById("tl-filterbar")) return;
+  const { year, month, place } = S.timeline, people = (S.timeline.people || []).slice();
+  await buildTimelineFilterBar();
+  if (!document.getElementById("tl-filterbar")) return;
+  const ysel = document.getElementById("tl-year-filter");
+  if (ysel) ysel.value = year;
+  setTimelineMonthOptions(ysel ? ysel.value : "", month ? month.slice(5, 7) : "");
+  setGroupChecks("tl", "people", people);
+  const psel = document.getElementById("tl-place-filter");
+  if (psel) psel.value = place;
   applyTimelineFilters();
 }
 export function applyTimelineFilters() {
