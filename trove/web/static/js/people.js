@@ -3,7 +3,7 @@
 // the single-person page. Merging is drag-to-merge's job, not this module's.
 
 import {
-  detectStatusRow, syncCardGrid, thumbCollage,
+  detectStatusRow, editNeighbourName, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
   renderNav,
@@ -443,12 +443,17 @@ function editPersonCardName(card, p) {
     value: p.name,
     label: "Person’s name",
     after: `<div class="pcount">${fileCount(p.photos)} · Enter or click away to save</div>`,
-    onSave: (name, input) => savePersonCardName(card, p, name, input),
+    onSave: (name, input, step) => savePersonCardName(card, p, name, input, step),
     onCancel: () => card.replaceWith(personCard(p)),
+    onStep: true,
   });
 }
-async function savePersonCardName(card, p, name, input) {
-  if (name === (p.name || "")) { card.replaceWith(personCard(p)); return; }
+async function savePersonCardName(card, p, name, input, step = 0) {
+  if (name === (p.name || "")) {
+    card.replaceWith(personCard(p));
+    editNeighbourName("peoplegrid", p.id, step);
+    return;
+  }
   input.disabled = true;
   let result;
   try { result = await jpost("/api/faces/person/rename", { person_id: p.id, name }); }
@@ -462,6 +467,9 @@ async function savePersonCardName(card, p, name, input) {
   // it was just given off the screen until the next poll.
   card.replaceWith(personCard({ ...p, name: name || null }));
   await refreshPeopleGrid();
+  // After the grid has been reconciled, not before: the card this one is
+  // beside can have moved, or stopped existing, in the answer that just landed.
+  editNeighbourName("peoplegrid", p.id, step);
 }
 const PERSON_PAGE_SIZE = 120;
 /* Whose photos the arrows are walking, for the viewer's position readout.

@@ -197,3 +197,49 @@ def test_a_face_nobody_has_named_can_be_named_from_the_photo(open_app, archive):
             what="the name to come back on the panel",
         )
         assert app.errors() == []
+
+
+def _tab_out_of(app, selector: str, value: str, shift: bool = False) -> None:
+    """Type a name and leave the field with Tab, the way naming a row of
+    strangers goes: type, Tab, type, Tab."""
+    key_event = (
+        "new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true,"
+        f" shiftKey: {str(shift).lower()}}})"
+    )
+    app.tab.evaluate(
+        f"(() => {{ const i = document.querySelector({selector!r});"
+        f" i.value = {value!r}; i.dispatchEvent({key_event}); }})()"
+    )
+
+
+def test_tab_saves_a_name_and_opens_the_next_one(open_app):
+    """Naming a screenful of groups is the job, and reaching for the mouse
+    between every one of them was most of the work.
+
+    The browser's own Tab would have moved the focus to whatever came next
+    inside the same card -- its actions menu -- which is why this is handled
+    rather than left alone.
+    """
+    with open_app("people") as app:
+        app.wait_for("#peoplegrid .pcard .pname")
+        keys = app.tab.evaluate(
+            "[...document.querySelectorAll('#peoplegrid .pcard')].map(c => c.dataset.syncKey)"
+        )
+        assert len(keys) >= 2, "this needs a card to move on to"
+
+        app.tab.evaluate("document.querySelector('#peoplegrid .pcard .pname').click()")
+        app.wait_for("#peoplegrid .pcard .pmeta-editing input")
+        _tab_out_of(app, "#peoplegrid .pcard .pmeta-editing input", "Tabbed Along")
+
+        app.tab.wait_for(
+            "(() => { const editing = document.querySelector('#peoplegrid .pmeta-editing');"
+            f" return !!editing && editing.closest('.pcard').dataset.syncKey === {keys[1]!r}; }})()",
+            timeout=10.0,
+            what="the editor to open on the next card",
+        )
+        app.tab.wait_for(
+            "document.getElementById('peoplegrid').textContent.includes('Tabbed Along')",
+            timeout=10.0,
+            what="the name typed before Tab to have been saved",
+        )
+        assert app.errors() == []

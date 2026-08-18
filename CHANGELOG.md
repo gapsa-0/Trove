@@ -67,6 +67,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   undo itself. Undoing marks an entry rather than deleting it, because a history
   that erased itself as you used it would be a poor account of the afternoon.
 
+- **Tab saves a name and opens the next one.** Naming a screenful of groups is
+  what the People, Pets and Places grids are for, and reaching for the mouse
+  between every one of them was most of the work: Tab moved the focus to the
+  card's own actions menu instead. It now commits what you typed and opens the
+  editor on the card beside it, Shift+Tab on the one before.
+
 - **A place's name can be taken back off, like a person's or a pet's.** The
   Places grid had its own copy of the name editor rather than the shared one, so
   it never got the "Remove name" the others have — even though an unnamed place

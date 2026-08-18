@@ -3,7 +3,7 @@
 // poll. The single-pet page lives here too.
 
 import {
-  detectStatusRow, syncCardGrid, thumbCollage,
+  detectStatusRow, editNeighbourName, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
   ACTIVE_SECTION, showSection,
@@ -280,12 +280,17 @@ function editPetCardName(card, p) {
     value: p.name,
     label: "Pet’s name",
     after: `<div class="pcount">${fileCount(p.photos)} · Enter or click away to save</div>`,
-    onSave: (name, input) => savePetCardName(card, p, name, input),
+    onSave: (name, input, step) => savePetCardName(card, p, name, input, step),
     onCancel: () => card.replaceWith(petCard(p)),
+    onStep: true,
   });
 }
-async function savePetCardName(card, p, name, input) {
-  if (name === (p.name || "")) { card.replaceWith(petCard(p)); return; }
+async function savePetCardName(card, p, name, input, step = 0) {
+  if (name === (p.name || "")) {
+    card.replaceWith(petCard(p));
+    editNeighbourName("petgrid", p.id, step);
+    return;
+  }
   input.disabled = true;
   let result;
   try { result = await jpost("/api/pet/rename", { pet_id: p.id, name }); }
@@ -294,6 +299,7 @@ async function savePetCardName(card, p, name, input) {
     toast("Couldn’t save the pet’s name.", true); card.replaceWith(petCard(p)); return;
   }
   card.replaceWith(petCard({ ...p, name: name || null }));
+  editNeighbourName("petgrid", p.id, step);
 }
 function looseAnimalCard(a) {
   const card = document.createElement("div"); card.className = "pcard"; card.onclick = () => openItem(a.id);

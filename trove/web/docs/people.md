@@ -143,7 +143,9 @@ face be recognised as one.
 ## What you can do on the People screen
 
 **Name someone.** Click the name under their photo and type. That name is what
-survives every later re-clustering.
+survives every later re-clustering. Tab saves it and opens the next card's name,
+so a screenful can be named without reaching for the mouse; Shift+Tab steps
+back.
 
 **...or name them from a photograph they are in.** Every face the panel beside a
 photo lists carries *Name*, whether or not anybody has been named yet. What that

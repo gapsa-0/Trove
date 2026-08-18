@@ -84,3 +84,25 @@ export function thumbCollage(ids, endpoint) {
   for (let i = 0; i < 4; i++) cells += ids[i] ? img(ids[i]) : '<div class="cempty"></div>';
   return `<div class="facecollage">${cells}</div>`;
 }
+/* Open the name editor on the card beside this one.
+
+   What Tab means on a grid of unnamed groups: the point of naming one is
+   usually to name the next, and reaching for the mouse between every name is
+   most of the work. Found by key rather than held as a reference, because the
+   card that was just saved is replaced and the grid reconciled against the
+   server before this runs -- the node the caller was holding is gone.
+
+   Clicking the name rather than calling the editor directly, so every grid
+   keeps its own idea of what opening one means, and the next card is scrolled
+   just far enough to be seen: `nearest` leaves the grid alone when it already
+   is. */
+export function editNeighbourName(gridId, key, step) {
+  const grid = document.getElementById(gridId); if (!grid || !step) return;
+  const cards = [...grid.children];
+  const at = cards.findIndex(card => card.dataset.syncKey === String(key));
+  const next = at < 0 ? null : cards[at + step];
+  const name = next && next.querySelector(".pname");
+  if (!name) return;
+  next.scrollIntoView({ block: "nearest" });
+  name.click();
+}

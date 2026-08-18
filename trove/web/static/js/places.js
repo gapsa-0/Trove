@@ -37,6 +37,9 @@ import {
   esc, fileCount, toast,
 } from "./dom.js";
 import {
+  editNeighbourName,
+} from "./cards.js";
+import {
   inlineNameEdit,
 } from "./nameedit.js";
 import {
@@ -324,12 +327,17 @@ function editPlaceCardName(card, place) {
     value: place.name,
     label: "Place name",
     after: `<div class="pcount">${fileCount(place.count)} · Enter or click away to save</div>`,
-    onSave: (name, input) => savePlaceCardName(card, place, name, input),
+    onSave: (name, input, step) => savePlaceCardName(card, place, name, input, step),
     onCancel: () => card.replaceWith(placeCard(place)),
+    onStep: true,
   });
 }
-async function savePlaceCardName(card, place, name, input) {
-  if (name === (place.name || "")) { card.replaceWith(placeCard(place)); return; }
+async function savePlaceCardName(card, place, name, input, step = 0) {
+  if (name === (place.name || "")) {
+    card.replaceWith(placeCard(place));
+    editNeighbourName("placegrid", place.id, step);
+    return;
+  }
   input.disabled = true;
   let result;
   try { result = await jpost("/api/map/cluster/rename", { cluster_id: place.id, name }); }
@@ -341,6 +349,9 @@ async function savePlaceCardName(card, place, name, input) {
   await invalidateMapPoints();   // naming can promote a hidden spot to a real place
   updateMapStats();
   renderPlaceGallery();
+  // After the gallery is redrawn, not before: naming a place can add one to the
+  // list, so the card beside this one is only knowable once it has been.
+  editNeighbourName("placegrid", place.id, step);
   drawMap();
   if (S.mapSel === place.id) selectPlaceCluster(place.id);
 }
