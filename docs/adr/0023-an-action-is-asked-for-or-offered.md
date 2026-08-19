@@ -45,6 +45,14 @@ which is `.btn`'s weight — so at the foot of the Library health panel it read 
 that panel's main action, directly under the panel's actual main action
 (*Resume all*, `.btn.sec`). Two tiers had collapsed into one ambiguous middle.
 
+**And eighteen actions were accent words with no box** (`.linkbtn`): *Set* and
+*Copy* beside a heading in the inspector, *Clear filters*, *Clear search*, *Put
+back*, *Undo*, *Remove name*. In a interface where the only other blue words are
+links into the documentation, a control that looks like a link is a control that
+reads as leaving the app. It also gave the same act two appearances depending on
+where it sat — *Keep* under a duplicate copy is an outlined button, *Put back*
+under a group set aside was a blue word.
+
 Two fixes were tempting. A component library or Storybook is what a larger
 frontend would reach for, and [0002](0002-no-frontend-framework.md) already
 rejected the toolchain it assumes. A bespoke stylelint rule flagging a
@@ -56,19 +64,27 @@ drift it caught.
 
 ## Decision
 
-**Three tiers, by what the action is to the person reading the screen.**
+**Two tiers, by what the action is to the person reading the screen.**
 
 1. **Asked for** — `.btn`, or `.btn.sec` where a filled accent would shout: the
    thing the screen or panel exists to do. *Search*, *Save changes*, *Resume
    all*, *Create & attach*.
 2. **Offered** — `.quietbtn`: available, not urged. Outlined, muted, taking the
    accent only when pointed at. *How this works*, *Manage features*, *Select*,
-   *Keep*, and each action on the selection bar.
-3. **Inside a sentence or a row** — `.linkbtn`: accent text, no box. *Clear
-   filters*, *Put back*, *Remove name*.
+   *Keep*, *Set*, *Copy*, *Put back*, *Undo*, and each action on the selection
+   bar.
 
 `.quietbtn` takes the shape `.doc-info` already wore, because that control is on
 every screen in the app and is therefore the one a reader has already learned.
+
+**Where it sits beside a heading or inside a row, it is the same control in less
+room** — `.quietbtn.sm`, a padding and a font size. Not a third tier: *Copy*
+next to *Detected text* and *Manage features* at the foot of a panel are the
+same offer, made where there is more or less space for it.
+
+**There is no link-shaped button.** A blue word with no box reads as a link, and
+in this app the only blue words are links into the documentation. An action that
+stays on the screen wears a box.
 
 **There is one back control**, `backControl()` in `static/js/router.js`: a
 chevron in a quiet square that takes a background when pointed at, sized 30px
@@ -108,6 +124,16 @@ their own shapes.
 - The hierarchy is legible again where it had collapsed. *Resume all* over
   *Manage features* in one panel now reads as a strong action and a quiet one,
   rather than as two buttons of unrelated design.
+- **`.linkbtn` is retired**, and its two declarations went with it. The
+  inspector re-grounds the shared control on glass instead
+  (`.viewer .info .quietbtn`), which is what that stylesheet exists to do: the
+  theme's `--line` and `--muted` are chosen against a page background and are
+  invisible over a photograph.
+- **Two hidden-group cards were built differently from every other card**, and
+  putting a box where a blue word had been is what exposed it: neither wrapped
+  its name and count in `.pmeta-text`, so all three children became items in the
+  card's flex row and the count wrapped. They now have the shape a card in the
+  grid has, with *Put back* where the ⋯ sits.
 - **Class names survive as hooks.** Markup is `class="quietbtn doc-info"`, so
   `.doc-info` still addresses that control in the browser tier and still has
   somewhere for a per-instance rule to live if it earns one.
