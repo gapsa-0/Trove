@@ -8,18 +8,31 @@
   box-shadow: var(--shadow-sm)
 }
 
+/* The search box.
+
+   Transparent on the toolbar's own surface, with only a hairline under it: with
+   the placeholder showing it read as a heading with a magnifier beside it, and
+   the only thing in the row that looked interactive was the filled blue Search
+   button. A field should look like somewhere you can put something. It takes a
+   recessed surface of its own and lights up when focused, which is also the one
+   state the row had no way to show. */
 .library-search {
   display: flex;
   gap: 8px;
   align-items: center;
   width: 100%;
   margin: 0;
-  padding: 3px 3px 10px 10px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none
+  padding: 5px 5px 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+  box-shadow: none;
+  transition: border-color .15s, background .15s
+}
+
+.library-search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--panel)
 }
 
 .library-search:before {

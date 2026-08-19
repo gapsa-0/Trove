@@ -565,8 +565,13 @@ button.stat:hover {
 }
 
 /* Per-stage pause/resume. Dimmed until the card is hovered or the stage is
-   already paused, so five of these never compete with the status text --
-   but never fully hidden, or nobody would find them. */
+   already paused, so six of these never compete with the status text -- but
+   never fully hidden, or nobody would find them.
+
+   .4 was past "quiet" and into "invisible": muted at 40% over a light panel is
+   about 1.4:1, which is below the threshold at which a shape reads as a
+   control at all rather than as a rendering artifact. .58 is still the quietest
+   thing on the card and can actually be seen. */
 .health-task-btn {
   margin-left: auto;
   flex: none;
@@ -581,7 +586,7 @@ button.stat:hover {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  opacity: .4;
+  opacity: .58;
   transition: opacity .12s ease, background .12s ease, color .12s ease
 }
 
