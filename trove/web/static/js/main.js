@@ -13,14 +13,18 @@ import {
 import {
   thumbFallback,
 } from "./tiles.js";
+// Imported for the listeners it installs; nothing here calls into it.
+import "./tooltip.js";
 import {
   ARCHIVES, addArchiveFromForm, loadPicker, openArchive,
 } from "./picker.js";
 
 import {
-  applyFilters, applySort, clearFilters, onPeopleFilterChange, onPetsFilterChange,
-  onYearChange,
+  applyFilters, applySort, clearFilters, onYearChange,
 } from "./library.js";
+import {
+  onPeopleFilterChange, onPetsFilterChange,
+} from "./group-filter.js";
 import {
   onSemanticComposerInput, onSemanticComposerKeydown, onSemanticComposerPaste,
   semanticSubmit,

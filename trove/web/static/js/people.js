@@ -535,7 +535,7 @@ export async function showPerson(id) {
       ${avatar}
       <div class="ftb-identity">
         <div class="ftb-name" id="personname">
-          <button class="person-name-button ${nmCls}" type="button" title="Rename this person">
+          <button class="person-name-button ${nmCls}" type="button" data-tip="Rename this person">
             <span>${nm}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg>
           </button>

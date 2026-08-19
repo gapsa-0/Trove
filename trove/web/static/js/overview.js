@@ -77,7 +77,7 @@ function markStaleStats(snap) {
           : stage && (stage.paused || stage.stalled)
             ? `${stage.label} is paused, so this figure may be out of date.` : "";
     tile.classList.toggle("stat-stale", !!why);
-    if (why) tile.title = why; else tile.removeAttribute("title");
+    if (why) tile.dataset.tip = why; else delete tile.dataset.tip;
   }
 }
 
@@ -465,7 +465,7 @@ function stagePauseButton(stage) {
   const label = off ? `Resume ${stage.label}` : `Pause ${stage.label}`;
   const title = globallyPaused
     ? "All background processing is paused" : label;
-  return `<button type="button" class="health-task-btn" title="${title}"
+  return `<button type="button" class="health-task-btn" data-tip="${title}"
       aria-label="${label}" ${globallyPaused || S.pausing ? "disabled" : ""}
       onclick="toggleStagePause('${stage.id}',event)">${off ? PLAY_GLYPH : PAUSE_GLYPH}</button>`;
 }

@@ -49,13 +49,13 @@ export function tile(it, resultIndex = null, caption = "date") {
   // escaped, truncated by CSS, and given a title carrying the whole of it.
   const name = it.name || "";
   const label = caption === "name"
-    ? `<span class="cap-label" title="${esc(name)}">${esc(name)}</span>`
+    ? `<span class="cap-label" data-tip="${esc(name)}">${esc(name)}</span>`
     : `<span class="cap-label">${(it.date || "").slice(0, 10)}</span>`;
   // `indexed` is absent on description-search results -- every hit there is
   // indexed by definition, so the pip would mark all of them and say
   // nothing. Undefined simply renders no pip, which is the wanted result.
   cap.innerHTML = label + `<span class="cap-marks">` +
-    (it.indexed ? `<span class="indexed" title="Indexed for description search"></span>` : "") +
+    (it.indexed ? `<span class="indexed" data-tip="Indexed for description search"></span>` : "") +
     (it.type === "video" ? "<span>▶</span>" : "") + `</span>`;
   d.appendChild(cap);
   // aria-hidden because the meaning is already on the tile's own label:
@@ -64,7 +64,7 @@ export function tile(it, resultIndex = null, caption = "date") {
   if (it.has_gps) {
     const b = document.createElement("div");
     b.className = "badge"; b.innerHTML = MARKS.place;
-    b.title = "Has a location"; b.setAttribute("aria-hidden", "true");
+    b.dataset.tip = "Has a location";
     d.appendChild(b);
   }
   return d;
@@ -159,7 +159,7 @@ const READER_BADGE = {
 function foundBadge({ icon, text, hint }) {
   const b = document.createElement("span");
   b.className = "found-by";
-  b.title = hint;
+  b.dataset.tip = hint;
   const glyph = document.createElement("span");
   glyph.className = "ranking-mark";
   glyph.setAttribute("aria-hidden", "true");
@@ -258,7 +258,7 @@ function tileAction(cls, label, glyph, onPick) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = `tile-action ${cls}`;
-  btn.title = label;
+  btn.dataset.tip = label;
   btn.setAttribute("aria-label", label);
   btn.innerHTML = glyph;
   btn.onclick = e => { e.stopPropagation(); onPick(); };

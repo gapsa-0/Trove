@@ -210,7 +210,7 @@ function preview(f) {
 function chipItem(f) {
   const out = f.required ? "" : `<button class="set-chip-out" type="button"
         onclick="removeFeature('${f.id}')"
-        aria-label="Remove ${esc(f.label)} from this archive" title="Remove ${esc(f.label)} from this archive">
+        aria-label="Remove ${esc(f.label)} from this archive" data-tip="Remove from this archive">
         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.4 3.4 8.6 8.6M8.6 3.4 3.4 8.6"/></svg>
       </button>`;
   return `<span class="set-chip${f.required ? " fixed" : ""}" data-feature="${f.id}"
@@ -419,7 +419,7 @@ function renderSetup() {
         <p class="set-sub">Pick what you want now. Once the archive is open you can change
           any of this from its Library health panel, and nothing in the folder is ever moved,
           renamed or deleted.</p>
-        <p class="set-path" title="${esc(SETUP.path)}">${esc(SETUP.path)}</p>
+        <p class="set-path" data-tip="${esc(SETUP.path)}">${esc(SETUP.path)}</p>
       </div>
       <label class="set-name">
         <span>Name this archive</span>

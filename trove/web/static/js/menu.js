@@ -33,7 +33,7 @@ export function cardMenu(host, items, { label = "More actions" } = {}) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "cardmenu-trigger";
-  trigger.title = label;
+  trigger.dataset.tip = label;
   trigger.setAttribute("aria-label", label);
   trigger.setAttribute("aria-haspopup", "menu");
   trigger.innerHTML =

@@ -77,7 +77,11 @@ export function renderNav() {
   archiveSections(S.arch).forEach(s => {
     const d = document.createElement("button"); d.type = "button";
     d.className = "navitem" + (s.id === S.section ? " active" : "");
-    d.title = s.label; d.setAttribute("aria-current", s.id === S.section ? "page" : "false");
+    // The label is printed inside this button. A tooltip repeating it word for
+    // word is noise on hover -- but collapsed, the words are gone and the mark
+    // is all that is left, so that is when the name is worth having.
+    d.dataset.tip = s.label; d.dataset.tipAt = "right";
+    d.setAttribute("aria-current", s.id === S.section ? "page" : "false");
     d.innerHTML = `<span class="navicon" aria-hidden="true">${ICONS[s.id]}</span><span>${s.label}</span>`; d.onclick = () => showSection(s.id);
     el.appendChild(d);
   });
@@ -94,7 +98,7 @@ export function applyNavCollapsed() {
   const toggle = document.getElementById("navtoggle");
   if (!toggle) return;
   const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
-  toggle.title = label;
+  toggle.dataset.tip = label;
   toggle.setAttribute("aria-label", label);
   toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
 }
@@ -132,19 +136,21 @@ export function resetSectionViews() {
    there is one arrow, and `label` is what it goes back TO, because a control
    that says where it leads is worth more than one that says it leaves.
 
-   `destination` is not drawn. It is the title and the accessible name, which is
-   where "where does this go" belongs: the screen already answers it, since the
-   thing you are looking at is the thing you would be leaving. It also settles
-   the one label that had nowhere to go -- inside a search ranking this returns
-   to the overview of every way, and every phrase for that is a word away from
-   "All results", which is on screen a line above meaning something else
-   entirely (how far down one ranking to go).
+   `destination` is not drawn. It is the tooltip and the accessible name, which
+   is where "where does this go" belongs: the screen already answers it, since
+   the thing you are looking at is the thing you would be leaving.
+
+   The one label that had nowhere to go was the search results' -- it returns to
+   the overview of every ranking, and "all results" is a word away from "All
+   results", which sits on screen a line above meaning how far down one ranking
+   to go. It says "every way" instead, which is the panel's own noun for a
+   ranking ("3 ways in this archive").
 
    The nav's own is the fourth, and stays in index.html: it is static markup in
    the shell rather than something a screen builds. */
 export function backControl(destination) {
   return `<button class="back back-control" type="button"
-      aria-label="Back to ${destination}" title="Back to ${destination}">
+      aria-label="Back to ${destination}" data-tip="Back to ${destination}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
     </button>`;
 }

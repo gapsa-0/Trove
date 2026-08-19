@@ -366,9 +366,14 @@ class App:
         return self.tab.evaluate("location.hash")
 
     def active_nav(self) -> str:
-        """The label of the nav item currently marked as the open screen."""
+        """The label of the nav item currently marked as the open screen.
+
+        Read off ``data-tip`` rather than ``title``: the app draws its own
+        tooltips now, so the native attribute is gone from every control whose
+        name is not already on screen.
+        """
         return self.tab.evaluate(
-            "(document.querySelector('#navitems .navitem.active') || {}).title || ''"
+            "(document.querySelector('#navitems .navitem.active') || {}).dataset?.tip || ''"
         )
 
     def errors(self) -> list[str]:

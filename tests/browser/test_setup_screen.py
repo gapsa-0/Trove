@@ -449,7 +449,7 @@ def test_the_nav_only_offers_what_the_archive_runs(open_app, archive):
     the nav item is not there at all."""
     with open_app("overview") as app:
         labels = app.tab.evaluate(
-            "[...document.querySelectorAll('#navitems .navitem')].map(e => e.title)"
+            "[...document.querySelectorAll('#navitems .navitem')].map(e => e.dataset.tip)"
         )
         assert {"People", "Pets", "Places"} <= set(labels)
 
@@ -457,7 +457,7 @@ def test_the_nav_only_offers_what_the_archive_runs(open_app, archive):
 
     with open_app("overview") as app:
         labels = app.tab.evaluate(
-            "[...document.querySelectorAll('#navitems .navitem')].map(e => e.title)"
+            "[...document.querySelectorAll('#navitems .navitem')].map(e => e.dataset.tip)"
         )
         assert "Places" in labels
         assert "People" not in labels and "Pets" not in labels

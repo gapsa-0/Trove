@@ -86,19 +86,19 @@ export function renderGstat(snap) {
     // believes it is doing, not one file in this archive can be opened. It used
     // to report "Up to date" here, in green, which is the worst answer of the
     // set -- the user believes it and never looks for the drive.
-    el.title = "This archive's folder cannot be found";
+    el.dataset.tip = "This archive's folder cannot be found";
     el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">Folder not found</span></div>`;
   } else if (runs.length) {
-    el.title = runs.map(r => `${r.label}: ${r.message || ""}`).join("\n");
+    el.dataset.tip = runs.map(r => `${r.label}: ${r.message || ""}`).join("\n");
     el.innerHTML = mini + runs.map(gstatRow).join("");
   } else if (!snap) {
-    el.title = "Checking for new work…";
+    el.dataset.tip = "Checking for new work…";
     el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Checking for new work…</span></div>`;
   } else if (snap.paused) {
     // The whole pipeline. Asked of `paused` rather than of `overall`, which
     // also says "paused" when the only thing stopped is one stage -- see the
     // branch below.
-    el.title = "Background processing is paused";
+    el.dataset.tip = "Background processing is paused";
     el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">Paused</span></div>`;
   } else if (stepsPaused(snap)) {
     // One or more stages stopped on their own, with the pipeline running.
@@ -109,21 +109,21 @@ export function renderGstat(snap) {
     // that was true, and both contradicted the "Pause all" button offering to
     // pause a pipeline the chip had just called paused.
     const n = stepsPaused(snap);
-    el.title = `${n} step${n === 1 ? "" : "s"} paused; everything else is running`;
+    el.dataset.tip = `${n} step${n === 1 ? "" : "s"} paused; everything else is running`;
     el.innerHTML = `<div class="gstate"><span class="dot check"></span><span class="gtxt">${n} step${n === 1 ? "" : "s"} paused</span></div>`;
   } else if (snap.overall === "idle") {
-    el.title = "Up to date";
+    el.dataset.tip = "Up to date";
     el.innerHTML = `<div class="gstate"><span class="dot ok"></span><span class="gtxt">Up to date</span></div>`;
   } else if (snap.overall === "checking") {
     // The folder is being counted, so whether anything is owed is not yet
     // known. Same words as the no-snapshot branch above, because it is the same
     // thing being said -- the difference is that the server is now saying it,
     // rather than the client inferring it from an answer that had not arrived.
-    el.title = "Checking for new work…";
+    el.dataset.tip = "Checking for new work…";
     el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Checking for new work…</span></div>`;
   } else {
     // Work is waiting to run (queued/blocked) but nothing is on the writer yet.
-    el.title = "Work is queued";
+    el.dataset.tip = "Work is queued";
     el.innerHTML = `<div class="gstate"><span class="dot pending"></span><span class="gtxt">Working…</span></div>`;
   }
 }

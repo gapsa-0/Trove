@@ -4,10 +4,11 @@
 // how much of it each one currently reaches.
 
 import {
-  checkedPeople, liveRankings, mediaRanksQueries, reloadGrids, renderSortOptions,
-  scrollResultsToTop,
-  updateClearBtn, updatePeopleFilterLabel,
+  liveRankings, mediaRanksQueries, reloadGrids, renderSortOptions, scrollResultsToTop, updateClearBtn,
 } from "./library.js";
+import {
+  checkedPeople, updatePeopleFilterLabel,
+} from "./group-filter.js";
 import {
   renderGroupLabels,
 } from "./results.js";
@@ -287,7 +288,7 @@ function readerLink(reader) {
   if (!reader.docs) return "";
   const how = `How ${reader.label} works`;
   return `<button type="button" class="way-doc" onclick="openDocs('${esc(reader.docs)}')"
-      title="${esc(how)}" aria-label="${esc(how)}">${ICONS[reader.icon]}</button>`;
+      data-tip="${esc(how)}" aria-label="${esc(how)}">${ICONS[reader.icon]}</button>`;
 }
 function normalizedWords(value) {
   return (value || "").normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase()
@@ -549,7 +550,7 @@ export function renderActiveQuery(g) {
   // The vector search runs on an English rendering of the sentence. Say so
   // on hover when it differs, so an unexpected match has an explanation.
   if (g.expandedQuery && g.query && g.expandedQuery !== g.query)
-    phrase.title = `Searched in English as “${g.expandedQuery}”`;
+    phrase.dataset.tip = `Searched in English as “${g.expandedQuery}”`;
   const clear = document.createElement("button");
   clear.type = "button"; clear.className = "quietbtn sm aq-clear";
   clear.textContent = "Clear search";
@@ -581,7 +582,7 @@ function resultScopeControl(g) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = text;
-      button.title = hint;
+      button.dataset.tip = hint;
       button.setAttribute("aria-pressed", String(trimmed === wantsTrimmed));
       button.onclick = () => setResultScope(wantsTrimmed);
       wrap.append(button);

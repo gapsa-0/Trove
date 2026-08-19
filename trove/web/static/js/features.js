@@ -163,7 +163,7 @@ function control(f) {
   if (!canToggle(f)) return `<span class="fcard-fixed">Not in this build</span>`;
   const on = SHEET.chosen.has(f.id);
   return `<button type="button" class="fsw" role="switch" aria-checked="${on}"
-      aria-label="${esc(f.label)}" title="${esc(f.label)}"
+      aria-label="${esc(f.label)}" data-tip="${esc(f.label)}"
       onclick="event.stopPropagation();toggleSheetFeature('${f.id}')">
       <i aria-hidden="true"></i></button>`;
 }

@@ -441,7 +441,7 @@ function dupCopy(mm, g, draw) {
   b.type = "button";
   b.className = "duptile" + (mm.kept ? " kept" : "");
   b.dataset.fileId = mm.id;
-  b.title = where;
+  b.dataset.tip = where;
   b.setAttribute("aria-label", `${name}, ${tag}, in ${mm.folder || ROOT_FOLDER}`);
   b.onclick = () => openDupCopy(mm.id);
   b.appendChild(thumbNode(mm));
@@ -475,7 +475,7 @@ function keepToggle(mm, g, draw) {
   button.setAttribute("aria-checked", String(!!mm.kept));
   button.textContent = mm.kept ? "Kept" : "Keep";
   button.disabled = !!last;
-  button.title = last
+  button.dataset.tip = last
     ? "A group has to keep at least one copy"
     : mm.kept ? "Stop showing this copy in Browse" : "Show this copy in Browse too";
   if (!last) button.onclick = () => toggleKept(mm, g, draw);

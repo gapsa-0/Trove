@@ -64,7 +64,7 @@ function notYet(line, sub) {
 function dateRow(it) {
   return `<div class="kv datekv"><span class="k">Date</span>
     <span class="v" id="dateval"><span class="dateline">${fmtDate(it.date)}${dateProv(it)}</span></span>
-    <button class="iconbtn" type="button" onclick="editDate()" title="Edit date"
+    <button class="iconbtn" type="button" onclick="editDate()" data-tip="Edit date"
       aria-label="Edit date">${PENCIL}</button></div>`;
 }
 const PENCIL = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M14.5 6.5 17 9"/></svg>`;
@@ -95,7 +95,7 @@ function dateProv(it) {
   if (!it.date) return "";
   const [words, tone, full] = DATE_SOURCE[it.date_source] || [it.date_source || "", "", ""];
   if (!words) return "";
-  return `<span class="prov ${tone}" title="${esc(full || words)}">${esc(words)}</span>`;
+  return `<span class="prov ${tone}" data-tip="${esc(full || words)}">${esc(words)}</span>`;
 }
 
 /* Coordinates and places are not the same feature. `geo` is written by the
@@ -322,8 +322,8 @@ function copyTile(m, openId) {
     : `<span class="cph">${TYPE_ICON[m.type] || TYPE_ICON.other}</span>`;
   const where = `${esc(m.folder || "the archive root")} · ${esc(m.name)}`;
   const cls = `copy ${kind}${here ? " here" : ""}`;
-  if (here) return `<div class="${cls}" title="${where}" aria-current="true">${face}${tag}</div>`;
-  return `<button type="button" class="${cls}" title="${where}"
+  if (here) return `<div class="${cls}" data-tip="${where}" aria-current="true">${face}${tag}</div>`;
+  return `<button type="button" class="${cls}" data-tip="${where}"
     onclick="openCopy(${m.id})">${face}${tag}</button>`;
 }
 
@@ -350,7 +350,7 @@ function looksLikeSection(it, related) {
 export function relStrip(items) {
   if (!items.length) return `<div class="imuted">Nothing else in the archive looks like this one.</div>`;
   return `<div class="relstrip">${items.map(r =>
-    `<button type="button" onclick="openRelated(${r.id})" title="${esc(r.name || "")}">
+    `<button type="button" onclick="openRelated(${r.id})" data-tip="${esc(r.name || "")}">
       <img src="/thumb/${r.id}" loading="lazy" alt=""></button>`).join("")}</div>`;
 }
 
@@ -412,7 +412,7 @@ function faceRow(it, f) {
      covers both a group nobody has named and a face too alone to have made a
      group at all; what happens to each is people_edit.name_face's business. */
   const nameIt = isNamed ? ""
-    : `<button class="quietbtn sm facename" type="button" title="Name this person"
+    : `<button class="quietbtn sm facename" type="button" data-tip="Name this person"
         onclick="nameFace(${f.face_id})">Name</button>`;
   if (!named.length)
     return `<div class="facerow" data-face-id="${f.face_id}"

@@ -68,7 +68,7 @@ def _press_card(app, feature):
 
 def _nav_labels(app):
     return app.tab.evaluate(
-        "[...document.querySelectorAll('#navitems .navitem')].map(e => e.title)"
+        "[...document.querySelectorAll('#navitems .navitem')].map(e => e.dataset.tip)"
     )
 
 
@@ -309,7 +309,7 @@ def test_saving_changes_what_the_archive_runs(open_app, archive):
         app.tab.wait_for(
             "document.querySelectorAll('#navitems .navitem').length > 0"
             " && ![...document.querySelectorAll('#navitems .navitem')]"
-            ".some(e => e.title === 'Places')",
+            ".some(e => e.dataset.tip === 'Places')",
             what="the nav to lose the section Places was unlocking",
         )
         assert app.count(".fsheet.open") == 0

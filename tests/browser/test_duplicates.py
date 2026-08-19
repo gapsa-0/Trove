@@ -126,12 +126,16 @@ def test_a_duplicate_tile_is_a_control_that_names_its_file(open_app):
 
 
 def test_a_folder_with_a_quotation_mark_in_its_name_renders_as_text(open_app, archive):
-    """The regression: `title="${mm.folder}"`.
+    """The regression: an unescaped folder name interpolated into an attribute.
 
     A folder called `Fotos de "Mama" & Papa <2015>` closed the attribute at its
     first quote, so the rest became junk attributes, the tile's `onclick` was
     consumed as text, and the leftover markup was drawn on the page. The tile
     stopped opening -- the one copy in the group you could not look at.
+
+    The attribute is `data-tip` now rather than `title`: the app draws its own
+    tooltips. The hazard is identical, which is why this still guards the exact
+    attribute list.
     """
     with open_app("dups", wait_for=".duptile") as app:
         found = app.tab.evaluate(f"""
@@ -139,7 +143,7 @@ def test_a_folder_with_a_quotation_mark_in_its_name_renders_as_text(open_app, ar
             const t = document.querySelector('.duptile[data-file-id="{archive.ids["hostile_copy"]}"]');
             if (!t) return null;
             return {{
-              title: t.title,
+              title: t.dataset.tip,
               folder: (t.querySelector('.dtpath') || {{}}).textContent || '',
               attrs: [...t.attributes].map(a => a.name).sort(),
               opens: typeof t.onclick === 'function',
@@ -153,7 +157,7 @@ def test_a_folder_with_a_quotation_mark_in_its_name_renders_as_text(open_app, ar
         assert '"' in found["title"] or "&" in found["title"], found["title"]
         assert "&" in found["folder"], found["folder"]
         # Nothing of the name leaked into the tag itself.
-        assert found["attrs"] == ["aria-label", "class", "data-file-id", "title", "type"], found
+        assert found["attrs"] == ["aria-label", "class", "data-file-id", "data-tip", "type"], found
         assert found["opens"], "the tile lost its click handler to its own folder name"
         assert not found["stray"], "markup leaked into the page as text"
         assert app.errors() == []

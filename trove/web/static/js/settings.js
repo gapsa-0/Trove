@@ -24,7 +24,7 @@ export function syncThemeControl() {
     icon.innerHTML = dark ? ICONS.sun : ICONS.moon;
     const label = button.querySelector(".theme-label");
     if (label) label.textContent = dark ? "Light appearance" : "Dark appearance";
-    button.title = dark ? "Use light appearance" : "Use dark appearance";
+    button.dataset.tip = dark ? "Use light appearance" : "Use dark appearance";
   });
   document.querySelectorAll(".gear-icon").forEach(el => { el.innerHTML = ICONS.settings; });
 }

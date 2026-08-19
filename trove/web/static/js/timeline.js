@@ -3,10 +3,11 @@
 // than delegated to a charting library, so the path maths lives here too.
 
 import {
-  MONTH_NAMES, checkedPeople, clearPeopleChecks, peopleFilterHTML, selVal,
-  setGroupChecks,
-  updatePeopleFilterLabel,
+  MONTH_NAMES, selVal,
 } from "./library.js";
+import {
+  checkedPeople, clearPeopleChecks, peopleFilterHTML, setGroupChecks, updatePeopleFilterLabel,
+} from "./group-filter.js";
 import {
   jget,
 } from "./api.js";
@@ -44,7 +45,7 @@ async function renderDateSourceBar() {
   const colour = x => DATE_SRC_COL[x.source] || "#8b93a3";
   const label = x => DATE_SRC_LABEL[x.source] || x.source;
   const segs = rows.map(x =>
-    `<div style="width:${100 * x.count / total}%;background:${colour(x)}" title="${label(x)}: ${pct(x)}%"></div>`
+    `<div style="width:${100 * x.count / total}%;background:${colour(x)}" data-tip="${label(x)}: ${pct(x)}%"></div>`
   ).join("");
   const legend = rows.map(x =>
     `<span><span class="tl-swatch" style="background:${colour(x)}"></span>${label(x)}<span class="muted">, ${pct(x)}%</span></span>`

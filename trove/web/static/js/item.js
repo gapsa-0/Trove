@@ -190,7 +190,7 @@ function renderStage() {
     const box = document.createElement("div");
     box.className = "docstage";
     const f = document.createElement("iframe");
-    f.title = it.name;
+    f.dataset.tip = it.name;
     f.src = "/file/" + it.id;
     box.appendChild(f);
     // Clicking into the frame is what hands the arrows over; the frame cannot

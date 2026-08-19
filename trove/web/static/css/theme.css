@@ -360,3 +360,38 @@ svg.appicon.solid {
   fill: currentColor;
   stroke: none
 }
+
+/* The tooltip (static/js/tooltip.js owns the node and its placement).
+
+   Fixed rather than a pseudo-element on the control: the two places a name is
+   needed most -- the collapsed rail and the viewer chrome -- are both inside
+   `overflow` containers, and a ::after cannot leave one. */
+.apptip {
+  position: fixed;
+  z-index: 200;
+  max-width: 260px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 550;
+  line-height: 1.35;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity .12s, transform .12s
+}
+
+.apptip.on {
+  opacity: 1;
+  transform: none
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apptip {
+    transition: none
+  }
+}

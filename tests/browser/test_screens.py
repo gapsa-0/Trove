@@ -53,7 +53,7 @@ def test_a_browse_tile_is_captioned_with_the_file_it_shows(open_app):
     the name is the one thing on screen that says which file this is."""
     with open_app("library", wait_for=".tile") as app:
         caption = app.tab.evaluate("document.querySelector('#grid .tile .cap-label').textContent")
-        title = app.tab.evaluate("document.querySelector('#grid .tile .cap-label').title")
+        title = app.tab.evaluate("document.querySelector('#grid .tile .cap-label').dataset.tip")
 
         assert caption.endswith(".jpg")
         # Truncation is CSS, so the whole name has to survive somewhere a
@@ -189,7 +189,7 @@ def test_a_way_links_to_the_page_that_documents_it(open_app):
     which is why they are marks rather than a row of link text."""
     with open_app("library", wait_for=".way") as app:
         links = app.tab.evaluate(
-            "[...document.querySelectorAll('.way .way-doc')].map(e => e.title)"
+            "[...document.querySelectorAll('.way .way-doc')].map(e => e.dataset.tip)"
         )
         assert "How Search by document text works" in links
         assert "How Search by picture text works" in links

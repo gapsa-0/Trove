@@ -494,7 +494,7 @@ export async function showPet(id) {
   const name = pet.name || "Name this pet";
   m.innerHTML = `<div class="facetopbar">${backControl("Pets")}
     <img class="person-header-avatar" src="/animalThumb/${petAvatar(pet)}" alt="">
-    <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
+    <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" data-tip="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
     <span class="muted ftb-count">${esc(pet.species)} · ${fileCount(pet.photos)}</span></div>
     ${historyButton("pet", pet.id, pet.name)}

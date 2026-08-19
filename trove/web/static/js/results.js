@@ -60,7 +60,7 @@ function hiddenCopiesNote(host, searching) {
   link.type = "button";
   link.className = "hidden-copies";
   link.textContent = `${hidden.toLocaleString()} ${hidden === 1 ? "copy" : "copies"} hidden`;
-  link.title = "Redundant copies are kept out of Browse. Open Duplicates.";
+  link.dataset.tip = "Redundant copies are kept out of Browse. Open Duplicates.";
   link.onclick = () => showSection("dups");
   host.append(link);
 }
@@ -341,7 +341,7 @@ function renderResultsBack(only) {
   // The app's back control, not one of its own. This drew a typed "←" beside
   // the word, which is a different mark at a different weight from the chevron
   // the sidebar and a person's page use for the same act.
-  bar.innerHTML = backControl("what every way found");
+  bar.innerHTML = backControl("every way");
   bar.querySelector("button").onclick = showAllWays;
 }
 /* The way into one, under the two rows the overview shows of it.
@@ -359,7 +359,7 @@ export function renderGroupMore(g, drawn) {
   button.type = "button";
   button.className = "more-btn";
   button.textContent = `Show all ${g.total.toLocaleString()}`;
-  if (way) button.title = `Every result from ${way.label}, on its own`;
+  if (way) button.dataset.tip = `Every result from ${way.label}, on its own`;
   button.onclick = () => showOnlyWay(g.kind);
   box.replaceChildren(button);
 }
