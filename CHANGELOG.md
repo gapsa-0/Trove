@@ -132,14 +132,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **One back arrow, and one quiet button.** Four screens drew "go back" and
-  drew it three different ways — a stroked chevron in the sidebar and on a
-  person's page, a typed `←` on a pet's page and above a search ranking, which
-  is a different mark at a different weight. Five controls offered an action
-  without insisting on it — *How this works*, *Manage features*, *Select*,
-  *Keep*, and each action on the selection bar — with three different corner
-  radii, three colours and three hovers between them. Both are now one control
-  each, so the same act looks the same wherever you meet it.
+- **One back arrow, and one quiet button.** Four screens drew "go back" and drew
+  it three different ways — a stroked chevron in the sidebar and on a person's
+  page, a typed `←` on a pet's page and above a search ranking, which is a
+  different mark at a different weight. They are now the one control a person's
+  page already had: a quiet chevron, with where it goes in the tooltip rather
+  than spelled out on screen. It also fits the collapsed sidebar, which used to
+  hide the only way back to your archives when you narrowed it.
+
+- **The buttons that offer something all look alike again.** *How this works*,
+  *Manage features*, *Select*, *Keep* under a duplicate copy and the actions on
+  the selection bar are the same kind of control, and had drifted to three
+  corner radii, three colours and three hovers between them. One shape now, so
+  the difference between a button that offers and a button that asks — *Resume
+  all*, *Save changes* — is visible again.
 
 ### Fixed
 

@@ -350,29 +350,14 @@
   -webkit-backdrop-filter: saturate(160%) blur(20px)
 }
 
+/* Bigger here than elsewhere, and only bigger: the bar it sits in is 82px
+   tall, so the shared 30px square would float in it. */
 .facetopbar .back-control {
   align-self: stretch;
-  justify-content: center;
   width: 38px;
+  height: auto;
   min-height: 38px;
-  padding: 0;
-  border-radius: 11px;
-  color: var(--muted)
-}
-
-.facetopbar .back-control span {
-  display: none
-}
-
-.facetopbar .back-control svg {
-  width: 18px;
-  height: 18px
-}
-
-.facetopbar .back-control:hover {
-  background: var(--panel2);
-  color: var(--text);
-  text-decoration: none
+  border-radius: 11px
 }
 
 .person-header-avatar {

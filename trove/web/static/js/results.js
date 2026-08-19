@@ -309,7 +309,7 @@ function renderResultsBack(only) {
   // The app's back control, not one of its own. This drew a typed "←" beside
   // the word, which is a different mark at a different weight from the chevron
   // the sidebar and a person's page use for the same act.
-  bar.innerHTML = backControl("Back", "what every way found");
+  bar.innerHTML = backControl("what every way found");
   bar.querySelector("button").onclick = showAllWays;
 }
 /* The way into one, under the two rows the overview shows of it.

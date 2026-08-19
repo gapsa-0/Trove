@@ -73,26 +73,43 @@ nav .back {
   font-weight: 550
 }
 
-nav .back:hover {
-  background: var(--accent-soft)
-}
+/* The way back, everywhere one is offered: a chevron in a quiet square that
+   takes a background when pointed at.
 
+   No visible label. The treatment is a group's own page's, which had it right
+   -- what a back control needs to say is "back", and the chevron says it in a
+   mark everyone already reads. Where it goes is carried by the title and the
+   accessible name rather than spent on screen, because the screen already
+   answers it: the thing you are looking at is the thing you would be leaving.
+
+   Quiet rather than accent, too. This is furniture at the edge of a screen, not
+   an offer being made -- and as accent text it was the loudest thing in the
+   sidebar, above the archive it belongs to. */
 .back-control,
 nav .back-control {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
   border: 0;
+  border-radius: 9px;
   background: transparent;
-  color: var(--accent);
-  font: 550 12px/1.2 inherit;
-  text-align: left;
-  cursor: pointer
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .14s, color .14s
+}
+
+.back-control:hover {
+  background: var(--panel2);
+  color: var(--text)
 }
 
 .back-control svg {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   flex: none;
   fill: none;
   stroke: currentColor;
@@ -233,7 +250,6 @@ nav.collapsed .brand .brandmark {
 }
 
 nav.collapsed .brandtxt,
-nav.collapsed .back,
 nav.collapsed .arch,
 nav.collapsed .navitem span:nth-of-type(2),
 nav.collapsed .navitem .tag,

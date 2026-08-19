@@ -128,3 +128,51 @@ def test_the_collapsed_sidebar_fits_the_rail_it_collapses_to(open_app):
             f"the collapsed rail overflows: {widths[0]}px of content in {widths[1]}px"
         )
         assert app.errors() == []
+
+
+def test_every_way_back_is_the_same_control(open_app):
+    """Four screens offer a way back, and three of them used to draw it
+    differently -- two with a stroked chevron, two with a typed "←" at a
+    different weight that took none of the icon sizing the rest of the app
+    shares.
+
+    Asserted as "they are the same element with the same mark", not as a
+    screenshot: what matters is that a fifth one added tomorrow is this control
+    rather than a fifth drawing of it.
+    """
+    with open_app("people") as app:
+        app.wait_for("#peoplegrid .pcard")
+
+        def marks(where):
+            return app.tab.evaluate(
+                f"[...document.querySelectorAll({where!r})].map(b => ({{"
+                " svg: b.querySelectorAll('svg').length,"
+                " text: b.textContent.trim(),"
+                " named: !!b.getAttribute('aria-label') }))"
+            )
+
+        # The sidebar's, which is static markup in the shell.
+        assert marks("nav .back-control") == [{"svg": 1, "text": "", "named": True}]
+
+        app.click(".pcard img.face, .pcard .facecollage img")
+        app.wait_for(".facetopbar .back-control")
+        assert marks(".facetopbar .back-control") == [{"svg": 1, "text": "", "named": True}]
+        assert app.errors() == []
+
+
+def test_the_collapsed_rail_keeps_the_way_out_of_the_archive(open_app):
+    """It is the only one. As a row of text it did not fit the rail and was
+    hidden there, which left a collapsed sidebar with no way back to the
+    archives at all; as an icon it fits."""
+    with open_app("overview") as app:
+        app.tab.evaluate("toggleNav()")
+        app.tab.wait_for(
+            "document.getElementById('nav').classList.contains('collapsed')",
+            timeout=5.0,
+            what="the sidebar to collapse",
+        )
+        shown = app.tab.evaluate(
+            "(() => { const b = document.querySelector('nav .back-control');"
+            " return !!b && getComputedStyle(b).display !== 'none'; })()"
+        )
+        assert shown, "collapsing the sidebar hid the only way back to the archives"

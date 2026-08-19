@@ -121,19 +121,21 @@ export function resetSectionViews() {
    there is one arrow, and `label` is what it goes back TO, because a control
    that says where it leads is worth more than one that says it leaves.
 
-   `destination` is for the one place the two cannot be the same word. Inside a
-   search ranking this returns to the overview of every way, and every phrase
-   for that is a word away from "All results" -- which is on screen a line
-   above, meaning something else entirely (how far down one ranking to go). So
-   there the label stays "Back" and only the hover text names where it leads.
+   `destination` is not drawn. It is the title and the accessible name, which is
+   where "where does this go" belongs: the screen already answers it, since the
+   thing you are looking at is the thing you would be leaving. It also settles
+   the one label that had nowhere to go -- inside a search ranking this returns
+   to the overview of every way, and every phrase for that is a word away from
+   "All results", which is on screen a line above meaning something else
+   entirely (how far down one ranking to go).
 
-   The nav's own "All archives" is the fourth, and stays in index.html: it is
-   static markup in the shell rather than something a screen builds. */
-export function backControl(label, destination = label) {
+   The nav's own is the fourth, and stays in index.html: it is static markup in
+   the shell rather than something a screen builds. */
+export function backControl(destination) {
   return `<button class="back back-control" type="button"
       aria-label="Back to ${destination}" title="Back to ${destination}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-      <span>${label}</span></button>`;
+    </button>`;
 }
 /* Wire the back control inside `host` to `onBack`.
 
