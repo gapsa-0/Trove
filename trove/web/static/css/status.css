@@ -163,18 +163,12 @@ h2.sec {
   font-size: 17px;
 }
 
+/* `.statrow` and `.stat .k` were declared here too, with a different track
+   size, gap, margin and label treatment. overview.css declares both again and
+   loads later, so this copy decided nothing -- it only made the row look like
+   it had two authors. The one that applies lives with the tiles it sizes. */
 .statrow {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  margin-bottom: 20px;
-}
-
-.stat .k {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .6px;
-  color: var(--muted);
 }
 
 table.types {

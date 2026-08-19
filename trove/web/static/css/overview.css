@@ -157,6 +157,14 @@ main>.eyebrow {
    run it has three tiles -- and in a four-column grid that left the row ending
    285px short of the page head, both panels and everything else below it, which
    is the default state of any archive without Places. */
+/* `auto-fit` with a 1fr max, so the tiles stretch to fill the row whatever the
+   archive runs. Capping the track looked tempting -- a three-up row draws wider
+   tiles than a four-up one, and the same component never lands on the same
+   rhythm twice -- but a cap is the bug
+   test_the_stat_row_fills_its_width_whatever_the_archive_runs was written for:
+   Places is optional, so three tiles is as common as four, and a capped row
+   ends short of the page head and of both panels under it. A wider tile is the
+   better of the two wrongs. */
 .statrow {
   gap: 13px;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -288,6 +296,15 @@ button.stat:hover {
   background: color-mix(in srgb, var(--type-video) 14%, transparent)
 }
 
+/* A tile's label names the value under it, so it is set like a name: sentence
+   case, at reading weight. status.css declared this too, in uppercase with .6px
+   of tracking, and that copy lost to this one -- but only by load order, so
+   both were live in the file and neither was a decision.
+
+   The rule the app follows: uppercase, letterspaced micro-labels are for
+   labelling a *region* -- a table's columns, a section's eyebrow -- and
+   sentence case is for labelling a *value*. "ALL FILES 136" was shouting a
+   noun; "All files 136" reads as the sentence it is. */
 .stat .k {
   font-size: 10.5px;
   font-weight: 600;
