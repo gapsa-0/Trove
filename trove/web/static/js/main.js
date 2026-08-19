@@ -5,7 +5,7 @@
 // That block is the one thing to read before changing anything above it.
 
 import {
-  closeSettings, openSettings, syncThemeControl, toggleTheme,
+  closeSettings, openSettings, setTheme, syncThemeControl, toggleTheme,
 } from "./settings.js";
 import {
   applyHash, applyNavCollapsed, showSection, toPicker, toggleNav,
@@ -195,5 +195,6 @@ Object.assign(window, {
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
   togglePipelinePause,
+  setTheme,
   toggleStagePause, toggleTheme, undoMerge, unhidePerson, zoomReset, zoomStep, zoomToSlider,
 });

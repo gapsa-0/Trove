@@ -14,8 +14,17 @@ import {
 } from "./state.js";
 
 export function currentTheme() { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
+/* What the user chose, as opposed to what is on screen. "system" means no
+   choice has been made and the OS decides -- which was reachable only by never
+   having touched the control, since a two-state toggle has no way back to it. */
+function themeChoice() {
+  const saved = localStorage.getItem("archiveTheme");
+  return saved === "dark" || saved === "light" ? saved : "system";
+}
+const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 export function syncThemeControl() {
   const dark = currentTheme() === "dark";
+  const choice = themeChoice();
   // Gear buttons (settings) share the .theme-toggle look but carry no theme
   // icon/label, so skip anything without a .theme-icon so they don't break here.
   document.querySelectorAll(".theme-toggle,.appearance-fab").forEach(button => {
@@ -26,16 +35,32 @@ export function syncThemeControl() {
     if (label) label.textContent = dark ? "Light appearance" : "Dark appearance";
     button.dataset.tip = dark ? "Use light appearance" : "Use dark appearance";
   });
+  // The drawer's segmented control says which of the three is chosen, which a
+  // button reading "Dark appearance" could not: that label is an instruction in
+  // one theme and a description in the other, and it never revealed whether the
+  // app was following the system or had been told.
+  document.querySelectorAll("[data-theme-choice]").forEach(button => {
+    const on = button.dataset.themeChoice === choice;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+  });
   document.querySelectorAll(".gear-icon").forEach(el => { el.innerHTML = ICONS.settings; });
 }
-export function toggleTheme() {
-  const next = currentTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  localStorage.setItem("archiveTheme", next);
-  document.querySelector('meta[name="theme-color"]').content = next === "dark" ? "#101014" : "#f5f5f7";
+/* Apply a choice: "light", "dark", or "system" to hand it back to the OS. */
+export function setTheme(choice) {
+  if (choice === "system") localStorage.removeItem("archiveTheme");
+  else localStorage.setItem("archiveTheme", choice);
+  const dark = choice === "system" ? prefersDark() : choice === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#101014" : "#f5f5f7";
   syncThemeControl();
   syncMapTiles();
 }
+export function toggleTheme() {
+  setTheme(currentTheme() === "dark" ? "light" : "dark");
+}
+// Following the system means following it as it changes, not only at startup.
+window.matchMedia("(prefers-color-scheme: dark)")
+  .addEventListener("change", () => { if (themeChoice() === "system") setTheme("system"); });
 // Nothing in here is user-configurable any more: semantic search stopped
 // needing an API key when the embedding model moved on-device, so the drawer
 // is appearance plus a statement of what runs where.

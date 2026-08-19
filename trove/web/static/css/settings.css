@@ -138,3 +138,59 @@
 .drawer-theme:hover {
   background: var(--panel2)
 }
+
+/* A segmented choice, the shape Browse's result scope and the Storage panel's
+   Size/Files switch already use: every option stays named and the chosen one is
+   lit, which is the whole reason this is not a toggle. */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel2)
+}
+
+.seg button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s, color .15s
+}
+
+.seg button:hover {
+  color: var(--text)
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 550;
+  box-shadow: var(--shadow-sm);
+  cursor: default
+}
+
+/* Dark inverts which of --panel / --panel2 is the raised one, so the lit
+   segment has to be re-derived or the depth reads backwards. */
+:root[data-theme="dark"] .seg {
+  background: rgba(0, 0, 0, .28);
+  border-color: rgba(255, 255, 255, .07)
+}
+
+:root[data-theme="dark"] .seg button[aria-pressed="true"] {
+  background: var(--panel2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .45)
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg button {
+    transition: none
+  }
+}

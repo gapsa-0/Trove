@@ -318,13 +318,21 @@
       <section class="drawer-section">
         <div class="drawer-section-head">
           <h3>Appearance</h3>
-          <p>Switch between light and dark.</p>
+          <p>Follow this computer's setting, or pick one.</p>
         </div>
-        <button class="theme-toggle drawer-theme" type="button" onclick="toggleTheme()"
-          aria-label="Switch color theme">
-          <span class="theme-icon" aria-hidden="true"></span>
-          <span class="theme-label">Dark appearance</span>
-        </button>
+        <!-- Three segments rather than a toggle. A toggle could not say which
+             of the three was chosen: its label read "Dark appearance", which is
+             an instruction in one theme and a description in the other, and it
+             offered no way back to following the system once either had been
+             picked. -->
+        <div class="seg" role="group" aria-label="Appearance">
+          <button type="button" data-theme-choice="system" aria-pressed="false"
+            onclick="setTheme('system')">System</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false"
+            onclick="setTheme('light')">Light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false"
+            onclick="setTheme('dark')">Dark</button>
+        </div>
       </section>
     </div>
   </aside>
