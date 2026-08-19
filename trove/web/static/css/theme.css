@@ -139,6 +139,14 @@ h2.sec {
   --type-document: #0a7ea4;
   --type-archive: #8b4fc4;
   --type-other: #6e6e73;
+
+  /* The accent, lifted for the viewer's dark glass. The inspector floats over
+     the media in both themes, so --accent (chosen against a page) goes muddy
+     there -- the same reason the media types need a value per ground. It was
+     #6cb6ff written out four times in inspector.css, which made a considered
+     decision look like a stray literal. One value, both themes, because the
+     panel it is on does not change with the theme. */
+  --accent-on-glass: #6cb6ff;
 }
 
 :root[data-theme="dark"] {

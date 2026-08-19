@@ -57,21 +57,21 @@
 }
 
 .viewer .info a {
-  color: #6cb6ff
+  color: var(--accent-on-glass)
 }
 
 /* The shared quiet control, re-grounded on glass. `--line` and `--muted` are
    chosen against a page background and are invisible here, which is the reason
-   this whole stylesheet exists (see its header). The hover takes the panel's
-   own blue rather than the app accent, for the same reason. */
+   this whole stylesheet exists (see its header). The hover takes
+   --accent-on-glass rather than --accent, for the same reason. */
 .viewer .info .quietbtn {
   border-color: rgba(255, 255, 255, .22);
   color: rgba(255, 255, 255, .72)
 }
 
 .viewer .info .quietbtn:hover:not(:disabled) {
-  border-color: #6cb6ff;
-  color: #6cb6ff;
+  border-color: var(--accent-on-glass);
+  color: var(--accent-on-glass);
   background: rgba(255, 255, 255, .06)
 }
 
@@ -446,7 +446,7 @@
   justify-content: center;
   border-radius: 7px;
   background: rgba(108, 182, 255, .2);
-  color: #6cb6ff
+  color: var(--accent-on-glass)
 }
 
 .readflag .mark svg {
