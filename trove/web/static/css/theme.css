@@ -259,6 +259,24 @@ h3,
   cursor: default
 }
 
+/* A quiet button that is also a toggle, lit while it is on -- "Select" on
+   People, Pets and Places, which enters a mode and is pressed again to leave
+   it. The viewer's own info button already reads this way (`.vround
+   [aria-pressed="true"]`), and the segmented controls light their chosen
+   segment the same way; this is that idiom at the quiet button's weight.
+
+   Only a button that actually declares `aria-pressed` is affected, so the
+   dozens of quiet buttons that are plain actions are untouched. */
+.quietbtn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+  color: var(--accent)
+}
+
+.quietbtn[aria-pressed="true"]:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--accent) 18%, transparent)
+}
+
 /* Tighter on the side the icon is on, so the two sides read as even. */
 .quietbtn:has(svg) {
   padding-left: 10px

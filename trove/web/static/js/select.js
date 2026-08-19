@@ -33,11 +33,12 @@ export function selecting(kind) { return !!MODE && MODE.kind === kind; }
 
 export function endSelecting() {
   if (!MODE) return;
-  const { gridId } = MODE;
+  const { gridId, kind } = MODE;
   MODE = null;
   paint(gridId);
   const bar = document.getElementById("selectbar");
   if (bar) bar.remove();
+  syncSelectButton(kind);
 }
 
 /* Enter selection, or leave it. The screen's own button calls this; it does not
@@ -49,6 +50,7 @@ export function toggleSelecting(kind, gridId, after) {
   MODE = { kind, chosen: new Map(), gridId, after };
   paint(gridId);
   renderBar();
+  syncSelectButton(kind);
 }
 
 /* What a card's click means now.
@@ -251,7 +253,7 @@ export function selectable(kind, gridId, after) { REGISTERED[kind] = { gridId, a
    a first card, and takes it away again if the last one goes. */
 export function selectButton(kind, label = "Select") {
   return `<button type="button" class="quietbtn selectstart" data-select-kind="${kind}"
-    hidden onclick="startSelecting('${kind}')">${esc(label)}</button>`;
+    aria-pressed="false" hidden onclick="startSelecting('${kind}')">${esc(label)}</button>`;
 }
 /* Show the Select control for `kind` only when its grid holds something.
 
@@ -266,6 +268,12 @@ export function syncSelectButton(kind) {
   const grid = document.getElementById(screen.gridId);
   const cards = grid ? [...grid.children].filter(el => !el.classList.contains("muted")) : [];
   button.hidden = !cards.length;
+  // Lit while the mode is on. This is a toggle -- pressing it again leaves
+  // selection -- and it used to be pixel-identical in both states, so the only
+  // evidence the mode was on at all was the bar at the foot of the window. Which
+  // left the button saying "Select" over a screen that was already selecting,
+  // and cancelling for anyone who pressed it expecting to start.
+  button.setAttribute("aria-pressed", selecting(kind) ? "true" : "false");
 }
 export function startSelecting(kind) {
   const screen = REGISTERED[kind];
