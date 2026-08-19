@@ -236,6 +236,36 @@
   transition: transform .16s, box-shadow .16s, border-color .16s
 }
 
+/* A card's worth of held space while the list is being fetched: the shape and
+   height a real one will take, with nothing in it that could be mistaken for an
+   answer. Same idea as .fsel-loading in the Browse filter bar. */
+.p-card-loading {
+  min-height: 208px;
+  background: var(--panel2);
+  border-color: transparent;
+  box-shadow: none;
+  cursor: default;
+  animation: p-card-fade 1.4s ease-in-out infinite
+}
+
+.p-card-loading:hover {
+  transform: none;
+  border-color: transparent
+}
+
+@keyframes p-card-fade {
+  50% {
+    opacity: .45
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p-card-loading {
+    animation: none;
+    opacity: .7
+  }
+}
+
 .p-card:hover {
   transform: translateY(-2px);
   border-color: var(--line-strong);

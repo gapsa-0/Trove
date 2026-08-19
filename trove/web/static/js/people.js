@@ -45,7 +45,7 @@ import {
   onSnapshot,
 } from "./pipeline.js";
 import {
-  openOrSelect, selectButton, selectable,
+  openOrSelect, selectButton, selectable, syncSelectButton,
 } from "./select.js";
 import {
   MARKS, S,
@@ -176,6 +176,7 @@ async function renderPeople() {
       const grid = document.getElementById("peoplegrid");
       if (first) { grid.innerHTML = ""; loadSuggestions(); }
       people.forEach(p => grid.appendChild(personCard(p)));
+      syncSelectButton("person");
     },
   });
 }
@@ -270,6 +271,7 @@ async function patchPeopleGrid() {
   // page picks up right after the last card however many were added/pruned.
   st.offset = syncCardGrid(grid, people, {
     keyOf: p => p.id, make: personCard, update: updatePersonCard, complete });
+  syncSelectButton("person");
   if (complete) st.done = (st.offset === people.length);
   // A review queue the user has worked through can be refilled silently;
   // one still in progress is never disturbed. Keyed on the people count so

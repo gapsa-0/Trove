@@ -48,7 +48,7 @@ import {
   onSnapshot,
 } from "./pipeline.js";
 import {
-  openOrSelect, selectButton, selectable,
+  openOrSelect, selectButton, selectable, syncSelectButton,
 } from "./select.js";
 import {
   S,
@@ -111,6 +111,7 @@ export async function renderPets(m) {
       const petgrid = document.getElementById("petgrid");
       if (first) petgrid.innerHTML = done && !pets.length ? PET_EMPTY : "";
       pets.forEach(p => petgrid.appendChild(petCard(p)));
+      syncSelectButton("pet");
     },
   });
 
@@ -386,6 +387,7 @@ async function patchPetGrids() {
   // Keep each infinite list's cursor equal to what's on screen, so its next
   // page picks up right after the last card however many were added/pruned.
   let complete = pets.length < lim.pets;
+  syncSelectButton("pet");
   st.pets.offset = syncCardGrid(petgrid, pets, {
     keyOf: p => p.id, make: petCard, update: updatePetCard, complete, empty: PET_EMPTY });
   if (complete) st.pets.done = (st.pets.offset === pets.length);

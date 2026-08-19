@@ -235,10 +235,30 @@ export function selectable(kind, gridId, after) { REGISTERED[kind] = { gridId, a
 
 /* The control that starts it, for a screen's page head, and the handler behind
    it. Markup with an inline handler like every other control these screens
-   build, so tools/dev/check_handlers.py can see what it calls. */
+   build, so tools/dev/check_handlers.py can see what it calls.
+
+   Starts hidden, because the grid it selects from is filled after the head is
+   drawn: on People and on Pets this button sat at full strength directly above
+   "No faces yet" and "No repeated pets grouped yet", offering to enter a
+   selection mode over nothing. `syncSelectButton` reveals it once the grid has
+   a first card, and takes it away again if the last one goes. */
 export function selectButton(kind, label = "Select") {
-  return `<button type="button" class="quietbtn selectstart"
-    onclick="startSelecting('${kind}')">${esc(label)}</button>`;
+  return `<button type="button" class="quietbtn selectstart" data-select-kind="${kind}"
+    hidden onclick="startSelecting('${kind}')">${esc(label)}</button>`;
+}
+/* Show the Select control for `kind` only when its grid holds something.
+
+   Asked of the cards rather than of `data-sync-key`: People and Pets set that
+   key on every card they build, and Places does not, so keying off it would
+   leave the Places button permanently hidden. What every grid does share is
+   that its empty state is a `.muted` sentence and its cards are not. */
+export function syncSelectButton(kind) {
+  const button = document.querySelector(`.selectstart[data-select-kind="${kind}"]`);
+  const screen = REGISTERED[kind];
+  if (!button || !screen) return;
+  const grid = document.getElementById(screen.gridId);
+  const cards = grid ? [...grid.children].filter(el => !el.classList.contains("muted")) : [];
+  button.hidden = !cards.length;
 }
 export function startSelecting(kind) {
   const screen = REGISTERED[kind];

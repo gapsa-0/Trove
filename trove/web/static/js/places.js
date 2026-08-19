@@ -43,7 +43,7 @@ import {
   inlineNameEdit,
 } from "./nameedit.js";
 import {
-  openOrSelect, selectButton, selectable,
+  openOrSelect, selectButton, selectable, syncSelectButton,
 } from "./select.js";
 import {
   MARKS, S,
@@ -283,6 +283,7 @@ function renderPlaceGallery() {
     const aUnnamed = !(a.name && a.name.trim()), bUnnamed = !(b.name && b.name.trim());
     return aUnnamed - bUnnamed || b.count - a.count || a.id - b.id;
   }).forEach(place => grid.appendChild(placeCard(place)));
+  syncSelectButton("place");
 }
 /* "Merge with…", on a place's card and in its side panel. */
 function placeMergeItem(place, onMerged) {

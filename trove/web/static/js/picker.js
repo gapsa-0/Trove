@@ -39,10 +39,36 @@ function pickerCover(a) {
   }
   return `<div class="p-cover">${cells}${badge}</div>`;
 }
+/* How many cards to hold space for while the real answer is in flight.
+
+   Remembered across runs, because the honest placeholder count is the one the
+   user last saw: guessing one leaves the row jumping when the answer lands, and
+   guessing none is the blank region this exists to avoid. A fresh install has
+   nothing to remember and shows a single card's worth. */
+const ARCHIVE_COUNT_KEY = "archiveCount";
+function previousArchiveCount() {
+  const n = Number(localStorage.getItem(ARCHIVE_COUNT_KEY));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 8) : 1;
+}
+function rememberArchiveCount(n) {
+  localStorage.setItem(ARCHIVE_COUNT_KEY, String(n));
+}
 export async function loadPicker() {
-  const { archives } = await jget("/api/archives"); ARCHIVES = archives;
-  const el = document.getElementById("archcards"); el.innerHTML = "";
+  // Say the list is coming while it is coming. Every screen inside an archive
+  // has a loading state; the first screen anyone sees did not, so between paint
+  // and the answer the page showed "Your archives" over an empty region with
+  // the three-step guide collapsed up against it -- which reads as an app that
+  // has forgotten the folders you added.
+  const el = document.getElementById("archcards");
   const title = document.getElementById("archive-list-title");
+  if (el && !el.children.length) {
+    title.style.display = "flex";
+    el.innerHTML = `<div class="p-card p-card-loading" aria-hidden="true"></div>`
+      .repeat(previousArchiveCount());
+  }
+  const { archives } = await jget("/api/archives"); ARCHIVES = archives;
+  el.innerHTML = "";
+  rememberArchiveCount(archives.length);
   const sum = document.getElementById("arch-summary");
   const totalFiles = archives.reduce((s, a) => s + (a.files || 0), 0);
   title.style.display = archives.length ? "flex" : "none";
