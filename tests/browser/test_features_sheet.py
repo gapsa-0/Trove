@@ -138,10 +138,10 @@ def test_a_running_feature_reports_what_it_found_and_a_stopped_one_what_it_costs
     with open_app("overview") as app:
         _open_sheet(app)
 
-        # On: what this archive got out of it. Both "8 locations mapped" and
-        # "No locations found" are answers; a count of megabytes is not.
+        # On: what this archive got out of it. Both "8 photos placed" and
+        # "No places found" are answers; a count of megabytes is not.
         assert "catalogued" in _fact(app, "index")
-        assert "location" in _fact(app, "places")
+        assert "place" in _fact(app, "places")
         # Off: what switching it on would cost, in the same three words the
         # setup screen uses for it.
         semantic = _fact(app, "semantic")

@@ -10,7 +10,7 @@ from ._request import Request
 def summary(req: Request) -> dict:
     """Counts, size, media types and date range for one archive."""
     rid = req.root_id
-    return overview.summary(req.db(rid), rid)
+    return overview.summary(req.db(rid), rid, req.cfg.place_min_media)
 
 
 def timeline(req: Request) -> dict:

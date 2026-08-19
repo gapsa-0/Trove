@@ -95,7 +95,7 @@ function seededSummary() {
     size: S.arch ? S.arch.size : null,
     types: null,
     enriched: null,
-    with_gps: null,
+    in_places: null,
   };
 }
 
@@ -125,7 +125,7 @@ export async function renderOverview(m) {
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerHTML = statValue(v); };
   set("ov-total", s.total);
   set("ov-enriched", s.enriched);
-  set("ov-gps", s.with_gps);
+  set("ov-gps", s.in_places);
   set("ov-dups", ds ? ds.duplicates : null);
   renderStoragePanel(s);
   renderHealthCards();   // its "done" lines quote the summaries that just landed
@@ -140,7 +140,7 @@ function paintOverview(m, s) {
     <div class="statrow">
       ${statTile("library", "blue", "All files", "ov-total", s.total)}
       ${statTile("timeline", "violet", "With a date", "ov-enriched", s.enriched)}
-      ${statTile("places", "green", "With a location", "ov-gps", s.with_gps)}
+      ${statTile("places", "green", "In a place", "ov-gps", s.in_places)}
       ${statTile("dups", "orange", "Redundant copies", "ov-dups", s.duplicates)}
     </div>
     <div class="overview-grid">
@@ -342,9 +342,9 @@ function healthDoneMessage(id) {
       return parts.length ? parts.join(" · ")
         : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analyzed`;
     }
-    case "places": return s && s.with_gps
-      ? `${s.with_gps.toLocaleString()} location${s.with_gps === 1 ? "" : "s"} mapped`
-      : "No locations found";
+    case "places": return s && s.in_places
+      ? `${s.in_places.toLocaleString()} photo${s.in_places === 1 ? "" : "s"} placed`
+      : "No places found";
     case "semantic": return ss && ss.indexed
       ? `${ss.indexed.toLocaleString()} item${ss.indexed === 1 ? "" : "s"} indexed`
       : (ss && ss.configured ? "Ready to index" : "Not configured");
@@ -609,7 +609,7 @@ onSnapshot(async snap => {
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
       set("ov-total", s.total.toLocaleString());
       set("ov-enriched", s.enriched.toLocaleString());
-      set("ov-gps", s.with_gps.toLocaleString());
+      set("ov-gps", s.in_places.toLocaleString());
       set("ov-dups", ds.duplicates.toLocaleString());
       renderStoragePanel(s);
     } catch { /* non-critical; next tick retries */ }

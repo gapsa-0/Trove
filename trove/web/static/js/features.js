@@ -134,8 +134,8 @@ function fact(f) {
       "No redundant copies");
     case "people": return counted(fs?.faces, "face", "faces", "No faces found");
     case "pets": return counted(ps?.detections, "animal", "animals", "No animals found");
-    case "places": return counted(s?.with_gps, "location mapped", "locations mapped",
-      "No locations found");
+    case "places": return counted(s?.in_places, "photo placed", "photos placed",
+      "No places found");
     case "semantic": return counted(ss?.indexed, "item indexed", "items indexed",
       "Nothing indexed yet");
     // Both text halves fill one index from one pass, so there is no per-half

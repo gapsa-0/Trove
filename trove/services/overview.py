@@ -10,13 +10,16 @@ import sqlite3
 from typing import Any
 
 from ._common import _NOT_HIDDEN, _QUALITY_OK, _VISIBLE, _root_clause, reading
+from .places import _PLACE_EXEMPT
 
 
 @reading
-def summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, Any]:
+def summary(
+    conn: sqlite3.Connection, root_id: int | None = None, place_min_media: int = 10
+) -> dict[str, Any]:
     """Top-line Overview dashboard numbers: total files/bytes, the type
-    breakdown, how many carry GPS or a resolved date, and the archive's
-    overall date range."""
+    breakdown, how many carry GPS or sit in a place, how many have a resolved
+    date, and the archive's overall date range."""
     rc, rp = _root_clause(root_id)
     total, size = conn.execute(
         f"SELECT COUNT(*), COALESCE(SUM(size),0) FROM files f WHERE {_VISIBLE}{rc}",
@@ -41,6 +44,22 @@ def summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, A
             WHERE {_VISIBLE}{rc}""",
         rp,
     ).fetchone()[0]
+    # Media the Places screen will actually show, which is not the same question
+    # as `gps` above. That counts files carrying coordinates; this counts
+    # membership of a place cluster the map draws -- and the two come apart
+    # exactly where the manual features live, since a place pinned on the map or
+    # media assigned to one by hand has membership and no coordinates of its
+    # own. The Overview's tile is a button into Places, so it has to count what
+    # Places counts, using the same visibility rule (see _PLACE_EXEMPT).
+    in_places = (
+        conn.execute(
+            f"""SELECT COALESCE(SUM(pc.member_count), 0) FROM place_clusters pc
+            WHERE pc.root_id=? AND (pc.member_count >= ? OR {_PLACE_EXEMPT})""",
+            (root_id, place_min_media),
+        ).fetchone()[0]
+        if root_id is not None
+        else 0
+    )
     drange = conn.execute(
         f"""SELECT MIN(d.best_datetime), MAX(d.best_datetime)
             FROM files f JOIN dates d ON d.file_id=f.id
@@ -52,6 +71,7 @@ def summary(conn: sqlite3.Connection, root_id: int | None = None) -> dict[str, A
         "size": size,
         "types": types,
         "with_gps": gps,
+        "in_places": in_places,
         "enriched": enriched,
         "date_min": drange[0],
         "date_max": drange[1],

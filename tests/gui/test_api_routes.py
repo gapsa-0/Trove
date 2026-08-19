@@ -66,7 +66,7 @@ API_GET_CASES = [
     ),
     pytest.param(
         "/api/summary?root={root_id}",
-        {"total", "size", "types", "with_gps", "enriched", "date_min", "date_max"},
+        {"total", "size", "types", "with_gps", "in_places", "enriched", "date_min", "date_max"},
         id="GET /api/summary",
     ),
     pytest.param("/api/timeline?root={root_id}", {"bucket", "series"}, id="GET /api/timeline"),
