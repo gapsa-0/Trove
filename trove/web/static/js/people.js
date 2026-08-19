@@ -6,7 +6,7 @@ import {
   detectStatusRow, editNeighbourName, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
-  renderNav,
+  backControl, onBackControl, renderNav,
 } from "./router.js";
 import {
   personTile,
@@ -520,10 +520,7 @@ export async function showPerson(id) {
     ? `<img class="person-header-avatar" src="/faceThumb/${avatarFace}" alt="" onerror="this.style.visibility='hidden'">`
     : `<div class="person-header-avatar" aria-hidden="true"></div>`;
   m.innerHTML = `<div class="facetopbar">
-      <button class="back back-control" type="button" onclick="backToPeople()" aria-label="Back to People" title="Back to People">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-        <span>People</span>
-      </button>
+      ${backControl("People")}
       ${avatar}
       <div class="ftb-identity">
         <div class="ftb-name" id="personname">
@@ -541,6 +538,7 @@ export async function showPerson(id) {
       <button class="linkbtn" type="button" onclick="unhidePerson(${id})">Put it back</button></div>` : ""}
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
+  onBackControl(m, backToPeople);
   // A closure, rather than an inline click attribute with the person's name
   // written into the call. That needed the name escaped for a JavaScript string
   // sitting inside a double-quoted HTML attribute, and it escaped a backslash

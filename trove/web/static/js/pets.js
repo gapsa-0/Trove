@@ -6,7 +6,7 @@ import {
   detectStatusRow, editNeighbourName, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
-  ACTIVE_SECTION, showSection,
+  ACTIVE_SECTION, backControl, onBackControl, showSection,
 } from "./router.js";
 import {
   petTile,
@@ -483,7 +483,7 @@ export async function showPet(id) {
   if (!pet || pet.error) { m.innerHTML = '<div class="soonbox">Pet not found.</div>'; return; }
   S.currentPet = pet;
   const name = pet.name || "Name this pet";
-  m.innerHTML = `<div class="facetopbar"><button class="back back-control" onclick="backToPets()">← <span>Pets</span></button>
+  m.innerHTML = `<div class="facetopbar">${backControl("Pets")}
     <img class="person-header-avatar" src="/animalThumb/${petAvatar(pet)}" alt="">
     <div class="ftb-identity"><div class="ftb-name" id="petname"><button class="person-name-button" type="button" title="Rename this pet"><span>${esc(name)}</span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
@@ -492,6 +492,7 @@ export async function showPet(id) {
     <div class="ftb-actions" id="petactions"></div></div>
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="pet-grid-sentinel" aria-live="polite"></div>`;
+  onBackControl(m, backToPets);
   document.querySelector("#petname .person-name-button")
     .addEventListener("click", () => editPetName(id, pet.name || ""));
   cardMenu(document.getElementById("petactions"), petMenuItems(

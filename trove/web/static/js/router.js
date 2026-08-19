@@ -112,6 +112,40 @@ export function resetSectionViews() {
   SECTION_VIEWS.clear(); SECTION_READY.clear(); ACTIVE_SECTION = null;
   if (main) main.replaceChildren();
 }
+/* The way back, wherever one is offered.
+
+   Three screens drew this and drew it differently: the sidebar and a person's
+   page with a stroked chevron, a pet's page and the search results with a
+   typed "←" -- which is a different mark at a different weight that does not
+   take the icon sizing the rest of the app's controls share. One function so
+   there is one arrow, and `label` is what it goes back TO, because a control
+   that says where it leads is worth more than one that says it leaves.
+
+   `destination` is for the one place the two cannot be the same word. Inside a
+   search ranking this returns to the overview of every way, and every phrase
+   for that is a word away from "All results" -- which is on screen a line
+   above, meaning something else entirely (how far down one ranking to go). So
+   there the label stays "Back" and only the hover text names where it leads.
+
+   The nav's own "All archives" is the fourth, and stays in index.html: it is
+   static markup in the shell rather than something a screen builds. */
+export function backControl(label, destination = label) {
+  return `<button class="back back-control" type="button"
+      aria-label="Back to ${destination}" title="Back to ${destination}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      <span>${label}</span></button>`;
+}
+/* Wire the back control inside `host` to `onBack`.
+
+   A listener rather than an inline attribute, which is what lets the markup
+   above be shared at all: tools/dev/check_handlers.py reads inline handlers as
+   TEXT, so a helper interpolating one would hide three functions from the check
+   that proves every inline handler resolves -- and would keep three functions
+   on `window` that nothing outside their own screen calls. */
+export function onBackControl(host, onBack) {
+  const button = host.querySelector(".back-control");
+  if (button) button.addEventListener("click", onBack);
+}
 export function libraryVisibleAnchor() {
   const main = document.getElementById("main"), grid = document.getElementById("grid");
   if (!main || !grid) return null;

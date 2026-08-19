@@ -88,7 +88,7 @@ def test_opening_a_ranking_gives_the_whole_screen_to_it(open_app):
         assert app.count(".results-group:not([hidden])") == 1
         assert app.count("#group-name[hidden]") == 0
         assert app.count("#nothing-line[hidden]") == 1
-        assert app.count("#results-back:not([hidden]) .back-btn") == 1
+        assert app.count("#results-back:not([hidden]) .back-control") == 1
         assert app.text("#gridcount") == f"{BROWSABLE_MEDIA} results"
         assert app.count("#more-name .more-btn") == 0, "nothing left to open"
         # One page of it, and the rest reachable by scrolling.
@@ -112,7 +112,7 @@ def test_the_way_back_returns_to_the_preview_of_every_ranking(open_app):
 
         app.click("#more-name .more-btn")
         app.wait_for("#results-back:not([hidden])")
-        app.click(".back-btn")
+        app.click("#results-back .back-control")
 
         assert app.count("#results-back[hidden]") == 1
         assert app.count("#grid-name .tile") == preview

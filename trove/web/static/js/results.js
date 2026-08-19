@@ -18,7 +18,7 @@
 // a hoisted function declaration, which is defined before any of it runs.
 
 import {
-  ACTIVE_SECTION,
+  ACTIVE_SECTION, backControl,
 } from "./router.js";
 import {
   activeGrids, gridAnswers, loadGrid, rankingFor, renderGridPages, resetGridResults,
@@ -306,17 +306,11 @@ function renderResultsBack(only) {
   // Built once and left alone: every load relabels the groups, and rebuilding
   // this would take the focus off it each time.
   if (bar.firstChild) return;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "back-btn";
-  button.title = "Back to what every way found";
-  const glyph = document.createElement("span");
-  glyph.className = "back-arrow";
-  glyph.setAttribute("aria-hidden", "true");
-  glyph.textContent = "←";
-  button.append(glyph, document.createTextNode("Back"));
-  button.onclick = showAllWays;
-  bar.replaceChildren(button);
+  // The app's back control, not one of its own. This drew a typed "←" beside
+  // the word, which is a different mark at a different weight from the chevron
+  // the sidebar and a person's page use for the same act.
+  bar.innerHTML = backControl("Back", "what every way found");
+  bar.querySelector("button").onclick = showAllWays;
 }
 /* The way into one, under the two rows the overview shows of it.
 
