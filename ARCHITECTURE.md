@@ -125,6 +125,7 @@ grandfathered.
 | how the two document rankings are fused, and where each is cut | `trove/services/text_search.py`'s `_rrf` / `_vector_ranked`, with the thresholds in `trove/config/settings.py` (ADR 0018) |
 | the text embedder's recipe, and why there are two embedders | `trove/embeddings/text_backend.py` |
 | how a screen looks | `trove/web/static/css/<area>.css` (e.g. `library.css` for Browse's controls, `results.css` for what a query returns, `people.css`, `map.css`) |
+| which control to reach for when adding one | `trove/web/static/css/theme.css` — `.btn`/`.btn.sec` for an action being asked for, `.quietbtn` for one being offered, `.linkbtn` inside a sentence, `backControl()` in `static/js/router.js` for a way back (ADR 0023) |
 | the SQLite schema | `trove/db/schema.sql`, plus the migration in `init_db` (`trove/db/database.py`) |
 | settings and their defaults | `trove/config/settings.py` |
 | where things live on disk | `trove/paths.py` |
