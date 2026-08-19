@@ -1,11 +1,21 @@
-/* Light Photos library: the base visual language: a clean, Apple-style light
- theme (with a dark variant below).  Keep the application dependency-free;
- this is presentation, not a new frontend framework. */
+/* The design system: tokens, the button vocabulary, the icon convention, and
+   the weight ramp. Everything a screen should be reaching for.
 
+   A caution about this file's first half, which is older. theme.css is
+   eleventh of thirty stylesheets, and the nineteen loading after it re-skin
+   many of the same components: thirty-seven selectors in this tree are declared
+   in more than one file, and where that happens the *later* file wins. So a
+   value here is not evidence of what is on screen.
 
-body:before {
-  display: none
-}
+   What follows has had its fully-shadowed declarations removed -- a `nav`
+   background of #fbfbfc that sidebar.css replaces with --sidebar, a `.tile`
+   radius and colour grid.css already sets, a whole `.viewer` block viewer.css
+   owns, a narrow-window block viewer.css repeats, and an `.archive-list-title`
+   rule matching an element that does not exist (the markup uses the id). What
+   is left is what actually applies.
+
+   The rest of the untangling belongs with the screens that own those
+   components. This file is the place to add a token, not a component. */
 
 .btn.sec {
   background: var(--panel);
@@ -13,26 +23,12 @@ body:before {
   border-color: var(--line)
 }
 
-.archive-list-title {
-  letter-spacing: 0;
-  text-transform: none;
-  font-size: 17px;
-  color: var(--text);
-  margin-top: 42px;
-  font-weight: 600
-}
-
 .card {
-  border-radius: 12px;
-  background: var(--panel);
-  border-color: var(--line);
-  box-shadow: 0 1px 2px #0000000a
+  border-color: var(--line)
 }
 
 nav {
-  background: #fbfbfc;
-  border-right-color: var(--line);
-  padding: 18px 12px
+  border-right-color: var(--line)
 }
 
 nav .brand img {
@@ -72,8 +68,6 @@ h2.sec {
 }
 
 .tile {
-  border-radius: 6px;
-  background: #e5e5ea;
   outline: 0
 }
 
@@ -85,11 +79,7 @@ h2.sec {
 .date-heading {
   /* A month heading is a row of its own, not a tile-sized cell. */
   grid-column: 1/-1;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 22px;
-  font-weight: 600;
-  border-bottom: 0;
-  padding: 28px 0 8px
+  border-bottom: 0
 }
 
 .filterbar {
@@ -98,36 +88,12 @@ h2.sec {
 }
 
 .fsel {
-  border-radius: 7px;
-  background: #fff;
   border-color: var(--line)
 }
 
-.viewer {
-  border-radius: 12px;
-  overflow: hidden;
-  background: #000
-}
-
 @media(max-width:800px) {
-  nav {
-    background: #fff
-  }
-
-  main {
-    padding: 24px 16px
-  }
-
-  .navitem {
-    font-size: 13px
-  }
-
   .welcome {
     padding-top: 12px
-  }
-
-  .welcome h1 {
-    font-size: 38px
   }
 }
 
