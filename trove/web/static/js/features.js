@@ -136,7 +136,8 @@ function fact(f) {
     case "pets": return counted(ps?.detections, "animal", "animals", "No animals found");
     case "places": return counted(s?.in_places, "photo placed", "photos placed",
       "No places found");
-    case "semantic": return counted(ss?.indexed, "item indexed", "items indexed",
+    // "items" was the only place in the app that called a file something else.
+    case "semantic": return counted(ss?.indexed, "file indexed", "files indexed",
       "Nothing indexed yet");
     // Both text halves fill one index from one pass, so there is no per-half
     // count to quote and the same figure is the honest answer on both cards: it
@@ -206,7 +207,12 @@ function card(f) {
   // before it reaches here: the switch would fire twice and land back where it
   // started, and "How it works" would toggle the feature it explains.
   const face = canToggle(f) ? ` onclick="toggleSheetFeature('${f.id}')"` : "";
-  return `<li class="set-card fcard${on ? " on" : ""}${canToggle(f) ? "" : " fcard-fixed-face"}"
+  // The accent ring means "on because you chose it". Required features are on
+  // by definition, and giving them the same ring left all eight cards outlined
+  // identically -- a mark that distinguished nothing, next to a switch that
+  // already carries the state.
+  const chosenByUser = on && canToggle(f);
+  return `<li class="set-card fcard${chosenByUser ? " on" : ""}${canToggle(f) ? "" : " fcard-fixed-face"}"
       data-feature="${f.id}">
       <div class="set-face"${face}>
         <div class="set-meta">
@@ -260,7 +266,9 @@ function syncCard(id) {
   const el = document.querySelector(`.fcard[data-feature="${id}"]`);
   if (!el) return;
   const on = SHEET.chosen.has(id);
-  el.classList.toggle("on", on);
+  // Same rule as the initial render: the ring is for a feature the user chose.
+  const feature = SHEET.catalogue.find(f => f.id === id);
+  el.classList.toggle("on", on && !!feature && canToggle(feature));
   const sw = el.querySelector(".fsw");
   if (sw) sw.setAttribute("aria-checked", String(on));
 }
@@ -277,8 +285,19 @@ function changed() {
 }
 
 function syncFoot() {
-  const mb = pendingDownloadMb(SHEET.catalogue, SHEET.chosen);
-  setNote("fsheet-total", mb ? `${mb} MB to download` : "Nothing to download");
+  /* Whose cost this is.
+
+     The figure is what the *selection* still owes, which is real but was
+     labelled "715 MB to download" beside a disabled Save button, on a sheet
+     where nothing had been changed -- so it read as the price of saving. It
+     says who owes it now: a change quotes what the change adds, and an
+     untouched sheet reports what the archive is already waiting on. */
+  const now = pendingDownloadMb(SHEET.catalogue, SHEET.chosen);
+  const before = pendingDownloadMb(SHEET.catalogue, SHEET.was);
+  const added = now - before;
+  setNote("fsheet-total", changed()
+    ? (added > 0 ? `This change adds ${added} MB to download` : "")
+    : (now ? `${now} MB still to download` : ""));
 
   const pair = lonelyPair(SHEET.catalogue, SHEET.chosen);
   setNote("fsheet-pair", pair && `${pair[0].label} would run without ${pair[1].label}. `

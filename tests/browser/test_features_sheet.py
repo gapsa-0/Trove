@@ -269,7 +269,12 @@ def test_a_card_with_nothing_to_switch_is_not_pressable(open_app):
         assert app.count('.fcard[data-feature="index"].fcard-fixed-face') == 1
         _press_card(app, "index")
 
-        assert app.count('.fcard[data-feature="index"].on') == 1, "Indexing was switched off"
+        # Still fixed, still saying so, and nothing to save. The card carries no
+        # `.on` ring: that mark means "on because you chose it", and a required
+        # feature is not a choice -- giving it the ring too left all eight cards
+        # outlined identically.
+        assert app.count('.fcard[data-feature="index"].fcard-fixed-face') == 1
+        assert "Always runs" in app.text('.fcard[data-feature="index"]')
         assert app.tab.evaluate("document.getElementById('fsheet-save').disabled") is True
         assert app.errors() == []
 
@@ -282,7 +287,11 @@ def test_nothing_is_saved_until_there_is_something_to_save(open_app, archive):
     with open_app("overview") as app:
         _open_sheet(app)
         assert app.tab.evaluate("document.getElementById('fsheet-save').disabled") is True
-        assert "Nothing to download" in app.text("#fsheet-total")
+        # And the footer prices nothing. The line reports what a *change* would
+        # add, or what the archive is already waiting on; with no change and
+        # nothing owed it has nothing to say, and said "715 MB to download"
+        # beside a disabled Save it read as the price of saving.
+        assert app.text("#fsheet-total").strip() == ""
 
         _flip(app, "places")
         assert app.tab.evaluate("document.getElementById('fsheet-save').disabled") is False

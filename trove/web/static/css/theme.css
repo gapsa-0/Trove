@@ -316,11 +316,27 @@ h3,
   border-color: var(--line-strong)
 }
 
+/* Still recognisably the primary action, just not available yet. It had taken
+   --panel2 with --faint text, which on a light drawer put the one thing the
+   dialog is for at lower contrast than the Cancel beside it -- the least
+   visible element in the footer was the button the footer exists for. */
 .btn:disabled {
+  background: var(--accent);
+  color: #fff;
+  opacity: .38;
+  box-shadow: none;
+  cursor: default
+}
+
+.btn:disabled:hover {
+  background: var(--accent);
+  transform: none
+}
+
+.btn.sec:disabled {
   background: var(--panel2);
-  border-color: var(--line);
-  color: var(--faint);
-  box-shadow: none
+  color: var(--text);
+  opacity: .45
 }
 
 button:focus-visible,
