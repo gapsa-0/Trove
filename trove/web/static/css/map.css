@@ -199,3 +199,84 @@
     height: 360px;
   }
 }
+
+
+/* ---- Leaflet's own chrome, given the app's ------------------------------
+
+   Moved here from screens.css, which had grown past the asset budget holding
+   both the map and everything else with a screen. These override a vendored
+   stylesheet, so they belong beside the rest of this file's map rules rather
+   than eight stylesheets away -- and appended, so they still land after this
+   file's own `.leaflet-container` and `.leaflet-tooltip`. */
+.leaflet-container {
+  background: var(--panel2)
+}
+
+.leaflet-tooltip {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm)
+}
+
+/* Leaflet draws its own zoom buttons: square, hard-bordered, 4px radius,
+   stacked and joined. Ten pixels away sits the app's Places/Photos segmented
+   control in 999px pills, so one corner of one card held two control languages.
+   These take the app's own shape -- a pair of separate round-cornered buttons
+   at the size the viewer's chrome uses -- without touching Leaflet's behaviour. */
+/* Written against `.leaflet-touch .leaflet-bar` as well as the bare selector:
+   Leaflet ships both, the touch variant is one class more specific, and it is
+   the one that applies -- Leaflet adds `leaflet-touch` on any device with a
+   coarse pointer OR a touch screen, which includes a lot of laptops. Without
+   the longer selector the radius and the joined edges came back. */
+.leaflet-bar,
+.leaflet-touch .leaflet-bar {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover,
+.leaflet-touch .leaflet-bar a,
+.leaflet-touch .leaflet-bar a:first-child,
+.leaflet-touch .leaflet-bar a:last-child {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 400;
+  box-shadow: var(--shadow-sm)
+}
+
+.leaflet-bar a:first-child,
+.leaflet-touch .leaflet-bar a:first-child {
+  margin-bottom: 5px
+}
+
+.leaflet-bar a:hover,
+.leaflet-touch .leaflet-bar a:hover {
+  background: var(--panel2)
+}
+
+:root[data-theme="dark"] .leaflet-bar a,
+:root[data-theme="dark"] .leaflet-control-attribution {
+  background: rgba(28, 28, 30, .9);
+  color: var(--muted);
+  border-color: var(--line)
+}
+
+:root[data-theme="dark"] .leaflet-bar a:hover,
+:root[data-theme="dark"] .leaflet-bar a:focus {
+  background: var(--panel2);
+  color: var(--text)
+}
+
+:root[data-theme="dark"] .leaflet-control-attribution a {
+  color: var(--accent)
+}

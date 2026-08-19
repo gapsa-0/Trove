@@ -366,36 +366,24 @@
   font-weight: 600
 }
 
-.p-remove {
-  float: right;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
+/* The card's own actions, on a row of their own under the name.
+
+   They were `.p-remove` and `.p-rename`: bare accent and bare red words,
+   positioned with `float: right`, which is why Remove sat second on screen
+   despite coming first in the markup. theme.css's .quietbtn comment records
+   that this pattern was retired across the app because accent words with no box
+   read as links where links go to documentation; these two outlived the
+   retirement on the first screen anybody sees. Remove keeps the destructive
+   colour on hover, where the offer is actually being taken up. */
+.p-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 11px
+}
+
+.p-remove:hover:not(:disabled) {
   color: var(--bad);
-  padding: 4px 7px;
-  font-size: 11px;
-  cursor: pointer
-}
-
-.p-remove:hover {
-  background: color-mix(in srgb, var(--bad) 10%, transparent)
-}
-
-/* Turns the name below it into a field. Sits beside Remove, in the app's own
-   accent rather than the destructive red. */
-.p-rename {
-  float: right;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--accent);
-  padding: 4px 7px;
-  font-size: 11px;
-  cursor: pointer
-}
-
-.p-rename:hover {
-  background: var(--accent-soft)
+  border-color: var(--bad)
 }
 
 /* Sized and weighted like the name it replaces, so the card does not change

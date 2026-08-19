@@ -95,12 +95,23 @@ export async function loadPicker() {
     // stays a quantity. It covers an interrupted scan as honestly as a running
     // one, which is why it is not "still scanning".
     const sofar = a.partial ? " so far" : "";
+    // Quiet buttons, in source order, in a flex row -- not two floated words in
+    // accent and red. theme.css's .quietbtn comment records that accent-coloured
+    // words with no box were retired across the app "because they read as links
+    // in the middle of an interface where links go to documentation"; these two
+    // survived the retirement, on the first screen anybody sees. The floats are
+    // gone with them: they are why Remove came first in the markup and second
+    // on screen.
     c.innerHTML = pickerCover(a) +
       `<div class="p-meta">
-             <button class="p-remove" type="button" aria-label="Remove archive">Remove</button>
-             <button class="p-rename" type="button" aria-label="Rename ${esc(a.name)}">Rename</button>
              <div class="nm">${esc(a.name)}</div>
              <div class="st">${a.files.toLocaleString()} files${sofar}${warn}</div>
+             <div class="p-actions">
+               <button class="quietbtn sm p-rename" type="button"
+                 aria-label="Rename ${esc(a.name)}">Rename</button>
+               <button class="quietbtn sm p-remove" type="button"
+                 aria-label="Remove ${esc(a.name)}">Remove</button>
+             </div>
            </div>`;
     c.querySelector(".p-remove").onclick = (event) => { event.stopPropagation(); removeArchive(a); };
     // What this card used to offer was "Set up", which reopened the whole

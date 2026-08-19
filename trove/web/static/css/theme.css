@@ -339,6 +339,24 @@ h3,
   opacity: .45
 }
 
+/* Eight stylesheets honour prefers-reduced-motion. The one interaction that
+   runs on every screen -- a button lifting a pixel under the pointer -- was
+   covered by none of them. */
+@media (prefers-reduced-motion: reduce) {
+
+  .btn,
+  .quietbtn,
+  .apptip,
+  .seg button {
+    transition: none
+  }
+
+  .btn:hover,
+  .btn:active {
+    transform: none
+  }
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
