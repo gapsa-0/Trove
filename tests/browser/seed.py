@@ -205,6 +205,12 @@ def seed_hostile_names(conn, root_id: int, source_dir: Path, canonical: int) -> 
 
 
 _MJPEG_AVI: Path | None = None
+# The directory holding it, kept in a global for exactly as long as the file is:
+# `TemporaryDirectory` cleans up from its own finalizer, so holding the object
+# here is what ties the directory's life to the cached path's. The `mkdtemp`
+# this replaced registered no cleanup at all -- no finalizer, no context
+# manager -- and leaked one directory per run, forever.
+_MJPEG_DIR: tempfile.TemporaryDirectory | None = None
 
 
 def _mjpeg_avi() -> Path | None:
@@ -221,12 +227,13 @@ def _mjpeg_avi() -> Path | None:
     module global because the archive fixture is per-test: ffmpeg once a
     session is a rounding error, ffmpeg 115 times is half a minute.
     """
-    global _MJPEG_AVI
+    global _MJPEG_AVI, _MJPEG_DIR
     if _MJPEG_AVI is None:
         ffmpeg = tool("ffmpeg")
         if ffmpeg is None:
             return None
-        made = Path(tempfile.mkdtemp(prefix="trove-seed-")) / "camcorder.avi"
+        _MJPEG_DIR = tempfile.TemporaryDirectory(prefix="trove-seed-")
+        made = Path(_MJPEG_DIR.name) / "camcorder.avi"
         subprocess.run(
             [
                 ffmpeg,

@@ -113,6 +113,13 @@ addopts = "--strict-markers"
 # file's *own* directory on sys.path, so tests/gui/ cannot see tests/helpers.py.
 # This is what lets all three tiers share helpers.py and factories.py.
 pythonpath = ["tests"]
+# pytest keeps the last three sessions' basetemps by default, and this suite's
+# fixtures fill them: every `archive` test builds a real archive under tmp_path,
+# so /tmp/pytest-of-capsa had reached 1.6 GB. One retained session is enough to
+# open a failure by hand, and "failed" throws away the passing runs that nobody
+# will ever look at.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 markers = [
   # Applied from measurement, not from a guess about mechanism. "Spawns a
   # thread" sounds like the better rule but is useless here: JobManager starts

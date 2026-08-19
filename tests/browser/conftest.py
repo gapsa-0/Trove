@@ -26,13 +26,19 @@ import os
 import shutil
 import socket
 import subprocess
-import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 from helpers import serve_in_thread
+from profiles import (
+    browser_profile,
+    profile_is_real,
+    snap_confinement,
+    stop_browser,
+    sweep_stale_profiles,
+)
 from seed import seed
 
 from trove import features
@@ -126,8 +132,14 @@ def cdp_port():
     if binary is None:
         pytest.skip("no Chrome/Chromium on PATH (set TROVE_CDP_PORT to use a running one)")
 
+    # Where the profile may go depends on how the browser is packaged, and
+    # getting it wrong is not a visible failure -- see tests/browser/profiles.py
+    # for the 24 GB that taught this fixture the difference.
+    snap = snap_confinement(binary)
+    sweep_stale_profiles(snap)
+
     port = _free_port()
-    with tempfile.TemporaryDirectory(prefix="trove-cdp-") as profile:
+    with browser_profile(snap) as profile:
         proc = subprocess.Popen(
             [
                 binary,
@@ -146,17 +158,25 @@ def cdp_port():
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            # The crashpad handler, the zygote and every renderer are separate
+            # processes. One session puts them in one process group, which is
+            # what lets teardown stop all of them before deleting the profile
+            # they are writing into.
+            start_new_session=True,
         )
         try:
             if not _endpoint_ready(port):
                 pytest.skip(f"{binary} did not open a debugging port within 20s")
+            if not profile_is_real(profile):
+                pytest.skip(
+                    f"{binary} answered on its debugging port but left {profile} "
+                    "empty, so it wrote its real profile inside a mount namespace "
+                    "this process cannot clean up. Refusing to leak ~140 MB per "
+                    "session -- start a browser yourself and set TROVE_CDP_PORT."
+                )
             yield port
         finally:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            stop_browser(proc)
 
 
 class Archive:
