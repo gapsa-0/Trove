@@ -34,6 +34,11 @@ from trove.runtime import no_window, tool, tool_env
 # GRID_PAGE_SIZE ever changes, this has to stay above it or the paging test
 # silently stops testing paging.
 MEDIA_COUNT = 130
+# How many of those Browse actually lists. One of them is the copy in the
+# seeded duplicate group, and a duplicate copy is hidden from browsing -- so
+# every count a test makes about the library is this, not MEDIA_COUNT. Kept
+# here rather than worked out per test, because it is a fact about the fixture.
+BROWSABLE_MEDIA = MEDIA_COUNT - 1
 
 
 def write_jpeg(path: Path, color: tuple[int, int, int] = (120, 140, 160)) -> None:
@@ -120,6 +125,25 @@ def seed_documents(conn, root_id: int, source_dir: Path, photo_id: int) -> int:
     return first
 
 
+def _join_group(conn, group_id: int, canonical: int, copy: int) -> None:
+    """Put two files in a group the way a grouping run leaves them.
+
+    `dup_members` alone is half of it: `files.hidden` is what actually decides
+    whether Browse shows a copy, and it is what the Duplicates screen's keep
+    controls read back. A fixture that left it at its default drew a group with
+    every copy kept, which is a state dedup never produces.
+    """
+    for fid, role in ((canonical, "canonical"), (copy, "duplicate")):
+        conn.execute(
+            "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, ?)",
+            (group_id, fid, role),
+        )
+        conn.execute(
+            "UPDATE files SET dup_group_id=?, hidden=? WHERE id=?",
+            (group_id, int(role == "duplicate"), fid),
+        )
+
+
 def seed_duplicates(conn, canonical: int, copy: int) -> int:
     """One duplicate group, so Duplicates has a row rather than its empty state.
 
@@ -135,13 +159,8 @@ def seed_duplicates(conn, canonical: int, copy: int) -> int:
            VALUES('perceptual', ?, 2, 4, 4, ?)""",
         (canonical, factories.FIXED_TIME),
     )
-    group_id = cur.lastrowid
-    for fid, role in ((canonical, "canonical"), (copy, "duplicate")):
-        conn.execute(
-            "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, ?)",
-            (group_id, fid, role),
-        )
-    return group_id
+    _join_group(conn, cur.lastrowid, canonical, copy)
+    return cur.lastrowid
 
 
 # A folder name that is hostile to markup built by string concatenation, and an
@@ -181,12 +200,7 @@ def seed_hostile_names(conn, root_id: int, source_dir: Path, canonical: int) -> 
            VALUES('exact', ?, 2, 4, 4, ?)""",
         (canonical, factories.FIXED_TIME),
     )
-    group_id = cur.lastrowid
-    for fid, role in ((canonical, "canonical"), (copy, "duplicate")):
-        conn.execute(
-            "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, ?)",
-            (group_id, fid, role),
-        )
+    _join_group(conn, cur.lastrowid, canonical, copy)
     return copy
 
 

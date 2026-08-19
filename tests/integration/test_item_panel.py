@@ -188,7 +188,14 @@ def test_a_file_at_the_root_counts_only_other_root_level_files(tmp_path):
 
 def _grouped(conn, *, method="exact", member_count=3):
     """Files 1 and 2 in one group, 1 kept. Their hashes differ, so 2 is a
-    visual match rather than a byte-identical copy."""
+    visual match rather than a byte-identical copy.
+
+    `files.hidden` is set the way a real grouping run sets it, not left at its
+    default. It is what the panel reads to say whether the file in front of you
+    is the one Browse shows -- which stopped being the same question as "is it
+    the canonical" when a group became able to keep several copies -- so a
+    fixture that skipped it would be asserting against a state dedup never
+    produces."""
     conn.execute(
         """INSERT INTO dup_groups(id,method,canonical_file_id,member_count,created_at)
            VALUES(7,?,1,?,?)""",
@@ -196,6 +203,8 @@ def _grouped(conn, *, method="exact", member_count=3):
     )
     conn.execute("INSERT INTO dup_members(group_id,file_id,role) VALUES(7,1,'canonical')")
     conn.execute("INSERT INTO dup_members(group_id,file_id,role) VALUES(7,2,'duplicate')")
+    conn.execute("UPDATE files SET dup_group_id=7, hidden=0 WHERE id=1")
+    conn.execute("UPDATE files SET dup_group_id=7, hidden=1 WHERE id=2")
 
 
 def test_a_duplicate_group_is_reported_with_the_files_role(tmp_path):

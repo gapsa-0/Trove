@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import urllib.request
 
+from seed import BROWSABLE_MEDIA
+
 
 def _search(app, text):
     """Type into the composer and submit it, the way a person does."""
@@ -52,11 +54,13 @@ def test_a_search_shows_two_rows_of_each_ranking_and_offers_the_rest(open_app):
 
         shown = app.count("#grid-name .tile")
         assert shown == _columns(app, "grid-name") * 2, "a preview is whole rows"
-        assert "Show all 130" in app.text("#more-name"), "the button names the whole ranking"
+        assert f"Show all {BROWSABLE_MEDIA}" in app.text("#more-name"), (
+            "the button names the whole ranking"
+        )
         assert app.text("#grid-name-sentinel") == "", "a previewed group promises no paging"
 
-        # The cap holds against the scroll that used to extend it. 130 matches
-        # is more than one page (120), so there is genuinely more to fetch.
+        # The cap holds against the scroll that used to extend it. The ranking
+        # runs to more than one page (120), so there is genuinely more to fetch.
         app.scroll_to_bottom()
         app.tab.evaluate("new Promise(r => setTimeout(r, 400))")
         assert app.count("#grid-name .tile") == shown
@@ -85,7 +89,7 @@ def test_opening_a_ranking_gives_the_whole_screen_to_it(open_app):
         assert app.count("#group-name[hidden]") == 0
         assert app.count("#nothing-line[hidden]") == 1
         assert app.count("#results-back:not([hidden]) .back-btn") == 1
-        assert app.text("#gridcount") == "130 results"
+        assert app.text("#gridcount") == f"{BROWSABLE_MEDIA} results"
         assert app.count("#more-name .more-btn") == 0, "nothing left to open"
         # One page of it, and the rest reachable by scrolling.
         assert app.count("#grid-name .tile") == 120
@@ -112,8 +116,10 @@ def test_the_way_back_returns_to_the_preview_of_every_ranking(open_app):
 
         assert app.count("#results-back[hidden]") == 1
         assert app.count("#grid-name .tile") == preview
-        assert "Show all 130" in app.text("#more-name")
-        assert app.text("#gridcount") == "130 results", "the total is every ranking's again"
+        assert f"Show all {BROWSABLE_MEDIA}" in app.text("#more-name")
+        assert app.text("#gridcount") == f"{BROWSABLE_MEDIA} results", (
+            "the total is every ranking's again"
+        )
         assert app.errors() == []
 
 
@@ -154,13 +160,16 @@ def test_a_new_search_leaves_the_ranking_the_last_one_was_read_in(open_app):
         # A narrower query, so the overview it lands on is demonstrably the new
         # search's rather than what was on screen a moment ago.
         _search(app, "photo0")
+        # photo000 to photo099, less the one of them that is a duplicate copy
+        # and so hidden from browsing.
+        narrower = 99
         app.tab.wait_for(
-            "document.querySelector('#gridcount').textContent === '100 results'",
+            f"document.querySelector('#gridcount').textContent === '{narrower} results'",
             what="the second search to answer",
         )
 
         assert app.count("#results-back[hidden]") == 1
-        assert "Show all 100" in app.text("#more-name")
+        assert f"Show all {narrower}" in app.text("#more-name")
         assert app.errors() == []
 
 

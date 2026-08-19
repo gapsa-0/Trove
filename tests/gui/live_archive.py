@@ -152,6 +152,13 @@ def _seed_media(conn, root_id: int, ids: dict, _file) -> None:
         "INSERT INTO dup_members(group_id, file_id, role) VALUES(?, ?, 'duplicate')",
         (ids["dup_group"], duplicate),
     )
+    # As a grouping run leaves it, so a route that changes which copies are kept
+    # is changing a real state rather than the schema's defaults.
+    conn.execute("UPDATE files SET dup_group_id=?, hidden=0 WHERE id=?", (ids["dup_group"], dated))
+    conn.execute(
+        "UPDATE files SET dup_group_id=?, hidden=1 WHERE id=?", (ids["dup_group"], duplicate)
+    )
+    ids["dup_kept"], ids["dup_copy"] = dated, duplicate
 
 
 def _seed_people(conn, ids: dict, _file) -> None:
