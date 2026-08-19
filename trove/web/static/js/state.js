@@ -107,6 +107,11 @@ export const S = {
   // Where the overview was scrolled to when a ranking was opened from it, so
   // coming back returns to the group you left rather than to the top.
   overviewScrollTop: 0,
+  // How many files Browse can list in this archive, unfiltered -- what the
+  // filename way reaches, which is a property of the archive rather than of
+  // whatever the filter bar is currently set to. Kept with the id it was
+  // counted for, so a second archive cannot inherit the first one's figure.
+  browsableTotal: null, browsableTotalRoot: null,
   // `gpoll` is the one pipeline poller's interval handle (pipeline.js). There
   // used to be a second slot beside it, `poll`, that the Overview, People and
   // Pets screens all wrote in turn -- one timer shared by three modules, which

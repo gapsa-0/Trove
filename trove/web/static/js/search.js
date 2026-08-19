@@ -166,43 +166,77 @@ function reach(list) {
     .join(" · ");
 }
 
+/* What the filename way reaches: every file in the archive, always.
+
+   This read `S.grid.total`, which is the total AFTER the filter bar -- so
+   narrowing Browse to videos made the panel claim filename search could reach
+   three files, in a card headed "Where Trove looks when you type". The two rows
+   beneath it are coverage figures from a status endpoint and correctly did not
+   move, which is what made the odd one out invisible: nothing said that one row
+   in the column was answering a different question. It also printed the same
+   "3 files" the toolbar had just printed a hundred pixels above, meaning
+   something else.
+
+   Cached per archive rather than re-asked, the way the filter bar's options
+   are: it is a property of the archive, and it changes only when the scanner
+   finds something. */
 function nameCoverage() {
-  const total = S.grid && S.grid.query ? null : (S.grid && S.grid.total);
+  const total = S.browsableTotalRoot === (S.arch && S.arch.id) ? S.browsableTotal : null;
   // Every file, with no qualifier: this way needs no index and no feature, so
   // there is nothing here that some of them could be short of.
   return total == null ? "" : `${total.toLocaleString()} files`;
 }
-/* How many files there are is the one coverage figure that comes from the grid
-   rather than from a status endpoint, and the grid's first page can land either
-   side of the panel being drawn. So the panel fills it in whenever the number
-   changes instead of only when it is built -- otherwise whichever of the two
-   arrived second decided whether the row said anything at all. */
+async function loadBrowsableTotal() {
+  const rid = S.arch && S.arch.id; if (!rid) return;
+  // Asked every tick rather than once: the panel keeps ticking while indexing
+  // runs, which is exactly when this number is still moving. The stored value
+  // is what the first paint uses, so the row is never briefly blank on the way
+  // back to a screen that already knew the answer.
+  const r = await jget(`/api/media?root=${rid}&limit=1`).catch(() => null);
+  if (!r || (S.arch && S.arch.id) !== rid) return;
+  S.browsableTotal = r.total; S.browsableTotalRoot = rid;
+}
+/* The panel fills this cell in whenever the figure lands, rather than only when
+   it is built: the request behind it can settle either side of the panel being
+   drawn, and whichever arrived second used to decide whether the row said
+   anything at all. */
 export function updateWaysCoverage() {
   const cell = document.getElementById("way-cov-name");
   if (cell) cell.textContent = nameCoverage();
 }
+/* What is still owed, and what will never come.
+
+   Both status endpoints report `skipped` alongside `pending`, and neither
+   number reached the screen. On an archive where a way covers a third of what
+   it was pointed at, a row reading "1 document" is not wrong so much as
+   incomplete in the one direction that matters: this panel exists to answer
+   "can this way find my thing?", and silence about the skipped files answers
+   only the happy half of it. */
+function shortfall(s) {
+  const parts = [];
+  if (s.pending) parts.push(`${s.pending.toLocaleString()} queued`);
+  if (s.skipped) parts.push(`${s.skipped.toLocaleString()} skipped`);
+  return parts.length ? ` · ${parts.join(" · ")}` : "";
+}
 function textCoverage(s) {
   if (!s) return "";
   if (!s.configured) return "Not available in this installation";
-  const read = s.read || 0, pending = s.pending || 0;
+  const read = s.read || 0;
   // Which files were read is said in the row's own sentence, from the features
   // that are on; this is the count, and only the count. Passages are gone from
   // it: how many pieces a file was cut into for the index is a fact about the
   // index, and there is nothing anybody can do with it.
-  if (!read) return pending
-    ? `Nothing read yet · ${pending.toLocaleString()} queued`
+  if (!read) return s.pending
+    ? `Nothing read yet${shortfall(s)}`
     : "Nothing to read in this archive yet";
-  return reach(s.by_type) + (pending ? ` · ${pending.toLocaleString()} queued` : "");
+  return reach(s.by_type) + shortfall(s);
 }
 function photoCoverage(s) {
   if (!s) return "";
   if (!s.configured) return "Not available in this installation";
   const indexed = (s.by_type || []).reduce((n, t) => n + (t.count || 0), 0);
-  const pending = s.pending || 0;
-  if (!indexed) return pending
-    ? `Nothing indexed yet · ${pending.toLocaleString()} queued`
-    : "Nothing indexed yet";
-  return reach(s.by_type) + (pending ? ` · ${pending.toLocaleString()} queued` : "");
+  if (!indexed) return s.pending ? `Nothing indexed yet${shortfall(s)}` : "Nothing indexed yet";
+  return reach(s.by_type) + shortfall(s);
 }
 
 async function searchWaysTick(gen) {
@@ -216,6 +250,7 @@ async function searchWaysTick(gen) {
   const [text, photo] = await Promise.all([
     wants("text") ? jget("/api/browse/text/status?root=" + S.arch.id).catch(() => null) : null,
     wants("media") ? jget("/api/browse/semantic/status?root=" + S.arch.id).catch(() => null) : null,
+    loadBrowsableTotal(),
   ]);
   if (gen !== SEARCH_WAYS_GEN || S.section !== "library") return;
   const cur = document.getElementById("search-ways"); if (!cur) return;
