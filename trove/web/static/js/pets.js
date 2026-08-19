@@ -48,6 +48,9 @@ import {
   onSnapshot,
 } from "./pipeline.js";
 import {
+  openOrSelect, selectButton, selectable,
+} from "./select.js";
+import {
   S,
 } from "./state.js";
 
@@ -84,7 +87,8 @@ export async function renderPets(m) {
         ${why("Scanned", scannedFigure(sum), "Photos animal detection has looked at, of all the photos it will look at.")}</div>
     </div>
     <div class="panel" id="petjob">${detectStatusRow(sum, null)}</div>
-    <div class="place-gallery-head"><h3>Likely pet identities</h3><span class="muted">Conservative visual grouping</span></div>
+    <div class="place-gallery-head"><h3>Likely pet identities</h3>
+      <span class="muted">Conservative visual grouping</span>${selectButton("pet")}</div>
     <div class="people" id="petgrid"></div>
     <div class="infinite-status" id="pet-list-sentinel" aria-live="polite"></div>
     <div id="pethiddenwrap"></div>
@@ -94,6 +98,7 @@ export async function renderPets(m) {
     <div class="place-gallery-head"><h3>Non-human face review</h3><span class="muted">Animal/toy overlaps filtered out of People</span></div>
     <div class="nonhuman-grid" id="nonhumangrid"></div>
     <div class="infinite-status" id="nonhuman-sentinel" aria-live="polite"></div>`;
+  selectable("pet", "petgrid", refreshPetGrids);
 
   startInfiniteList("petListState", {
     sentinelId: "pet-list-sentinel", pageSize: PET_LIST_PAGE_SIZE,
@@ -235,7 +240,8 @@ function petCoverIds(p) {
     ? p.detections_preview : [p.cover_detection_id]).filter(Boolean).slice(0, 4);
 }
 function petCard(p) {
-  const card = document.createElement("div"); card.className = "pcard"; card.onclick = guardCardClick(() => showPet(p.id));
+  const card = document.createElement("div"); card.className = "pcard";
+  card.onclick = guardCardClick(() => openOrSelect("pet", p, () => showPet(p.id)));
   card.dataset.syncKey = String(p.id);
   card.dataset.cover = petCoverIds(p).join(",");
   card.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb")

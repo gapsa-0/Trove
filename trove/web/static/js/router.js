@@ -49,6 +49,9 @@ import {
   stopPipelinePoll,
 } from "./pipeline.js";
 import {
+  endSelecting,
+} from "./select.js";
+import {
   renderTimeline, resumeTimeline,
 } from "./timeline.js";
 
@@ -163,6 +166,10 @@ function stashActiveSection() {
 // stops it. What is left here is the polling a screen genuinely owns -- its own
 // summary endpoint -- which only makes sense while that screen is on show.
 function stopSectionPolls() { stopFacePoll(); stopPetPoll(); }
+// A selection belongs to the grid it was made on. Leaving the screen ends it,
+// rather than leaving a bar over the next one offering to merge groups that are
+// no longer in front of anybody.
+function stopSelecting() { endSelecting(); }
 function resumeSection(id) {
   if (id === "library") renderSearchWays();
   else if (id === "people" && document.getElementById("facejob")) startFacePoll();
@@ -192,6 +199,7 @@ export function showSection(id, reload = false) {
   if (ACTIVE_SECTION === id && !reload) return;
   S.nav++; const gen = S.nav;
   stopSectionPolls();
+  stopSelecting();
   const m = document.getElementById("main");
   if (ACTIVE_SECTION) {
     if (reload && ACTIVE_SECTION === id) {

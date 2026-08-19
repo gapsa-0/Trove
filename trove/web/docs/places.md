@@ -59,6 +59,10 @@ refused, and a merge can be undone.
 "Merge with…" and a list of the places you have already named — for when the
 two are not on screen together.
 
+**Or merge several at once.** *Select*, above the grid, turns the cards into a
+set you tick; the bar at the foot folds all of them into one. Where the 300m
+grid has split one location into four, that is one action rather than three.
+
 **Create a place by hand,** and add photos to it that carry no coordinates of
 their own. This is how scanned photos and anything that came through a
 messaging app get onto the map at all.

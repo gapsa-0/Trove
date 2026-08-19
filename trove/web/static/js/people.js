@@ -45,6 +45,9 @@ import {
   onSnapshot,
 } from "./pipeline.js";
 import {
+  openOrSelect, selectButton, selectable,
+} from "./select.js";
+import {
   S,
 } from "./state.js";
 
@@ -80,7 +83,9 @@ export async function renderFaces(m) {
         ${why("Scanned", scannedFigure(sum), "Photos face detection has looked at, of all the photos it will look at.")}</div>
     </div>
     <div class="panel" id="facejob"></div>
+    <div class="gridtools">${selectButton("person")}</div>
     <div id="peoplewrap"><div class="muted" style="padding:20px">Loading people…</div></div>`;
+  selectable("person", "peoplegrid", refreshAfterHide);
   renderFaceStatus();
   renderPeople();
   startFacePoll();   // reflects a face job's progress and refreshes when it ends
@@ -401,7 +406,8 @@ function personMetaInner(p) {
     <div class="pcount">${fileCount(p.photos)}</div></div>`;
 }
 function personCard(p) {
-  const d = document.createElement("div"); d.className = "pcard"; d.onclick = guardCardClick(() => showPerson(p.id));
+  const d = document.createElement("div"); d.className = "pcard";
+  d.onclick = guardCardClick(() => openOrSelect("person", p, () => showPerson(p.id)));
   d.dataset.syncKey = String(p.id);
   // Mutable so syncPeopleGrid can refresh a renamed/re-counted person without
   // re-running attachMergeDrag (which would stack a second set of listeners).

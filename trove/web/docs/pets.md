@@ -94,6 +94,11 @@ is not the pet*, which takes the photo off them and stops it being grouped back.
 Both survive re-clustering. Until a cover is chosen, the card shows a collage of
 up to four photos rather than a single thumbnail.
 
+**Work through several at once.** *Select* turns the grid into a set, and the
+bar at the foot offers the same things one card's menu does — merge them all,
+mark them all *Unknown animals*, or say none of them are animals. The People
+screen works the same way.
+
 **Take a group off the screen.** Each card, and each pet's page, offers two
 ways out, and they mean different things. *Not an animal* is about the
 detections — a soft toy, a stone lion, a dog printed on a mug — and takes them

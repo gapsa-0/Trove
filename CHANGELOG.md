@@ -122,6 +122,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with nowhere to say where it went, and the choice survives the next grouping
   run, which rebuilds every group from scratch.
 
+- **Do something to several groups at once.** A party leaves thirty strangers on
+  the People screen, and they are thirty of the same decision — but every way of
+  acting on a group worked on exactly one of them. *Select* on People, Pets and
+  Places turns the grid into a set you tick: merge them all into one, mark them
+  all *Unknown*, or say none of them are people (or animals) at all. Merging a
+  set that holds more than one name asks which name stays, once, rather than
+  once per pair.
+
 ### Fixed
 
 - **"All results" stops throwing you back to the top.** Widening a description

@@ -418,3 +418,85 @@ def test_the_merge_list_can_be_scrolled_without_the_menu_shutting(open_app):
             what="the menu to close when the screen behind it scrolls",
         )
         assert app.errors() == []
+
+
+def _select_cards(app, n: int) -> list[str]:
+    """Turn on selection and mark the first `n` cards, returning their keys."""
+    app.click(".selectstart")
+    app.wait_for("#peoplegrid.selecting")
+    keys = app.tab.evaluate(
+        "[...document.querySelectorAll('#peoplegrid .pcard')].map(c => c.dataset.syncKey)"
+    )
+    for key in keys[:n]:
+        app.click(f'#peoplegrid .pcard[data-sync-key="{key}"]')
+    return keys[:n]
+
+
+def test_choosing_several_groups_does_not_open_any_of_them(open_app):
+    """The card is a way into a group and, while selecting, a member of a set.
+    It cannot be both: a click that opened the person would take the screen
+    away mid-selection, which is the whole reason this is a mode."""
+    with open_app("people") as app:
+        app.wait_for("#peoplegrid .pcard")
+        chosen = _select_cards(app, 2)
+
+        assert len(chosen) == 2, "this needs two cards to choose between"
+        assert app.count("#peoplegrid .pcard.is-selected") == 2
+        assert app.count("#peoplegrid") == 1, "a card opened its group instead of being chosen"
+        assert "2 people" in app.text("#selectbar")
+        assert app.errors() == []
+
+
+def test_a_set_of_one_cannot_be_merged(open_app):
+    """Merging needs two. A button that says otherwise has to be pressed to
+    find out, which is the worst way to be told."""
+    with open_app("people") as app:
+        app.wait_for("#peoplegrid .pcard")
+        _select_cards(app, 1)
+
+        assert app.tab.evaluate(
+            "document.querySelector('#selectbar [data-act=\"merge\"]').disabled"
+        ), "one group on its own was offered a merge"
+
+
+def test_merging_a_selection_folds_them_into_one(open_app):
+    """The point of the mode, and the reason it drives the same endpoint a
+    single merge does: which name survives and which group does are rules with
+    one home, not two."""
+    with open_app("people") as app:
+        app.wait_for("#peoplegrid .pcard")
+        before = app.count("#peoplegrid .pcard")
+        _select_cards(app, 2)
+
+        app.click('#selectbar [data-act="merge"]')
+
+        # Both seeded groups are named, and there is no automatic way to choose
+        # between two things a person typed -- so the same dialog a drag-merge
+        # raises asks which name stays, once for the whole set rather than once
+        # per pair.
+        app.wait_for("#mergeask-options .mergeask-opt input")
+        app.click("#mergeask-merge")
+
+        app.tab.wait_for(
+            f"document.querySelectorAll('#peoplegrid .pcard').length === {before - 1}",
+            timeout=15.0,
+            what="the two chosen groups to become one",
+        )
+        # The mode ends with the act: what was chosen no longer exists.
+        assert app.count("#selectbar") == 0
+        assert app.count("#peoplegrid.selecting") == 0
+        assert app.errors() == []
+
+
+def test_leaving_the_screen_ends_the_selection(open_app):
+    """A bar left over the next screen would offer to merge groups nobody is
+    looking at any more."""
+    with open_app("people") as app:
+        app.wait_for("#peoplegrid .pcard")
+        _select_cards(app, 1)
+        assert app.count("#selectbar") == 1
+
+        app.show_section("overview")
+
+        assert app.count("#selectbar") == 0
+        assert app.errors() == []

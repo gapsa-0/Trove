@@ -177,6 +177,14 @@ on their card — Trove otherwise picks whichever one it judged sharpest, which
 is not always the one that looks like them. Your choice outranks that from then
 on, including after re-clustering.
 
+**Work through several at once.** *Select* turns the grid into a set: click the
+cards you mean, and the bar at the foot of the screen does the same three things
+the ⋯ menu does, to all of them. Merge folds them into one — asking which name
+stays if more than one of them is named, once rather than once per pair.
+*Unknown people* takes them all off the screen, and *Not people* marks every
+face in them as a doll, an animal or a cartoon. A party leaves thirty strangers
+behind, and they are thirty of the same decision.
+
 **Take a group off the screen.** Each card, and each person's page, offers two
 ways out, and they are not the same thing. *Not a person* is about the
 detections — a doll, a statue, a face on a poster — and takes them out of

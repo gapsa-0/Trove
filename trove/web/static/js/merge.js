@@ -172,7 +172,7 @@ async function runMerge(source, target, onMerged) {
 // Separate markup from #modal (the media viewer) -- unrelated concerns.
 let _mergeAskResolve = null;
 export function mergeAskCancel() { if (_mergeAskResolve) _mergeAskResolve(null); }
-function askMergeName({ title, body, options, preselect, warning }) {
+export function askMergeName({ title, body, options, preselect, warning }) {
   return new Promise(resolve => {
     const backdrop = document.getElementById("mergeask-backdrop");
     const dlg = document.getElementById("mergeask");

@@ -43,6 +43,9 @@ import {
   inlineNameEdit,
 } from "./nameedit.js";
 import {
+  openOrSelect, selectButton, selectable,
+} from "./select.js";
+import {
   S,
 } from "./state.js";
 
@@ -272,8 +275,9 @@ function renderPlaceGallery() {
   const wrap = document.getElementById("placegallery"); if (!wrap) return;
   if (!MAP_CLUSTERS.length) { wrap.innerHTML = ""; return; }
   wrap.innerHTML = `<div class="place-gallery-head"><h3>Places</h3>
-      <span class="muted">Named places first · then most photos</span></div>
+      <span class="muted">Named places first · then most photos</span>${selectButton("place")}</div>
     <div class="people" id="placegrid"></div>`;
+  selectable("place", "placegrid", refreshPlacesAfterMerge);
   const grid = document.getElementById("placegrid");
   [...MAP_CLUSTERS].sort((a, b) => {
     const aUnnamed = !(a.name && a.name.trim()), bUnnamed = !(b.name && b.name.trim());
@@ -292,7 +296,9 @@ function placeMergeItem(place, onMerged) {
 }
 function placeCard(place) {
   const card = document.createElement("div"); card.className = "pcard";
-  card.onclick = guardCardClick(() => showPlaceFromGallery(place.id));
+  card.onclick = guardCardClick(() => openOrSelect(
+    "place", { id: place.id, name: place.name, photos: place.count },
+    () => showPlaceFromGallery(place.id)));
   const name = place.name ? esc(place.name) : "Name this place";
   card.innerHTML = placeCollage(place.thumb_ids) + `<div class="pmeta"><div class="pmeta-text">
     <button class="pname ${place.name ? "" : "un"}" type="button">${name}</button>

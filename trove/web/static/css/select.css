@@ -1,0 +1,123 @@
+/* Choosing several groups at once: the marks on the cards, and the bar that
+   says what can be done with them.
+
+   Its own stylesheet rather than more of screens.css, which is already the
+   catch-all four screens share, and named for the module it dresses
+   (static/js/select.js). People, Pets and Places draw the same card, so this is
+   written once rather than three times beside three grids.
+*/
+
+/* -- choosing several groups at once --
+   People, Pets and Places draw the same card, so the marks and the bar are
+   written once here rather than three times beside three grids. */
+
+/* The control that starts it, in a page head or beside a section's own
+   heading. Quiet: it offers a mode, it does not ask for one. */
+.selectstart {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.gridtools {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
+
+/* While choosing, the cards stop being a way in and become a set. The cursor
+   says so before anything is pressed, which is the only warning there is that
+   a click means something different now. */
+.people.selecting .pcard {
+  cursor: pointer;
+}
+
+.people.selecting .pcard::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .9);
+  background: rgba(0, 0, 0, .28);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+
+/* Chosen: the tick, and a ring around the whole card. Both, because a mark in
+   one corner of a 145px photograph is easy to miss when the answer being
+   checked is "did I get all of them". */
+.people.selecting .pcard.is-selected::after {
+  border-color: var(--accent);
+  background: var(--accent);
+  content: "✓";
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 19px;
+  text-align: center;
+}
+
+.people.selecting .pcard.is-selected {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
+}
+
+/* The bar. Fixed to the foot of the window, because the cards being chosen are
+   spread down a grid several screens long and a bar that scrolled away would
+   have to be scrolled back to before it could be used. */
+.selectbar {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 9px 10px 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+}
+
+.selectbar .selcount {
+  font-size: 12.5px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.selbtn {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selbtn:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--panel2);
+}
+
+.selbtn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.selbtn.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+  color: var(--bad);
+}
+
+.selbtn.seldone {
+  border-color: transparent;
+  color: var(--muted);
+}

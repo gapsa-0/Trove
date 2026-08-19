@@ -66,6 +66,9 @@ import {
 } from "./docs.js";
 
 import {
+  startSelecting,
+} from "./select.js";
+import {
   S,
 } from "./state.js";
 
@@ -180,7 +183,7 @@ Object.assign(window, {
   removeFeature, removeManualPerson,
   removeManualPet,
   renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
-  setMapView,
+  setMapView, startSelecting,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
