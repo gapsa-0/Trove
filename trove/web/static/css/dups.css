@@ -1,20 +1,5 @@
 /* duplicates */
 
-/* The sentence above the list: what a group is, which copy stays, and the one
-   thing the screen cannot do for you. Wider measure than a caption and tighter
-   than body copy, because it is read once and then never again. */
-.dup-lede {
-  max-width: 76ch;
-  margin: 0 0 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.dup-lede-kept {
-  color: var(--good);
-  font-weight: 600;
-}
-
 /* The listing's controls. A plain .filterbar of .fsel selects, the same row
    Timeline and Browse use, so a control that filters a list looks and behaves
    the same wherever it is met. The one addition is the count, pushed to the far

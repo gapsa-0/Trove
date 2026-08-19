@@ -80,8 +80,7 @@ export async function renderDedup(m) {
         ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together. Trove never deletes them; this is what you would get back if you did.")}</div>
     </div>
     <div class="panel" id="dup-status" hidden></div>
-    ${ds.groups ? `<p class="dup-lede">Each group is one thing you have more than once. The <span class="dup-lede-kept">Kept</span> copy is the one Browse shows; the rest are hidden, never deleted. To free the space, delete them yourself — every copy below says which folder it is in.</p>
-    ${dupControls()}` : ""}
+    ${ds.groups ? dupControls() : ""}
     <div id="dupgroups">${ds.groups ? "" : DUP_EMPTY}</div>
     <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
   // The panel's markup no longer carries its own message, so that it can be
