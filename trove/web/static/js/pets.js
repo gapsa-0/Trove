@@ -185,10 +185,12 @@ async function renderHiddenPets() {
 function hiddenPetCard(p) {
   const d = document.createElement("div"); d.className = "pcard is-hidden";
   d.dataset.syncKey = String(p.id);
-  d.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb") + `<div class="pmeta"><div class="pmeta-text">
-      <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
-      <div class="pcount">${fileCount(p.photos)}</div>
-      <button class="linkbtn" type="button">Put back</button></div></div>`;
+  d.innerHTML = thumbCollage(petCoverIds(p), "/animalThumb") + `<div class="pmeta">
+      <div class="pmeta-text">
+        <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
+        <div class="pcount">${fileCount(p.photos)}</div>
+      </div>
+      <button class="quietbtn sm" type="button">Put back</button></div>`;
   d.querySelector("button").onclick = e => { e.stopPropagation(); unhidePet(p.id); };
   return d;
 }

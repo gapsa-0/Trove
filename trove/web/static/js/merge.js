@@ -253,7 +253,7 @@ export function mergesPanel(merges, kind) {
     const n = m.photos_folded_in;
     return `<div class="merge-row">
         <span>Merged in ${label} · ${fileCount(n)}</span>
-        <button class="linkbtn" type="button" onclick="undoMerge(${m.id},'${kind}')">Undo</button>
+        <button class="quietbtn sm" type="button" onclick="undoMerge(${m.id},'${kind}')">Undo</button>
       </div>`;
   }).join("");
   return `<div class="panel merges-panel"><h3>Merges</h3>${rows}</div>`;

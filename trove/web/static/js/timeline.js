@@ -81,7 +81,7 @@ async function buildTimelineFilterBar() {
   parts.push(peopleFilterHTML("tl", f.people || []));
   parts.push(`<select class="fsel" id="tl-place-filter" onchange="applyTimelineFilters()" ${f.places && f.places.length ? "" : "disabled"} title="${f.places && f.places.length ? "Filter by place" : "Name places in Places to enable this filter"}">` +
     opt("", f.places && f.places.length ? "All places" : "No places named yet") + (f.places || []).map(p => opt(p.id, esc(p.name))).join("") + `</select>`);
-  parts.push(`<button class="linkbtn" id="tl-clear" onclick="clearTimelineFilters()" style="display:none">Clear filters</button>`);
+  parts.push(`<button class="quietbtn sm" id="tl-clear" onclick="clearTimelineFilters()" style="display:none">Clear filters</button>`);
   bar.innerHTML = parts.join("");
   S.timelineOpts = f;
 }

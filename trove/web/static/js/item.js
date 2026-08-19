@@ -713,7 +713,7 @@ export function editPlace() {
   sel += `</select>`;
   document.getElementById("placeval").innerHTML = sel +
     `<div class="btnrow"><button class="btn sec" onclick="newPlace()">＋ New place</button>
-       <button class="linkbtn" onclick="renderInfo()">Done</button></div>
+       <button class="quietbtn sm" onclick="renderInfo()">Done</button></div>
      <div id="p-pick"></div>`;
 }
 export function onPlaceSelect(pid) {

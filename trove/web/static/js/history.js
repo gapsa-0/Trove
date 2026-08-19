@@ -74,7 +74,7 @@ async function loadHistory(box, onUndone) {
 function row(entry) {
   const label = describe(entry);
   const undo = entry.undoable
-    ? `<button class="linkbtn" type="button" data-undo="${entry.id}">Undo</button>`
+    ? `<button class="quietbtn sm" type="button" data-undo="${entry.id}">Undo</button>`
     : `<span class="hist-done">${entry.undone ? "Undone" : ""}</span>`;
   return `<div class="hist-row${entry.undone ? " is-undone" : ""}">
     <span class="hist-what">${label}</span>${undo}</div>`;

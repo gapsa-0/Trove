@@ -140,6 +140,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   than spelled out on screen. It also fits the collapsed sidebar, which used to
   hide the only way back to your archives when you narrowed it.
 
+- **No more blue words that are really buttons.** *Set*, *Copy*, *Clear filters*,
+  *Clear search*, *Put back*, *Undo*, *Remove name* and the two "open this
+  elsewhere" links were plain accent text — which reads as a link, in an app
+  where the only other blue words go to the documentation. They are the same
+  quiet button as everything else now, just smaller where they sit beside a
+  heading or inside a row.
+
 - **The buttons that offer something all look alike again.** *How this works*,
   *Manage features*, *Select*, *Keep* under a duplicate copy and the actions on
   the selection bar are the same kind of control, and had drifted to three

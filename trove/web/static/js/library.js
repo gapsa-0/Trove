@@ -361,7 +361,7 @@ function drawFilterBar(f) {
   // The result-scope toggle is deliberately not here: it does not narrow the
   // library the way these do, it says how much of one search's ranking you are
   // looking at. It lives on the search's own line instead (renderActiveQuery).
-  parts.push(`<button class="linkbtn" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
+  parts.push(`<button class="quietbtn sm" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>`);
   bar.innerHTML = parts.join("");
   bar.removeAttribute("aria-busy");
   // Every drawing of the bar puts the grid's own filters back onto it -- the

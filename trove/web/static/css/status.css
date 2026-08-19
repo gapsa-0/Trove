@@ -418,19 +418,6 @@ table.types .share {
   background: var(--accent);
 }
 
-.linkbtn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 12.5px;
-  padding: 6px 0;
-}
-
-.linkbtn:hover {
-  text-decoration: underline;
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg)

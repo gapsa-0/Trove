@@ -516,7 +516,7 @@ export function renderActiveQuery(g) {
   if (g.expandedQuery && g.query && g.expandedQuery !== g.query)
     phrase.title = `Searched in English as “${g.expandedQuery}”`;
   const clear = document.createElement("button");
-  clear.type = "button"; clear.className = "linkbtn aq-clear";
+  clear.type = "button"; clear.className = "quietbtn sm aq-clear";
   clear.textContent = "Clear search";
   clear.onclick = clearSearch;
   const parts = [label, phrase];

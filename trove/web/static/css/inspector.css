@@ -56,9 +56,23 @@
   color: rgba(255, 255, 255, .6)
 }
 
-.viewer .info a,
-.viewer .info .linkbtn {
+.viewer .info a {
   color: #6cb6ff
+}
+
+/* The shared quiet control, re-grounded on glass. `--line` and `--muted` are
+   chosen against a page background and are invisible here, which is the reason
+   this whole stylesheet exists (see its header). The hover takes the panel's
+   own blue rather than the app accent, for the same reason. */
+.viewer .info .quietbtn {
+  border-color: rgba(255, 255, 255, .22);
+  color: rgba(255, 255, 255, .72)
+}
+
+.viewer .info .quietbtn:hover:not(:disabled) {
+  border-color: #6cb6ff;
+  color: #6cb6ff;
+  background: rgba(255, 255, 255, .06)
 }
 
 /* The panel floats on the media, so the shared greys -- which are chosen
@@ -163,7 +177,7 @@
   flex-wrap: wrap
 }
 
-.kv .k .linkbtn {
+.kv .k .quietbtn {
   margin-left: 7px
 }
 
@@ -243,7 +257,7 @@
 }
 
 /* An edit control small enough to sit at the end of a row of facts. The panel's
-   other ways in are `.linkbtn` words -- "Set", "Change" -- and they head a
+   other ways in are quiet buttons -- "Set", "Change" -- and they head a
    section, where a word has room and something to head. This one belongs to a
    single line in a table, and a word there pushed the value it edits off to
    its own row. */

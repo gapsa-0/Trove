@@ -107,10 +107,6 @@ h2.sec {
   border-color: var(--line)
 }
 
-.linkbtn {
-  color: var(--accent)
-}
-
 .viewer {
   border-radius: 12px;
   overflow: hidden;
@@ -211,9 +207,6 @@ h3,
 }
 
 a,
-.linkbtn {
-  color: var(--accent)
-}
 
 ::selection {
   background: var(--accent-soft)
@@ -263,6 +256,19 @@ a,
 /* Tighter on the side the icon is on, so the two sides read as even. */
 .quietbtn:has(svg) {
   padding-left: 10px
+}
+
+/* The same control where it sits beside a heading or inside a row rather than
+   on a line of its own: "Set" next to Place, "Copy" next to Detected text,
+   "Put back" under a group set aside, "Undo" in a history entry.
+
+   A size, not a second control. These were `.linkbtn` -- accent words with no
+   box -- which read as links in the middle of an interface where links go to
+   documentation and everything else is a control. They are the same offer the
+   full-size one makes, made in less room. */
+.quietbtn.sm {
+  padding: 3px 9px;
+  font-size: 11.5px
 }
 
 .quietbtn svg {

@@ -39,7 +39,7 @@ export function inlineNameEdit(host, { value = "", label, className = "", after 
   host.innerHTML =
     `<input${className ? ` class="${className}"` : ""} value="${esc(value || "")}"
        placeholder="${esc(label)}" aria-label="${esc(label)}">${after}`
-    + (value ? '<button class="linkbtn name-clear" type="button">Remove name</button>' : "");
+    + (value ? '<button class="quietbtn sm name-clear" type="button">Remove name</button>' : "");
   const input = host.querySelector("input");
   // A card is a click target that opens the thing it describes; clicking into
   // the field to position the cursor must not also open it.

@@ -37,7 +37,7 @@ def test_hiding_a_person_as_unknown_moves_them_into_the_hidden_section(open_app)
 
         app.tab.evaluate("document.querySelector('.hidden-people').setAttribute('open', '')")
         app.wait_for(".hidden-people .pcard.is-hidden")
-        app.click(".hidden-people .pcard.is-hidden .linkbtn")
+        app.click(".hidden-people .pcard.is-hidden .quietbtn")
         app.tab.wait_for(
             f"document.querySelectorAll('#peoplegrid .pcard').length === {before}",
             timeout=10.0,

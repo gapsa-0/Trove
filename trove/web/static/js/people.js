@@ -216,10 +216,15 @@ async function renderHidden() {
 function hiddenCard(p) {
   const d = document.createElement("div"); d.className = "pcard is-hidden";
   d.dataset.syncKey = String(p.id);
+  // The same shape a card in the grid has: a text column, and the control at
+  // the right of it. Put back stands where the ⋯ stands, and the name and count
+  // stack in the column rather than competing with it for the row.
   d.innerHTML = faceCollage(personCoverIds(p)) + `<div class="pmeta">
-      <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
-      <div class="pcount">${fileCount(p.photos)}</div>
-      <button class="linkbtn" type="button">Put back</button></div>`;
+      <div class="pmeta-text">
+        <div class="pname ${p.name ? "" : "un"}">${p.name ? esc(p.name) : "Unnamed group"}</div>
+        <div class="pcount">${fileCount(p.photos)}</div>
+      </div>
+      <button class="quietbtn sm" type="button">Put back</button></div>`;
   d.querySelector("button").onclick = e => { e.stopPropagation(); unhidePerson(p.id); };
   return d;
 }
@@ -535,7 +540,7 @@ export async function showPerson(id) {
       <div class="ftb-actions" id="personactions"></div>
     </div>
     ${r.hidden ? `<div class="panel hidden-note">This group is hidden from People.
-      <button class="linkbtn" type="button" onclick="unhidePerson(${id})">Put it back</button></div>` : ""}
+      <button class="quietbtn sm" type="button" onclick="unhidePerson(${id})">Put it back</button></div>` : ""}
     <div class="grid" id="grid"></div>
     <div class="infinite-status" id="person-grid-sentinel" aria-live="polite"></div>`;
   onBackControl(m, backToPeople);

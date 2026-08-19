@@ -115,7 +115,7 @@ function placeSection(it) {
   const clustered = has("places");
   if (!it.gps && !clustered) return "";
   if (!it.gps) {
-    return `<div class="isec"><div class="h">Place <button class="linkbtn" onclick="editPlace()">Set</button></div>
+    return `<div class="isec"><div class="h">Place <button class="quietbtn sm" onclick="editPlace()">Set</button></div>
       <div id="placeval" class="val">${it.place
         ? (it.place.name ? esc(it.place.name) : `<span class="imuted">Name this place</span>`)
         : `<span class="imuted">No coordinates on this file. You can still attach it to a place.</span>`}</div></div>`;
@@ -123,7 +123,7 @@ function placeSection(it) {
   const name = clustered && it.place && it.place.name ? esc(it.place.name) : "From the camera";
   return `<div class="isec">
     <div class="h">${clustered ? "Place" : "Where it was taken"}
-      ${clustered ? `<button class="linkbtn" onclick="editPlace()">Change</button>` : ""}</div>
+      ${clustered ? `<button class="quietbtn sm" onclick="editPlace()">Change</button>` : ""}</div>
     <div id="placeval" class="val">
       <div class="imap" id="imap"><div class="pinhold"><div class="pin"></div></div></div>
       <div class="imapcap"><span>${name}</span>
@@ -151,7 +151,7 @@ function peopleSection(it) {
   // for it lives here rather than in the chrome over the photo.
   const boxable = it.type === "image" && (it.people || []).some(f => f.box);
   const toggle = boxable
-    ? `<button class="linkbtn" onclick="toggleBoxes()" id="boxtoggle">${boxesShown() ? "Hide on photo" : "Show on photo"}</button>`
+    ? `<button class="quietbtn sm" onclick="toggleBoxes()" id="boxtoggle">${boxesShown() ? "Hide on photo" : "Show on photo"}</button>`
     : "";
   return `<div class="isec"><div class="h">People ${toggle}</div>
     ${body}${tagPicker(it, "person")}</div>`;
@@ -230,7 +230,7 @@ function textSection(it) {
   }
   if (t.transcript) {
     return `<div class="isec"><div class="h">Detected text
-        <button class="linkbtn" onclick="copyText()">Copy</button></div>
+        <button class="quietbtn sm" onclick="copyText()">Copy</button></div>
       <div class="textcard"><div class="body" tabindex="0">${esc(t.transcript)}</div>
         <div class="foot"><span>${wordish(t.chars)}${t.confidence != null
           ? ` · confidence ${t.confidence.toFixed(2)}` : ""}</span><span>Read by OCR</span></div></div></div>`;
@@ -375,8 +375,8 @@ function fileRows(it) {
   return `<div class="kv"><span class="k">File</span>
       <span class="v filepath">${esc(it.rel_path)}</span></div>
     <div class="filelinks">
-      <a href="/file/${it.id}" target="_blank">Open original ↗</a>
-      ${window.archiveDesktop ? `<button class="linkbtn" onclick="openFileLocation()">Open file location ↗</button>` : ""}
+      <a class="quietbtn sm" href="/file/${it.id}" target="_blank">Open original ↗</a>
+      ${window.archiveDesktop ? `<button class="quietbtn sm" onclick="openFileLocation()">Open file location ↗</button>` : ""}
     </div>`;
 }
 function takeoutRows(it) {
@@ -412,7 +412,7 @@ function faceRow(it, f) {
      covers both a group nobody has named and a face too alone to have made a
      group at all; what happens to each is people_edit.name_face's business. */
   const nameIt = isNamed ? ""
-    : `<button class="linkbtn facename" type="button" title="Name this person"
+    : `<button class="quietbtn sm facename" type="button" title="Name this person"
         onclick="nameFace(${f.face_id})">Name</button>`;
   if (!named.length)
     return `<div class="facerow" data-face-id="${f.face_id}"
@@ -429,11 +429,11 @@ function manualPersonRow(p) {
   return `<div class="facerow">
     <div class="facecrop placeholder">👤</div>
     <span style="flex:1;min-width:0"><strong>${esc(p.name)}</strong></span>
-    <button class="linkbtn" onclick="removeManualPerson(${p.person_id})">Remove</button></div>`;
+    <button class="quietbtn sm" onclick="removeManualPerson(${p.person_id})">Remove</button></div>`;
 }
 function manualPetRow(p) {
   return `<div class="facerow">
     <div class="facecrop placeholder">🐾</div>
     <span style="flex:1;min-width:0"><strong>${esc(p.name)}</strong></span>
-    <button class="linkbtn" onclick="removeManualPet(${p.pet_id})">Remove</button></div>`;
+    <button class="quietbtn sm" onclick="removeManualPet(${p.pet_id})">Remove</button></div>`;
 }
