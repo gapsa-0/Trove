@@ -256,24 +256,32 @@ button.stat:hover {
   stroke-linejoin: round
 }
 
+/* The four stat chips. These were four more hardcoded hues -- #007aff, #af52de,
+   #28a745, #ff9500 -- describing the same subject as the media-type palette one
+   card away, and being literals they did not move when the theme did: the blue
+   chip stayed at the light accent on a dark screen while every other blue
+   around it shifted to --accent.
+
+   Derived from the tokens now, and tinted with color-mix so the wash follows
+   the hue rather than being a second value to keep in step. */
 .metric-icon.blue {
-  color: #007aff;
-  background: rgba(0, 122, 255, .12)
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent)
 }
 
 .metric-icon.violet {
-  color: #af52de;
-  background: rgba(175, 82, 222, .12)
+  color: var(--type-archive);
+  background: color-mix(in srgb, var(--type-archive) 12%, transparent)
 }
 
 .metric-icon.green {
-  color: #28a745;
-  background: rgba(40, 167, 69, .12)
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent)
 }
 
 .metric-icon.orange {
-  color: #ff9500;
-  background: rgba(255, 149, 0, .14)
+  color: var(--type-video);
+  background: color-mix(in srgb, var(--type-video) 14%, transparent)
 }
 
 .stat .k {

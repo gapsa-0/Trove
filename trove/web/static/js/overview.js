@@ -19,7 +19,7 @@ import {
   esc, fmtBytes, fmtElapsed, toast,
 } from "./dom.js";
 import {
-  ICONS, S, TYPE_COL, archiveSections, typeLabel,
+  ICONS, S, archiveSections, typeColour, typeLabel,
 } from "./state.js";
 
 // A number we do not have yet. Not "0" — that is a different claim, and this
@@ -251,7 +251,7 @@ function renderStoragePanel(s) {
   // chart of nothing.
   if (!s.total) { renderEmptyStorage(); return; }
   const key = storageMetric(), metric = STORAGE_METRICS[key];
-  const colour = t => TYPE_COL[t.type] || TYPE_COL.other;
+  const colour = t => typeColour(t.type);
   // Sorted by the metric on screen, so the bar and the table below it read
   // in the same order whichever way the switch is set.
   const types = s.types.filter(t => t.count > 0)

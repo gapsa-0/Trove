@@ -20,7 +20,24 @@ export const TYPE_ICON = {
   archive: '<svg class="appicon" viewBox="0 0 24 24"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5Z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/></svg>',
   other: '<svg class="appicon" viewBox="0 0 24 24"><path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9Z"/><path d="M13 3v6h6"/></svg>',
 };
-export const TYPE_COL = { image: "#ff375f", video: "#ff9f0a", audio: "#30d158", document: "#64d2ff", archive: "#bf5af2", other: "#8e8e93" };
+/* What a media type looks like. The values live in theme.css as --type-* so
+   both themes get their own, and so the Storage bar, the Duplicates split and
+   the Timeline series cannot drift apart.
+
+   Read through a function rather than held as a table: two of the three callers
+   paint into a <canvas>, which cannot take a `var()` and does not repaint when
+   the theme changes, so they have to ask for the resolved value at draw time.
+   The literals here were the dark variants of the system palette used on white
+   as well -- the hot pink and orange bar on the light Overview. */
+const TYPE_COL_FALLBACK = {
+  image: "#d81e5b", video: "#c96a00", audio: "#1f8a4c",
+  document: "#0a7ea4", archive: "#8b4fc4", other: "#6e6e73",
+};
+export function typeColour(type) {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--type-${type}`).trim();
+  return value || TYPE_COL_FALLBACK[type] || TYPE_COL_FALLBACK.other;
+}
 const TYPE_LABEL = { archive: "compressed" };
 export const typeLabel = t => TYPE_LABEL[t] || t;
 /* Marks that are not a nav section and not a file type: the ones a screen

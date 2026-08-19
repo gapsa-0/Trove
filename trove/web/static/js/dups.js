@@ -301,7 +301,7 @@ function dedupStatusRow(ds) {
 // where the kept copy is a judgement call), and whether the space is going
 // to photos or to a much smaller number of videos. Same bar/legend and the
 // same Size/Files switch as the Overview's storage panel, and the media
-// colours are the shared TYPE_COL so a hue means the same thing on every
+// colours are the shared --type-* tokens so a hue means the same thing on every
 // screen.
 //
 // The switch is not decoration. These bars used to be drawn by count alone,

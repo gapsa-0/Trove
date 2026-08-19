@@ -18,7 +18,7 @@ import {
   esc,
 } from "./dom.js";
 import {
-  S, TYPE_COL,
+  S, typeColour,
 } from "./state.js";
 
 // Same five sources the file panel names, in the shorter form a legend wants.
@@ -52,7 +52,6 @@ async function renderDateSourceBar() {
   ).join("");
   el.innerHTML = `<div class="tl-stack">${segs}</div><div class="tl-legend">${legend}</div>`;
 }
-const TL_COL = TYPE_COL;
 export async function renderTimeline(m) {
   const gen = S.nav;
   S.timeline = { bucket: "month", year: "", month: "", people: [], place: "" };
@@ -223,9 +222,9 @@ function drawTypeChart(canvasId, rows, ordered, maxByType) {
     const xs = rows.map((r, i) => X(i)), ys = rows.map(r => Y((r[t] || 0) / (maxByType[t] || 1)));
     ctx.beginPath(); monotonePath(ctx, xs, ys);
     ctx.lineTo(xs[n - 1], H - padB); ctx.lineTo(xs[0], H - padB); ctx.closePath();
-    ctx.fillStyle = TL_COL[t] + "1e"; ctx.fill();
+    ctx.fillStyle = typeColour(t) + "1e"; ctx.fill();
     ctx.beginPath(); monotonePath(ctx, xs, ys);
-    ctx.strokeStyle = TL_COL[t]; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
+    ctx.strokeStyle = typeColour(t); ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
   });
   ctx.fillStyle = ink.text; ctx.textAlign = "center"; ctx.textBaseline = "top";
   const step = Math.max(1, Math.ceil(n / 12));
@@ -235,7 +234,7 @@ function drawTypeLegend(legendId, ordered, totalsByType) {
   const leg = document.getElementById(legendId); leg.innerHTML = "";
   ordered.forEach(t => {
     const sp = document.createElement("span");
-    sp.innerHTML = `<span class="tl-swatch" style="background:${TL_COL[t]}"></span>`
+    sp.innerHTML = `<span class="tl-swatch" style="background:${typeColour(t)}"></span>`
       + `${t}<span class="muted">, ${totalsByType[t].toLocaleString()}</span>`;
     leg.appendChild(sp);
   });
