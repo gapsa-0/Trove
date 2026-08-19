@@ -1,13 +1,14 @@
-"""Duplicate groups: the summary and the paginated group listing."""
+"""Duplicate groups: the summary, the paginated listing, and which copies to keep."""
 
 from __future__ import annotations
 
-from ...services import dups
-from ._request import Request
+from ...db import database as db
+from ...services import dups, dups_edit
+from ._request import Json, Request, ok_or_error
 
 
 def summary(req: Request) -> dict:
-    """Unique-file, duplicate-group, pending and reclaimable-byte counts, broken down by match type and media type."""
+    """Unique-file, duplicate-group, pending and reclaimable-byte counts, plus the identical/visual split of the copies."""
     rid = req.root_id
     return dups.dup_summary(req.db(rid), rid)
 
@@ -25,3 +26,15 @@ def groups(req: Request) -> dict:
         match=req.one("match"),
         sort=req.one("sort"),
     )
+
+
+def keep(req: Request) -> Json:
+    """Choose which copies of a duplicate group Browse shows. At least one."""
+    res = db.write_with_retry(
+        lambda: dups_edit.set_kept_copies(
+            req.db(req.open_root_id),
+            req.body.get("group_id"),
+            req.body.get("file_ids"),
+        )
+    )
+    return ok_or_error(res)

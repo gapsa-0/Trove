@@ -524,8 +524,8 @@
   border-color: rgba(255, 255, 255, .45)
 }
 
-.copy.canonical>img,
-.copy.canonical>.cph {
+.copy.kept>img,
+.copy.kept>.cph {
   border-color: var(--good)
 }
 
@@ -547,7 +547,10 @@
   color: rgba(255, 255, 255, .58)
 }
 
-.ctag.canonical {
+/* Kept, whichever copy it is. A group can be told to keep several and to hide
+   the one Trove picked, so this marks what Browse shows rather than what the
+   grouping ranked first (dedup/keeps.py). */
+.ctag.kept {
   color: var(--good)
 }
 

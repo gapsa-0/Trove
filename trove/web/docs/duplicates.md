@@ -110,8 +110,20 @@ To read the copies against what kind of file the archive is made of, the
 Overview's storage panel is the place: it splits every file you have by kind.
 
 Then one row per group, biggest saving first. Each row shows every copy with
-its file name and the folder it lives in, and the one Trove keeps wears a
-filled *✓ Kept* tag. Click any copy to open it; the viewer's arrows then step
+its file name and the folder it lives in, and the ones Browse shows wear a
+filled *✓ Kept* tag.
+
+**You choose which copies are kept.** Trove keeps the copy it judges best — the
+largest, with the richest provenance — and that is a ranking, not a verdict. The
+*Keep* control under each copy switches it on or off in Browse, and any set of
+them will do, including one that leaves out the copy Trove picked. The only rule
+is that a group keeps at least one: a group showing none of its copies would be
+a picture missing from Browse with nothing anywhere to say where it went, so the
+last kept copy's control is greyed out.
+
+Your choice is remembered against the files themselves, not against the group,
+so it survives the next grouping run — which deletes and rebuilds every group
+from scratch every time new photos arrive. Click any copy to open it; the viewer's arrows then step
 through that group and stop at its edges, so a comparison never wanders into
 the next group's photos.
 

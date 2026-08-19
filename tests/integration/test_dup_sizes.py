@@ -38,6 +38,12 @@ def _catalog(tmp_path, sizes):
         "INSERT INTO dup_members(group_id,file_id,role) VALUES(1,?,?)",
         [(i, "canonical" if i == 1 else "duplicate") for i in range(1, len(sizes) + 1)],
     )
+    # As a grouping run leaves it: `files.hidden` is what says which copies are
+    # kept, and the listing reads it back.
+    conn.executemany(
+        "UPDATE files SET dup_group_id=1, hidden=? WHERE id=?",
+        [(int(i != 1), i) for i in range(1, len(sizes) + 1)],
+    )
     conn.commit()
     conn.close()
     return str(db_path)
@@ -55,12 +61,21 @@ def test_a_group_states_only_what_freeing_it_reclaims(tmp_path):
     assert "size_each" not in g
 
 
-def test_no_member_carries_a_size_to_be_mistaken_for_the_group(tmp_path):
-    """Reintroducing a per-copy size here is what the header used to get wrong,
-    so the absence is asserted rather than left to be noticed."""
+def test_a_member_carries_its_own_size_and_the_group_still_carries_none(tmp_path):
+    """A copy may say what it weighs; the group may not say what its copies do.
+
+    That is the distinction the header got wrong -- one number standing for
+    every copy -- and it is not the same as refusing sizes altogether. Once the
+    user can choose which copies are kept, what the group reclaims depends on
+    which ones those are, and only the per-copy sizes can answer it.
+    """
     g = _group(_catalog(tmp_path, [223_334, 109_670, 109_670]))
 
-    assert all("size" not in m for m in g["members"])
+    assert "size_each" not in g
+    assert sorted(m["size"] for m in g["members"]) == [109_670, 109_670, 223_334]
+    # ...and they reconcile with the saving the group states, which is what
+    # keeps the row's own arithmetic honest as copies are kept and dropped.
+    assert sum(m["size"] for m in g["members"] if not m["kept"]) == g["reclaimable"]
 
 
 def test_copies_of_one_size_are_described_no_differently(tmp_path):

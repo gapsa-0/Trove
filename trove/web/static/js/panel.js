@@ -288,9 +288,12 @@ function dupGroup(it, d) {
   const copies = `${others} other cop${others === 1 ? "y" : "ies"}`;
   // What the group means for the file in front of you, which is the one thing
   // the Duplicates screen cannot say: it lists groups, not the file you opened.
+  const kept = d.members.filter(m => m.kept).length;
   const lead = d.canonical
-    ? `${copies}. This is the one Trove shows.`
-    : `${copies}. This one is hidden from browsing; the copy marked kept is shown instead.`;
+    ? (kept > 1
+      ? `${copies}. This one is shown in browsing, and so ${kept === 2 ? "is another" : `are ${kept - 1} others`}.`
+      : `${copies}. This is the one Trove shows.`)
+    : `${copies}. This one is hidden from browsing; the ${kept === 1 ? "copy" : "copies"} marked kept ${kept === 1 ? "is" : "are"} shown instead.`;
   return `<div class="copies">${d.members.map(m => copyTile(m, it.id)).join("")}</div>
     <div class="imuted">${esc(lead)}</div>`;
 }
@@ -300,19 +303,25 @@ function dupGroup(it, d) {
 // and "Looks the same" sat directly above a section called "Looks like this",
 // which is a different fact again: other pictures in the archive that resemble
 // this one, rather than copies of it.
-const COPY_TAG = { canonical: "✓ Kept", identical: "Identical copy", visual: "Visual match" };
+const COPY_TAG = {
+  kept: "✓ Kept", canonical: "Copy", identical: "Identical copy", visual: "Visual match",
+};
 /* One copy. The file you are looking at is marked and does not open itself;
    every other copy is a way into that copy, with the arrows then walking the
    group -- the same claim about "next" the Duplicates screen makes. */
 function copyTile(m, openId) {
   const here = m.id === openId;
-  const tag = `<span class="ctag ${m.match_type}">${here ? "This file" : COPY_TAG[m.match_type]}</span>`;
+  // Kept before matched: a group can be told to keep several of its copies, and
+  // to hide the one Trove picked, so which of them Browse shows is no longer
+  // read off the canonical (dedup/keeps.py).
+  const kind = m.kept ? "kept" : m.match_type;
+  const tag = `<span class="ctag ${kind}">${here ? "This file" : COPY_TAG[kind]}</span>`;
   const face = m.type === "image" || m.type === "video" || m.type === "document"
     ? `<img src="/thumb/${m.id}" loading="lazy" alt=""
         onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'cph',textContent:'${TYPE_ICON[m.type] || "📦"}'}))">`
     : `<span class="cph">${TYPE_ICON[m.type] || "📦"}</span>`;
   const where = `${esc(m.folder || "the archive root")} · ${esc(m.name)}`;
-  const cls = `copy ${m.match_type}${here ? " here" : ""}`;
+  const cls = `copy ${kind}${here ? " here" : ""}`;
   if (here) return `<div class="${cls}" title="${where}" aria-current="true">${face}${tag}</div>`;
   return `<button type="button" class="${cls}" title="${where}"
     onclick="openCopy(${m.id})">${face}${tag}</button>`;

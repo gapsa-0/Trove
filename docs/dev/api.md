@@ -10,7 +10,7 @@ what it answers. Do not hand-edit this file; regenerate it with:
 or `make api-docs`. CI runs the same script in `--check` mode and fails the
 build if this file has drifted from the route tables.
 
-**86 routes**: 37 GET (exact) + 12 GET (prefix) + 37 POST.
+**87 routes**: 37 GET (exact) + 12 GET (prefix) + 38 POST.
 
 ## GET -- exact path
 
@@ -27,7 +27,7 @@ build if this file has drifted from the route tables.
 | `/api/summary` | Counts, size, media types and date range for one archive. | `trove/web/routes/overview.py::summary` |
 | `/api/timeline` | Counts of matching, non-hidden media bucketed by month or year, for the timeline chart. | `trove/web/routes/overview.py::timeline` |
 | `/api/dates/sources` | How many files' dates came from Takeout JSON vs EXIF vs filename vs mtime vs none. | `trove/web/routes/overview.py::date_sources` |
-| `/api/dups/summary` | Unique-file, duplicate-group, pending and reclaimable-byte counts, broken down by match type and media type. | `trove/web/routes/dups.py::summary` |
+| `/api/dups/summary` | Unique-file, duplicate-group, pending and reclaimable-byte counts, plus the identical/visual split of the copies. | `trove/web/routes/dups.py::summary` |
 | `/api/dups` | Duplicate groups with each member's role, optionally narrowed to those holding an identical copy or a visual match, and ordered by member count or (the default) by largest reclaimable bytes. | `trove/web/routes/dups.py::groups` |
 | `/api/media` | The media grid: filtered, sorted and paginated files for the archive. | `trove/web/routes/browse.py::media` |
 | `/api/browse/filters` | The distinct filter values (years, types, folders...) the Browse UI offers. | `trove/web/routes/browse.py::filters` |
@@ -87,6 +87,7 @@ see the module docstring in `routes/__init__.py`.
 | `/api/pipeline/pause` | Pause or resume the whole pipeline, or a single stage's card if `stage` is given. | `trove/web/routes/pipeline.py::pause` |
 | `/api/pipeline/changed` | Files may have arrived in this archive's folder; check sooner than the poll would have. | `trove/web/routes/pipeline.py::changed` |
 | `/api/edit-log/undo` | Reverse one history entry, whatever kind it is. | `trove/web/routes/people.py::undo_edit` |
+| `/api/dups/keep` | Choose which copies of a duplicate group Browse shows. At least one. | `trove/web/routes/dups.py::keep` |
 | `/api/faces/person/cover` | Choose which of a person's photos represents them. | `trove/web/routes/people.py::set_cover` |
 | `/api/faces/person/rename` | Rename a person cluster. | `trove/web/routes/people.py::rename_person` |
 | `/api/faces/name-face` | Name the person a face in the open photo belongs to, from the photo. | `trove/web/routes/people.py::name_face` |

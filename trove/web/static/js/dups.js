@@ -4,13 +4,13 @@ import {
   startInfiniteList,
 } from "./infinite.js";
 import {
-  jget,
+  jget, qpost,
 } from "./api.js";
 import {
   docsButton,
 } from "./docs.js";
 import {
-  esc, fmtBytes,
+  esc, fmtBytes, toast,
 } from "./dom.js";
 import {
   S,
@@ -360,20 +360,57 @@ function shortName(name) {
    of them are spare, and both numbers are on the line the saving is on. */
 function dupGroupRow(g) {
   const row = document.createElement("div"); row.className = "dupgroup";
-  const spare = Math.max(0, g.count - 1);
   const head = document.createElement("div"); head.className = "dghead";
-  head.innerHTML = `<b>${g.count} copies</b> <span class="muted">· ${spare} spare · ${fmtBytes(g.reclaimable)} reclaimable</span>`;
   const strip = document.createElement("div"); strip.className = "duprow";
-  g.members.forEach(mm => strip.appendChild(dupTile(mm)));
+  /* Redrawn from the group rather than patched, because keeping one more copy
+     changes every part of this row at once: which tiles are marked, how many
+     are spare, what the row offers back, and whether the last kept copy's
+     toggle may still be pressed. */
+  const draw = () => {
+    const spare = g.members.filter(mm => !mm.kept);
+    head.innerHTML = `<b>${g.count} copies</b> <span class="muted">· ${spare.length} spare · `
+      + `${fmtBytes(spare.reduce((n, mm) => n + (mm.size || 0), 0))} reclaimable</span>`;
+    strip.replaceChildren(...g.members.map(mm => dupCopy(mm, g, draw)));
+  };
+  draw();
   row.append(head, strip);
   return row;
+}
+/* Keeping a copy, or stopping.
+
+   Optimistic, like every other edit here: the mark moves now and goes back only
+   if the write actually fails. The whole kept set is sent rather than the one
+   that changed, so two people working on the same group cannot combine into a
+   set neither of them chose (services/dups_edit.py).
+
+   The summary above is re-read afterwards because this moves its figures too:
+   a copy that stops being hidden is one more unique file, and its bytes stop
+   being reclaimable. */
+async function toggleKept(mm, g, draw) {
+  const was = mm.kept;
+  mm.kept = !was;
+  draw();
+  let res;
+  try {
+    res = await qpost("/api/dups/keep", {
+      group_id: g.id, file_ids: g.members.filter(x => x.kept).map(x => x.id),
+    });
+  } catch (e) { res = { error: String(e) }; }
+  if (!res || res.error) {
+    mm.kept = was; draw();
+    toast((res && res.error) || "Couldn’t change which copies are kept.", true);
+    return;
+  }
+  refreshDedup();
 }
 // The words on a copy, and the one on the file that is kept. Filled rather than
 // quiet for "Kept": the kept copy is the one fact a reader is looking for in a
 // row of identical pictures, and it used to be the faintest thing in it while
 // eight bright pills marked the copies. The vocabulary is the inspector's,
 // which shows the same group from the other side (panel.js's COPY_TAG).
-const DUP_TAG = { canonical: "✓ Kept", identical: "Identical copy", visual: "Visual match" };
+const DUP_TAG = {
+  kept: "✓ Kept", canonical: "Copy", identical: "Identical copy", visual: "Visual match",
+};
 /* One copy: what it looks like, what makes it a copy, and where it lives.
 
    A button, not a div with an onclick. Every other grid in the app is built out
@@ -385,25 +422,53 @@ const DUP_TAG = { canonical: "✓ Kept", identical: "Identical copy", visual: "V
    attribute, took the onclick with it and printed the leftover as text. Both
    are the same lesson: this is the same object every other screen draws, and it
    is built the same way. */
-function dupTile(mm) {
-  const kept = mm.role === "canonical";
+function dupCopy(mm, g, draw) {
   const name = mm.name || "";
   const where = mm.folder ? `${mm.folder}/${name}` : name;
+  const tag = mm.kept ? DUP_TAG.kept : (DUP_TAG[mm.match_type] || esc(mm.match_type));
+  const wrap = document.createElement("div");
+  wrap.className = "dupcopy";
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "duptile" + (kept ? " kept" : "");
+  b.className = "duptile" + (mm.kept ? " kept" : "");
   b.dataset.fileId = mm.id;
   b.title = where;
-  b.setAttribute("aria-label", `${name}, ${DUP_TAG[mm.match_type] || mm.match_type}, in ${mm.folder || ROOT_FOLDER}`);
+  b.setAttribute("aria-label", `${name}, ${tag}, in ${mm.folder || ROOT_FOLDER}`);
   b.onclick = () => openDupCopy(mm.id);
   b.appendChild(thumbNode(mm));
   const cap = document.createElement("div"); cap.className = "dtcap";
-  cap.innerHTML = `<span class="duptag ${mm.match_type}">${DUP_TAG[mm.match_type] || esc(mm.match_type)}</span>`
+  cap.innerHTML = `<span class="duptag ${mm.kept ? "kept" : mm.match_type}">${tag}</span>`
     + (mm.type === "video" ? `<span class="dtplay" aria-hidden="true">▶</span>` : "");
   const file = document.createElement("div"); file.className = "dtname";
   file.textContent = shortName(name);
   const folder = document.createElement("div"); folder.className = "dtpath";
   folder.textContent = shortFolder(mm.folder);
   b.append(cap, file, folder);
-  return b;
+  wrap.append(b, keepToggle(mm, g, draw));
+  return wrap;
+}
+/* The control that decides whether Browse shows this copy.
+
+   Beside the picture rather than on it, and its own button rather than part of
+   the tile: the tile opens the copy, and a control inside a control is neither
+   valid markup nor reachable with a keyboard.
+
+   The last kept copy's toggle is disabled rather than hidden, and says why. A
+   group showing none of its copies is a picture missing from Browse with
+   nothing anywhere to say where it went -- the service refuses it too, so this
+   is the explanation rather than the guard. */
+function keepToggle(mm, g, draw) {
+  const last = mm.kept && g.members.filter(x => x.kept).length === 1;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "dupkeep";
+  button.setAttribute("role", "switch");
+  button.setAttribute("aria-checked", String(!!mm.kept));
+  button.textContent = mm.kept ? "Kept" : "Keep";
+  button.disabled = !!last;
+  button.title = last
+    ? "A group has to keep at least one copy"
+    : mm.kept ? "Stop showing this copy in Browse" : "Show this copy in Browse too";
+  if (!last) button.onclick = () => toggleKept(mm, g, draw);
+  return button;
 }

@@ -271,15 +271,16 @@ def _item_duplicates(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | Non
     file differently.
     """
     row = conn.execute(
-        """SELECT g.id, g.method, g.member_count, g.canonical_file_id, m.role
+        """SELECT g.id, g.method, g.member_count, g.canonical_file_id, m.role, f.hidden
              FROM dup_members m JOIN dup_groups g ON g.id=m.group_id
+             JOIN files f ON f.id=m.file_id
             WHERE m.file_id=?""",
         (fid,),
     ).fetchone()
     if row is None:
         return None
     members = conn.execute(
-        """SELECT f.id, f.media_type, f.rel_path, m.role,
+        """SELECT f.id, f.media_type, f.rel_path, m.role, f.hidden,
                   CASE
                     WHEN m.role='canonical' THEN 'canonical'
                     WHEN f.sha256 = canonical.sha256 THEN 'identical'
@@ -287,20 +288,25 @@ def _item_duplicates(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | Non
                   END AS match_type
              FROM dup_members m JOIN files f ON f.id=m.file_id
              JOIN files canonical ON canonical.id=?
-            WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.id""",
+            WHERE m.group_id=? ORDER BY f.hidden, (m.role='duplicate'), f.id""",
         (row["canonical_file_id"], row["id"]),
     ).fetchall()
     return {
         "group_id": row["id"],
         "method": row["method"],
         "count": row["member_count"],
-        "canonical": row["role"] == "canonical",
+        # Whether the file being looked at is one Browse shows, which is what
+        # the panel's line underneath is about -- and no longer the same as
+        # being the canonical, now that a group can be told to keep several
+        # copies and to hide the one Trove picked (dedup/keeps.py).
+        "canonical": not row["hidden"],
         "members": [
             {
                 "id": m["id"],
                 "type": m["media_type"],
                 "role": m["role"],
                 "match_type": m["match_type"],
+                "kept": not m["hidden"],
                 "name": os.path.basename(m["rel_path"]),
                 "folder": os.path.dirname(m["rel_path"]),
             }

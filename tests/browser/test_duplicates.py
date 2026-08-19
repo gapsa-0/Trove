@@ -178,3 +178,39 @@ def test_the_screen_asks_again_when_it_is_returned_to(open_app):
         )
 
         assert app.errors() == []
+
+
+def test_a_second_copy_can_be_kept_and_the_last_one_cannot_be_dropped(open_app):
+    """Trove picks which copy to show, and that is a ranking rather than a
+    verdict: the "worse" copy can be the one already in the album that gets
+    shared, and two copies of what grouping called the same picture are
+    sometimes two pictures.
+
+    Both halves are asserted here because either alone is a different feature:
+    that a second copy can be kept, and that a group can never be left showing
+    none of its copies -- the toggle on the last kept one is dead and says so.
+    """
+    with open_app("dups") as app:
+        app.wait_for(".dupgroup .dupkeep")
+        # One group, named: the screen lists several, and a count across all of
+        # them would move for reasons this test is not about.
+        group = ".dupgroup:first-of-type"
+        kept = app.tab.evaluate(
+            f"[...document.querySelectorAll('{group} .dupkeep')]"
+            ".map(b => b.getAttribute('aria-checked'))"
+        )
+        assert kept.count("true") == 1, f"the group did not start with one kept copy: {kept}"
+        assert app.tab.evaluate(
+            f"document.querySelector('{group} .dupkeep[aria-checked=\"true\"]').disabled"
+        ), "the only kept copy could be dropped, leaving the group showing nothing"
+
+        app.click(f'{group} .dupkeep[aria-checked="false"]')
+
+        app.tab.wait_for(
+            f"document.querySelectorAll('{group} .dupkeep[aria-checked=\"true\"]').length === 2",
+            timeout=10.0,
+            what="the second copy to be kept",
+        )
+        # ...and with two kept, either may now be dropped again.
+        assert app.count(f'{group} .dupkeep[aria-checked="true"]:disabled') == 0
+        assert app.errors() == []

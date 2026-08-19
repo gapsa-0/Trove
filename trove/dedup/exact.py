@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from ..config import Config
 from ..db import database as db
 from ..progress import Progress
-from . import edges, fingerprints, groups
+from . import edges, fingerprints, groups, keeps
 from .bands import UnionFind
 from .fingerprints import perceptual_available
 
@@ -141,6 +141,11 @@ def run(
     conn.executemany("INSERT INTO dup_members(group_id, file_id, role) VALUES(?,?,?)", member_rows)
     conn.executemany("UPDATE files SET dup_group_id=?, hidden=0 WHERE id=?", canon_updates)
     conn.executemany("UPDATE files SET dup_group_id=?, hidden=1 WHERE id=?", dup_updates)
+    # ...and then over the top of that, wherever the user has said which copies
+    # they want. The two writes above set the automatic answer for every group
+    # including the overridden ones, which keeps this one sweep rather than a
+    # branch per group; see dedup/keeps.py.
+    keeps.apply(conn)
     conn.commit()
     if progress is not None:
         progress.update(len(found), 0, "")

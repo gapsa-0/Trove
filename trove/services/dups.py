@@ -224,7 +224,7 @@ def dup_groups(
 
 
 def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -> list[dict]:
-    """One group's members, canonical first, each labelled with how it matched.
+    """One group's members, the kept ones first, each labelled with how it matched.
 
     ``match_type`` is computed here rather than stored because it is a fact
     about a *pair* -- this file against this group's canonical -- and the same
@@ -239,7 +239,7 @@ def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -
     sit together, which is how someone clearing them out works through them.
     """
     members = conn.execute(
-        """SELECT f.id, f.media_type, f.rel_path, m.role,
+        """SELECT f.id, f.media_type, f.rel_path, f.size, m.role, f.hidden,
                   r.path AS root,
                   CASE
                     WHEN m.role='canonical' THEN 'canonical'
@@ -249,7 +249,7 @@ def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -
            FROM dup_members m JOIN files f ON f.id=m.file_id
            JOIN roots r ON r.id=f.root_id
            JOIN files canonical ON canonical.id=?
-           WHERE m.group_id=? ORDER BY (m.role='duplicate'), f.rel_path, f.id""",
+           WHERE m.group_id=? ORDER BY f.hidden, (m.role='duplicate'), f.rel_path, f.id""",
         (canonical_id, group_id),
     ).fetchall()
     return [
@@ -258,6 +258,18 @@ def _group_members(conn: sqlite3.Connection, canonical_id: int, group_id: int) -
             "type": m["media_type"],
             "role": m["role"],
             "match_type": m["match_type"],
+            # What this copy itself weighs. The group states no size of its own
+            # (see dup_groups' docstring) because `size_each` is the canonical's
+            # and only "each" for an exact group -- but the size a copy weighs
+            # is a fact about the copy, and the screen needs it to say what
+            # keeping one more of them costs.
+            "size": m["size"],
+            # Whether Browse shows this copy, which is no longer the same
+            # question as whether it is the canonical: a group can be told to
+            # keep several, and to hide the one Trove picked (dedup/keeps.py).
+            # Read off `files.hidden`, which is the answer Browse itself uses,
+            # so the two can never disagree about what is on screen.
+            "kept": not m["hidden"],
             "name": os.path.basename(m["rel_path"]),
             "folder": os.path.dirname(m["rel_path"]),
         }

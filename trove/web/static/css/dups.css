@@ -62,6 +62,13 @@
   justify-content: start;
 }
 
+/* One copy: the picture that opens it, and the control that decides whether
+   Browse shows it. Two controls, so they cannot be one element -- a button
+   inside a button is neither valid nor reachable with a keyboard. */
+.dupcopy {
+  width: 130px;
+}
+
 /* A real button, so a keyboard reaches it. Reset to look like the div it
    replaced -- the app's .btn styling has no business here. */
 .duptile {
@@ -148,12 +155,53 @@
   color: #fff;
 }
 
+.duptag.kept {
+  background: var(--good);
+  color: #fff;
+}
+
+.duptag.canonical,
 .duptag.identical,
 .duptag.visual {
   padding-left: 0;
   padding-right: 0;
   color: var(--muted);
   font-weight: 500;
+}
+
+/* Keep / Kept. Quiet: a row of nine of these must not read as nine buttons
+   demanding a decision, and the tile above already says which copies are kept
+   by wearing the mark. Full width of the copy so the row of them lines up
+   however long the words under each picture ran. */
+.dupkeep {
+  width: 100%;
+  margin-top: 6px;
+  padding: 3px 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dupkeep:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.dupkeep[aria-checked="true"] {
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  color: var(--good);
+}
+
+/* The last one standing. Still there, still saying what it is, and no longer
+   pressable -- a group has to show one of its copies. */
+.dupkeep:disabled {
+  cursor: default;
+  opacity: .55;
 }
 
 /* The file's own name: the only thing that tells two copies of one picture

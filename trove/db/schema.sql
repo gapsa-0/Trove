@@ -152,6 +152,28 @@ CREATE TABLE IF NOT EXISTS dup_members (
 );
 CREATE INDEX IF NOT EXISTS idx_dupmembers_file ON dup_members(file_id);
 
+-- Which copies of a duplicate group the user chose to keep visible.
+--
+-- Keyed by FILE, not by group, and that is the whole design: `dup_groups` and
+-- `dup_members` are deleted and rebuilt from scratch by every grouping run
+-- (dedup/groups.py::clear), so a choice recorded against a group id would not
+-- survive one. A file id does -- the same reason `person_hides` anchors to a
+-- face and `pet_hides` to a detection.
+--
+-- Presence of ANY row for a group's members switches that group from the
+-- automatic rule (the canonical is shown, the rest are hidden) to the user's:
+-- exactly the members listed here are shown. So an empty table means nothing
+-- has been overridden, and hiding the copy Trove picked is expressible --
+-- there is a row for some other member and none for the canonical.
+--
+-- A group is never left with nothing visible. The service refuses to write an
+-- empty set, and dedup/keeps.py falls back to the canonical if the files that
+-- were kept have since gone.
+CREATE TABLE IF NOT EXISTS dup_keeps (
+    file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL
+);
+
 -- Perceptual fingerprints are deliberately kept separate from file hashes: the
 -- source SHA makes a changed file automatically eligible to be fingerprinted
 -- again without trusting an old visual signature.

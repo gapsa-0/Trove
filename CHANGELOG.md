@@ -112,6 +112,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the name comes back whatever grouping does. Taking the name off releases the
   anchor with it.
 
+- **Keep more than one copy of a duplicate group.** Trove picks the copy it
+  judges best and hides the rest, which is a good default and a bad rule: the
+  "worse" copy is sometimes the one already in the album you share, and two
+  copies of what grouping called the same picture are sometimes two pictures.
+  Every copy on the Duplicates screen now carries *Keep*, and any set of them
+  can be the one Browse shows — including one that leaves out the copy Trove
+  picked. A group always keeps at least one, so nothing can vanish from Browse
+  with nowhere to say where it went, and the choice survives the next grouping
+  run, which rebuilds every group from scratch.
+
 ### Fixed
 
 - **"All results" stops throwing you back to the top.** Widening a description
