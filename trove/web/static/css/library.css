@@ -180,9 +180,13 @@
   content: "\201D"
 }
 
+/* `margin-left:auto` is what pushes this to the end of the row; the padding
+   stays the small quiet button's, so it keeps the shape "Clear filters" has in
+   the bar below it. It used to be zeroed here, which left the 999px border
+   drawn hard against the text with the round ends clipping the first and last
+   letters. */
 .active-query .aq-clear {
   margin-left: auto;
-  padding: 0;
   white-space: nowrap
 }
 
