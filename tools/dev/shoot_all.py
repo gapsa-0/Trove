@@ -33,6 +33,16 @@ does not start either one -- it only drives the DevTools Protocol, reusing
 the stdlib-only WS client in `cdp_shot.py` (imported by path; see
 `_load_cdp_shot` below) rather than reimplementing it.
 
+It also needs an archive with something in it. `.devdata/` is gitignored and
+starts empty, and an archive registered against a folder that has since gone
+shoots six empty screens -- which diff clean against each other and prove
+nothing. The browser tier's fixture is the quickest way to a populated one:
+`tests/browser/seed.py` fills a fresh archive with 130 media, two people, two
+pets, a place, a duplicate group and a document, and takes about a minute.
+Point XDG_DATA_HOME at a scratch directory, register a folder through
+`trove.services.archives.add_archive`, call `seed(conn, root_id, source_dir)`,
+then serve that data dir.
+
 Compare threshold: a pair is flagged as a regression when either (a) the
 percentage of differing pixels exceeds 5%, or (b) it exceeds 1% AND the mean
 absolute difference (MAD, 0-255 per channel) among those pixels-that-differ
@@ -186,11 +196,22 @@ def discover_ids(base_url, archive_id):
     """Look up one real id per data-dependent screen by curling the running
     server -- the ids are archive-specific, so they cannot be hardcoded.
     Missing rows come back as None; callers skip that route with a note
-    rather than shooting a route with a bogus id."""
+    rather than shooting a route with a bogus id.
+
+    An endpoint that *errors* is treated the same as one with no rows. It used
+    to be fatal: an archive whose folder has gone (which is every archive in a
+    stale .devdata/, and the state a developer is most likely to find this tool
+    in) made /api/faces/persons answer 500, and the whole run aborted on a
+    traceback before writing a single frame -- so the one screen that could not
+    be shot took the twenty that could with it."""
 
     def jget(path):
-        with urllib.request.urlopen(f"{base_url}{path}", timeout=15) as r:
-            return json.loads(r.read())
+        try:
+            with urllib.request.urlopen(f"{base_url}{path}", timeout=15) as r:
+                return json.loads(r.read())
+        except Exception as exc:  # any failure here means "no id", not "stop"
+            print(f"  ! {path} did not answer ({exc}); the routes needing it are skipped")
+            return {}
 
     ids = {}
 
