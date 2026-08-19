@@ -339,11 +339,60 @@
   color: var(--accent)
 }
 
+/* The timeline chart, addressed by id rather than as `canvas`: Leaflet's
+   un-clustered photo view draws into a canvas of its own, and a blanket rule
+   gave that one a panel background and a max-width that collapsed it to a few
+   pixels -- the dots were drawn, just nowhere visible. (map.css carried a
+   second copy of this rule; this one won by loading later.) */
 #tlc2 {
-  border-color: var(--line);
+  max-width: 100%;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
   box-shadow: var(--shadow-sm)
+}
+
+/* Fewer than two periods and there is no shape to draw, so the canvas steps
+   aside and the legend says the counts in words instead. */
+#tlc2[hidden] {
+  display: none
+}
+
+.tl-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 12px
+}
+
+.tl-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px
+}
+
+.tl-stack {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden
+}
+
+.tl-stack+.tl-legend {
+  margin: 10px 0 0
+}
+
+.tl-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px
+}
+
+.tl-second {
+  margin-top: 28px
 }
 
 .facetopbar {

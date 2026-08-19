@@ -40,14 +40,16 @@ async function renderDateSourceBar() {
   const rows = r.sources.slice();
   if (r.undated > 0) rows.push({ source: "unresolved", count: r.undated });
   const total = r.total || 1;
+  const pct = x => (100 * x.count / total).toFixed(1);
+  const colour = x => DATE_SRC_COL[x.source] || "#8b93a3";
+  const label = x => DATE_SRC_LABEL[x.source] || x.source;
   const segs = rows.map(x =>
-    `<div style="width:${100 * x.count / total}%;background:${DATE_SRC_COL[x.source] || "#8b93a3"}" title="${DATE_SRC_LABEL[x.source] || x.source}: ${(100 * x.count / total).toFixed(1)}%"></div>`
+    `<div style="width:${100 * x.count / total}%;background:${colour(x)}" title="${label(x)}: ${pct(x)}%"></div>`
   ).join("");
   const legend = rows.map(x =>
-    `<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${DATE_SRC_COL[x.source] || "#8b93a3"};margin-right:6px"></span>${DATE_SRC_LABEL[x.source] || x.source} <span class="muted">, ${(100 * x.count / total).toFixed(1)}%</span></span>`
+    `<span><span class="tl-swatch" style="background:${colour(x)}"></span>${label(x)}<span class="muted">, ${pct(x)}%</span></span>`
   ).join("");
-  el.innerHTML = `<div style="display:flex;height:14px;border-radius:7px;overflow:hidden">${segs}</div>
-    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12px">${legend}</div>`;
+  el.innerHTML = `<div class="tl-stack">${segs}</div><div class="tl-legend">${legend}</div>`;
 }
 const TL_COL = TYPE_COL;
 export async function renderTimeline(m) {
@@ -56,10 +58,10 @@ export async function renderTimeline(m) {
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Timeline</h2>
       <p>See how your archive grows over time, then narrow it by date, people together, or place.</p></div>${docsButton("timeline")}</div>
     <div class="filterbar" id="tl-filterbar"></div>
-    <div id="tllegend" style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;font-size:12px"></div>
+    <div class="tl-legend" id="tllegend"></div>
     <canvas id="tlc2" width="1180" height="380"></canvas>
-    <div class="muted" style="margin-top:8px;font-size:12px">Running total of files over time, each type scaled to its own final count.</div>
-    <h2 class="sec" style="margin-top:28px">How dates were found</h2>
+    <p class="tl-note">Running total of files over time, each type scaled to its own final count.</p>
+    <h2 class="sec tl-second">How dates were found</h2>
     <div class="panel" id="dsbar">Loading…</div>`;
   await buildTimelineFilterBar();
   if (gen !== S.nav) return;
@@ -159,6 +161,11 @@ export function clearTimelineFilters() {
   if (msel) { msel.innerHTML = '<option value="">All months</option>'; msel.disabled = true; }
   applyTimelineFilters();
 }
+/* "2026-08" is the bucket's key, not a month anybody says out loud. */
+function periodWords(period) {
+  const m = /^(\d{4})-(\d{2})$/.exec(period || "");
+  return m ? `${MONTH_NAMES[+m[2] - 1]} ${m[1]}` : (period || "");
+}
 function monotonePath(ctx, xs, ys) {
   // Fritsch-Carlson monotone cubic: smooth but never overshoots the data,
   // so a line can't dip below zero or spike between points.
@@ -182,31 +189,44 @@ function monotonePath(ctx, xs, ys) {
 // Draws one type's curve normalized to its own max (0..1), so each type's
 // shape is comparable regardless of volume. Per-type totals live in the
 // legend above the canvas, not inside the plot.
+/* A canvas cannot inherit a colour, so the chart has to be told the theme's
+   every time it draws. It used to hardcode #3a414e / #232833 gridlines and
+   #9aa3b2 axis text -- values picked against the dark theme, which on the light
+   theme's white card came out near-black and read as the data rather than the
+   rule behind it. */
+function chartInk() {
+  const s = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => (s.getPropertyValue(name) || "").trim() || fallback;
+  return {
+    axis: read("--line-strong", "rgba(60,60,67,.23)"),
+    grid: read("--line", "rgba(60,60,67,.14)"),
+    text: read("--faint", "#8e8e93"),
+  };
+}
 function drawTypeChart(canvasId, rows, ordered, maxByType) {
   const cv = document.getElementById(canvasId); if (!cv) return;
   const ctx = cv.getContext("2d");
   const W = cv.width, H = cv.height, padL = 40, padR = 16, padB = 28, padT = 14;
   ctx.clearRect(0, 0, W, H);
-  const n = rows.length;
+  const n = rows.length, ink = chartInk();
   const X = i => padL + (n === 1 ? (W - padL - padR) / 2 : i * (W - padL - padR) / (n - 1));
   const Y = frac => H - padB - frac * (H - padT - padB);
   [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
     const y = Y(frac);
-    ctx.strokeStyle = frac === 0 ? "#3a414e" : "#232833";
+    ctx.strokeStyle = frac === 0 ? ink.axis : ink.grid;
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
   });
   ctx.font = "10px system-ui"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
-  ctx.fillStyle = "#9aa3b2"; ctx.fillText("0", padL - 8, Y(0));
+  ctx.fillStyle = ink.text; ctx.fillText("0", padL - 8, Y(0));
   ordered.forEach(t => {
     const xs = rows.map((r, i) => X(i)), ys = rows.map(r => Y((r[t] || 0) / (maxByType[t] || 1)));
-    if (n === 1) { ctx.fillStyle = TL_COL[t]; ctx.beginPath(); ctx.arc(xs[0], ys[0], 3, 0, 7); ctx.fill(); return; }
     ctx.beginPath(); monotonePath(ctx, xs, ys);
     ctx.lineTo(xs[n - 1], H - padB); ctx.lineTo(xs[0], H - padB); ctx.closePath();
     ctx.fillStyle = TL_COL[t] + "1e"; ctx.fill();
     ctx.beginPath(); monotonePath(ctx, xs, ys);
     ctx.strokeStyle = TL_COL[t]; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
   });
-  ctx.fillStyle = "#9aa3b2"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillStyle = ink.text; ctx.textAlign = "center"; ctx.textBaseline = "top";
   const step = Math.max(1, Math.ceil(n / 12));
   rows.forEach((r, i) => { if (i % step === 0 || i === n - 1) ctx.fillText(r.period, X(i), H - padB + 8); });
 }
@@ -214,8 +234,8 @@ function drawTypeLegend(legendId, ordered, totalsByType) {
   const leg = document.getElementById(legendId); leg.innerHTML = "";
   ordered.forEach(t => {
     const sp = document.createElement("span");
-    sp.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${TL_COL[t]};margin-right:6px"></span>` +
-      t + ` <span class="muted">, ${totalsByType[t].toLocaleString()}</span>`;
+    sp.innerHTML = `<span class="tl-swatch" style="background:${TL_COL[t]}"></span>`
+      + `${t}<span class="muted">, ${totalsByType[t].toLocaleString()}</span>`;
     leg.appendChild(sp);
   });
 }
@@ -229,10 +249,22 @@ async function drawTimeline(bucket) {
   const cv2 = document.getElementById("tlc2");
   const leg = document.getElementById("tllegend");
   if (!cv2) return;
-  if (!series.length) {
+  // The caption under the canvas describes the plot, so it leaves with it.
+  const note = document.querySelector(".tl-note");
+  const say = words => {
     cv2.getContext("2d").clearRect(0, 0, cv2.width, cv2.height);
+    cv2.hidden = true;
+    if (note) note.hidden = true;
+    leg.innerHTML = `<span class="muted">${words}</span>`;
+  };
+  cv2.hidden = false;
+  if (note) note.hidden = false;
+  if (!series.length) {
     const filtered = t.year || t.people.length || t.place;
-    leg.innerHTML = `<span class="muted">${filtered ? "No dated media matches these filters." : "No dated media yet, run Extract on the Overview tab."}</span>`;
+    // "run Extract on the Overview tab" named a stage the Overview calls
+    // Indexing, on a tab this app does not have.
+    say(filtered ? "No dated media matches these filters."
+      : "Nothing has a date yet. Indexing fills these in as it reads the folder.");
     return;
   }
   const types = ["image", "video", "audio"].filter(t => series.some(s => s[t]));
@@ -247,6 +279,17 @@ async function drawTimeline(bucket) {
     return row;
   });
   const cumMax = {}; types.forEach(t => { cumMax[t] = Math.max(totalsByType[t], 1); });
+  // One bucket is not a shape. Every series normalises to its own maximum, so
+  // with a single period they all land on 1.0 and stack into one dot on a grid
+  // of four unlabelled rules -- a plot that says less than the sentence it
+  // costs a 380px canvas to draw.
+  if (series.length < 2) {
+    const counts = ordered.map(t =>
+      `${totalsByType[t].toLocaleString()} ${t}${totalsByType[t] === 1 ? "" : "s"}`);
+    say(`Everything dated so far falls in ${esc(periodWords(series[0].period))}: `
+      + `${counts.join(", ")}. The chart needs a second month to draw a shape.`);
+    return;
+  }
   drawTypeChart("tlc2", cumRows, ordered, cumMax);
   drawTypeLegend("tllegend", ordered, totalsByType);
 }
