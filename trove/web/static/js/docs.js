@@ -84,7 +84,7 @@ function setFeatureSheetShown(on) {
 export function docsButton(section) {
   const slug = DOC_FOR_SECTION[section];
   if (!slug) return "";
-  return `<button type="button" class="doc-info" onclick="openDocs('${slug}')"
+  return `<button type="button" class="quietbtn doc-info" onclick="openDocs('${slug}')"
       aria-label="How this works">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/>
         <path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>

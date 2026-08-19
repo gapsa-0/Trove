@@ -147,7 +147,7 @@ function paintOverview(m, s) {
       <div class="panel status-panel"><div class="panel-heading"><span class="panel-symbol">${ICONS.overview}</span><div><h3>Library health</h3><p>Progress on everything this archive runs</p></div><button type="button" class="btn sec pause-btn" id="pause-btn" onclick="togglePipelinePause()">Pause all</button></div>
         <div id="syncstatus"></div><div id="jobarea"></div>
         <div class="panel-foot">
-          <button type="button" class="manage-features" onclick="openFeatureSheet()">Manage features</button>
+          <button type="button" class="quietbtn manage-features" onclick="openFeatureSheet()">Manage features</button>
         </div>
       </div>
       <div class="panel type-panel"><div class="panel-heading"><div><h3>Storage</h3><p id="ov-storage-caption">${storageCaption(s)}</p></div><div class="metric-switch" id="storage-switch"></div></div>

@@ -169,39 +169,25 @@
   font-weight: 500;
 }
 
-/* Keep / Kept. Quiet: a row of nine of these must not read as nine buttons
-   demanding a decision, and the tile above already says which copies are kept
-   by wearing the mark. Full width of the copy so the row of them lines up
-   however long the words under each picture ran. */
+/* Keep / Kept: the shared quiet button, squared off to the width of the copy
+   it belongs to so a row of them lines up however long the words under each
+   picture ran. A row of nine must not read as nine buttons demanding a
+   decision, which is what the quiet treatment is for -- the tile above already
+   says which copies are kept by wearing the mark.
+
+   The one thing it says that no other quiet button does is a state, so a kept
+   copy's control carries the same green the tile's border does. */
 .dupkeep {
   width: 100%;
+  justify-content: center;
   margin-top: 6px;
-  padding: 3px 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.dupkeep:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  color: var(--text);
+  padding: 4px 0;
+  font-size: 11.5px;
 }
 
 .dupkeep[aria-checked="true"] {
-  border-color: color-mix(in srgb, var(--good) 45%, transparent);
   color: var(--good);
-}
-
-/* The last one standing. Still there, still saying what it is, and no longer
-   pressable -- a group has to show one of its copies. */
-.dupkeep:disabled {
-  cursor: default;
-  opacity: .55;
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
 }
 
 /* The file's own name: the only thing that tells two copies of one picture

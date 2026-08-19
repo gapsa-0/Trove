@@ -356,24 +356,6 @@ button.stat:hover {
    muted, transparent, tucked bottom-right. Given a border and the text colour
    so it is legible as a control at rest, while staying quieter than "Pause
    all", which is the panel's primary action. */
-.manage-features {
-  padding: 6px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 620;
-  cursor: pointer;
-  transition: background .14s, color .14s, border-color .14s
-}
-
-.manage-features:hover {
-  background: var(--accent-soft);
-  border-color: transparent;
-  color: var(--accent)
-}
 
 /* The archive's folder is not there. Ahead of the chain rather than inside it:
    it is not a stage's problem, it is the reason none of them can say anything

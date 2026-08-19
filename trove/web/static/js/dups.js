@@ -461,7 +461,7 @@ function keepToggle(mm, g, draw) {
   const last = mm.kept && g.members.filter(x => x.kept).length === 1;
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "dupkeep";
+  button.className = "quietbtn dupkeep";
   button.setAttribute("role", "switch");
   button.setAttribute("aria-checked", String(!!mm.kept));
   button.textContent = mm.kept ? "Kept" : "Keep";

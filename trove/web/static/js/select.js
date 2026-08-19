@@ -129,7 +129,7 @@ function renderBar() {
     document.body.appendChild(bar);
   }
   const act = (label, name, enabled, danger) =>
-    `<button type="button" class="selbtn${danger ? " is-danger" : ""}" data-act="${name}"${
+    `<button type="button" class="quietbtn selbtn${danger ? " is-danger" : ""}" data-act="${name}"${
       enabled ? "" : " disabled"}>${esc(label)}</button>`;
   bar.innerHTML = `<span class="selcount">${n ? esc(words.noun(n)) : "Nothing selected"}</span>`
     // Merging needs two: one group folded into itself is not a merge, and a
@@ -137,7 +137,7 @@ function renderBar() {
     + act("Merge", "merge", n >= 2)
     + (words.unknown ? act(words.unknown, "unknown", n >= 1) : "")
     + (words.reject ? act(words.reject, "reject", n >= 1, true) : "")
-    + `<button type="button" class="selbtn seldone" data-act="done">Done</button>`;
+    + `<button type="button" class="quietbtn selbtn seldone" data-act="done">Done</button>`;
   bar.querySelectorAll("button[data-act]").forEach(button => {
     button.onclick = () => runAction(button.dataset.act);
   });
@@ -237,7 +237,7 @@ export function selectable(kind, gridId, after) { REGISTERED[kind] = { gridId, a
    it. Markup with an inline handler like every other control these screens
    build, so tools/dev/check_handlers.py can see what it calls. */
 export function selectButton(kind, label = "Select") {
-  return `<button type="button" class="linkbtn selectstart"
+  return `<button type="button" class="quietbtn selectstart"
     onclick="startSelecting('${kind}')">${esc(label)}</button>`;
 }
 export function startSelecting(kind) {

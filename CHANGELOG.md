@@ -130,6 +130,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   set that holds more than one name asks which name stays, once, rather than
   once per pair.
 
+### Changed
+
+- **One back arrow, and one quiet button.** Four screens drew "go back" and
+  drew it three different ways — a stroked chevron in the sidebar and on a
+  person's page, a typed `←` on a pet's page and above a search ranking, which
+  is a different mark at a different weight. Five controls offered an action
+  without insisting on it — *How this works*, *Manage features*, *Select*,
+  *Keep*, and each action on the selection bar — with three different corner
+  radii, three colours and three hovers between them. Both are now one control
+  each, so the same act looks the same wherever you meet it.
+
 ### Fixed
 
 - **"All results" stops throwing you back to the top.** Widening a description

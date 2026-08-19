@@ -219,6 +219,62 @@ a,
   background: var(--accent-soft)
 }
 
+/* The quiet outlined action: a control that offers something without asking
+   for it. "How this works" on every page head, "Manage features", "Select",
+   "Keep" under a duplicate copy, and each action on the selection bar.
+
+   One rule because there were five, and they had drifted apart on every axis
+   there is -- 999px against 8px against 7px radius, muted against text colour,
+   600 against 620 against inherit, three different hovers. Nobody chose that;
+   each was written next to the screen that needed it. Which is exactly how an
+   interface stops having a vocabulary and starts having accidents.
+
+   The shape is `.doc-info`'s, because that one is on every screen in the app
+   and is therefore the one already learned. Muted until pointed at, when it
+   takes the accent: these offer, they do not insist. `.btn` remains the thing
+   for an action that IS being asked for -- filled, accent, its own weight. */
+.quietbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s
+}
+
+.quietbtn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent)
+}
+
+.quietbtn:disabled {
+  opacity: .4;
+  cursor: default
+}
+
+/* Tighter on the side the icon is on, so the two sides read as even. */
+.quietbtn:has(svg) {
+  padding-left: 10px
+}
+
+.quietbtn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
 .btn {
   min-height: 36px;
   padding: 8px 15px;

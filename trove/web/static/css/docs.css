@@ -538,36 +538,6 @@
    Sits in the right slot of .pagehead, which is already a space-between flex
    row. Quiet by default: it is an offer, not a call to action. */
 
-.doc-info {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  padding: 7px 12px 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: color .15s, border-color .15s;
-}
-
-.doc-info:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.doc-info svg {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 /* ---- responsive --------------------------------------------------------
    The outline goes first, being the most redundant of the three columns:
    its targets are all in the article. The rail goes second, becoming a

@@ -11,13 +11,9 @@
    People, Pets and Places draw the same card, so the marks and the bar are
    written once here rather than three times beside three grids. */
 
-/* The control that starts it, in a page head or beside a section's own
-   heading. Quiet: it offers a mode, it does not ask for one. */
-.selectstart {
-  margin-left: auto;
-  font-size: 12px;
-}
-
+/* The control that starts it sits at the end of the head it is in, which is
+   already `space-between` on the two screens that have one. `.gridtools` is
+   for People, whose grid has no head of its own to sit in. */
 .gridtools {
   display: flex;
   justify-content: flex-end;
@@ -89,35 +85,20 @@
   white-space: nowrap;
 }
 
+/* The bar's own actions are the shared quiet button, with two things it does
+   not have: they never wrap, because the bar is one line, and the destructive
+   one takes the warning colour rather than the accent when pointed at. */
 .selbtn {
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
   white-space: nowrap;
-  cursor: pointer;
-}
-
-.selbtn:hover:not(:disabled) {
-  border-color: var(--line-strong);
-  background: var(--panel2);
-}
-
-.selbtn:disabled {
-  opacity: .4;
-  cursor: default;
 }
 
 .selbtn.is-danger:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
   color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
 }
 
+/* Leaving the mode is not one of the things being offered, so it wears no
+   outline -- the way out, not another way to act. */
 .selbtn.seldone {
   border-color: transparent;
-  color: var(--muted);
 }
