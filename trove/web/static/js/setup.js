@@ -440,8 +440,8 @@ function renderSetup() {
     <section class="set-shelf" id="set-shelf" aria-labelledby="set-shelf-h">
       <header class="set-shelf-head">
         <span class="set-label" id="set-shelf-h">${waiting.length
-    ? "Add to the pipeline" : "Everything is switched on"}</span>
-        <em>${waiting.length ? "Drag a card onto the pipeline, or press Add" : ""}</em>
+    ? "Add to what it runs" : "Everything is switched on"}</span>
+        <em>${waiting.length ? "Drag a card up, or press Add" : ""}</em>
       </header>
       <ul class="set-cards">${SETUP.catalogue.map(cardItem).join("")}</ul>
       <p class="set-privacy">
@@ -489,8 +489,8 @@ function syncSetup(landed) {
   set(".set-pipe-mb", `${pendingDownloadMb()} MB`);
   set("#set-flow", pipeline(live, waiting));
   set("#set-notes", `${trunkNote()}${pairNote()}`);
-  set("#set-shelf-h", waiting.length ? "Add to the pipeline" : "Everything is switched on");
-  set(".set-shelf-head em", waiting.length ? "Drag a card onto the pipeline, or press Add" : "");
+  set("#set-shelf-h", waiting.length ? "Add to what it runs" : "Everything is switched on");
+  set(".set-shelf-head em", waiting.length ? "Drag a card up, or press Add" : "");
   set(".set-total", totalLine());
   set(".set-count", `${live.length} of ${SETUP.catalogue.length} features on.`);
   SETUP.catalogue.forEach(f => {

@@ -274,8 +274,8 @@ function placeCollage(ids) {
 function renderPlaceGallery() {
   const wrap = document.getElementById("placegallery"); if (!wrap) return;
   if (!MAP_CLUSTERS.length) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = `<div class="place-gallery-head"><h3>Places</h3>
-      <span class="muted">Named places first · then most photos</span>${selectButton("place")}</div>
+  wrap.innerHTML = `<div class="place-gallery-head"><h3>Every place</h3>
+      <span class="muted">Named first, then the ones with most photos</span>${selectButton("place")}</div>
     <div class="people" id="placegrid"></div>`;
   selectable("place", "placegrid", refreshPlacesAfterMerge);
   const grid = document.getElementById("placegrid");

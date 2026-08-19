@@ -89,8 +89,12 @@ left off.
 
 ## What happens next
 
-Nothing to press. As soon as the archive exists the pipeline starts, and it
-keeps itself up to date from then on. You can browse while it works.
+Nothing to press. As soon as the archive exists the work starts, and it keeps
+itself up to date from then on. You can browse while it works.
+
+Three words for the same machinery, and they are not interchangeable: a
+**feature** is what you switched on, a **stage** is the work it implies, and
+**Library health** on the Overview is the panel watching those stages run.
 
 The stages run in the order below because each reads what the ones before it
 produced. Scanning, dating and search indexing run at the same time as each

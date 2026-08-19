@@ -377,7 +377,10 @@ function dupGroupRow(g) {
      toggle may still be pressed. */
   const draw = () => {
     const spare = g.members.filter(mm => !mm.kept);
-    head.innerHTML = `<b>${g.count} copies</b> <span class="muted">· ${spare.length} spare · `
+    // "spare" was a fourth word for a thing this screen already calls redundant
+    // copies, introduced 280px under a tile reading "Redundant copies 130" with
+    // nothing connecting the two.
+    head.innerHTML = `<b>${g.count} copies</b> <span class="muted">· ${spare.length} redundant · `
       + `${fmtBytes(spare.reduce((n, mm) => n + (mm.size || 0), 0))} reclaimable</span>`;
     strip.replaceChildren(...g.members.map(mm => dupCopy(mm, g, draw)));
   };

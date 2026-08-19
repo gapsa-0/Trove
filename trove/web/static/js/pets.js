@@ -88,14 +88,14 @@ export async function renderPets(m) {
     </div>
     <div class="panel" id="petjob" hidden></div>
     <div class="place-gallery-head"><h3>Likely pet identities</h3>
-      <span class="muted">Conservative visual grouping</span>${selectButton("pet")}</div>
+      <span class="muted">Animals seen often enough to be the same pet</span>${selectButton("pet")}</div>
     <div class="people" id="petgrid"></div>
     <div class="infinite-status" id="pet-list-sentinel" aria-live="polite"></div>
     <div id="pethiddenwrap"></div>
-    <div class="place-gallery-head"><h3>Unassigned animals</h3><span class="muted">Single or uncertain sightings</span></div>
+    <div class="place-gallery-head"><h3>Unassigned animals</h3><span class="muted">Seen once, or not alike enough to group</span></div>
     <div class="people" id="loosepetgrid"></div>
     <div class="infinite-status" id="loose-pet-sentinel" aria-live="polite"></div>
-    <div class="place-gallery-head"><h3>Non-human face review</h3><span class="muted">Animal/toy overlaps filtered out of People</span></div>
+    <div class="place-gallery-head"><h3>Non-human face review</h3><span class="muted">Faces kept out of People — tell Trove what they are</span></div>
     <div class="nonhuman-grid" id="nonhumangrid"></div>
     <div class="infinite-status" id="nonhuman-sentinel" aria-live="polite"></div>`;
   renderPetStatus();
