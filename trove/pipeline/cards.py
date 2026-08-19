@@ -244,12 +244,19 @@ def _card(
 
 
 def _mark_up_next(result: list[dict], blocker_card: dict[str, str | None]) -> None:
-    """A blocked card is *next in line* when the stage it waits on is running now.
+    """The *one* blocked card that starts the moment the current work finishes.
 
-    It is the one that starts the moment the current work finishes. Flagging it
-    (the GUI colours it and swaps the flat "Waiting for …" line for a "goes
-    next" line) makes the queue read as an ordered pipeline rather than a wall
-    of identical "waiting" cards.
+    Flagging it -- the GUI colours it and swaps the flat "Waiting for …" line
+    for a "goes next" one -- makes the queue read as an ordered pipeline rather
+    than a wall of identical waiting cards.
+
+    Only the first qualifies. This used to mark *every* blocked card whose
+    blocker was running, which on an archive running the full feature set is
+    four of them, so the Overview showed four consecutive cards all reading "Up
+    next · after Duplicates". Four things cannot each be next, and the wall of
+    identical lines this exists to prevent was the wall it produced. ``result``
+    is in CARD_ORDER, which is dependency order, so the first match is the one
+    the scheduler will actually pick up.
     """
     running_cards = {c["id"] for c in result if c["state"] == "running"}
     # Read back off the cards rather than recomposed: a blocker is always a
@@ -262,6 +269,7 @@ def _mark_up_next(result: list[dict], blocker_card: dict[str, str | None]) -> No
         if c["state"] == "blocked" and bc is not None and bc in running_cards:
             c["next"] = True
             c["message"] = f"Up next · after {label[bc]}"
+            return
 
 
 def _mark_stalled(

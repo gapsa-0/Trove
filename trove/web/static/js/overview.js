@@ -325,6 +325,21 @@ function renderStoragePanel(s) {
 // large archive is the first twenty seconds after it is opened.
 const HEALTH_CARDCLASS = { running: "running", queued: "pending", checking: "pending", blocked: "", up_to_date: "", unavailable: "", error: "error" };
 const HEALTH_DOT = { queued: "pending", checking: "pending", blocked: "check", up_to_date: "ok", unavailable: "check", error: "check" };
+/* Read down the finished chain and every row counts a different population --
+   136 files, 130 copies, 12 photos, 4 photos, 2 files, 1 file -- with nothing
+   saying so. On this fixture that reads 136 -> 130 -> 12 -> 4 -> 2 -> 1, which
+   looks like a system giving up, when in fact all six are complete: each stage
+   is pointed at a different subset, and only the first sees every file.
+   So a stage that covers a subset says what it covered it OF. */
+/* "1 of 3 files", not "1 of 3 file": with a denominator the noun agrees with
+   the total, since the phrase is "one of three files". Returns the plural flag
+   alongside so the caller does not have to work out which number to ask. */
+function outOf(done, total) {
+  const shown = total && total !== done
+    ? `${done.toLocaleString()} of ${total.toLocaleString()}`
+    : done.toLocaleString();
+  return { shown, plural: (total && total !== done ? total : done) !== 1 };
+}
 function healthDoneMessage(id) {
   // The "done" (up_to_date) line reuses the per-domain summary numbers the
   // Overview already holds, so it reads as a result, not a bare "done".
@@ -339,21 +354,28 @@ function healthDoneMessage(id) {
       const parts = [];
       if (fs && fs.faces) parts.push(`${fs.faces.toLocaleString()} face${fs.faces === 1 ? "" : "s"}`);
       if (ps && ps.detections) parts.push(`${ps.detections.toLocaleString()} animal${ps.detections === 1 ? "" : "s"}`);
-      return parts.length ? parts.join(" · ")
-        : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analysed`;
+      if (parts.length) return parts.join(" · ");
+      const looked = (fs && fs.scanned) || 0;
+      return `Nothing found in ${looked.toLocaleString()} photo${looked === 1 ? "" : "s"}`;
     }
     case "places": return s && s.in_places
       ? `${s.in_places.toLocaleString()} photo${s.in_places === 1 ? "" : "s"} placed`
       : "No places found";
-    case "semantic": return ss && ss.indexed
-      ? `${ss.indexed.toLocaleString()} item${ss.indexed === 1 ? "" : "s"} indexed`
-      : (ss && ss.configured ? "Ready to index" : "Not configured");
+    // "items" was this chain's only word for a file, in a column that says
+    // files everywhere else.
+    case "semantic": {
+      if (!ss || !ss.indexed) return ss && ss.configured ? "Ready to index" : "Not configured";
+      const n = outOf(ss.indexed, ss.total);
+      return `${n.shown} file${n.plural ? "s" : ""} indexed`;
+    }
     // Both halves of the text card fill one index from one pass, so there is
     // no per-half count to quote and this figure is the honest answer whichever
     // of them is on: what the archive can now search by what it says.
-    case "text": return ts && ts.read
-      ? `${ts.read.toLocaleString()} file${ts.read === 1 ? "" : "s"} read`
-      : "Nothing read yet";
+    case "text": {
+      if (!ts || !ts.read) return "Nothing read yet";
+      const n = outOf(ts.read, ts.total);
+      return `${n.shown} file${n.plural ? "s" : ""} read`;
+    }
     default: return "";
   }
 }
@@ -392,7 +414,20 @@ function healthCard(stage) {
   // neither is going to start. A still-running (winding-down) stage is
   // untouched here -- its dot/spinner already come from `st`.
   const stopped = (allPaused || stage.stalled) && st !== "running";
-  const dot = stage.next ? "next" : (stopped ? "check" : (HEALTH_DOT[st] || "check"));
+  const message = pausing ? "Pausing…"
+    : stopped ? pausedMessage(stage)
+      : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
+  /* Green says "this found something", not merely "this finished".
+
+     Every completed stage took the same --good dot, so a chain of six greens
+     read as an archive in good shape while three of them were reporting that a
+     feature had come back with nothing. Complete and successful are different
+     answers, and the second is the one a colour is worth spending on -- a
+     finished stage with an empty result takes the neutral dot instead. */
+  const foundNothing = st === "up_to_date" && /^(No|Nothing)\b/.test(message);
+  const dot = stage.next ? "next"
+    : stopped || foundNothing ? "check"
+      : (HEALTH_DOT[st] || "check");
   // The head is identity and the line below it is state, which is what makes
   // room for the mark: the feature's own icon, the one it carried on the card
   // the user pressed to switch this work on. The spinner/dot moved down to sit
@@ -400,9 +435,6 @@ function healthCard(stage) {
   const head = `<span class="feat-mark">${ICONS[stage.icon] || ""}</span>`
     + stage.label + stagePauseButton(stage);
   const mark = st === "running" ? `<span class="spin"></span>` : `<span class="dot ${dot}"></span>`;
-  const message = pausing ? "Pausing…"
-    : stopped ? pausedMessage(stage)
-      : (st === "up_to_date" ? healthDoneMessage(stage.id) : (stage.message || ""));
   let detail = "", bar = "";
   // Not gated on "running": a stage stopped mid-run keeps the bar it reached
   // (the server hands it back for a paused card -- see stages._stopped_progress),
