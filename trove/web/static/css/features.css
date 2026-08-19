@@ -204,7 +204,7 @@
 .set-card.fcard.on .set-cost {
   color: var(--text);
   font-size: 12px;
-  font-weight: 620
+  font-weight: 600
 }
 
 .fcard-fixed {
@@ -278,7 +278,7 @@
 .fsheet-total {
   margin: 0 auto 0 0;
   font-size: 12.5px;
-  font-weight: 620;
+  font-weight: 600;
   font-variant-numeric: tabular-nums
 }
 

@@ -61,7 +61,8 @@ export async function renderTimeline(m) {
     <div class="tl-legend" id="tllegend"></div>
     <canvas id="tlc2" width="1180" height="380"></canvas>
     <p class="tl-note">Running total of files over time, each type scaled to its own final count.</p>
-    <h2 class="sec tl-second">How dates were found</h2>
+    <div class="place-gallery-head tl-second"><h3>How dates were found</h3>
+      <span class="muted">Every file, by where its date came from</span></div>
     <div class="panel" id="dsbar">Loading…</div>`;
   await buildTimelineFilterBar();
   if (gen !== S.nav) return;

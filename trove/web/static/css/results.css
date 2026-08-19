@@ -166,7 +166,7 @@
   border-radius: 2px;
   background: rgba(255, 255, 255, .32);
   color: #fff;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /* A group that has finished loading has an empty sentinel, and three of those

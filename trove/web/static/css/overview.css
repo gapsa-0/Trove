@@ -17,7 +17,7 @@ main::-webkit-scrollbar-track {
 main>h2.sec,
 main>.eyebrow+h2.sec {
   font-size: 34px;
-  font-weight: 740;
+  font-weight: 700;
   line-height: 1.08;
   letter-spacing: -.042em;
   margin: 0 0 25px
@@ -110,7 +110,11 @@ main>.eyebrow {
   font-variant-numeric: tabular-nums;
 }
 
+/* Explicitly sized. With no size of its own this inherited the definition
+   line's, and then the UA's `small { font-size: smaller }` took another 17% off
+   it: the same "/ 4" that reads 11px on the tile came out at 8.75px here. */
 .stat-why-v small {
+  font-size: 11px;
   font-weight: 500;
   color: var(--muted);
 }
@@ -138,7 +142,7 @@ main>.eyebrow {
 .pagehead h2.sec {
   margin: 0;
   font-size: 36px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.06;
   letter-spacing: -.045em
 }
@@ -286,7 +290,7 @@ button.stat:hover {
 
 .stat .k {
   font-size: 10.5px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: .045em;
   color: var(--muted)
 }
@@ -528,7 +532,7 @@ button.stat:hover {
   align-items: center;
   gap: 7px;
   font-size: 12px;
-  font-weight: 680
+  font-weight: 600
 }
 
 /* The feature's own mark (drawn by base.css), the same one on its setup card
@@ -686,10 +690,13 @@ button.stat:hover {
   margin-bottom: 18px
 }
 
+/* A card's own heading. Smaller than a section heading on purpose: the card
+   already bounds what it heads, so the words do less work. See
+   `.place-gallery-head h3` in people.css for the other level. */
 .panel h3 {
   margin: 0 0 14px;
-  font-size: 14px;
-  font-weight: 680;
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: -.015em
 }
 

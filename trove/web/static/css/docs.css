@@ -269,7 +269,7 @@
 .doc-article h1 {
   margin: 0;
   font-size: 46px;
-  font-weight: 780;
+  font-weight: 700;
   line-height: 1.02;
   letter-spacing: -.045em;
 }
@@ -308,7 +308,7 @@
 .doc-article[data-doc="faq"] .doc-body h2 {
   font-family: inherit;
   font-size: 21px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -.02em;
   text-transform: none;
   margin-bottom: 12px;
@@ -317,14 +317,14 @@
 .doc-body h3 {
   margin: 34px 0 10px;
   font-size: 19px;
-  font-weight: 660;
+  font-weight: 600;
   letter-spacing: -.02em;
 }
 
 .doc-body h4 {
   margin: 26px 0 8px;
   font-size: 15.5px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .doc-body p {
@@ -332,7 +332,7 @@
 }
 
 .doc-body strong {
-  font-weight: 640;
+  font-weight: 600;
 }
 
 .doc-body a {

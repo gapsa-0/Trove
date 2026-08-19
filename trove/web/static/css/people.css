@@ -118,9 +118,14 @@
   margin: 24px 0 12px;
 }
 
+/* A section heading: a division of the page itself, with no card around it, so
+   it carries the whole weight of separating one block from the next. Two steps
+   up from a card's own heading (`.panel h3`, 15px) and well below the page
+   title. These were 18px against 14px with nothing deciding which was which. */
 .place-gallery-head h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
+  font-weight: 600;
 }
 
 .placecollage {

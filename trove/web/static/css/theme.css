@@ -87,7 +87,7 @@ h2.sec {
   grid-column: 1/-1;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 600;
   border-bottom: 0;
   padding: 28px 0 8px
 }
@@ -225,6 +225,20 @@ h3,
   font-family: inherit;
   letter-spacing: -.025em
 }
+
+/* The weight ramp: 400, 500, 550, 600, 700, and nothing between.
+
+   The stylesheets carried fourteen weights -- 620, 640, 650, 660, 680, 720,
+   740, 750, 780 among them. The system UI stack has no such faces, so the
+   browser snapped every one of those to 600 or 700 and the distinctions were
+   never on screen: forty-six declarations of precision that rendered
+   identically to their neighbours and made the sheets look considered where
+   they were not. 550 stays because SF Pro Text genuinely has it, and falls back
+   to 500 where it does not.
+
+   Sizes are not tokenised here yet -- there are thirty of them and most are a
+   deliberate step for their own screen -- but a new one should come off this
+   list rather than be invented: 34 / 22 / 17 / 14 / 12.5 / 11. */
 
 ::selection {
   background: var(--accent-soft)

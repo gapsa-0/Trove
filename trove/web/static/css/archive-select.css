@@ -4,7 +4,7 @@
 .welcome .eyebrow,
 .eyebrow {
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--accent);
   letter-spacing: .01em;
   text-transform: none
@@ -72,7 +72,7 @@
 
 .card h3 {
   font-size: 16px;
-  font-weight: 650
+  font-weight: 600
 }
 
 .card .path {

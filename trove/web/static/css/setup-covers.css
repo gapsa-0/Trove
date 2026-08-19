@@ -92,7 +92,7 @@
   background: var(--set-ph-6);
   box-shadow: inset 0 0 0 99px rgba(0, 0, 0, .46);
   color: #fff;
-  font: 620 11px/1 var(--set-figures);
+  font: 600 11px/1 var(--set-figures);
 }
 
 .set-face-chip .set-more+span {
@@ -139,7 +139,7 @@
   border: 2px solid rgba(255, 255, 255, .85);
   background: var(--accent);
   color: #fff;
-  font: 620 10px/1 var(--set-figures);
+  font: 600 10px/1 var(--set-figures);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
 }
 
