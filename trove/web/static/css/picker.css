@@ -70,6 +70,6 @@
 }
 
 .badge-warn {
-  color: #e6b45e;
+  color: var(--warning);
   font-size: 11px;
 }

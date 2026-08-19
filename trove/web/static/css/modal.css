@@ -228,7 +228,7 @@
 }
 
 #toast.err {
-  border-color: #c0504d;
+  border-color: var(--bad);
 }
 
 @media(prefers-reduced-motion:reduce) {

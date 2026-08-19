@@ -114,16 +114,22 @@
    the two readable apart: the pin is a fact about the photo, this is a
    capability the app gained over it.
 
-   Fixed blue, not var(--accent): the caption sits on its own dark scrim in
-   both themes, so a theme-adaptive colour would go muddy in light mode.
-   The ring is what makes 7px legible over an arbitrary photograph. */
+   The white ring and the fixed blue were for a caption that always sat on its
+   own dark scrim. It does not any more -- the scrim belongs to `.tile.shot`, so
+   a tile with no thumbnail carries this pip on a pale panel, where a white ring
+   is invisible and a fixed blue is the only saturated thing on the card. Over a
+   photograph it keeps both; elsewhere it takes the accent and drops the ring. */
 .tile .cap .indexed {
   width: 9px;
   height: 9px;
   border-radius: 999px;
+  background: var(--accent);
+  flex: none;
+}
+
+.tile.shot .cap .indexed {
   background: #4da3ff;
   box-shadow: 0 0 0 2px #fff;
-  flex: none;
 }
 
 /* A photo's own actions -- person detail page only (see personTile). Hidden
@@ -169,7 +175,7 @@
 }
 
 .tile-detach:hover {
-  background: #d33;
+  background: var(--bad);
 }
 
 .tile-cover:hover {

@@ -273,8 +273,9 @@ nav.collapsed .brand {
   padding-right: 0
 }
 
-/* Collapsed to 56px the brand row only has space for the expand toggle;
-   the mark would push it out of the rail. */
+/* Collapsed the rail is 68px, and the brand row has space for the expand
+   toggle alone; the 26px mark plus the toggle would not fit the 50px between
+   the paddings. (This said 56px, from a rail that has since widened.) */
 nav.collapsed .brand .brandmark {
   display: none
 }
@@ -286,8 +287,10 @@ nav.collapsed .navitem .tag,
 /* The gear's own words. This read `.theme-label` -- the appearance toggle's --
    and that toggle moved into the settings drawer, taking the only markup the
    selector matched with it. So the button that took its place in the rail kept
-   its label at full width: 64px of text in a 49px column, which is where the
-   horizontal scrollbar down the side of a collapsed sidebar came from. */
+   its label at full width, in a column narrower than the label, which is where
+   the horizontal scrollbar down the side of a collapsed sidebar came from.
+   viewer.css's narrow-window block had the identical bug and the identical
+   fix, years apart. */
 nav.collapsed .theme-toggle span:not(.gear-icon) {
   display: none
 }

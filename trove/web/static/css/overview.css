@@ -731,7 +731,7 @@ button.stat:hover {
 
 .progfill {
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), #5ac8fa)
+  background: linear-gradient(90deg, var(--accent), var(--accent2))
 }
 
 .type-summary-bar {
