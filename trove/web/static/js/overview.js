@@ -113,7 +113,7 @@ export async function renderOverview(m) {
   paintOverview(m, seededSummary());
   const [s, ds, fs, ps, ss, ts] = await pending;
   if (gen !== S.nav) return;   // user switched sections while these were loading
-  S.dupsum = ds;
+  S.dupsum = ds; S.dupsumRoot = root;
   S.facesum = fs;
   S.petsum = ps;
   S.semanticsum = ss;
@@ -161,11 +161,28 @@ function paintOverview(m, s) {
   // archive was opened, and this screen's subscriber is registered at module
   // level. This used to start a second poller of its own on top of the chip's.
 }
-// The archive's own totals, or what to say before they are known. Both figures
-// come from the same payload, so there is no half-known case to word.
-const storageCaption = s => (s.size == null || s.total == null
-  ? "Reading the catalogue…"
-  : `${fmtBytes(s.size)} across ${s.total.toLocaleString()} items`);
+/* What the folder holds on disk, and how much of that is the same thing twice.
+
+   This panel measures the folder, not the library: it counts every catalogued
+   file, redundant copies included, because the question it answers is how much
+   space the archive is taking. On a folder full of duplicated exports that is a
+   very different number from the one Browse lists -- the fixture reports 112 KB
+   here and 82 KB of it is reclaimable -- and saying only the first invited the
+   reading that this is the size of the collection.
+
+   "files" rather than "items": the app counts files everywhere else, and this
+   was the one place that called them something different.
+
+   The reclaimable share comes from the duplicate summary, which lands
+   separately, so the caption says what it knows and gains the rest when it
+   arrives. */
+const storageCaption = (s, ds) => {
+  if (s.size == null || s.total == null) return "Reading the catalogue…";
+  const head = `${fmtBytes(s.size)} across ${s.total.toLocaleString()} files`;
+  return ds && ds.reclaimable
+    ? `${head}, of which ${fmtBytes(ds.reclaimable)} is redundant copies`
+    : head;
+};
 // Fills the "Storage" panel (byte total + one bar + table) from an
 // /api/summary payload. Called from renderOverview on first paint AND from
 // refreshPipeline on every poll tick while the pipeline is busy, so bytes
@@ -221,7 +238,7 @@ function renderEmptyStorage() {
 }
 function renderStoragePanel(s) {
   const cap = document.getElementById("ov-storage-caption");
-  if (cap) cap.textContent = storageCaption(s);
+  if (cap) cap.textContent = storageCaption(s, S.dupsum);
   // The caption above is answerable from the picker's payload; the breakdown
   // below is not, and an empty bar is the honest thing to show until it lands.
   // Drawing one segment for "everything" would be inventing a shape.
@@ -588,7 +605,7 @@ onSnapshot(async snap => {
       const [s, ds] = await Promise.all([
         jget("/api/summary?root=" + S.arch.id),
         jget("/api/dups/summary?root=" + S.arch.id)]);
-      S.summary = s; S.dupsum = ds;
+      S.summary = s; S.dupsum = ds; S.dupsumRoot = S.arch.id;
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
       set("ov-total", s.total.toLocaleString());
       set("ov-enriched", s.enriched.toLocaleString());

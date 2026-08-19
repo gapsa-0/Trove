@@ -146,6 +146,21 @@ export function liveRankings() {
 }
 export function rankingFor(kind) { return liveRankings().find(r => r.id === kind); }
 
+/* How many redundant copies Browse is holding back, so its own total can
+   explain itself -- see hiddenCopiesNote in results.js.
+
+   Fetched here rather than assumed: S.dupsum is filled by the Overview and by
+   Duplicates, and neither is necessarily where someone came from. Cached with
+   the archive it was counted for, and the labels are redrawn once it lands,
+   since the grid's first page can settle either side of this. */
+async function loadHiddenCopyCount() {
+  const rid = S.arch && S.arch.id; if (!rid) return;
+  if (S.dupsum && S.dupsumRoot === rid) return;
+  const ds = await jget("/api/dups/summary?root=" + rid).catch(() => null);
+  if (!ds || (S.arch && S.arch.id) !== rid) return;
+  S.dupsum = ds; S.dupsumRoot = rid;
+  if (S.section === "library") renderGroupLabels();
+}
 export async function renderPhotos(m) {
   const gen = S.nav;
   const restored = !!(S.grid && Array.isArray(S.grid.pages));
@@ -197,9 +212,12 @@ export async function renderPhotos(m) {
         <div class="filterbar" id="filterbar" aria-busy="true">${FILTER_SKELETON}</div>
         <div class="chips">
           <select class="fsel sort-sel" id="f-sort" aria-label="Sort media" onchange="applySort()"></select>
-          <span class="muted" id="gridcount"></span>
         </div>
       </div>
+      <!-- On its own line under the controls: this counts the grid below, not
+           the sort control it used to sit against, and it now carries the note
+           about copies Browse is holding back. -->
+      <p class="grid-count muted" id="gridcount" aria-live="polite"></p>
     </div>
     <section class="search-ways" id="search-ways" hidden></section>
     <div class="results-back" id="results-back" hidden></div>
@@ -207,6 +225,7 @@ export async function renderPhotos(m) {
     ${resultsGroup("name", GRID_IDS.name)}
     ${runs("text") ? resultsGroup("text", GRID_IDS.text) : ""}
     ${resultsGroup("media", GRID_IDS.media)}`;
+  loadHiddenCopyCount();
   const composer = document.getElementById("semantic-q");
   composer?.addEventListener("compositionstart", () => S.composerComposing = true);
   composer?.addEventListener("compositionend", () => { S.composerComposing = false; onSemanticComposerInput(); });

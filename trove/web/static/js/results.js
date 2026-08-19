@@ -18,7 +18,7 @@
 // a hoisted function declaration, which is defined before any of it runs.
 
 import {
-  ACTIVE_SECTION, backControl,
+  ACTIVE_SECTION, backControl, showSection,
 } from "./router.js";
 import {
   activeGrids, gridAnswers, loadGrid, rankingFor, renderGridPages, resetGridResults,
@@ -36,6 +36,34 @@ import {
 import {
   ICONS, S,
 } from "./state.js";
+
+/* Why Browse lists fewer files than the archive holds.
+
+   The Overview counts every file it catalogued -- 136 on the fixture -- and its
+   "All files" tile is a button straight into this screen, which lists 6. Both
+   numbers are right: a redundant copy is still a catalogued file, and Browse
+   deliberately shows one of each thing rather than 131 of the same photograph.
+   Nothing said so anywhere, and the gap is one click wide.
+
+   So the toolbar's count carries the difference, next to the figure it explains
+   and nowhere else. Only while browsing: during a search the number beside it
+   counts matches, and how many copies are hidden from the library is not a fact
+   about the search.
+
+   The link goes to Duplicates, which is the screen that can actually do
+   something about it. */
+function hiddenCopiesNote(host, searching) {
+  const hidden = !searching && S.dupsum && S.dupsum.duplicates;
+  if (!hidden) return;
+  host.append(" · ");
+  const link = document.createElement("button");
+  link.type = "button";
+  link.className = "hidden-copies";
+  link.textContent = `${hidden.toLocaleString()} ${hidden === 1 ? "copy" : "copies"} hidden`;
+  link.title = "Redundant copies are kept out of Browse. Open Duplicates.";
+  link.onclick = () => showSection("dups");
+  host.append(link);
+}
 
 /* How much of a ranking the overview shows before you ask for the rest.
 
@@ -258,9 +286,13 @@ export function renderGroupLabels() {
     const grids = activeGrids().filter(g =>
       g.total != null && gridAnswers(g) && (!only || g.kind === only));
     const n = grids.reduce((sum, g) => sum + g.total, 0);
-    overall.textContent = !grids.length ? ""
-      : searching ? `${n.toLocaleString()} result${n === 1 ? "" : "s"}`
-        : `${n.toLocaleString()} files`;
+    overall.replaceChildren();
+    if (grids.length) {
+      overall.append(searching
+        ? `${n.toLocaleString()} result${n === 1 ? "" : "s"}`
+        : `${n.toLocaleString()} files`);
+      hiddenCopiesNote(overall, searching);
+    }
   }
   updateWaysCoverage();
   renderResultsBack(only);

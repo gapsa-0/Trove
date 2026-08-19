@@ -141,6 +141,21 @@
   white-space: nowrap
 }
 
+/* The count of what the grid holds, under the controls rather than beside the
+   sort select: it describes the results, and pressed up against "Newest first"
+   it read as part of that control. Its own line also means the note about
+   hidden copies cannot push the filter row into a ragged wrap. */
+.grid-count {
+  margin: 0;
+  padding: 8px 4px 0;
+  font-size: 12px;
+  text-align: right
+}
+
+.grid-count:empty {
+  display: none
+}
+
 .library-toolbar .sort-sel {
   padding: 5px 8px;
   font-size: 12.5px
@@ -633,4 +648,24 @@ input[type="checkbox"] {
 .infinite-status.top {
   min-height: 1px;
   margin: 0
+}
+
+/* The count's own footnote: why Browse lists fewer files than the archive
+   holds. A button rather than a link, because it moves between screens inside
+   the app; quiet, because it is an aside on a figure, not an offer. */
+.hidden-copies {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+  cursor: pointer
+}
+
+.hidden-copies:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor
 }

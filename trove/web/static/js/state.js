@@ -112,6 +112,9 @@ export const S = {
   // whatever the filter bar is currently set to. Kept with the id it was
   // counted for, so a second archive cannot inherit the first one's figure.
   browsableTotal: null, browsableTotalRoot: null,
+  // The duplicate summary, and the archive it counts. Filled by whichever of
+  // the Overview, Duplicates or Browse is reached first.
+  dupsumRoot: null,
   // `gpoll` is the one pipeline poller's interval handle (pipeline.js). There
   // used to be a second slot beside it, `poll`, that the Overview, People and
   // Pets screens all wrote in turn -- one timer shared by three modules, which
