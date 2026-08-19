@@ -103,6 +103,9 @@
    tinted at low opacity behind a solid left border, same
    color-mix(..., transparent) recipe used elsewhere in this file. */
 .mergeask-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
   font-size: 12px;
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
@@ -165,4 +168,11 @@
 
 .merge-row+.merge-row {
   border-top: 1px solid var(--line)
+}
+
+.mergeask-warning .appicon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  margin-top: 1px
 }

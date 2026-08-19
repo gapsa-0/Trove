@@ -89,8 +89,14 @@
   position: absolute;
   top: 5px;
   right: 6px;
-  font-size: 12px;
-  text-shadow: 0 1px 2px #000;
+  display: flex;
+  color: #fff;
+  filter: drop-shadow(0 1px 2px #000);
+}
+
+.tile .badge .appicon {
+  width: 14px;
+  height: 14px;
 }
 
 .tile .cap-marks {
@@ -103,10 +109,10 @@
 /* Description-search coverage. In the caption strip rather than the badge
    slot on purpose: once indexing drains, this mark sits on very nearly
    every tile, so it has to be quiet enough to live there permanently --
-   and the badge corner stays the singular "notable fact" position that 📍
-   already holds. A tinted pip rather than an emoji also keeps the two
-   readable apart: 📍 is a fact about the photo, this is a capability the
-   app gained over it.
+   and the badge corner stays the singular "notable fact" position the place
+   mark already holds. A tinted pip rather than a second drawn mark also keeps
+   the two readable apart: the pin is a fact about the photo, this is a
+   capability the app gained over it.
 
    Fixed blue, not var(--accent): the caption sits on its own dark scrim in
    both themes, so a theme-adaptive colour would go muddy in light mode.

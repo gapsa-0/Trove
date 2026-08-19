@@ -46,7 +46,7 @@ import {
   openOrSelect, selectButton, selectable,
 } from "./select.js";
 import {
-  S,
+  MARKS, S,
 } from "./state.js";
 
 /* ---------- map (Leaflet: place clusters over OpenStreetMap) ----------
@@ -258,7 +258,7 @@ function updateMapStats() {
   }
 }
 function collageHTML(ids) {
-  if (!ids.length) return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:20px">📍</div>`;
+  if (!ids.length) return `<div class="placeempty">${MARKS.place}</div>`;
   const n = Math.min(ids.length, 4);
   // draggable=false: these sit inside merge-draggable place cards and would
   // otherwise hijack the card drag with their own image payload (faceCollage
@@ -268,7 +268,7 @@ function collageHTML(ids) {
 }
 function placeCollage(ids) {
   ids = (ids || []).filter(Boolean).slice(0, 4);
-  if (!ids.length) return `<div class="placecollage"><div class="placeempty">📍</div></div>`;
+  if (!ids.length) return `<div class="placecollage"><div class="placeempty">${MARKS.place}</div></div>`;
   return `<div class="placecollage">${collageHTML(ids)}</div>`;
 }
 function renderPlaceGallery() {

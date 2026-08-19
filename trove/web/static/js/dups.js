@@ -80,7 +80,7 @@ export async function renderDedup(m) {
         ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together. Trove never deletes them; this is what you would get back if you did.")}</div>
     </div>
     <div class="panel" id="dup-status" hidden></div>
-    ${ds.groups ? `<p class="dup-lede">Each group is one thing you have more than once. The <span class="dup-lede-kept">✓ Kept</span> copy is the one Browse shows; the rest are hidden, never deleted. To free the space, delete them yourself — every copy below says which folder it is in.</p>
+    ${ds.groups ? `<p class="dup-lede">Each group is one thing you have more than once. The <span class="dup-lede-kept">Kept</span> copy is the one Browse shows; the rest are hidden, never deleted. To free the space, delete them yourself — every copy below says which folder it is in.</p>
     ${dupControls()}` : ""}
     <div id="dupgroups">${ds.groups ? "" : DUP_EMPTY}</div>
     <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
@@ -418,7 +418,7 @@ async function toggleKept(mm, g, draw) {
 // eight bright pills marked the copies. The vocabulary is the inspector's,
 // which shows the same group from the other side (panel.js's COPY_TAG).
 const DUP_TAG = {
-  kept: "✓ Kept", canonical: "Copy", identical: "Identical copy", visual: "Visual match",
+  kept: "Kept", canonical: "Copy", identical: "Identical copy", visual: "Visual match",
 };
 /* One copy: what it looks like, what makes it a copy, and where it lives.
 

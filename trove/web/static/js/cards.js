@@ -5,6 +5,9 @@
 import {
   esc,
 } from "./dom.js";
+import {
+  MARKS,
+} from "./state.js";
 
 /* Shared status line for the fused people+pets `detect` stage. `failed` is the
    People-only retry-cooldown message; Pets currently always passes null. The
@@ -76,7 +79,7 @@ export function syncCardGrid(grid, items, { keyOf, make, update, complete, empty
 // for ids its lookup had no entry for, which it then indexed unguarded: every
 // route that actually reached it threw a TypeError instead of rendering.
 export function renderUnknownSection(m, id) {
-  m.innerHTML = `<h2 class="sec">Not found</h2><div class="soonbox"><div class="big">🧭</div>
+  m.innerHTML = `<h2 class="sec">Not found</h2><div class="soonbox"><div class="big">${MARKS.lost}</div>
     <p>There is no “${esc(id)}” screen in this version of Trove.</p>
     <p class="muted">Pick a section from the sidebar.</p></div>`;
 }

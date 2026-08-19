@@ -43,7 +43,7 @@ import {
   renderSearchWays,
 } from "./search.js";
 import {
-  ICONS, S, archiveSections,
+  ICONS, MARKS, S, archiveSections,
 } from "./state.js";
 import {
   stopPipelinePoll,
@@ -276,7 +276,7 @@ export function showSection(id, reload = false) {
   }).catch(err => {
     if (gen !== S.nav) return;
     console.error("section render failed:", id, err);
-    m.innerHTML = `<div class="soonbox"><div class="big">⚠️</div>
+    m.innerHTML = `<div class="soonbox"><div class="big">${MARKS.warn}</div>
       <p>Couldn't load this section.</p>
       <p class="muted">${(err && err.message) || err}</p>
       <p style="margin-top:14px"><button class="btn sec" onclick="showSection('${id}',true)">Retry</button></p></div>`;

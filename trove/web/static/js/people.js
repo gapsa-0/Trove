@@ -48,7 +48,7 @@ import {
   openOrSelect, selectButton, selectable,
 } from "./select.js";
 import {
-  S,
+  MARKS, S,
 } from "./state.js";
 
 // "800 / 1,204": what has been looked at, over what there is to look at. One
@@ -301,7 +301,7 @@ function renderSuggest() {
       <button class="sug-no" onclick="answerSuggest('different')">Not the same</button>
       <button class="sug-skip" onclick="answerSuggest('skip')">Skip</button>
     </div>
-    <div class="sug-extra"><button onclick="answerSuggest('notpeople')">🚫 Neither is a person; hide both (dolls / pets / cartoons)</button></div>
+    <div class="sug-extra"><button onclick="answerSuggest('notpeople')">${MARKS.no}<span>Neither is a person; hide both (dolls / pets / cartoons)</span></button></div>
     </div>`;
 }
 export async function answerSuggest(kind) {

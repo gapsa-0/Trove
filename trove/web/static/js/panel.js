@@ -20,7 +20,7 @@ import {
   boxesShown,
 } from "./boxes.js";
 import {
-  S, TYPE_ICON, archiveHasFeature, typeLabel,
+  MARKS, S, TYPE_ICON, archiveHasFeature, typeLabel,
 } from "./state.js";
 
 const has = id => archiveHasFeature(S.arch, id);
@@ -304,7 +304,7 @@ function dupGroup(it, d) {
 // which is a different fact again: other pictures in the archive that resemble
 // this one, rather than copies of it.
 const COPY_TAG = {
-  kept: "✓ Kept", canonical: "Copy", identical: "Identical copy", visual: "Visual match",
+  kept: "Kept", canonical: "Copy", identical: "Identical copy", visual: "Visual match",
 };
 /* One copy. The file you are looking at is marked and does not open itself;
    every other copy is a way into that copy, with the arrows then walking the
@@ -427,13 +427,13 @@ function faceRow(it, f) {
 }
 function manualPersonRow(p) {
   return `<div class="facerow">
-    <div class="facecrop placeholder">👤</div>
+    <div class="facecrop placeholder">${MARKS.person}</div>
     <span style="flex:1;min-width:0"><strong>${esc(p.name)}</strong></span>
     <button class="quietbtn sm" onclick="removeManualPerson(${p.person_id})">Remove</button></div>`;
 }
 function manualPetRow(p) {
   return `<div class="facerow">
-    <div class="facecrop placeholder">🐾</div>
+    <div class="facecrop placeholder">${MARKS.pet}</div>
     <span style="flex:1;min-width:0"><strong>${esc(p.name)}</strong></span>
     <button class="quietbtn sm" onclick="removeManualPet(${p.pet_id})">Remove</button></div>`;
 }

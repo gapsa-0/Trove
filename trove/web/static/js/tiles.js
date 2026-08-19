@@ -21,7 +21,7 @@ import {
   openItem,
 } from "./item.js";
 import {
-  ICONS, TYPE_ICON,
+  ICONS, MARKS, TYPE_ICON,
 } from "./state.js";
 
 /* One thumbnail. `caption` says what the strip along its bottom reads: the
@@ -60,7 +60,7 @@ export function tile(it, resultIndex = null, caption = "date") {
   // is the glyph rather than what it tells you.
   if (it.has_gps) {
     const b = document.createElement("div");
-    b.className = "badge"; b.textContent = "📍";
+    b.className = "badge"; b.innerHTML = MARKS.place;
     b.title = "Has a location"; b.setAttribute("aria-hidden", "true");
     d.appendChild(b);
   }

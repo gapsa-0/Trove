@@ -19,7 +19,7 @@ import {
   refreshPlacesAfterMerge,
 } from "./places.js";
 import {
-  S,
+  MARKS, S,
 } from "./state.js";
 
 /* ---------- drag-to-merge (People, Pets & Places grids) ----------
@@ -188,10 +188,10 @@ export function askMergeName({ title, body, options, preselect, warning }) {
     // reset on every call, or a stale Places warning would linger onto
     // the next, unrelated merge.
     const warnEl = document.getElementById("mergeask-warning");
-    // The leading "⚠ " is a visual cue only -- the sentence itself
-    // (built in runMerge) carries the actual meaning for anyone/anything
-    // that can't render or announce the glyph.
-    warnEl.textContent = warning ? `⚠ ${warning}` : "";
+    // The leading mark is a visual cue only -- the sentence itself (built in
+    // runMerge) carries the meaning, and the mark is aria-hidden, so nothing
+    // depends on it being rendered or announced.
+    warnEl.innerHTML = warning ? `${MARKS.warn}<span>${esc(warning)}</span>` : "";
     warnEl.hidden = !warning;
     const opts = options || [];
     // No radios for the (now much more common) case where there's

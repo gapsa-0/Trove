@@ -135,14 +135,20 @@
   height: 100%;
 }
 
-.placecollage>.placeempty {
+.placecollage>.placeempty,
+.placeempty {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
   color: var(--muted);
-  font-size: 30px;
+}
+
+.placeempty .appicon {
+  width: 30px;
+  height: 30px;
+  stroke-width: 1.5;
 }
 
 /* "Same person?" review card, shown above the people grid */
@@ -250,12 +256,21 @@
 }
 
 .suggest .sug-extra button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: none;
   border: none;
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
   padding: 4px;
+}
+
+.suggest .sug-extra button .appicon {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 
 .suggest .sug-extra button:hover {
@@ -318,6 +333,14 @@
 }
 
 .soonbox .big {
-  font-size: 40px;
+  display: flex;
+  justify-content: center;
   margin-bottom: 10px;
+  color: var(--muted);
+}
+
+.soonbox .big .appicon {
+  width: 44px;
+  height: 44px;
+  stroke-width: 1.4;
 }

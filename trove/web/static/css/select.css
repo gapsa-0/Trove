@@ -46,13 +46,10 @@
    checked is "did I get all of them". */
 .people.selecting .pcard.is-selected::after {
   border-color: var(--accent);
-  background: var(--accent);
-  content: "✓";
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 19px;
-  text-align: center;
+  content: "";
+  /* The tick, drawn rather than typed -- `content:` cannot hold markup, so the
+     same geometry as MARKS.check rides in as a background over the accent. */
+  background: var(--accent) no-repeat center/12px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E");
 }
 
 .people.selecting .pcard.is-selected {

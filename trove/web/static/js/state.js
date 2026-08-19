@@ -23,6 +23,19 @@ export const TYPE_ICON = {
 export const TYPE_COL = { image: "#ff375f", video: "#ff9f0a", audio: "#30d158", document: "#64d2ff", archive: "#bf5af2", other: "#8e8e93" };
 const TYPE_LABEL = { archive: "compressed" };
 export const typeLabel = t => TYPE_LABEL[t] || t;
+/* Marks that are not a nav section and not a file type: the ones a screen
+   reaches for to stand in for a state. These were emoji too -- 📍 on a located
+   tile, 👤 and 🐾 where a face crop failed to load, 🧭 for a screen that does
+   not exist, ⚠️ for one that threw, 🚫 on the "neither is a person" answer. */
+export const MARKS = {
+  place: '<svg class="appicon" viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  person: '<svg class="appicon" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.75"/><path d="M4.75 20c.6-4 3.4-6.25 7.25-6.25S18.65 16 19.25 20"/></svg>',
+  pet: '<svg class="appicon" viewBox="0 0 24 24"><path d="M8.5 10.5C6 7 3 7.5 3 11c0 2 1.5 3.5 3.5 3.5C5 18 7.5 21 12 21s7-3 5.5-6.5C19.5 14.5 21 13 21 11c0-3.5-3-4-5.5-.5"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M10 17h4"/></svg>',
+  lost: '<svg class="appicon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5.5-5.5 2 2-5.5Z"/></svg>',
+  warn: '<svg class="appicon" viewBox="0 0 24 24"><path d="M12 4.5 21 20H3Z"/><path d="M12 10.5v4M12 17.4v.01"/></svg>',
+  no: '<svg class="appicon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m6.5 6.5 11 11"/></svg>',
+  check: '<svg class="appicon" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+};
 export const ICONS = {
   overview: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
   library: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m4 17 5-5 3.5 3.5 2-2L20 19"/></svg>',
