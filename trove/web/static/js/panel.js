@@ -318,8 +318,8 @@ function copyTile(m, openId) {
   const tag = `<span class="ctag ${kind}">${here ? "This file" : COPY_TAG[kind]}</span>`;
   const face = m.type === "image" || m.type === "video" || m.type === "document"
     ? `<img src="/thumb/${m.id}" loading="lazy" alt=""
-        onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'cph',textContent:'${TYPE_ICON[m.type] || "📦"}'}))">`
-    : `<span class="cph">${TYPE_ICON[m.type] || "📦"}</span>`;
+        onerror="thumbFallback(this,'${m.type}','cph')">`
+    : `<span class="cph">${TYPE_ICON[m.type] || TYPE_ICON.other}</span>`;
   const where = `${esc(m.folder || "the archive root")} · ${esc(m.name)}`;
   const cls = `copy ${kind}${here ? " here" : ""}`;
   if (here) return `<div class="${cls}" title="${where}" aria-current="true">${face}${tag}</div>`;

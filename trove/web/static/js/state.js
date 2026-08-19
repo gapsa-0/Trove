@@ -3,7 +3,23 @@
 // an imported binding is read-only, so a module could read `S.arch` but never
 // assign it. Mutating one shared object works from anywhere.
 
-export const TYPE_ICON = { image: "🖼️", video: "🎞️", audio: "🎵", document: "📄", archive: "🗜️", other: "📦" };
+/* What stands in for a file that has no thumbnail: a video the decoder would
+   not open, a document whose first page has not been rendered, an audio file
+   that never has one.
+
+   Drawn, not typed. These were emoji -- 🖼️ 🎞️ 🎵 📄 🗜️ 📦 -- set at 32px in a
+   grid cell and 60px in the viewer, which meant the placeholder for a missing
+   photograph arrived as a full-colour platform sticker beside a nav drawn in
+   1.75px monochrome strokes, and stayed light-on-light when the theme turned
+   over. Same 24x24 box and same family as ICONS below. */
+export const TYPE_ICON = {
+  image: '<svg class="appicon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17.5 4.5-4.5 3 3 3-3 5.5 5.5"/></svg>',
+  video: '<svg class="appicon" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M10.5 9.5v5l4.5-2.5Z"/></svg>',
+  audio: '<svg class="appicon" viewBox="0 0 24 24"><path d="M9 17V5.5l10-2V15"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="16.5" cy="15" r="2.5"/></svg>',
+  document: '<svg class="appicon" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>',
+  archive: '<svg class="appicon" viewBox="0 0 24 24"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5Z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/></svg>',
+  other: '<svg class="appicon" viewBox="0 0 24 24"><path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9Z"/><path d="M13 3v6h6"/></svg>',
+};
 export const TYPE_COL = { image: "#ff375f", video: "#ff9f0a", audio: "#30d158", document: "#64d2ff", archive: "#bf5af2", other: "#8e8e93" };
 const TYPE_LABEL = { archive: "compressed" };
 export const typeLabel = t => TYPE_LABEL[t] || t;

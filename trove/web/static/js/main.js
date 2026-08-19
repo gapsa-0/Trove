@@ -11,6 +11,9 @@ import {
   applyHash, applyNavCollapsed, showSection, toPicker, toggleNav,
 } from "./router.js";
 import {
+  thumbFallback,
+} from "./tiles.js";
+import {
   ARCHIVES, addArchiveFromForm, loadPicker, openArchive,
 } from "./picker.js";
 
@@ -184,6 +187,7 @@ Object.assign(window, {
   renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
   setMapView, startSelecting,
   setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
+  thumbFallback,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
   togglePipelinePause,

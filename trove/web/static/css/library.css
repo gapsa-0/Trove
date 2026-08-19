@@ -605,12 +605,6 @@ input[type="checkbox"] {
   transform: scale(1.012)
 }
 
-.tile .cap {
-  padding: 22px 8px 6px;
-  font-size: 10px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, .72))
-}
-
 .date-heading {
   padding: 31px 0 9px;
   border: 0;

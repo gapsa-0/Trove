@@ -1,0 +1,89 @@
+/* What the stage shows when it cannot show the media.
+
+   Split out of viewer.css, which had grown past the asset budget carrying two
+   jobs: the chrome that floats over a photograph (buttons, filmstrip, chip,
+   zoom) and the stand-ins for a file with no picture to float over -- a .docx,
+   a video whose codec this build cannot decode, an audio file that never had a
+   frame. They change for different reasons: one moves when a control is added,
+   the other when a new kind of file turns out to be unviewable. */
+
+.noview {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: var(--film);
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, .55)
+}
+
+.viewer.rail-on .noview {
+  right: 354px
+}
+
+.noview .big {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .07)
+}
+
+.noview .big .appicon {
+  width: 36px;
+  height: 36px;
+  stroke-width: 1.4
+}
+
+/* The frame pulled out of a video this window cannot play. Held to the
+   thumbnail's own 320px so it is never blown up past what was stored, and
+   dimmed: it is evidence that the file reads, not the film you asked for, and
+   at full strength it reads as playback that has stalled on the first frame. */
+.noview .poster {
+  max-width: min(320px, 100%);
+  max-height: 42vh;
+  border-radius: 12px;
+  opacity: .75
+}
+
+.noview .say {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, .84)
+}
+
+.noview .sub {
+  max-width: 36ch;
+  font-size: 12.5px;
+  line-height: 1.5
+}
+
+/* The audio stage: a mark, then the player. Was a 60px emoji and a pair of
+   inline styles on the wrapper. */
+.audio-stage {
+  padding: 40px;
+  text-align: center
+}
+
+.audio-stage .ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  color: rgba(255, 255, 255, .62)
+}
+
+.audio-stage .ph .appicon {
+  width: 56px;
+  height: 56px;
+  stroke-width: 1.3
+}

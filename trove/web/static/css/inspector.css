@@ -527,8 +527,13 @@
   border-radius: 8px;
   background: rgba(255, 255, 255, .07);
   object-fit: cover;
-  font-size: 22px;
   transition: border-color .15s
+}
+
+.copy>.cph .appicon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.5
 }
 
 .copy:hover>img,

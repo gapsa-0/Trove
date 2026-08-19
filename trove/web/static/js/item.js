@@ -201,10 +201,10 @@ function renderStage() {
   if (it.type === "document" || it.type === "archive" || it.type === "other") {
     const d = document.createElement("div");
     d.className = "noview";
-    d.innerHTML = `<div class="big">${TYPE_ICON[it.type] || "📦"}</div>
+    d.innerHTML = `<div class="big">${TYPE_ICON[it.type] || TYPE_ICON.other}</div>
       <div class="say">No preview for ${esc(fileKind(it))}</div>
       <div class="sub">${esc(noPreviewReason(it))}</div>
-      <a class="iwide" style="width:auto" href="/file/${it.id}" target="_blank">Open in the app that owns it ↗</a>`;
+      <a class="iwide" style="width:auto" href="/file/${it.id}" target="_blank">Open in the app that owns it<svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5"/><path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5"/></svg></a>`;
     v.insertBefore(d, m.nextSibling);
     return;
   }
@@ -216,8 +216,8 @@ function renderStage() {
   } else if (it.type === "video") {
     m.appendChild(videoStage(it));
   } else if (it.type === "audio") {
-    m.innerHTML = `<div style="padding:40px;text-align:center">
-      <div class="ph" style="font-size:60px">🎵</div>
+    m.innerHTML = `<div class="audio-stage">
+      <div class="ph">${TYPE_ICON.audio}</div>
       <audio src="/file/${it.id}" controls autoplay></audio></div>`;
   }
   setBoxSource(m, it);
@@ -453,7 +453,7 @@ function renderFilmstrip() {
     // bug rather than as "nothing to show".
     return `<button type="button" onclick="openItem(${id})" aria-current="${i === at}"
       aria-label="File ${i + 1} of ${ids.length}"><img src="/thumb/${id}" loading="lazy" alt=""
-        onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'filmph',textContent:'📄'}))"></button>`;
+        onerror="thumbFallback(this,'document','filmph')"></button>`;
   }).join("");
   const cur = film.querySelector('[aria-current="true"]');
   if (cur) cur.scrollIntoView({ block: "nearest", inline: "center" });

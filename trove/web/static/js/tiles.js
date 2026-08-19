@@ -66,7 +66,21 @@ export function tile(it, resultIndex = null, caption = "date") {
   }
   return d;
 }
-function ph(icon) { const s = document.createElement("div"); s.className = "ph"; s.textContent = icon; return s; }
+// `innerHTML` because the stand-in is a drawn mark now, not a character.
+function ph(icon) { const s = document.createElement("div"); s.className = "ph"; s.innerHTML = icon; return s; }
+/* Swap a thumbnail that 404'd for its type's mark, from an inline `onerror`.
+
+   A helper rather than the `this.replaceWith(Object.assign(...))` one-liner
+   three of these used to carry: those built the stand-in by assigning
+   `textContent`, which worked only while the stand-in was a single character.
+   A drawn mark is markup, and markup carries double quotes, which is one thing
+   an inline HTML attribute inside a JS template literal cannot hold. */
+export function thumbFallback(img, type, cls = "ph") {
+  const s = document.createElement("span");
+  s.className = cls;
+  s.innerHTML = TYPE_ICON[type] || TYPE_ICON.other;
+  img.replaceWith(s);
+}
 
 /* The picture of a file, or the icon that stands in for one.
 
@@ -82,14 +96,22 @@ function ph(icon) { const s = document.createElement("div"); s.className = "ph";
    other screen. The list of what can be drawn, and what stands in when it
    cannot, is one thing and now lives in one place. */
 export function thumbNode(it) {
-  if (!THUMBABLE.has(it.type)) return ph(TYPE_ICON[it.type] || "📦");
+  if (!THUMBABLE.has(it.type)) return ph(TYPE_ICON[it.type] || TYPE_ICON.other);
   const img = document.createElement("img");
   img.loading = "lazy";
   // Decorative: every caller labels the control this sits inside, and a second
   // announcement of the same file name is noise on a screen reader.
   img.alt = "";
   img.src = "/thumb/" + it.id;
-  img.onerror = () => img.replaceWith(ph(TYPE_ICON[it.type] || "🖼️"));
+  // `shot` is what tells the caption there is a picture underneath it worth
+  // shielding itself from; see `.tile.shot .cap` in grid.css. Set on load
+  // rather than up front, because a thumbnail that 404s never arrives and the
+  // stand-in that replaces it wants the plain caption.
+  img.onload = () => img.closest(".tile")?.classList.add("shot");
+  img.onerror = () => {
+    img.closest(".tile")?.classList.remove("shot");
+    img.replaceWith(ph(TYPE_ICON[it.type] || TYPE_ICON.image));
+  };
   return img;
 }
 const THUMBABLE = new Set(["image", "video", "document"]);

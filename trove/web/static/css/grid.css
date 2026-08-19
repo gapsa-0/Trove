@@ -29,22 +29,48 @@
 }
 
 .tile .ph {
-  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
 }
 
+.tile .ph .appicon {
+  width: 34px;
+  height: 34px;
+  stroke-width: 1.4;
+}
+
+/* The caption sits over the picture, so it carries a scrim to stay readable
+   whatever the picture is doing down there.
+
+   The scrim is only right over a picture. A tile with no thumbnail is a pale
+   panel holding a stand-in mark, and the same black gradient painted an
+   unexplained grey band across its bottom third and put near-white text on
+   light grey -- a scrim protecting the caption from nothing. So it belongs to
+   `.tile.shot`, which is set once a thumbnail has actually painted; without
+   one the caption takes the panel's own muted text instead.
+
+   One rule, in the file that owns the tile. library.css carried a second
+   `.tile .cap` with its own padding and a darker gradient, and being the later
+   stylesheet it silently won everywhere -- including on the screens it was
+   never written for, and including over the scrim fix above. */
 .tile .cap {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 3px 6px;
+  padding: 22px 8px 6px;
   font-size: 10px;
-  color: #eef;
-  background: linear-gradient(transparent, #000a);
+  color: var(--muted);
   display: flex;
   justify-content: space-between;
   gap: 6px;
+}
+
+.tile.shot .cap {
+  color: #eef;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .72));
 }
 
 /* What the strip says: a date, or a file name. A name is as long as whoever
