@@ -3,7 +3,7 @@
 // the single-person page. Merging is drag-to-merge's job, not this module's.
 
 import {
-  detectStatusRow, editNeighbourName, syncCardGrid, thumbCollage,
+  detectStatusRow, editNeighbourName, showStatusPanel, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
   backControl, onBackControl, renderNav,
@@ -82,7 +82,7 @@ export async function renderFaces(m) {
       <div class="stat"><div><div class="k">Scanned</div><div class="v" id="fs-scanned">${scannedFigure(sum)}</div></div>
         ${why("Scanned", scannedFigure(sum), "Photos face detection has looked at, of all the photos it will look at.")}</div>
     </div>
-    <div class="panel" id="facejob"></div>
+    <div class="panel" id="facejob" hidden></div>
     <div class="gridtools">${selectButton("person")}</div>
     <div id="peoplewrap"><div class="muted" style="padding:20px">Loading people…</div></div>`;
   selectable("person", "peoplegrid", refreshAfterHide);
@@ -104,13 +104,12 @@ export async function renderFaces(m) {
 // detect stage from the shared snapshot. Either can land first, and either
 // should redraw the row with whatever the other one last said.
 function renderFaceStatus() {
-  const el = document.getElementById("facejob"); if (!el) return;
   const stage = detectStage();
   // Keep a failed attempt visible during the scheduler's retry cooldown
   // instead of making the progress panel blink.
   const failed = stage && stage.state === "error" && S.faceSum && S.faceSum.unscanned > 0
     ? (stage.message || "The face worker stopped before reporting progress.") : null;
-  el.innerHTML = detectStatusRow(S.faceSum, failed);
+  showStatusPanel("facejob", detectStatusRow(S.faceSum, failed));
 }
 // People and Pets both report on the one fused `detect` stage.
 const detectStage = () => ((S.pipeline && S.pipeline.stages) || []).find(s => s.id === "detect");

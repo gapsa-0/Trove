@@ -1,6 +1,9 @@
 // The Duplicates screen: the summary stats, and one row per group.
 
 import {
+  showStatusPanel,
+} from "./cards.js";
+import {
   startInfiniteList,
 } from "./infinite.js";
 import {
@@ -76,11 +79,14 @@ export async function renderDedup(m) {
       <div class="stat"><div><div class="k">Reclaimable</div><div class="v" id="dup-reclaimable">${fmtBytes(ds.reclaimable)}</div></div>
         ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together. Trove never deletes them; this is what you would get back if you did.")}</div>
     </div>
-    <div class="panel" id="dup-status">${dedupStatusRow(ds)}</div>
+    <div class="panel" id="dup-status" hidden></div>
     ${ds.groups ? `<p class="dup-lede">Each group is one thing you have more than once. The <span class="dup-lede-kept">✓ Kept</span> copy is the one Browse shows; the rest are hidden, never deleted. To free the space, delete them yourself — every copy below says which folder it is in.</p>
     ${dupControls()}` : ""}
     <div id="dupgroups">${ds.groups ? "" : DUP_EMPTY}</div>
     <div class="infinite-status" id="dup-sentinel" aria-live="polite"></div>`;
+  // The panel's markup no longer carries its own message, so that it can be
+  // absent rather than empty when there is nothing outstanding to report.
+  showStatusPanel("dup-status", dedupStatusRow(ds));
   if (!ds.groups) return;
   loadDupGroups();
 }
@@ -131,7 +137,7 @@ async function refreshDedup(rebuildList = false) {
   setStat("dup-groups", ds.groups.toLocaleString());
   setStat("dup-copies", ds.duplicates.toLocaleString());
   setStat("dup-reclaimable", fmtBytes(ds.reclaimable));
-  document.getElementById("dup-status").innerHTML = dedupStatusRow(ds);
+  showStatusPanel("dup-status", dedupStatusRow(ds));
   setStat("dup-split", matchSplit(ds));
   if (rebuildList && ds.groups && dupListTotal !== ds.groups) loadDupGroups();
 }
@@ -284,7 +290,10 @@ function dedupStatusRow(ds) {
   if (pending > 0) {
     return `<div class="d pending"><span class="dot pending"></span>${pending.toLocaleString()} unique file${pending === 1 ? "" : "s"} still to compare; duplicate detection runs automatically.</div>`;
   }
-  return `<div class="d ok"><span class="dot ok"></span>All files compared.</div>`;
+  // Nothing outstanding: the tiles above already say what was found, and a
+  // panel repeating "All files compared" was the loudest object on a screen
+  // with no news. See detectStatusRow in cards.js.
+  return "";
 }
 // What the redundant copies actually ARE. "27,318
 // duplicates" hides two things worth knowing: how many are byte-identical

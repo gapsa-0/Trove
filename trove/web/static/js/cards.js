@@ -6,9 +6,19 @@ import {
   esc,
 } from "./dom.js";
 
-// Shared status line for the fused people+pets `detect` stage. `failed`
-// is the People-only retry-cooldown message; Pets currently always passes
-// null. First-run addendum applies to both since it's the same model.
+/* Shared status line for the fused people+pets `detect` stage. `failed` is the
+   People-only retry-cooldown message; Pets currently always passes null. The
+   first-run addendum applies to both, since it is the same model.
+
+   Empty when there is nothing outstanding. The finished state used to be a
+   full-width panel reading "All unique photos scanned." directly under a tile
+   already reading "Scanned 4 / 4" -- the same fact, in more space, as the most
+   prominent thing on a screen that had nothing to report. A panel that is
+   always present and usually says nothing teaches people to skip it, which
+   costs exactly on the day it has something to say. The pending count is no
+   better hidden: it is total minus scanned, off the same tile.
+
+   Callers hide their panel on "" -- see `showStatusPanel`. */
 export function detectStatusRow(sum, failed) {
   if (failed) {
     return `<div class="d pending"><span class="dot pending"></span>Detection paused; retrying automatically. ${esc(failed)}</div>`;
@@ -18,7 +28,16 @@ export function detectStatusRow(sum, failed) {
     const note = `${sum.unscanned.toLocaleString()} unique photo${sum.unscanned === 1 ? "" : "s"} pending; detection runs automatically${first ? " (first run fetches a ~38 MB face model once)" : ""}.`;
     return `<div class="d pending"><span class="dot pending"></span>${note}</div>`;
   }
-  return `<div class="d ok"><span class="dot ok"></span>All unique photos scanned.</div>`;
+  return "";
+}
+/* Fill a status panel, and take the panel away with the message.
+
+   An empty `.panel` is not nothing on screen: it is a bordered, padded box of
+   blank surface where a sentence used to be. */
+export function showStatusPanel(id, html) {
+  const el = document.getElementById(id); if (!el) return;
+  el.innerHTML = html;
+  el.hidden = !html;
 }
 /* Patch a card grid to match a freshly fetched head of its list, instead of
    tearing the grid down and rebuilding it -- scroll position, the pages the

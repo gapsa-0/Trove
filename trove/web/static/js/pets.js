@@ -3,7 +3,7 @@
 // poll. The single-pet page lives here too.
 
 import {
-  detectStatusRow, editNeighbourName, syncCardGrid, thumbCollage,
+  detectStatusRow, editNeighbourName, showStatusPanel, syncCardGrid, thumbCollage,
 } from "./cards.js";
 import {
   ACTIVE_SECTION, backControl, onBackControl, showSection,
@@ -86,7 +86,7 @@ export async function renderPets(m) {
       <div class="stat"><div><div class="k">Scanned</div><div class="v" id="ps-scanned">${scannedFigure(sum)}</div></div>
         ${why("Scanned", scannedFigure(sum), "Photos animal detection has looked at, of all the photos it will look at.")}</div>
     </div>
-    <div class="panel" id="petjob">${detectStatusRow(sum, null)}</div>
+    <div class="panel" id="petjob" hidden></div>
     <div class="place-gallery-head"><h3>Likely pet identities</h3>
       <span class="muted">Conservative visual grouping</span>${selectButton("pet")}</div>
     <div class="people" id="petgrid"></div>
@@ -98,6 +98,7 @@ export async function renderPets(m) {
     <div class="place-gallery-head"><h3>Non-human face review</h3><span class="muted">Animal/toy overlaps filtered out of People</span></div>
     <div class="nonhuman-grid" id="nonhumangrid"></div>
     <div class="infinite-status" id="nonhuman-sentinel" aria-live="polite"></div>`;
+  renderPetStatus();
   selectable("pet", "petgrid", refreshPetGrids);
 
   startInfiniteList("petListState", {
@@ -417,8 +418,8 @@ onSnapshot(() => renderPetStatus());
 // from whatever state holds rather than from arguments one caller happens to
 // have. Same shape as People's renderFaceStatus.
 function renderPetStatus() {
-  const el = document.getElementById("petjob"); if (!el || !S.petSum) return;
-  el.innerHTML = detectStatusRow(S.petSum, null);
+  if (!S.petSum) return;
+  showStatusPanel("petjob", detectStatusRow(S.petSum, null));
 }
 const detectRunning = () =>
   ((S.pipeline && S.pipeline.stages) || []).some(s => s.id === "detect" && s.state === "running");
