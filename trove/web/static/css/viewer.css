@@ -479,11 +479,30 @@
 
   nav .brandtxt,
   .navtoggle,
-  nav .back,
   nav .arch,
-  .gstat,
-  .theme-label {
+  .gstat {
     display: none !important
+  }
+
+  /* The gear's own words.
+     This read `.theme-label` -- the appearance toggle's -- and that toggle moved
+     into the settings drawer, taking the only markup the selector matched with
+     it. So the button that took its place in the bar kept its label at full
+     width, the row went past the viewport, and `nav { overflow: auto }` turned
+     app chrome into a horizontally scrolling strip with "Setting" clipped at
+     the edge. sidebar.css:261 fixed exactly this for the collapsed rail; this
+     copy was never updated. */
+  nav .theme-toggle span:not(.gear-icon) {
+    display: none
+  }
+
+  /* The way back to the archive list stays. It used to be hidden here with
+     nothing put in its place, and `nav .arch` went with it -- so below 800px
+     the window neither said which archive you were in nor offered a route to
+     the others, and the only way out was to edit the URL. It is 30px wide. */
+  nav .back {
+    order: -1;
+    margin: 0 2px 0 0
   }
 
   /* main stops scrolling here, so the bar pins against the viewport,
