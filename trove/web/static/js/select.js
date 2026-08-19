@@ -20,7 +20,7 @@ import {
   esc, toast,
 } from "./dom.js";
 import {
-  askMergeName,
+  askConfirm, askMergeName,
 } from "./merge.js";
 
 /* The one selection on screen, or null. Keyed by kind rather than by screen so
@@ -93,8 +93,10 @@ const KINDS = {
     merge: "/api/faces/merge", mergeKey: "person",
     hide: "/api/faces/hide", hideKey: "person_id",
     reject: "Not people", rejectReason: "not_person",
-    rejectAsk: n => `Not people? The faces in ${n} groups are marked as dolls, `
-      + `animals or cartoons and left out of grouping from now on.`,
+    rejectTitle: n => `Not people? (${n} ${n === 1 ? "group" : "groups"})`,
+    rejectAsk: n => `The faces in ${n} ${n === 1 ? "group" : "groups"} are marked as dolls, `
+      + `animals or cartoons and left out of grouping from now on. Nothing is deleted.`,
+    rejectDo: "Not people",
     unknown: "Unknown people",
   },
   pet: {
@@ -102,8 +104,10 @@ const KINDS = {
     merge: "/api/pets/merge", mergeKey: "pet",
     hide: "/api/pet/hide", hideKey: "pet_id",
     reject: "Not animals", rejectReason: "not_animal",
-    rejectAsk: n => `Not animals? The photos in ${n} groups are left out of pet `
-      + `grouping from now on.`,
+    rejectTitle: n => `Not animals? (${n} ${n === 1 ? "group" : "groups"})`,
+    rejectAsk: n => `The photos in ${n} ${n === 1 ? "group" : "groups"} are left out of pet `
+      + `grouping from now on. Nothing is deleted.`,
+    rejectDo: "Not animals",
     unknown: "Unknown animals",
   },
   place: {
@@ -146,7 +150,10 @@ function renderBar() {
 async function runAction(name) {
   if (name === "done") { endSelecting(); return; }
   const words = KINDS[MODE.kind], chosen = [...MODE.chosen.values()], after = MODE.after;
-  if (name === "reject" && !confirm(words.rejectAsk(chosen.length))) return;
+  if (name === "reject" && !await askConfirm({
+    title: words.rejectTitle(chosen.length), body: words.rejectAsk(chosen.length),
+    confirmLabel: words.rejectDo, danger: true,
+  })) return;
   let failed;
   if (name === "merge") {
     const survivingName = await chooseSurvivingName(words, chosen);

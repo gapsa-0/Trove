@@ -474,8 +474,8 @@ def test_merging_a_selection_folds_them_into_one(open_app):
         # between two things a person typed -- so the same dialog a drag-merge
         # raises asks which name stays, once for the whole set rather than once
         # per pair.
-        app.wait_for("#mergeask-options .mergeask-opt input")
-        app.click("#mergeask-merge")
+        app.wait_for("#ask-options .ask-opt input")
+        app.click("#ask-confirm")
 
         app.tab.wait_for(
             f"document.querySelectorAll('#peoplegrid .pcard').length === {before - 1}",

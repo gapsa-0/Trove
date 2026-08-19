@@ -167,27 +167,45 @@ async function runMerge(source, target, onMerged) {
     : `Merged · ${fileCount(count)}`);
   onMerged(merged);   // places' onMerged (refreshPlacesAfterMerge) uses this to follow the survivor; others ignore it
 }
-// Small centered confirm dialog for the both-named drag-merge case. Resolves
-// to the chosen name, or null if the user backed out via Cancel/Esc/backdrop.
-// Separate markup from #modal (the media viewer) -- unrelated concerns.
-let _mergeAskResolve = null;
-export function mergeAskCancel() { if (_mergeAskResolve) _mergeAskResolve(null); }
-export function askMergeName({ title, body, options, preselect, warning }) {
+/* The app's one confirm dialog. Resolves to the chosen value, or null if the
+   user backed out via Cancel, Escape or the backdrop. Separate markup from
+   #modal (the media viewer) -- unrelated concerns.
+
+   `askConfirm` below is the plain question; `askMergeName` is this same dialog
+   with a list of names to choose between. */
+let _askResolve = null;
+export function askCancel() { if (_askResolve) _askResolve(null); }
+/* A yes/no question, answered in the app rather than by the browser.
+
+   Seven of these were `confirm()`: removing an archive, rejecting a face or a
+   selection of them, "neither is a person", "not an animal", detaching a photo.
+   Every one of them is harder to undo than the merge this dialog was built for,
+   and every one of them was asked in OS chrome the app has no say over -- wrong
+   typeface, wrong buttons, no way to mark the destructive one as destructive,
+   and in the packaged app a window that comes from somewhere else entirely. */
+export function askConfirm({ title, body, confirmLabel = "Confirm", danger = false }) {
+  return askMergeName({ title, body, confirmLabel, danger, preselect: "yes" })
+    .then(value => value !== null);
+}
+export function askMergeName({ title, body, options, preselect, warning,
+  confirmLabel = "Merge", danger = false }) {
   return new Promise(resolve => {
-    const backdrop = document.getElementById("mergeask-backdrop");
-    const dlg = document.getElementById("mergeask");
-    const optsEl = document.getElementById("mergeask-options");
-    const mergeBtn = document.getElementById("mergeask-merge");
-    const cancelBtn = document.getElementById("mergeask-cancel");
+    const backdrop = document.getElementById("ask-backdrop");
+    const dlg = document.getElementById("ask");
+    const optsEl = document.getElementById("ask-options");
+    const mergeBtn = document.getElementById("ask-confirm");
+    mergeBtn.textContent = confirmLabel;
+    mergeBtn.classList.toggle("danger", !!danger);
+    const cancelBtn = document.getElementById("ask-cancel");
     const previouslyFocused = document.activeElement;
-    document.getElementById("mergeask-title").textContent = title;
-    document.getElementById("mergeask-body").textContent = body;
+    document.getElementById("ask-title").textContent = title;
+    document.getElementById("ask-body").textContent = body;
     // Places-only wide-area caution (runMerge builds this string from the
     // merge-preview endpoint). The dialog element is reused for every
     // drag-merge -- People/Pets never pass `warning` -- so this must be
     // reset on every call, or a stale Places warning would linger onto
     // the next, unrelated merge.
-    const warnEl = document.getElementById("mergeask-warning");
+    const warnEl = document.getElementById("ask-warning");
     // The leading mark is a visual cue only -- the sentence itself (built in
     // runMerge) carries the meaning, and the mark is aria-hidden, so nothing
     // depends on it being rendered or announced.
@@ -198,8 +216,8 @@ export function askMergeName({ title, body, options, preselect, warning }) {
     // nothing to choose between -- confirming every drag-merge (not just
     // the both-named one) means most calls pass an empty options list.
     optsEl.style.display = opts.length ? "" : "none";
-    optsEl.innerHTML = opts.map(o => `<label class="mergeask-opt">
-        <input type="radio" name="mergeask-name" value="${esc(o.value)}" ${o.value === preselect ? "checked" : ""}>
+    optsEl.innerHTML = opts.map(o => `<label class="ask-opt">
+        <input type="radio" name="ask-name" value="${esc(o.value)}" ${o.value === preselect ? "checked" : ""}>
         <span>${esc(o.label)}</span><span class="muted">${fileCount(o.count)}</span>
       </label>`).join("");
     // With no radios there's nothing to read from the DOM: resolve
@@ -209,7 +227,7 @@ export function askMergeName({ title, body, options, preselect, warning }) {
     // its `|| {}` branch).
     const chosen = () => {
       if (!opts.length) return preselect || "";
-      const checked = optsEl.querySelector("input[name=mergeask-name]:checked");
+      const checked = optsEl.querySelector("input[name=ask-name]:checked");
       return checked ? checked.value : (preselect || "");
     };
     const onKey = e => {
@@ -225,11 +243,11 @@ export function askMergeName({ title, body, options, preselect, warning }) {
       backdrop.classList.remove("open"); dlg.classList.remove("open");
       document.removeEventListener("keydown", onKey, true);
       mergeBtn.onclick = cancelBtn.onclick = null;
-      _mergeAskResolve = null;
+      _askResolve = null;
       if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus();
       resolve(value);
     }
-    _mergeAskResolve = finish;
+    _askResolve = finish;
     mergeBtn.onclick = () => finish(chosen());
     cancelBtn.onclick = () => finish(null);
     backdrop.classList.add("open"); dlg.classList.add("open");
@@ -239,7 +257,7 @@ export function askMergeName({ title, body, options, preselect, warning }) {
     // silently refuses focus (measured: activeElement stayed on <body>).
     void dlg.offsetWidth;
     // Empty options -> nothing to check -> focus lands on Merge directly.
-    (opts.length && optsEl.querySelector("input[name=mergeask-name]:checked") || mergeBtn).focus();
+    (opts.length && optsEl.querySelector("input[name=ask-name]:checked") || mergeBtn).focus();
   });
 }
 // Undo-a-merge panel: one row per drag-merge folded into this person/pet,

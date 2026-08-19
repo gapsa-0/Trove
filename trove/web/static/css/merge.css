@@ -33,27 +33,27 @@
 /* Small centered confirm dialog asking which of two differently-named
    groups should survive a drag-merge. Deliberately separate markup from
    #modal (the media viewer) -- unrelated concerns. */
-.mergeask-backdrop {
+.ask-backdrop {
   position: fixed;
   inset: 0;
   z-index: 60;
   background: rgba(0, 0, 0, .32);
   opacity: 0;
   visibility: hidden;
-  /* visibility flips instantly on open (see .mergeask below) and only after
+  /* visibility flips instantly on open (see .ask below) and only after
      the fade on close, so the dialog is focusable the moment it opens. */
   transition: opacity .18s, visibility 0s linear .18s;
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px)
 }
 
-.mergeask-backdrop.open {
+.ask-backdrop.open {
   opacity: 1;
   visibility: visible;
   transition: opacity .18s, visibility 0s
 }
 
-.mergeask {
+.ask {
   position: fixed;
   z-index: 61;
   left: 50%;
@@ -75,21 +75,21 @@
   transition: opacity .18s, transform .18s, visibility 0s linear .18s
 }
 
-.mergeask.open {
+.ask.open {
   opacity: 1;
   visibility: visible;
   transform: translate(-50%, -50%);
   transition: opacity .18s, transform .18s, visibility 0s
 }
 
-.mergeask-title {
+.ask-title {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -.01em;
   margin: 0 0 6px
 }
 
-.mergeask-body {
+.ask-body {
   font-size: 13px;
   color: var(--muted);
   margin: 0 0 14px;
@@ -102,7 +102,11 @@
    borrows --warning (already themed light/dark, see health-task.pending)
    tinted at low opacity behind a solid left border, same
    color-mix(..., transparent) recipe used elsewhere in this file. */
-.mergeask-warning {
+.ask-warning[hidden] {
+  display: none
+}
+
+.ask-warning {
   display: flex;
   align-items: flex-start;
   gap: 7px;
@@ -116,13 +120,13 @@
   line-height: 1.4
 }
 
-.mergeask-options {
+.ask-options {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.mergeask-opt {
+.ask-opt {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -133,11 +137,11 @@
   font-size: 13px
 }
 
-.mergeask-opt:hover {
+.ask-opt:hover {
   border-color: var(--accent)
 }
 
-.mergeask-opt span:first-of-type {
+.ask-opt span:first-of-type {
   flex: 1;
   font-weight: 600;
   white-space: nowrap;
@@ -145,7 +149,7 @@
   text-overflow: ellipsis
 }
 
-.mergeask-actions {
+.ask-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -170,9 +174,23 @@
   border-top: 1px solid var(--line)
 }
 
-.mergeask-warning .appicon {
+.ask-warning .appicon {
   width: 15px;
   height: 15px;
   flex: none;
   margin-top: 1px
+}
+
+/* A destructive answer, marked as one. The dialog's confirm button carries the
+   action's own words ("Remove archive", "Not a person") rather than a generic
+   OK, and where the action cannot be undone it takes the app's --bad rather
+   than its accent. This is the whole reason these questions moved out of the
+   browser's confirm(), which offers no way to say which button is the sharp
+   one. */
+.btn.danger {
+  background: var(--bad)
+}
+
+.btn.danger:hover {
+  background: color-mix(in srgb, var(--bad) 84%, black)
 }

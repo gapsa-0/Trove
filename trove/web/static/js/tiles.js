@@ -15,6 +15,9 @@ import {
   jpost,
 } from "./api.js";
 import {
+  askConfirm,
+} from "./merge.js";
+import {
   esc, toast,
 } from "./dom.js";
 import {
@@ -278,8 +281,10 @@ function setCover(opts) {
 }
 /* Optimistic: the tile goes first and comes back if the request fails, which
    is reassignFace's discipline -- repaint, then roll back and say so. */
-function detachTile(opts, tileEl) {
-  if (!confirm(opts.confirm)) return;
+async function detachTile(opts, tileEl) {
+  if (!await askConfirm({
+    title: opts.detachLabel, body: opts.confirm, confirmLabel: opts.detachLabel, danger: true,
+  })) return;
   const parent = tileEl.parentNode, next = tileEl.nextSibling;
   tileEl.remove();
   opts.detach()

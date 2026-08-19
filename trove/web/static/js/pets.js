@@ -36,7 +36,7 @@ import {
   historyButton, mountHistory,
 } from "./history.js";
 import {
-  attachMergeDrag, guardCardClick, mergeWithPicker,
+  askConfirm, attachMergeDrag, guardCardClick, mergeWithPicker,
 } from "./merge.js";
 import {
   cardMenu,
@@ -217,7 +217,11 @@ function petMenuItems(p, after, onMerged) {
       label: "Not an animal",
       danger: true,
       onPick: async () => {
-        if (!confirm("Not an animal? Its photos are left out of pet grouping from now on.")) return;
+        if (!await askConfirm({
+          title: "Not an animal?",
+          body: "Its photos are left out of pet grouping from now on. Nothing is deleted.",
+          confirmLabel: "Not an animal", danger: true,
+        })) return;
         await hidePetGroup(p.id, "not_animal", after);
       },
     },

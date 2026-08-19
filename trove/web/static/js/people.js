@@ -36,7 +36,7 @@ import {
   cardMenu,
 } from "./menu.js";
 import {
-  attachMergeDrag, guardCardClick, mergeWithPicker,
+  askConfirm, attachMergeDrag, guardCardClick, mergeWithPicker,
 } from "./merge.js";
 import {
   inlineNameEdit,
@@ -312,7 +312,7 @@ export async function answerSuggest(kind) {
   const dropRefs = ids => { st.list = st.list.filter((x, ix) => ix <= st.idx || (!ids.includes(x.a.id) && !ids.includes(x.b.id))); };
   if (kind === 'same') {
     const res = await jpost('/api/faces/merge', { a: s.a.id, b: s.b.id });
-    if (res && res.error) { alert(res.error); return; }
+    if (res && res.error) { toast(res.error, true); return; }
     if (res && res.person) { const kept = res.person.id, dropped = (s.a.id === kept ? s.b.id : s.a.id); dropRefs([dropped]); refreshPeopleGrid(); }
   } else if (kind === 'different') {
     await jpost('/api/faces/different', { a: s.a.id, b: s.b.id });
@@ -356,7 +356,12 @@ function hideMenuItems(id, after) {
       label: "Not a person",
       danger: true,
       onPick: async () => {
-        if (!confirm("Not a person? Its faces are marked as a doll, animal or cartoon and left out of clustering from now on.")) return;
+        if (!await askConfirm({
+          title: "Not a person?",
+          body: "Its faces are marked as a doll, animal or cartoon and left out of grouping "
+            + "from now on. Nothing is deleted.",
+          confirmLabel: "Not a person", danger: true,
+        })) return;
         await hideCluster(id, "not_person", after);
       },
     },

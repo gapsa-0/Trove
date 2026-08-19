@@ -251,21 +251,26 @@
     </div>
   </div>
 
-  <!-- MERGE CONFIRM (drag-to-merge People/Pets/Places: every drag-merge is
-       confirmed here now, not just the named-differently case; the options
-       list is simply empty when there's nothing to choose between. The
-       warning line is Places-only (see runMerge) -- a wide-spread merge-preview
-       notice -- and is hidden/cleared whenever it doesn't apply, since this
-       dialog is reused across all three kinds. -->
-  <div class="mergeask-backdrop" id="mergeask-backdrop" onclick="mergeAskCancel()"></div>
-  <div class="mergeask" id="mergeask" role="dialog" aria-modal="true" aria-labelledby="mergeask-title">
-    <h3 class="mergeask-title" id="mergeask-title"></h3>
-    <p class="mergeask-body" id="mergeask-body"></p>
-    <p class="mergeask-warning" id="mergeask-warning" hidden></p>
-    <div class="mergeask-options" id="mergeask-options"></div>
-    <div class="mergeask-actions">
-      <button type="button" class="btn sec" id="mergeask-cancel">Cancel</button>
-      <button type="button" class="btn" id="mergeask-merge">Merge</button>
+  <!-- THE ASK: one confirm dialog for every question the app puts to the user.
+
+       It began as the drag-merge confirm and was the only designed dialog in
+       the app, while seven genuinely consequential answers -- removing an
+       archive, rejecting a face, "neither is a person" -- were asked with the
+       browser's own confirm(), which is OS chrome the app has no say over.
+
+       The options list is empty for everything except a merge that has two
+       names to choose between; the warning line is Places-only (see runMerge)
+       and is cleared on every call, since the element is reused. The confirm
+       button's label is set per call. -->
+  <div class="ask-backdrop" id="ask-backdrop" onclick="askCancel()"></div>
+  <div class="ask" id="ask" role="dialog" aria-modal="true" aria-labelledby="ask-title">
+    <h3 class="ask-title" id="ask-title"></h3>
+    <p class="ask-body" id="ask-body"></p>
+    <p class="ask-warning" id="ask-warning" hidden></p>
+    <div class="ask-options" id="ask-options"></div>
+    <div class="ask-actions">
+      <button type="button" class="btn sec" id="ask-cancel">Cancel</button>
+      <button type="button" class="btn" id="ask-confirm">Merge</button>
     </div>
   </div>
 

@@ -45,7 +45,7 @@ import {
   answerSuggest, unhidePerson,
 } from "./people.js";
 import {
-  mergeAskCancel, undoMerge,
+  askCancel, undoMerge,
 } from "./merge.js";
 import {
   closePlaceCluster, editClusterName, setMapView,
@@ -175,7 +175,7 @@ Object.assign(window, {
   copyText,
   editClusterName, editDate, editPlace,
   highlightFace,
-  mergeAskCancel,
+  askCancel,
   nameFace, newPlace, onAddPerson,
   onAddPet, onPeopleFilterChange, onPetsFilterChange, onPlaceSelect, onSemanticComposerInput,
   onSemanticComposerKeydown, onSemanticComposerPaste, onTimelineYearChange, onYearChange,

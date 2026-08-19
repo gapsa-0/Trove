@@ -6,6 +6,9 @@ import {
   resetSectionViews, showSection,
 } from "./router.js";
 import {
+  askConfirm,
+} from "./merge.js";
+import {
   jget, jpost,
 } from "./api.js";
 import {
@@ -209,10 +212,16 @@ export async function addArchiveFromForm(event) {
   return startAddArchive();
 }
 async function removeArchive(a) {
-  const message = `Remove “${a.name}” from Trove?\n\nThis removes its catalog entries and exclusive cached thumbnails. Your original files in:\n${a.path}\nwill not be changed.`;
-  if (!confirm(message)) return;
+  const ok = await askConfirm({
+    title: `Remove “${a.name}” from Trove?`,
+    body: `This removes its catalogue entries and the thumbnails only it uses. `
+      + `Your original files in ${a.path} are not touched.`,
+    confirmLabel: "Remove archive",
+    danger: true,
+  });
+  if (!ok) return;
   const r = await jpost("/api/archive/remove", { root_id: a.id });
-  if (r.error) { alert(r.error); return; }
+  if (r.error) { toast(r.error, true); return; }
   ARCHIVES = ARCHIVES.filter(x => x.id !== a.id);
   await loadPicker();
 }
