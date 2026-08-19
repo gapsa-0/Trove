@@ -50,10 +50,22 @@ function gstatRow(run) {
   // stop doing.
   const label = run.pausing ? "Pausing"
     : (run.message || run.label || "").replace(/…$/, "");
-  return `<div class="grow"><div class="gline"><span class="gtxt">${label}</span>`
-    + (pct != null ? `<span class="gpct">${gstatPct(pct)}</span>` : "") + `</div>`
-    + (pct != null
-      ? `<div class="gbar"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`
+  // A model fetch reports no percent of its own -- see JobProgress.preparing --
+  // and carries its progress inside the sentence instead. In a 230px rail that
+  // sentence is truncated, and the first thing off the end is the percentage:
+  // "Downloading the face recogniser: 7% of 249…". So when the message ends in
+  // one, it is lifted into the slot that exists for exactly this, and the label
+  // keeps the part that survives being cut.
+  const carried = pct == null && /:\s*(\d+)%\s+of\s+/.exec(label);
+  const shown = carried ? label.slice(0, carried.index) : label;
+  const figure = pct != null ? pct : carried ? Number(carried[1]) : null;
+  // And once the figure is known, the bar can stop pretending it is not: the
+  // sweep is for work that reports no progress, and a row showing "7%" over an
+  // animation that means "no idea" contradicts itself.
+  return `<div class="grow"><div class="gline"><span class="gtxt">${shown}</span>`
+    + (figure != null ? `<span class="gpct">${gstatPct(figure)}</span>` : "") + `</div>`
+    + (figure != null
+      ? `<div class="gbar"><i style="width:${Math.max(0, Math.min(100, figure))}%"></i></div>`
       : `<div class="gbar ind"><i></i></div>`)
     + `</div>`;
 }

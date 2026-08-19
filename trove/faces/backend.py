@@ -189,7 +189,7 @@ def ensure_models(cache_dir: str, log: Log | None = None) -> Path:
     if _detector_ready(cache_dir):
         return d
     if log:
-        log("downloading face models (buffalo_l) …")
+        log("downloading the face detector …")
     fd, tmp_zip = tempfile.mkstemp(dir=str(d), suffix=".zip")
     os.close(fd)
     try:
@@ -202,7 +202,7 @@ def ensure_models(cache_dir: str, log: Log | None = None) -> Path:
         urllib.request.urlretrieve(
             BUFFALO_URL,
             tmp_zip,
-            reporthook=model_manifest.download_progress(log, "face models", 0),
+            reporthook=model_manifest.download_progress(log, "the face detector", 0),
         )
         with zipfile.ZipFile(tmp_zip) as zf:
             for member in zf.namelist():

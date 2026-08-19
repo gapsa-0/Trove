@@ -204,13 +204,15 @@ def _fetch(name: str, dest: Path, log: Log | None = None) -> None:
     rel, size, digest = _FILES[name]
     dest.parent.mkdir(parents=True, exist_ok=True)
     if log:
-        log(f"downloading search model {name} ({size / 1024 / 1024:.0f} MB) …")
+        log(f"downloading the description-search model ({size / 1024 / 1024:.0f} MB) …")
     url = _HF_BASE + rel
     fd, tmp = tempfile.mkstemp(dir=str(dest.parent), suffix=".part")
     os.close(fd)
     try:
         urllib.request.urlretrieve(
-            url, tmp, reporthook=model_manifest.download_progress(log, f"search model {name}", size)
+            url,
+            tmp,
+            reporthook=model_manifest.download_progress(log, "the description-search model", size),
         )
         got = os.path.getsize(tmp)
         if got != size:

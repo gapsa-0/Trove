@@ -60,6 +60,32 @@ from .errors import ModelUnavailableError
 # What a caller passes to watch a one-time model download.
 Log = Callable[[str], None]
 
+# What to call a set of weights in front of somebody.
+#
+# The manifest keys are file names -- "adaface", "ppocr_rec", "bergamot_es_en_lex"
+# -- and they were going straight onto the sidebar chip, so a new archive's
+# first minutes read "Downloading adaface model: 7% of 249 MB". Nobody outside
+# this repo knows what an adaface is, and it is the first thing Trove ever says.
+# A reader wants to know which feature is being got ready, which is the one
+# thing the file name cannot tell them.
+_MODEL_WORDS = {
+    "adaface": "the face recogniser",
+    "dinov2_pet": "the pet recogniser",
+    "ppocr_det": "the picture-text reader",
+    "ppocr_rec": "the picture-text reader",
+    "ppocr_cls": "the picture-text reader",
+    "bergamot_wasm": "the translator",
+    "bergamot_es_en_model": "the translator",
+    "bergamot_es_en_lex": "the translator",
+    "bergamot_es_en_vocab": "the translator",
+}
+
+
+def model_words(name: str) -> str:
+    """A weights set named for what it lets Trove do, not for its file."""
+    return _MODEL_WORDS.get(name, f"the {name} model")
+
+
 logger = logging.getLogger(__name__)
 
 # The repo root, resolved the same way config.settings does it: this file is
@@ -306,13 +332,13 @@ def ensure(name: str, cache_dir: str, log: Log | None = None) -> Path:
     destination = cache_path(name, cache_dir)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if log:
-        log(f"downloading {name} model ({item['size'] / 1024 / 1024:.0f} MB) …")
+        log(f"downloading {model_words(name)} ({item['size'] / 1024 / 1024:.0f} MB) …")
     logger.info("downloading %s from %s", name, url)
     fd, tmp = tempfile.mkstemp(dir=str(destination.parent), suffix=".part")
     os.close(fd)
     try:
         urllib.request.urlretrieve(
-            url, tmp, reporthook=download_progress(log, f"{name} model", item["size"])
+            url, tmp, reporthook=download_progress(log, model_words(name), item["size"])
         )
         got = os.path.getsize(tmp)
         if got != item["size"]:

@@ -248,12 +248,18 @@
   background: var(--good)
 }
 
+/* A confidence ramp, not an error scale. The weakest source used to take
+   `--bad`, the same saturated red the app uses for a failure -- so a file whose
+   date came from its filesystem timestamp, the documented and expected
+   fallback, was flagged as if something had gone wrong. Nothing has: this is
+   the least trustworthy of five valid answers, which is what a quiet grey says
+   and red does not. */
 .prov.guess::before {
   background: var(--warning)
 }
 
 .prov.weak::before {
-  background: var(--bad)
+  background: var(--faint)
 }
 
 /* An edit control small enough to sit at the end of a row of facts. The panel's

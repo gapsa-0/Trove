@@ -340,7 +340,7 @@ function healthDoneMessage(id) {
       if (fs && fs.faces) parts.push(`${fs.faces.toLocaleString()} face${fs.faces === 1 ? "" : "s"}`);
       if (ps && ps.detections) parts.push(`${ps.detections.toLocaleString()} animal${ps.detections === 1 ? "" : "s"}`);
       return parts.length ? parts.join(" · ")
-        : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analyzed`;
+        : `${(fs && fs.scanned || 0).toLocaleString()} photo${fs && fs.scanned === 1 ? "" : "s"} analysed`;
     }
     case "places": return s && s.in_places
       ? `${s.in_places.toLocaleString()} photo${s.in_places === 1 ? "" : "s"} placed`

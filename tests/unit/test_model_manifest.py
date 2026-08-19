@@ -143,7 +143,11 @@ def test_progress_is_reported_as_percent_while_a_download_runs(manifest, tmp_pat
     percents = [m for m in messages if "%" in m]
     assert percents, f"no progress was reported, only {messages}"
     assert percents[-1].endswith("100% of 0 MB")
-    assert all("adaface model" in m for m in percents)
+    # Named for what it lets Trove do. "adaface" is a file in this repo, and it
+    # was going straight onto the sidebar chip as the first thing a new archive
+    # ever said.
+    assert all("the face recogniser" in m for m in percents)
+    assert not any("adaface" in m for m in messages), messages
     # Monotonic, and never past 100 -- the last block is short, and urlretrieve
     # reports blocks * block_size, which overshoots if it is not clamped.
     values = [int(m.split(":")[1].strip().split("%")[0]) for m in percents]
