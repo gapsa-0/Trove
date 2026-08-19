@@ -5,6 +5,14 @@
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
 }
 
+/* "No repeated pets grouped yet." is a sentence, not a card. Appended straight
+   into the grid it became one 120px column and broke after three words in a
+   container a thousand pixels wide. */
+.people>.muted,
+.nonhuman-grid>.muted {
+  grid-column: 1 / -1;
+}
+
 .pcard {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -98,12 +106,16 @@
   font-size: 11px
 }
 
+/* No horizontal margin: the grids and paragraphs this heads have none, so 2px
+   here put every section title on Pets, People and Places two pixels right of
+   its own content -- enough to read as wrong without being obvious enough to
+   name. */
 .place-gallery-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin: 24px 2px 12px;
+  margin: 24px 0 12px;
 }
 
 .place-gallery-head h3 {
