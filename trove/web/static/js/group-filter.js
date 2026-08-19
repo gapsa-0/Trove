@@ -44,9 +44,18 @@ const GROUP_FILTERS = {
 };
 export function groupFilterHTML(prefix, kind, items) {
   const words = GROUP_FILTERS[kind];
+  /* Nothing to filter by yet: a disabled control, the same shape as its
+     siblings, saying why it cannot help.
+
+     This used to be an inert `<span>` wearing the select's box -- so the filter
+     row held a real select with an arrow, a fake select built from <details>
+     without one, and two spans that looked like empty text inputs, three
+     patterns for one situation side by side. Places already did the honest
+     thing: a real, disabled select whose option names the reason. All three
+     do it now. */
   if (!items.length)
-    return `<span class="fsel filter-placeholder" tabindex="0" role="note"
-      data-tip="${words.enable}">${words.empty}</span>`;
+    return `<select class="fsel" disabled data-tip="${words.enable}">
+      <option>${words.empty}</option></select>`;
   return `<details class="multi-filter" id="${prefix}-${kind}-filter">
     <summary class="fsel"><span id="${prefix}-${kind}-label">${words.none}</span></summary>
     <div class="multi-menu">${items.map(p => `<label class="multi-option">

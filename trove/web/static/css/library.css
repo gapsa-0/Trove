@@ -575,10 +575,19 @@
   line-height: 1.35
 }
 
-.filter-placeholder {
-  display: flex;
-  align-items: center;
-  opacity: .62;
+/* A filter with nothing to offer yet. `.fsel:disabled` in grid.css was
+   `opacity: .6` and nothing else, which left a dead control very nearly
+   indistinguishable from a live one -- "All months" sat between two working
+   selects looking like a third. Recessed rather than merely faded: no panel
+   surface, no shadow, and a dashed edge, so the row reads at a glance as five
+   controls and one that is waiting on something. */
+.fsel:disabled {
+  border-style: dashed;
+  border-color: var(--line);
+  background: transparent;
+  box-shadow: none;
+  color: var(--faint);
+  opacity: 1;
   cursor: not-allowed
 }
 
