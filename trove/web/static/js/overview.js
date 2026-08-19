@@ -48,7 +48,7 @@ function statTile(section, colour, label, id, value) {
       <span class="metric-icon ${colour}">${ICONS[section]}</span>
       <div><div class="k">${label}</div>
       <div class="v" id="${id}">${statValue(value)}</div></div>
-      <span class="stat-go" aria-hidden="true">›</span></button>`;
+      <span class="stat-go" aria-hidden="true"><svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span></button>`;
 }
 
 /* Mark the tiles whose figure is behind a stopped stage.

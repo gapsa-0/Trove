@@ -226,7 +226,7 @@ function clusterTile(it, opts) {
       "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='9' r='3.4'/><path d='M5 20c.7-4 3.4-6 7-6s6.3 2 7 6'/></svg>",
       () => setCover(opts)));
   }
-  d.appendChild(tileAction("tile-detach", opts.detachLabel, "✕", () => detachTile(opts, d)));
+  d.appendChild(tileAction("tile-detach", opts.detachLabel, '<svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>', () => detachTile(opts, d)));
   return d;
 }
 function tileAction(cls, label, glyph, onPick) {

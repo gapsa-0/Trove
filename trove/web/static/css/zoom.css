@@ -58,6 +58,12 @@
   background: rgba(255, 255, 255, .16)
 }
 
+.zoombar button .appicon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2
+}
+
 .zoombar button[disabled] {
   opacity: .35;
   cursor: default

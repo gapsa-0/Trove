@@ -84,8 +84,19 @@ export function renderNav() {
   syncThemeControl();
 }
 function navCollapsed() { return localStorage.getItem("navCollapsed") === "1"; }
+/* Put the rail in its saved state, and say so on the control that changes it.
+   The label used to be static markup, so a collapsed sidebar carried a button
+   still offering to "Collapse sidebar" -- and with no `aria-expanded` there was
+   nothing else for a screen reader to go on either. */
 export function applyNavCollapsed() {
-  document.getElementById("nav").classList.toggle("collapsed", navCollapsed());
+  const collapsed = navCollapsed();
+  document.getElementById("nav").classList.toggle("collapsed", collapsed);
+  const toggle = document.getElementById("navtoggle");
+  if (!toggle) return;
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  toggle.title = label;
+  toggle.setAttribute("aria-label", label);
+  toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
 }
 export function toggleNav() {
   localStorage.setItem("navCollapsed", navCollapsed() ? "0" : "1");

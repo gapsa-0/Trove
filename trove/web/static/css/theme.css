@@ -39,10 +39,6 @@ nav .brand img {
   filter: none
 }
 
-.navtoggle {
-  font-family: inherit
-}
-
 .arch {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
   border-bottom-color: var(--line) !important;
@@ -329,4 +325,38 @@ select:focus-visible,
 a:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--focus) 35%, transparent);
   outline-offset: 2px
+}
+
+/* Every icon in the app is drawn, not typed.
+
+   The chrome used to reach for whatever glyph was nearest to hand -- « and »
+   for the sidebar, ‹ and › for the viewer and the stat tiles, × here and ✕
+   there, ↗ after a label. Eight marks from three typographic families, each
+   inheriting the body font, so none of them shared a weight with the stroked
+   set the nav and the features are drawn in, and no two of them shared one
+   with each other.
+
+   This is that set's drawing convention, applied to any inline `svg.appicon`.
+   The stroke, the caps and the joins are the family and belong in one place.
+
+   Deliberately no width or height. Half the stylesheets load before this one,
+   so a size here would silently outrank the per-component `svg` rules in
+   grid.css and friends -- same specificity, later file wins -- and a 13px
+   detach mark would come back 22px. Size is the caller's business anyway: a
+   19px nav mark and a 40px viewer control are not the same object. */
+svg.appicon {
+  display: block;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round
+}
+
+/* The one exception: a solid mark, where the shape IS the fill (the play
+   triangle on a video tile, the bars on a pause button). */
+svg.appicon.solid {
+  fill: currentColor;
+  stroke: none
 }

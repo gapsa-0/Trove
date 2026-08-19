@@ -188,12 +188,21 @@ button.stat {
    default so four of them do not crowd the row, and it steps toward the number
    as the tile lifts. */
 .stat-go {
+  display: flex;
+  align-items: center;
+  width: 15px;
+  height: 15px;
   margin-left: auto;
+  flex: none;
   color: var(--faint);
-  font-size: 17px;
-  line-height: 1;
   opacity: .55;
   transition: opacity .18s, transform .18s
+}
+
+.stat-go .appicon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2
 }
 
 button.stat:hover .stat-go,

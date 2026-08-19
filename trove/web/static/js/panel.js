@@ -375,7 +375,7 @@ function fileRows(it) {
   return `<div class="kv"><span class="k">File</span>
       <span class="v filepath">${esc(it.rel_path)}</span></div>
     <div class="filelinks">
-      <a class="quietbtn sm" href="/file/${it.id}" target="_blank">Open original ↗</a>
+      <a class="quietbtn sm" href="/file/${it.id}" target="_blank">Open original<svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5"/><path d="M18 14.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5"/></svg></a>
       ${window.archiveDesktop ? `<button class="quietbtn sm" onclick="openFileLocation()">Open file location ↗</button>` : ""}
     </div>`;
 }

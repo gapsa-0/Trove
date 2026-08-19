@@ -380,7 +380,7 @@ async function selectPlaceCluster(id) {
     <div class="mapside-name" id="mapsidename">
       <div class="mapside-title"><button class="person-name-button ${c.name ? "" : "un"}" onclick="editClusterName(${id},'${safeName}')">${displayName}</button>
         <span class="muted">${c.total.toLocaleString()} item${c.total === 1 ? "" : "s"}</span></div>
-      <div class="mapside-actions" id="placeactions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" title="Close place">×</button></div>
+      <div class="mapside-actions" id="placeactions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" title="Close place"><svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>
     </div>
     ${mergesPanel(c.merges, "place")}
     <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>

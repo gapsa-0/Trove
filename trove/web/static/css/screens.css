@@ -264,14 +264,23 @@
 }
 
 .mapside-name .close-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   height: 28px;
+  flex: none;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: var(--panel2);
   color: var(--muted);
   cursor: pointer
+}
+
+.mapside-name .close-side .appicon {
+  width: 15px;
+  height: 15px
 }
 
 .mapside-title {

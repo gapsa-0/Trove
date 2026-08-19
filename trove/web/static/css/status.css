@@ -143,7 +143,6 @@ nav.collapsed .navitem .tag {
 
 nav.collapsed .navtoggle {
   margin-left: 0;
-  transform: scaleX(-1);
 }
 
 nav.collapsed .navitem {

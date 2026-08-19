@@ -54,9 +54,39 @@ nav .navtoggle {
   height: 26px;
   margin-left: auto;
   padding: 0;
+  border: 0;
   border-radius: 7px;
+  background: transparent;
   color: var(--muted);
-  font-size: 14px
+  cursor: pointer
+}
+
+nav .navtoggle .appicon {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.7
+}
+
+/* Only the chevron inside the panel turns around, and only when collapsed.
+   The whole glyph used to be mirrored with `transform: scaleX(-1)`, which is
+   how a typed « became a »: legible enough, but it flipped the control's
+   focus ring and hover box with it, and it left the expand affordance with no
+   drawing of its own.
+
+   Two paths rather than one swapped with the CSS `d` property: `d` is not
+   implemented outside Chromium, and the packaged app is not the only place
+   this runs -- the browser tier and anyone opening the port in Firefox get
+   the same markup. */
+.navtoggle .navtoggle-out {
+  display: none
+}
+
+nav.collapsed .navtoggle .navtoggle-in {
+  display: none
+}
+
+nav.collapsed .navtoggle .navtoggle-out {
+  display: inline
 }
 
 nav .navtoggle:hover {

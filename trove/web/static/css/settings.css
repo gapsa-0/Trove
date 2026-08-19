@@ -52,15 +52,27 @@
   letter-spacing: -.02em
 }
 
+/* A square, now that the mark inside it is drawn rather than a 26px × set in
+   the body font: the glyph's own bearings used to do the centring, and a
+   drawn icon has none. */
 .drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 26px;
-  line-height: 1;
-  padding: 0 4px;
   border-radius: 8px;
   cursor: pointer
+}
+
+.drawer-close .appicon {
+  width: 16px;
+  height: 16px
 }
 
 .drawer-close:hover {

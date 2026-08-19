@@ -182,6 +182,18 @@
   background: rgba(60, 60, 64, .82)
 }
 
+.vround .appicon {
+  width: 17px;
+  height: 17px
+}
+
+/* The details mark is a filled dot over a stroked stem, so its stroke has to
+   round off at both ends the way the rest of the family does; nothing else
+   about it is special. */
+#vinfo .appicon {
+  stroke-width: 1.8
+}
+
 /* `hidden` is a presentation hint at the very bottom of the cascade, so the
    `display` above silently outranks it and the element stays on screen. Every
    element in this file that JS hides needs to say so itself -- this is why the
@@ -226,6 +238,12 @@
 
 .vstep:hover {
   background: rgba(60, 60, 64, .82)
+}
+
+.vstep .appicon {
+  width: 21px;
+  height: 21px;
+  stroke-width: 2
 }
 
 .vstep.prev {
