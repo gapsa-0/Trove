@@ -34,7 +34,7 @@ ImageHash==4.3.2
 
 # --- faces extra ---
 insightface==1.0.1
-onnxruntime==1.27.0
+onnxruntime==1.29.0
 # The one place a desktop pin and a dev pin deliberately differ by *variant* and
 # not by number: requirements-desktop.txt ships opencv-python-headless at this
 # same 5.0.0.93. Same OpenCV sources, built without highgui, which keeps 29 MB of
@@ -43,7 +43,7 @@ onnxruntime==1.27.0
 # tests/unit/test_opencv_headless.py enforces that.
 opencv-python==5.0.0.93
 scikit-learn==1.9.0
-numpy==2.5.1
+numpy==2.5.2
 
 # --- pets extra ---
 # (onnxruntime, opencv-python, numpy, Pillow, pillow-heif — all pinned above)
@@ -59,7 +59,7 @@ tokenizers==0.23.1
 # --- documents extra ---
 # Bundles its own PDFium build, so this pin fixes the PDF parser itself and not
 # just the binding. Text extraction results can shift between PDFium releases.
-pypdfium2==5.12.1
+pypdfium2==5.13.0
 
 # --- ocr extra ---
 # Pins the OCR models too, not only the code: the weights ship inside this
@@ -74,12 +74,12 @@ shapely==2.1.2
 # --- dev extra ---
 # Dev-only: the desktop build excludes faiss (trove.spec), but the
 # tests that assert its search path matches the NumPy one need it installed.
-faiss-cpu==1.14.3
+faiss-cpu==1.15.0
 pytest==9.1.1
 pytest-cov==7.1.0
-ruff==0.16.0
-pre-commit==4.6.1
-mypy==2.3.0
+ruff==0.16.3
+pre-commit==4.6.2
+mypy==2.3.1
 
 # --- transitive, but version-sensitive ---
 # Not imported directly by this project; pinned because they decide numerical
