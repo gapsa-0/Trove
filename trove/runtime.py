@@ -68,9 +68,11 @@ def tool_env(base: dict | None = None) -> dict:
       a ``LD_LIBRARY_PATH`` pointing into PyInstaller's ``_internal``, which
       carries OpenCV's own bundled ``libav*``. Appending would let a foreign
       libavcodec answer first.
-    * The upstream build's RPATH cannot be relied on. BtbN's shared binaries ship
-      ``RPATH=-Wl:../lib`` -- a quoting bug in their link flags, not the intended
-      ``$ORIGIN/../lib`` -- so nothing resolves without this.
+    * The upstream build's RPATH cannot be relied on. It points at ``../lib``
+      (as ``$ORIGIN/../lib`` since 8.1, and before that as a literal
+      ``-Wl:../lib``, a quoting bug in BtbN's link flags), while the staging
+      puts the libraries flat beside the executables -- so nothing resolves
+      without this.
 
     Returns a full environment dict suitable for ``subprocess(env=...)``; pass
     ``base`` to build on something other than the current environment.

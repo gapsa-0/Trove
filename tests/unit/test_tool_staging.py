@@ -2,18 +2,20 @@
 
 FFmpeg used to be staged from a *static* build: two self-contained binaries,
 ``ffmpeg`` and ``ffprobe``, each carrying the entire codec set. That was 266 MB
-to ship one copy of FFmpeg twice. The shared build is 162 MB -- small binaries
+to ship one copy of FFmpeg twice. The shared build is 180 MB -- small binaries
 beside the ``libav*`` libraries they share -- but it only works if two things
 hold, and neither is obvious enough to leave unasserted:
 
-* the soname symlinks survive staging. ``lib/`` ships ``libavcodec.so.61.19.101``
-  and a ``libavcodec.so.61`` link to it, and ``libavcodec.so.61`` is the name in
+* the soname symlinks survive staging. ``lib/`` ships ``libavcodec.so.62.28.102``
+  and a ``libavcodec.so.62`` link to it, and ``libavcodec.so.62`` is the name in
   the executable's DT_NEEDED. Following the links instead of recreating them
   stages 90 MB twice for that one library and gives back everything the change
   saved -- while still passing every other test, because the binary still runs.
-* the process that spawns the tool passes a library path. Upstream's RPATH is
-  ``-Wl:../lib``, a quoting bug in BtbN's link flags rather than the intended
-  ``$ORIGIN/../lib``, so nothing resolves on its own.
+* the process that spawns the tool passes a library path. Upstream's RPATH says
+  ``$ORIGIN/../lib`` -- 7.1 said ``-Wl:../lib``, a quoting bug in BtbN's link
+  flags, and 8.1 fixed it -- but the libraries are staged flat beside the
+  executables, so there is no ``../lib`` either way and nothing resolves on its
+  own.
 
 The staging script is loaded by path: ``packaging/scripts/stage-tools.py`` is a
 script, not an importable module, and it is not on sys.path.
@@ -46,12 +48,12 @@ def stage_tools():
 @pytest.fixture
 def archive(tmp_path):
     """An extraction directory shaped like the shared FFmpeg tarball."""
-    root = tmp_path / "extracted" / "ffmpeg-n7.1.5-linux64-gpl-shared-7.1"
+    root = tmp_path / "extracted" / "ffmpeg-n8.1.2-linux64-gpl-shared-8.1"
     (root / "bin").mkdir(parents=True)
     (root / "lib").mkdir()
     (root / "bin" / "ffmpeg").write_bytes(b"#!/bin/false\n")
-    (root / "lib" / "libavcodec.so.61.19.101").write_bytes(b"x" * 4096)
-    (root / "lib" / "libavcodec.so.61").symlink_to("libavcodec.so.61.19.101")
+    (root / "lib" / "libavcodec.so.62.28.102").write_bytes(b"x" * 4096)
+    (root / "lib" / "libavcodec.so.62").symlink_to("libavcodec.so.62.28.102")
     # A .lib import library and a pkgconfig tree sit in the same directory in the
     # real archive; the glob must not sweep them in.
     (root / "lib" / "libavcodec.a").write_bytes(b"static")
@@ -66,11 +68,11 @@ def test_libraries_are_staged_flat_beside_the_executable(stage_tools, archive, t
         {"name": "ffmpeg", "runtime_libs": ["lib/lib*.so.*"]}, archive, stage
     )
 
-    assert sorted(staged) == ["libavcodec.so.61", "libavcodec.so.61.19.101"]
+    assert sorted(staged) == ["libavcodec.so.62", "libavcodec.so.62.28.102"]
     assert not (stage / "libavcodec.a").exists()
     assert sorted(p.name for p in stage.iterdir()) == [
-        "libavcodec.so.61",
-        "libavcodec.so.61.19.101",
+        "libavcodec.so.62",
+        "libavcodec.so.62.28.102",
     ]
 
 
@@ -83,10 +85,10 @@ def test_the_soname_symlink_is_recreated_not_followed(stage_tools, archive, tmp_
         {"name": "ffmpeg", "runtime_libs": ["lib/lib*.so.*"]}, archive, stage
     )
 
-    link = stage / "libavcodec.so.61"
+    link = stage / "libavcodec.so.62"
     assert link.is_symlink(), "staged as a copy; the shared build is now 2x its size"
-    assert os.readlink(link) == "libavcodec.so.61.19.101"
-    assert link.resolve() == (stage / "libavcodec.so.61.19.101").resolve()
+    assert os.readlink(link) == "libavcodec.so.62.28.102"
+    assert link.resolve() == (stage / "libavcodec.so.62.28.102").resolve()
 
 
 def test_a_second_tool_sharing_the_archive_stages_nothing_twice(stage_tools, archive, tmp_path):

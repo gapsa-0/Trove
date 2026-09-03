@@ -5,9 +5,9 @@
       "tools": [
         {
           "name": "ffmpeg",
-          "version": "7.1.5-12-g1fdbca85aa (BtbN GPL 7.1 shared build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-08-13-06/ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-shared-7.1.tar.xz",
-          "sha256": "f4a7675028fc2beb0e1ba71ce1d51b6697ae64c4b6785540af739c1eede8d3b2",
+          "version": "8.1.2-50-g1a748fe2cd (BtbN GPL 8.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-03-13-17/ffmpeg-n8.1.2-50-g1a748fe2cd-linux64-gpl-shared-8.1.tar.xz",
+          "sha256": "5a842fecd54b67cafb88eb7395170649e210a27150c4ce1b2dfc2d40d3f0b0f7",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
           "executable": "ffmpeg",
           "runtime_libs": [
@@ -16,9 +16,9 @@
         },
         {
           "name": "ffprobe",
-          "version": "7.1.5-12-g1fdbca85aa (BtbN GPL 7.1 shared build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-08-13-06/ffmpeg-n7.1.5-12-g1fdbca85aa-linux64-gpl-shared-7.1.tar.xz",
-          "sha256": "f4a7675028fc2beb0e1ba71ce1d51b6697ae64c4b6785540af739c1eede8d3b2",
+          "version": "8.1.2-50-g1a748fe2cd (BtbN GPL 8.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-03-13-17/ffmpeg-n8.1.2-50-g1a748fe2cd-linux64-gpl-shared-8.1.tar.xz",
+          "sha256": "5a842fecd54b67cafb88eb7395170649e210a27150c4ce1b2dfc2d40d3f0b0f7",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
           "executable": "ffprobe",
           "runtime_libs": [
@@ -37,9 +37,9 @@
       "tools": [
         {
           "name": "ffmpeg",
-          "version": "7.1.5-12-g1fdbca85aa (BtbN GPL 7.1 shared build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-08-13-06/ffmpeg-n7.1.5-12-g1fdbca85aa-win64-gpl-shared-7.1.zip",
-          "sha256": "e926a2e86012b782e9e995f858e20155c85e43804f1909dcada307bf2a532590",
+          "version": "8.1.2-50-g1a748fe2cd (BtbN GPL 8.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-03-13-17/ffmpeg-n8.1.2-50-g1a748fe2cd-win64-gpl-shared-8.1.zip",
+          "sha256": "d7e2b69529c11c6c9f3529c0e1c52cd157fd96f4184c550d36139d203966dab3",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
           "executable": "ffmpeg.exe",
           "runtime_libs": [
@@ -48,9 +48,9 @@
         },
         {
           "name": "ffprobe",
-          "version": "7.1.5-12-g1fdbca85aa (BtbN GPL 7.1 shared build)",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-08-13-06/ffmpeg-n7.1.5-12-g1fdbca85aa-win64-gpl-shared-7.1.zip",
-          "sha256": "e926a2e86012b782e9e995f858e20155c85e43804f1909dcada307bf2a532590",
+          "version": "8.1.2-50-g1a748fe2cd (BtbN GPL 8.1 shared build)",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-03-13-17/ffmpeg-n8.1.2-50-g1a748fe2cd-win64-gpl-shared-8.1.zip",
+          "sha256": "d7e2b69529c11c6c9f3529c0e1c52cd157fd96f4184c550d36139d203966dab3",
           "license": "GPL-3.0-or-later; https://www.gnu.org/licenses/gpl-3.0.html",
           "executable": "ffprobe.exe",
           "runtime_libs": [

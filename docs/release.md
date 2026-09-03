@@ -68,29 +68,41 @@ weights are not a build input at all — see below.
 It is the opposite of the model assets above, which are permanent by policy, and
 it fails the same way every time: `stage-tools.py` gets a 404, both build jobs
 die before compiling anything, and the tag you just pushed produces no
-installers. It has happened once (v0.2.0, first attempt) and it will happen
-again, because nothing warns until a release is attempted.
+installers. It has happened twice — v0.2.0's first attempt, and again before
+0.3.0 — because nothing warns until a release is attempted: `stage-tools.py
+--validate`, the mode CI runs, checks the manifest's shape and never asks
+whether its URLs still resolve.
 
-To repin: find a current `autobuild-*` tag with the same `gpl-shared-7.1`
-variant, download the `linux64` and `win64` archives, and put their tag, version
-and SHA-256 into `packaging/tools/manifest.json` and the FFmpeg entry in
-`THIRD_PARTY_NOTICES.md`. Confirm with `stage-tools.py --target linux-x64` and
-run the staged `ffmpeg -version` — the staged tree should come to ~162 MB.
-Mirroring the two archives as release assets, the way the weights are, would end
-this for good; it has not been done because it makes this project a distributor
-of GPL binaries in its own right rather than a consumer of someone else's.
+To repin: find a current `autobuild-*` tag and take the highest numbered
+`gpl-shared-<n>` variant it carries, ignoring the `N-…` master build. The
+variant is versioned, so unlike the tag it cannot be held fixed: by September
+2026 no live autobuild carried a `gpl-shared-7.1` archive at all, and the repin
+had to become a version bump to 8.1. Put the tag, version and SHA-256 of the
+`linux64` and `win64` archives into `packaging/tools/manifest.json` and the
+FFmpeg entry in `THIRD_PARTY_NOTICES.md`; the releases API reports each asset's
+hash as `.assets[].digest`, so the two archives need not be downloaded by hand —
+`stage-tools.py` verifies them again after fetching. Confirm with
+`stage-tools.py --target linux-x64` and run the staged `ffmpeg -version` — the
+staged tree should come to ~180 MB. Mirroring the two archives as release assets,
+the way the weights are, would end this for good; it has not been done because
+it makes this project a distributor of GPL binaries in its own right rather than
+a consumer of someone else's.
 
 FFmpeg is staged from BtbN's **shared** build rather than the static one: two
 small executables plus the `libav*` libraries they share, instead of two binaries
-that each embed the entire codec set. That is 162 MB instead of 266 MB on Linux,
-151 MB instead of 263 MB on Windows. `stage-tools.py` copies those libraries flat
-beside the executables (the `runtime_libs` manifest field), preserving the soname
-symlinks — dereferencing them would stage `libavcodec` twice and give the saving
-straight back. Windows needs nothing more, since the loader searches the `.exe`'s
-own directory; Linux needs `LD_LIBRARY_PATH`, which
-`trove.runtime.tool_env` supplies at every spawn. Upstream's RPATH is
-`-Wl:../lib`, a quoting bug in their link flags rather than `$ORIGIN/../lib`, so
-it cannot be relied on.
+that each embed the entire codec set. At 8.1 that is a 180 MB staged tree on
+Linux and 170 MB of FFmpeg on Windows (the rest of that target's 205 MB is
+ExifTool); the static build of the same tag downloads at twice the size, 126 MB
+against 63 MB on Linux and 168 MB against 80 MB on Windows. `stage-tools.py`
+copies those libraries flat beside the executables (the `runtime_libs` manifest
+field), preserving the soname symlinks — dereferencing them would stage
+`libavcodec` twice and give the saving straight back. Windows needs nothing
+more, since the loader searches the `.exe`'s own directory; Linux needs
+`LD_LIBRARY_PATH`, which `trove.runtime.tool_env` supplies at every spawn.
+Upstream's RPATH is no help either way: 8.1 emits a correct `$ORIGIN/../lib`,
+where 7.1 had a quoting bug in their link flags that left a literal `-Wl:../lib`,
+but the staged tree has no `../lib` — the libraries sit beside the executables,
+which is the whole point.
 
 The spec also carries an explicit `excludes` list. The app runs every model on
 onnxruntime and never imports torch or transformers, but scikit-learn and SciPy
@@ -137,16 +149,18 @@ fails the build if the spec starts bundling any of them again.
 ### Where the installer's weight actually is
 
 Measured 2026-08-07 from the staged payload, compressed with `xz -6` as a stand-in
-for the NSIS/AppImage step, so treat these as close rather than exact:
+for the NSIS/AppImage step, so treat these as close rather than exact. The FFmpeg
+row was remeasured on 2026-09-03, when the pin moved to 8.1 and the staged tree
+grew 18 MB:
 
 | Component | raw | compressed |
 | --- | ---: | ---: |
 | Python packages (runtime closure, headless cv2) | 663.5 MB | 173.5 MB |
 | Electron runtime | 285.0 MB | 87.7 MB |
-| FFmpeg shared build (Linux) | 162.0 MB | ~55–65 MB (estimated) |
+| FFmpeg shared build (Linux) | 180.0 MB | ~60–70 MB (estimated) |
 | CPython (stdlib + libpython) | 71.6 MB | 19.4 MB |
 | Trove itself | 30.8 MB | 16.7 MB |
-| **Total** | **~1.21 GB** | **~355 MB → ~309 MB after the three moves above** |
+| **Total** | **~1.23 GB** | **~360 MB → ~314 MB after the three moves above** |
 
 The lesson worth keeping: **rank payloads by compressed size, not by `du`.** Code
 compresses 3–4×, model weights barely compress at all, so a 31.7 MB directory of

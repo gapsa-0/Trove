@@ -215,7 +215,7 @@ def stage_runtime_libs(item: dict, extracted: Path, stage_tmp: Path) -> list[str
     It also keeps ``runtime.tool``'s flat lookup unchanged.
 
     Symlinks are recreated as symlinks, never followed. ``lib/`` ships both
-    ``libavcodec.so.61.19.101`` and a ``libavcodec.so.61`` soname link pointing at
+    ``libavcodec.so.62.28.102`` and a ``libavcodec.so.62`` soname link pointing at
     it; dereferencing would stage 90 MB twice for that library alone and undo the
     entire reason for using a shared build. The soname link is also the name
     recorded in the executable's DT_NEEDED, so it has to survive as a name.
