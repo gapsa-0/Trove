@@ -8,7 +8,7 @@
 #
 # Install with the pins applied:
 #
-#   pip install -e '.[dev,cli,media,faces,pets,semantic,documents,ocr]' -c constraints.txt
+#   pip install -e '.[dev,cli,watch,media,faces,pets,semantic,documents,ocr]' -c constraints.txt
 #
 # or just `make setup`, which does exactly that. CI installs the same way, so a
 # green run here and a green run there mean the same thing. Every pin below that
@@ -25,6 +25,13 @@
 
 # --- cli extra ---
 rich==15.0.0
+
+# --- watch extra ---
+# The same version the desktop build ships. It is an optional dependency of the
+# app and a required one of the suite: tests/gui/test_change_hints.py drives the
+# real watcher, while tests/unit/test_optional_extras.py hides this module to
+# check the polling fallback -- so both paths are covered only when it is here.
+watchfiles==1.2.0
 
 # --- media extra ---
 PyExifTool==0.5.6

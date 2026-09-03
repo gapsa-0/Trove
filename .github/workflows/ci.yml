@@ -33,7 +33,7 @@ jobs:
       # `transformers` is deliberately absent -- it is a dev-only reference
       # dependency for tests/unit/test_siglip_preprocessing.py that drags in torch,
       # and that module skips itself cleanly without it.
-      - run: python -m pip install -e '.[dev,cli,media,faces,pets,semantic,documents,ocr]' -c constraints.txt
+      - run: python -m pip install -e '.[dev,cli,watch,media,faces,pets,semantic,documents,ocr]' -c constraints.txt
       # Lint before testing: it finishes in under a second, so a style failure
       # reports immediately instead of behind the whole suite.
       #
