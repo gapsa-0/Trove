@@ -49,6 +49,14 @@ a release that is wrong in a way nobody notices until it is published.
    PyInstaller is unaffected (it resolves the package path to the live source),
    but "I built a wheel and it looked right" is not trustworthy without this.
 7. **Record the clean-machine acceptance run** — see below.
+8. **Update the README's download table**, after the installers exist. Its
+   three filenames, links and sizes name the previous release until someone
+   changes them by hand, and nothing in CI reads that table — so the front
+   page goes on offering the old version to every reader who arrives at it.
+   The sizes are only knowable once the release artifacts are built, which
+   is why this step alone comes after the tag: take all three from the
+   published assets rather than from a local build, which is not built the
+   way the release runners build it.
 
 ## Build inputs
 
