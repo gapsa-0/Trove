@@ -13,7 +13,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-03
+
 ### Added
+
+- **Appearance follows the computer, or doesn't, and says which.** The settings
+  drawer held one button reading "Dark appearance", which showed no state and
+  could not be told to go back to following the computer: every new install
+  started out following it, and the first press wrote a choice nothing removed.
+  There are three named options now — System, Light, Dark — in the shape
+  Browse's result scope already uses, with the one you are on lit. Choosing
+  System forgets the stored value, and the app follows the computer as it
+  changes rather than only at startup.
 
 - **Browse can be filtered by pet.** The filter bar could narrow the grid to a
   person but not to an animal, though the two are the same question. It now
@@ -132,6 +143,143 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Trove draws its own marks now.** The stand-in for a photograph it could not
+  thumbnail was a full-colour platform emoji, beside a sidebar drawn in
+  monochrome strokes, and it stayed light-on-light when the theme turned over.
+  The rest of the chrome was typography — « » and ‹ › for going back and forth,
+  × in three places and ✕ in a fourth, − and + on the map's zoom — each
+  inheriting the body font, so no two shared a weight with each other or with
+  anything around them. All of it is drawn now, in one family at one stroke: the
+  file-type marks, the chrome, the pin on a located tile, the paw where a pet's
+  crop will not load, the tick on a chosen card. The sidebar's collapse control
+  was more than a mismatched glyph — it could not be reached from the keyboard
+  at all, and went on offering to collapse a sidebar that was already collapsed.
+
+- **Trove asks its own questions.** Removing an archive, rejecting a face or a
+  whole selection of them, saying "not a person" or "not an animal", detaching a
+  photo from someone — seven answers were taken with the browser's own confirm
+  box. Every one is harder to undo than the merge that had the app's only
+  designed dialog, and every one arrived as system chrome: wrong typeface, a
+  generic OK, no way to mark the destructive one as destructive, and in the
+  desktop app a window that visibly comes from somewhere else. They use the
+  app's own dialog now, and its confirm button carries the action's words —
+  *Remove archive*, *Not a person* — in the destructive colour where the action
+  cannot be taken back. The two places that put a raw server error in an alert
+  box are toasts, like every other failure in the app.
+
+- **A tooltip that arrives where you are looking.** About twenty controls carried
+  a native tooltip, ten of them repeating the label already under them word for
+  word. The native one waits about a second, cannot take the app's theme, is
+  drawn at the pointer rather than at the control, and never appears for the
+  keyboard — so the one thing a bare chevron needs, a name, was the hardest
+  thing to get out of it. Trove draws its own now, at the control, for the
+  pointer and the keyboard both. Where a control shows its own words the tooltip
+  is simply gone; the sidebar's keep theirs for when it is collapsed and the
+  words are not there any more.
+
+- **Library health reads down the column.** Six finished stages reported 136
+  files, 130 copies, 12 photos, 4 photos, 2 items and 1 file, one under the
+  other, which reads as a system giving up — while all six were complete and
+  simply pointed at different subsets. A stage that covers part of the archive
+  now says what of: "2 of 6 files indexed". Green means the stage found
+  something rather than merely finished, so three stages reporting nothing no
+  longer read as an archive in good shape. And only one card can be next: the
+  panel had been marking every waiting card "Up next", four of them in a row on
+  a full feature set.
+
+- **A panel with nothing to say takes its space back.** People, Pets and
+  Duplicates each opened with a full-width panel that, once settled, read "All
+  unique photos scanned." directly under a tile reading "Scanned 4 / 4" — the
+  same fact in four times the space, as the most prominent thing on a screen
+  with nothing to report. A panel that is usually empty of news teaches people
+  to skip it, which costs exactly on the day it has some, so it now leaves with
+  its message. Duplicates also loses its second description of itself, which
+  restated the line already in the page head.
+
+- **Words for what a thing is, not how it was computed.** "Conservative visual
+  grouping", "Single or uncertain sightings" and "Animal/toy overlaps filtered
+  out of People" sat where a reader expects to learn what they are looking at.
+  They say what is in the list now, and the third says what it is for — it is a
+  review queue, and nothing on the screen had asked anyone to do anything with
+  it. "The pipeline" is the scheduler's word and has left the setup screen; the
+  list on Places is headed "Every place" rather than being a fourth thing called
+  Places; and "items", "photos analyzed" and "organize" are files, analysed and
+  organise, in an app whose prose is otherwise UK English throughout.
+
+- **A model download says which feature it is getting ready.** A new archive's
+  first minutes read "Downloading adaface model: 7% of 249 MB". An adaface is a
+  file in this repository; nobody outside it knows what one is, and that was the
+  first thing Trove ever said to anybody. It names the face recogniser, the pet
+  recogniser, the picture-text reader and the translator now. The percentage was
+  also being cut off the end of the sidebar's label — it moves to the slot that
+  exists for it, and the bar stops sweeping while a real figure is showing.
+
+- **Browse says what it is holding back.** The Overview's "All files" tile is a
+  button into Browse, and the two disagree by however many duplicates you have —
+  136 against 6 on our own fixture — because a redundant copy is still a
+  catalogued file, while Browse deliberately shows one of each thing rather than
+  the same photograph a hundred times. Nothing said so, and the gap is one press
+  wide. Browse's count now carries the difference: "6 files · 130 copies
+  hidden", the second half opening Duplicates, which is the screen that can do
+  something about it. Storage names the redundant share of its total too, having
+  quoted the size of the folder as though it were the size of the library.
+
+- **One palette for the media types, in both themes.** The Storage bar, the
+  Duplicates split and the Timeline series took one set of colours; the stat
+  chips beside them took another. Six hues against four, with nothing relating
+  them, and the first set was the dark-theme variant used on white as well —
+  which is where the hot pink and orange bar on the light Overview came from,
+  the loudest object on a screen whose accent is blue. There is one set now, at
+  the lightness each theme needs, so a colour means the same thing wherever you
+  meet it.
+
+- **The search box looks like somewhere you can type.** It was transparent on the
+  toolbar's own surface, so with the placeholder showing it read as a heading
+  with a magnifier beside it, and the only thing in the row that looked
+  interactive was the Search button. It takes a recessed field of its own now,
+  and lights when focused — the one state that row had no way to show. The
+  per-stage pause control, which sat at 40% opacity until you happened to hover
+  it, is now the quietest thing on its card rather than invisible.
+
+- **A filter that cannot help you looks unavailable, not empty.** The Browse
+  filter row answered one situation three ways: a real disabled select for
+  places, a built one for people and pets, and — where there was nothing to
+  offer yet — two inert boxes that looked like empty text fields you could type
+  into, with the explanation reachable only through a tooltip. All three are a
+  disabled select now, whose one option says why it cannot help. Disabled
+  controls are recessed and dashed rather than merely faded, so "All months"
+  no longer sits between two working selects looking like a third.
+
+- **Rename and Remove are buttons, and the map's zoom is the app's shape.** On
+  the first screen anybody sees, an archive card's two actions were bare
+  coloured words positioned by float, which is why Remove sat second on screen
+  despite coming first in the markup. They are quiet buttons on a row of their
+  own, in source order, with Remove taking the destructive colour on hover
+  rather than wearing it at rest. The map's zoom, which its library draws square
+  and joined ten pixels from one of the app's own pill-shaped controls, takes
+  the app's shape too. And the lift a button makes under the pointer now honours
+  "reduce motion", which is the one interaction on every screen and was the one
+  none of the eight stylesheets that honour it had covered.
+
+- **The features sheet's ring and its price mean something.** All eight cards
+  wore the ring that means "on because you chose it", including the two that are
+  on by definition, so it distinguished nothing. The footer's "715 MB to
+  download" was what the current selection still owes, which beside a disabled
+  Save on an untouched sheet reads as the cost of saving: a change now quotes
+  what the change adds, an untouched sheet reports what the archive is already
+  waiting on, and with neither it says nothing at all. Save is also no longer
+  the least visible thing in the footer while it waits to be pressed.
+
+- **Headings and labels at the size their job needs.** A stat tile's label was
+  uppercase with letter-spacing in one stylesheet and sentence case in another,
+  and which you got depended on nothing anyone had decided: "ALL FILES 136" was
+  shouting a noun. Capitals now label a region — a table's columns, a section's
+  eyebrow — and a label on a value is a sentence. Section headings were 14px
+  inside a panel and 18px on People, Pets and Places with nothing choosing
+  between them; "How dates were found" on the Timeline wore the 36px page title
+  for a subsection; and the "/ 4" under a stat came out at 8.75px in the
+  explainer behind it.
+
 - **One back arrow, and one quiet button.** Four screens drew "go back" and drew
   it three different ways — a stroked chevron in the sidebar and on a person's
   page, a typed `←` on a pet's page and above a search ranking, which is a
@@ -154,7 +302,141 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the difference between a button that offers and a button that asks — *Resume
   all*, *Save changes* — is visible again.
 
+- **A search shows you a bit of every way it looked, and lets you open one.**
+  Browse answers in up to three groups — what your filenames matched, what your
+  documents said, what your pictures look like — and they were stacked in one
+  scroll, each loading more of itself as you reached its end. So the documents
+  group sat below every filename match there was, and moved further down with
+  every one that loaded: on a search with thousands of hits the later groups
+  could not be reached at all. Each group now shows its top two rows with a
+  **Show all 2,847** under it; pressing that gives the screen to that ranking
+  alone, with **Back** to return. Filtering and sorting leave you inside the
+  ranking you are reading — only a new search returns you to the summary.
+
+- **"Nothing found by …" now sits above your results rather than under them.**
+  The line naming the ways that were searched and came back empty was printed at
+  the foot of Browse, below every photo that did match — so on any search with
+  more than a screenful of results, the reader wondering whether their documents
+  had been searched at all had to scroll past the answer to find it. It is now
+  the first thing under the search box, where it qualifies the groups that
+  follow.
+
+- **Two smaller things on the Library overview.** Each headline tile opens a
+  screen, and now says so — a chevron, and a label that names where it goes
+  rather than announcing a bare number to a screen reader. And **Manage
+  features**, the only way from inside an archive to change what Trove does with
+  it, reads as a control rather than as a footnote.
+
+- **The Duplicates screen says what it will and will not do.** It now states
+  plainly that Trove never deletes anything and that freeing the space is yours
+  to do, which is what the reference page already said and the screen did not.
+  The breakdown of what the copies are can be read by size or by file count, the
+  way the Library overview's storage panel can — the bars were drawn by count
+  alone, which cannot answer a question about disk space. The copy that Trove
+  keeps is now the most prominent thing in its group rather than the faintest,
+  and the same three words — kept, identical copy, visual match — are used for a
+  copy wherever it appears.
+
+  Files nothing can be drawn from now simply show their file-type icon, which
+  is what it was always for.
+
+  Videos passed over while this was broken are picked up again the next time
+  the archive is opened. Both stages had written the failure down as a fact
+  about the file — description search as "this video cannot be read", face and
+  pet detection as "there is nobody in this video" — and neither would have
+  looked again on its own.
+
+  Five video formats were additionally never given a thumbnail even before
+  that, and for longer: AVCHD camcorder clips (`.mts`, `.m2ts`), `.3g2` phone
+  video, `.flv` and `.swf`. The grid marked them as video but the thumbnailer
+  did not recognise them, so it tried to open them as photographs and, failing
+  that, sent the whole clip to the browser as if it were the picture.
+
+  When it does need to check, it now says "Checking for work" rather than
+  "Counting files in this folder". Counting the files is how Trove works out
+  whether there is anything to do; it is not a second pass over your archive,
+  which is what the old wording looked like sitting on the Indexing card.
+
+  For the same reason, indexing says "Checking 43,200 files for changes" while
+  it walks files it already holds, where it used to say "Re-checking 43,200
+  files already scanned". Going over known files is how an edit gets noticed —
+  and how a deletion does — rather than work being done twice.
+
+  The comparison itself was replaced too, with an index that finds exactly the
+  same matches roughly twenty times faster — so even the first run after
+  upgrading, which has to look at every photo once, takes about a minute
+  instead of twenty. Duplicate groups are unchanged: the new code reproduces
+  this archive's 18,916 groups, the same hidden copies and the same choice of
+  which copy stays visible.
+
 ### Fixed
+
+- **The Overview and Places agree about locations.** The Overview reported "With
+  a location 0", and a health row reading "No locations found" with a green
+  finished mark beside it, while the Places screen that tile opens reported 12
+  photos in one named place. Both were counting honestly — one counted files
+  carrying coordinates, the other membership of a place — and the two come apart
+  the moment anyone uses the features Places exists to offer: a place pinned on
+  the map, or media put in one by hand. The tile, the health row and the
+  features sheet all quote the count Places itself draws now, and the tile says
+  "In a place", which is what it has always been counting.
+
+- **A narrow window keeps its navigation, and the way out of it.** Under 800px
+  the sidebar becomes a horizontal bar, and the rule hiding one label there
+  stopped matching anything when the appearance control moved into settings. So
+  the label stayed, the row ran past the edge of the window, and app chrome
+  became a strip you had to scroll sideways with "Setting" clipped at the end.
+  The same block hid the archive's name and the way back to your other archives
+  and put nothing in their place, which left editing the address as the only way
+  out. The back control is thirty pixels wide; it stays, first in the row.
+
+- **The Timeline's chart belongs to whichever theme you are in.** Its gridlines
+  and axis text were fixed at values chosen against the dark theme, so on the
+  light theme's white card they came out near-black and read as the data rather
+  than as the grid behind it. With only one month to show there is no shape to
+  draw at all — every series normalises to its own maximum, so a single period
+  stacks them into one dot on four unlabelled rules — and the chart now steps
+  aside and says the counts in words, naming the month the way the filter bar
+  names it rather than as "2026-08".
+
+- **Select shows when it is on, and is offered where it can be used.** It is a
+  toggle, and it was pixel-identical in both states, so the only evidence the
+  mode was on was the bar at the foot of the window — and anyone who did not
+  connect the two and pressed it again to start selecting cancelled instead. It
+  lights up now. On People and Pets it had also sat at full strength directly
+  over "No faces yet", offering a selection mode over an empty grid; it appears
+  when there is a card to select, and goes away with the last one.
+
+- **Links stopped drawing themselves as selected.** A stray comma in the
+  stylesheet handed every link in the app the tint that marks selected text. It
+  showed on the reference pages, where "On this page" is a column of them: all
+  seven entries read as selected at once, which left the mark showing the
+  section you are actually in with nothing to say.
+
+- **An empty screen's sentence is laid out as a sentence.** "No repeated pets
+  grouped yet." was appended straight into the card grid, so it became one
+  120px cell and broke after three words inside a container a thousand pixels
+  wide. It spans the row now, as does the one below it. Section titles on
+  People, Pets and Places also sat two pixels to the right of everything under
+  them.
+
+- **"Where Trove looks when you type" stops reporting the filter bar.** The
+  filename row answers how much of the archive that way can reach, but read the
+  count after Browse's filters — so narrowing the grid to videos made the panel
+  claim filename search could reach three files. It reaches all of them,
+  whatever the filter says. Nothing signalled the mistake, because the two rows
+  under it come from elsewhere and correctly did not move. The panel also says
+  how much each way has *not* covered yet: it had been reporting "1 document"
+  and "1 video · 1 image" with no hint that most of what each was pointed at was
+  still outside.
+
+- **The start page holds its shape while it loads.** The one screen every user
+  sees first was the only one in the app with no loading state: between paint
+  and the answer it showed "Your archives" over an empty region with the
+  three-step guide collapsed against it, which reads as an app that has
+  forgotten the folders you added. It holds a card's worth of space per archive
+  now, counted from the number it saw last time, so the row does not jump when
+  the answer lands.
 
 - **"All results" stops throwing you back to the top.** Widening a description
   search from its top matches to everything only adds results *below* the ones
@@ -352,43 +634,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   own words — "unable to open database file" — which reads like a broken disk
   rather than a request for something that is not there.
 
-### Changed
-
-- **A search shows you a bit of every way it looked, and lets you open one.**
-  Browse answers in up to three groups — what your filenames matched, what your
-  documents said, what your pictures look like — and they were stacked in one
-  scroll, each loading more of itself as you reached its end. So the documents
-  group sat below every filename match there was, and moved further down with
-  every one that loaded: on a search with thousands of hits the later groups
-  could not be reached at all. Each group now shows its top two rows with a
-  **Show all 2,847** under it; pressing that gives the screen to that ranking
-  alone, with **Back** to return. Filtering and sorting leave you inside the
-  ranking you are reading — only a new search returns you to the summary.
-
-- **"Nothing found by …" now sits above your results rather than under them.**
-  The line naming the ways that were searched and came back empty was printed at
-  the foot of Browse, below every photo that did match — so on any search with
-  more than a screenful of results, the reader wondering whether their documents
-  had been searched at all had to scroll past the answer to find it. It is now
-  the first thing under the search box, where it qualifies the groups that
-  follow.
-
-- **Two smaller things on the Library overview.** Each headline tile opens a
-  screen, and now says so — a chevron, and a label that names where it goes
-  rather than announcing a bare number to a screen reader. And **Manage
-  features**, the only way from inside an archive to change what Trove does with
-  it, reads as a control rather than as a footnote.
-
-- **The Duplicates screen says what it will and will not do.** It now states
-  plainly that Trove never deletes anything and that freeing the space is yours
-  to do, which is what the reference page already said and the screen did not.
-  The breakdown of what the copies are can be read by size or by file count, the
-  way the Library overview's storage panel can — the bars were drawn by count
-  alone, which cannot answer a question about disk space. The copy that Trove
-  keeps is now the most prominent thing in its group rather than the faintest,
-  and the same three words — kept, identical copy, visual match — are used for a
-  copy wherever it appears.
-
 - **Thumbnails are not fetched again every time you look at them.** Nothing
   Trove sent the browser said how long it could be kept or how to tell whether
   it had changed, so every screen change re-downloaded the whole grid and every
@@ -407,9 +652,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   every other tile on the screen waited behind that, and the ones that gave up
   waiting stayed blank until you navigated away and back.
 
-  Files nothing can be drawn from now simply show their file-type icon, which
-  is what it was always for.
-
 - **A photo missing its last few bytes gets a thumbnail like any other.**
   Photographs arrive truncated more often than you would think — an
   interrupted copy, a phone unplugged mid-transfer, a Takeout export that lost
@@ -424,18 +666,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ffmpeg picks the format to write from the filename — it recognised nothing
   and refused each job before reading a frame, without saying so.
 
-  Videos passed over while this was broken are picked up again the next time
-  the archive is opened. Both stages had written the failure down as a fact
-  about the file — description search as "this video cannot be read", face and
-  pet detection as "there is nobody in this video" — and neither would have
-  looked again on its own.
-
-  Five video formats were additionally never given a thumbnail even before
-  that, and for longer: AVCHD camcorder clips (`.mts`, `.m2ts`), `.3g2` phone
-  video, `.flv` and `.swf`. The grid marked them as video but the thumbnailer
-  did not recognise them, so it tried to open them as photographs and, failing
-  that, sent the whole clip to the browser as if it were the picture.
-
 - **"Counting files in this folder" no longer sits on the Indexing card most
   of the time.** Every time the Trove window came back to the front, it threw
   away its record of how many files were in the archive folder and re-counted
@@ -445,16 +675,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   count and refreshes it in the background, so the card keeps its answer.
   Changes are still picked up exactly as quickly.
 
-  When it does need to check, it now says "Checking for work" rather than
-  "Counting files in this folder". Counting the files is how Trove works out
-  whether there is anything to do; it is not a second pass over your archive,
-  which is what the old wording looked like sitting on the Indexing card.
-
-  For the same reason, indexing says "Checking 43,200 files for changes" while
-  it walks files it already holds, where it used to say "Re-checking 43,200
-  files already scanned". Going over known files is how an edit gets noticed —
-  and how a deletion does — rather than work being done twice.
-
 - **Finding duplicates no longer takes twenty minutes every time you touch the
   archive.** On a 97,000-file archive a duplicate rebuild took 19½ minutes, and
   it ran again in full after any scan — including one that found nothing but
@@ -463,13 +683,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   down against the exact content it found them for. Add twenty photos and only
   those twenty are compared; delete some and nothing is. The same rebuild is
   now **3 seconds** on an unchanged archive, and 5 on the deletion case.
-
-  The comparison itself was replaced too, with an index that finds exactly the
-  same matches roughly twenty times faster — so even the first run after
-  upgrading, which has to look at every photo once, takes about a minute
-  instead of twenty. Duplicate groups are unchanged: the new code reproduces
-  this archive's 18,916 groups, the same hidden copies and the same choice of
-  which copy stays visible.
 
 - **Closing the app during a duplicate rebuild no longer hangs it.** The
   rebuild ignored the request to stop and ran to the end — with its progress
@@ -482,6 +695,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   would accept variables in one statement.
 
 ### Internal
+
+- The bundled FFmpeg moves from 7.1 to 8.1. The builds Trove takes it from are
+  deleted upstream after a few weeks, and 7.1 had gone from every one of them,
+  so this is the version that still exists rather than a version anybody chose.
+  It adds about 10 MB to each installer. Nothing Trove asks FFmpeg to do changed
+  between the two.
+
+- The stylesheets carried fourteen font weights, five colour literals naming
+  states the token set already had, and a `theme.css` whose descriptions of the
+  sidebar, the tiles, the filter selects and the viewer had every one been
+  overridden by a file loading after it. The weights are a ramp of five, the
+  colours are tokens, and the dead rules are gone — checked by screenshotting
+  six screens before and after rather than by reading. `theme.css` now says at
+  the top that a value in it is not evidence of what is on screen.
 
 - A video frame ffmpeg refuses to produce is written to the log with its exit
   status and ffmpeg's own reason, instead of leaving no trace.
@@ -1014,7 +1241,8 @@ including inside video keyframes; merge, unmerge, and manually tag people and
 pets; search the library by description when semantic indexing was enabled;
 and correct photo orientation for display without touching the file on disk.
 
-[Unreleased]: https://github.com/gapsa-0/Trove/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/gapsa-0/Trove/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/gapsa-0/Trove/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/gapsa-0/Trove/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gapsa-0/Trove/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gapsa-0/Trove/compare/v0.1.1...v0.1.2

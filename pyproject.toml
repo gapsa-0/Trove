@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trove"
-version = "0.2.1"
+version = "0.3.0"
 description = "Local, read-only cataloging tool for a large family multimedia archive"
 readme = "README.md"
 requires-python = ">=3.13"
