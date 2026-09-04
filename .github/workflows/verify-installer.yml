@@ -1,0 +1,115 @@
+# The half of release checklist step 6 -- "build and launch the packaged app on
+# both Linux and Windows" -- that a maintainer with no Windows machine cannot do.
+# It runs against a *published* release rather than a build artifact, so what it
+# checks is the file users download, byte for byte, installed the way they
+# install it.
+#
+# It cannot judge the SmartScreen prompt or how the installer looks while it
+# runs; those still need a person. What it does check is everything that has
+# ever been wrong on Windows without being wrong on Linux: an installer that
+# unpacks somewhere else, a frozen backend that dies on a missing DLL, and a
+# bundled ffmpeg that exists but cannot load its libraries.
+name: Verify published installer
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to verify (for example v0.3.1)
+        required: true
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Download the published installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.tag }}" --repo ${{ github.repository }} --pattern "*.exe" --pattern "SHA256SUMS.txt" --dir download
+
+      # Verify what the release page publishes, not what this job happened to
+      # get: GitHub serves asset names with spaces rewritten to dots, and
+      # SHA256SUMS.txt is written in those same names for exactly that reason.
+      - name: Check it against SHA256SUMS.txt
+        run: |
+          $exe = Get-ChildItem download/*.exe | Select-Object -First 1
+          if (-not $exe) { throw "the release has no .exe asset" }
+          $published = $exe.Name -replace ' ', '.'
+          $line = Select-String -Path download/SHA256SUMS.txt -SimpleMatch $published
+          if (-not $line) { throw "SHA256SUMS.txt does not mention $published" }
+          $expected = $line.Line.Split(' ')[0]
+          $actual = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "checksum mismatch: $expected published, $actual downloaded" }
+          "$published $actual" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "installer=$($exe.FullName)" | Out-File -Append $env:GITHUB_ENV
+
+      # /S is NSIS's silent switch, which electron-builder's assisted installer
+      # honours. perMachine is false, so this is a per-user install needing no
+      # elevation -- the same one a user without administrator rights gets.
+      - name: Install silently
+        run: |
+          Start-Process -FilePath $env:installer -ArgumentList '/S' -Wait
+          $app = "$env:LOCALAPPDATA\Programs\Trove\Trove.exe"
+          if (-not (Test-Path $app)) { throw "no Trove.exe under $env:LOCALAPPDATA\Programs\Trove" }
+          "app=$app" | Out-File -Append $env:GITHUB_ENV
+          "resources=$env:LOCALAPPDATA\Programs\Trove\resources\backend\_internal" | Out-File -Append $env:GITHUB_ENV
+
+      # The frozen backend is the part that breaks silently on Windows: a missing
+      # DLL leaves an application that starts, shows a window and never serves a
+      # page. Asking its own health endpoint is the only check that covers the
+      # whole chain -- Electron started, it spawned the backend, and the backend
+      # got far enough to answer. The port is chosen at run time, so it comes
+      # from the listening socket the backend process itself owns.
+      - name: Launch it and wait for the backend to answer
+        run: |
+          $process = Start-Process -FilePath $env:app -PassThru
+          $deadline = (Get-Date).AddSeconds(240)
+          $health = $null
+          while (-not $health -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 5
+            if ($process.HasExited) { throw "Trove exited with code $($process.ExitCode) before serving anything" }
+            foreach ($backend in @(Get-Process trove-backend -ErrorAction SilentlyContinue)) {
+              foreach ($socket in @(Get-NetTCPConnection -State Listen -OwningProcess $backend.Id -ErrorAction SilentlyContinue)) {
+                try { $answer = Invoke-RestMethod "http://127.0.0.1:$($socket.LocalPort)/api/health" -TimeoutSec 5 } catch { continue }
+                if ($answer.ok) { $health = $answer; break }
+              }
+              if ($health) { break }
+            }
+          }
+          Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          Get-Process trove-backend -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          if (-not $health) { throw "the backend never answered /api/health" }
+          "backend healthy: $($health | ConvertTo-Json -Compress)" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+
+      # "The file is there" and "it runs" stopped being the same question when
+      # ffmpeg became a shared build (trove/runtime.py: tool_env). On Windows the
+      # libraries resolve from the executable's own directory, which is where
+      # staging puts them -- so this fails if either half of that is wrong.
+      - name: Run the bundled tools
+        run: |
+          foreach ($tool in 'ffmpeg', 'ffprobe') {
+            $path = "$env:resources\tools\$tool.exe"
+            if (-not (Test-Path $path)) { throw "$tool.exe is not in the installed bundle" }
+            $version = & $path -version 2>&1 | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0) { throw "$tool.exe will not run: $version" }
+            "$tool : $version" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
+
+      # Two payloads that Linux builds cannot tell you about. PyInstaller
+      # deduplicates the staged libraries into a symlink on Linux and cannot on
+      # Windows, so a regression in packaging/trove.spec's filter shows up here
+      # and nowhere else; and OpenCV's Qt build is the same size mistake in a
+      # different package (see ensure-headless-opencv.py).
+      - name: Check for payloads that only Windows can carry
+        run: |
+          $duplicates = Get-ChildItem "$env:resources" -Filter 'av*.dll' -File
+          if ($duplicates) { throw "FFmpeg DLLs are duplicated in the bundle root: $($duplicates.Name -join ', ')" }
+          $qt = Get-ChildItem "$env:resources" -Recurse -Include 'Qt5*.dll', 'Qt6*.dll' -File
+          if ($qt) { throw "OpenCV's Qt build is in the bundle: $($qt.Name -join ', ')" }
+          "no duplicate FFmpeg DLLs, no Qt" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+
+      - name: Uninstall
+        if: always()
+        run: |
+          $uninstaller = "$env:LOCALAPPDATA\Programs\Trove\Uninstall Trove.exe"
+          if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait }
