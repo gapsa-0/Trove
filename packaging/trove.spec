@@ -115,6 +115,38 @@ excludes = [
 
 a = Analysis([str(root / "packaging" / "desktop_entry.py")], pathex=[str(root)], binaries=binaries,
              datas=datas, hiddenimports=hiddenimports, excludes=excludes, noarchive=False)
+
+
+def _staged_duplicate(entry):
+    """A second copy, in the bundle root, of a file already staged under tools/.
+
+    The staged tools are collected as data, but PyInstaller also *scans* what it
+    collects, so ffmpeg's own dependencies pull every ``libav*`` into the root a
+    second time. On Linux that costs nothing -- two identical files become a
+    symlink into ``tools/`` -- but Windows has no symlink to fall back on, so
+    0.3.0's installer carried all seven libraries twice: 177 MB raw, about 50 MB
+    of the download, ``avcodec-62.dll`` alone being 98 MB of it.
+
+    Nothing loads them from the root. ffmpeg.exe resolves its DLLs from its own
+    directory, which is exactly where staging puts them, and on Linux
+    ``trove.runtime.tool_env`` prepends that directory to ``LD_LIBRARY_PATH``
+    for the same reason -- its docstring explains why the upstream RPATH cannot
+    be relied on to do it.
+    """
+    destination, source, kind = entry
+    if Path(destination).parent != Path("."):
+        return False  # the staged copy under tools/ itself, which is the one that matters
+    if kind == "SYMLINK":
+        return Path(source).parts[:1] == ("tools",)
+    try:
+        return tools.is_dir() and Path(source).resolve().is_relative_to(tools.resolve())
+    except OSError:
+        return False
+
+
+a.binaries = [entry for entry in a.binaries if not _staged_duplicate(entry)]
+a.datas = [entry for entry in a.datas if not _staged_duplicate(entry)]
+
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="trove-backend", console=not sys.platform.startswith("win"))
 COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="backend")
