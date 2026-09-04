@@ -31,11 +31,22 @@ a release that is wrong in a way nobody notices until it is published.
 4. **Skim the size allowlist** in `tools/dev/check_sizes.py`: did it grow since
    the last release, and does each new entry have the reason its commit body
    promised? An allowlist that only ever grows is a ratchet running backwards.
-5. **Build and launch the packaged app on both Linux and Windows.** A green suite
+5. **Repair the build environment's OpenCV**: `python
+   packaging/scripts/ensure-headless-opencv.py`. `insightface` and `rapidocr`
+   both require the full `opencv-python`, so pip installs it beside the headless
+   wheel `requirements-desktop.txt` pins; they write the same `cv2/`, and
+   whichever pip unpacked last is the one that gets frozen. 0.3.0 froze the full
+   one and put Qt5 and a second `libav*` set inside every installer — 36 MB raw,
+   ~13 MB of download — for a program that has never opened a cv2 window. The release workflows run
+   this themselves; a local build has to be told. `packaging/trove.spec` fails
+   the build rather than ship the payload either way, so the cost of forgetting
+   is a failed build and not a silent 36 MB.
+
+6. **Build and launch the packaged app on both Linux and Windows.** A green suite
    says nothing about package data — a missing directory under
    `trove/web/` produces a build that imports fine and serves a blank
    page. Launch it and open a screen.
-6. **Build from a clean tree, not the working copy.** `build/lib/` is a stale
+7. **Build from a clean tree, not the working copy.** `build/lib/` is a stale
    setuptools staging directory that is never cleaned between builds, so
    setuptools copies the current tree in *beside* the old one and ships both — a
    local wheel has already been observed carrying a package that had been renamed
@@ -48,8 +59,8 @@ a release that is wrong in a way nobody notices until it is published.
 
    PyInstaller is unaffected (it resolves the package path to the live source),
    but "I built a wheel and it looked right" is not trustworthy without this.
-7. **Record the clean-machine acceptance run** — see below.
-8. **Update the README's download table**, after the installers exist. Its
+8. **Record the clean-machine acceptance run** — see below.
+9. **Update the README's download table**, after the installers exist. Its
    three filenames, links and sizes name the previous release until someone
    changes them by hand, and nothing in CI reads that table — so the front
    page goes on offering the old version to every reader who arrives at it.
@@ -65,7 +76,7 @@ same tag produces the same bytes:
 
 | Input | Manifest | Staged by |
 | --- | --- | --- |
-| Python runtime | `packaging/requirements-desktop.txt` | `pip install -r` |
+| Python runtime | `packaging/requirements-desktop.txt` | `pip install -r`, then `packaging/scripts/ensure-headless-opencv.py` |
 | Native tools (ffmpeg, ffprobe, ExifTool) | `packaging/tools/manifest.json` | `packaging/scripts/stage-tools.py --target <t>` |
 
 `npm run build:backend` refuses to run until the native tools have produced their

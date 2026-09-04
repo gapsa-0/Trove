@@ -15,6 +15,14 @@ test_no_console_windows.py does for console flashes.
 Note this deliberately does not cover ``VideoCapture``/``VideoWriter``: headless
 keeps videoio, so those would work. They are absent for a different reason --
 video frames come from the bundled ffmpeg -- and that is not this test's business.
+
+What this file could not see on its own is which *wheel* answers ``import cv2``.
+insightface and rapidocr both require the full ``opencv-python``, so pip installs
+it beside the headless pin, and 0.3.0 shipped 36 MB of Qt and duplicate FFmpeg
+with every call site in this repository still perfectly clean. The build refuses that payload now
+(``packaging/trove.spec``) and the build machines undo it first
+(``packaging/scripts/ensure-headless-opencv.py``); the last test here is what
+keeps that step in the workflows that freeze a build.
 """
 
 from __future__ import annotations
@@ -25,6 +33,10 @@ from pathlib import Path
 import trove
 
 PACKAGE = Path(trove.__file__).resolve().parent
+ROOT = PACKAGE.parent
+WORKFLOWS = ROOT / ".github" / "workflows"
+REPAIR = "packaging/scripts/ensure-headless-opencv.py"
+FREEZES = ("build:backend", "package:win", "package:linux", "electron-builder")
 
 # highgui entry points. Present as attributes under headless, but every one of
 # them throws cv2.error at runtime because the backend was never built.
@@ -91,3 +103,44 @@ def test_the_scanner_would_actually_catch_a_window_call():
 
     assert [node.attr for node in _gui_attributes(offending)] == ["imshow", "waitKey"]
     assert list(_gui_attributes(fine)) == []
+
+
+def _build_workflows() -> list[Path]:
+    """Workflows that install the desktop profile, and therefore freeze a build."""
+    found = [
+        path
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+        if "requirements-desktop.txt" in path.read_text(encoding="utf-8")
+    ]
+    assert found, f"no workflow installs the desktop profile; has {WORKFLOWS} moved?"
+    return found
+
+
+def test_every_workflow_that_freezes_a_build_repairs_opencv_first():
+    """The step that decides which OpenCV gets frozen, checked by position.
+
+    pip installs the full wheel because insightface and rapidocr ask for it, so
+    the repair has to run after every install of the desktop profile and before
+    anything freezes -- a step in the right file but the wrong place would be
+    exactly as broken as no step at all, and just as green.
+    """
+    for path in _build_workflows():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        installs = [n for n, line in enumerate(lines) if "requirements-desktop.txt" in line]
+        repairs = [
+            n
+            for n, line in enumerate(lines)
+            if REPAIR in line and line.lstrip().startswith("- run:")
+        ]
+        freezes = [n for n, line in enumerate(lines) if any(step in line for step in FREEZES)]
+        where = path.relative_to(ROOT)
+
+        assert repairs, f"{where} installs the desktop profile but never runs {REPAIR}"
+        for install in installs:
+            assert any(install < repair for repair in repairs), (
+                f"{where}:{install + 1} installs the desktop profile with no {REPAIR} after it"
+            )
+        if freezes:
+            assert min(repairs) < min(freezes), (
+                f"{where} freezes a build at line {min(freezes) + 1}, before {REPAIR}"
+            )

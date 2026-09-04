@@ -44,10 +44,16 @@ insightface==1.0.1
 onnxruntime==1.27.0
 # The one place a desktop pin and a dev pin deliberately differ by *variant* and
 # not by number: requirements-desktop.txt ships opencv-python-headless at this
-# same 5.0.0.93. Same OpenCV sources, built without highgui, which keeps 29 MB of
+# same 5.0.0.93. Same OpenCV sources, built without highgui, which keeps 30 MB of
 # Qt out of the installer. A developer keeps the full wheel so ad-hoc debugging in
 # tools/ can still open a window; nothing in trove/ may, and
 # tests/unit/test_opencv_headless.py enforces that.
+#
+# The pin is here because insightface and rapidocr both *require* opencv-python,
+# so it arrives whatever this file says -- which is why a build environment is
+# not this environment. Freezing a bundle from a checkout means running
+# packaging/scripts/ensure-headless-opencv.py first; packaging/trove.spec fails
+# the build rather than let the Qt payload through, as it did in 0.3.0.
 opencv-python==5.0.0.93
 scikit-learn==1.9.0
 numpy==2.5.1

@@ -13,9 +13,15 @@ numpy==2.5.1
 # without the highgui backend. Nothing in the shipped package uses a GUI or video
 # symbol — cv2 appears only as cvtColor/resize/Laplacian/dnn, and video frames come
 # from the bundled ffmpeg, not VideoCapture — so the Qt5 Core/Gui/Widgets/Test/XcbQpa
-# and xcb/xkb stack the full wheel carries is 29 MB of bundle nobody can reach.
+# and xcb/xkb stack the full wheel carries is 30 MB of bundle nobody can reach.
 # If a cv2.imshow/VideoCapture ever lands in trove/, this pin has to go
 # back to opencv-python; tests/unit/test_opencv_headless.py fails the build if it does.
+#
+# Pinning it is not enough to get it. Two packages listed below -- insightface
+# and rapidocr -- require plain opencv-python, so pip satisfies every line in
+# this file by installing *both* wheels; they write the same cv2/, and the last
+# one unpacked is the one that gets frozen. 0.3.0 shipped the wrong one. Run
+# packaging/scripts/ensure-headless-opencv.py after installing this file.
 opencv-python-headless==5.0.0.93
 onnxruntime==1.27.0
 scikit-learn==1.9.0

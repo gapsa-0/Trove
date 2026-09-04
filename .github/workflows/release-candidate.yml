@@ -32,6 +32,12 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
       - run: python -m pip install -e '.[dev]' -r packaging/requirements-desktop.txt
+      # insightface and rapidocr both require the full opencv-python, so pip
+      # installs it beside the headless wheel requirements-desktop.txt pins,
+      # both write the same cv2/, and whichever landed last is what gets frozen.
+      # 0.3.0 froze the wrong one and shipped 36 MB of Qt5 and a duplicate FFmpeg.
+      # packaging/trove.spec fails the build if this step is ever dropped.
+      - run: python packaging/scripts/ensure-headless-opencv.py
       - run: python packaging/scripts/stage-tools.py --target $env:ARCHIVE_TOOL_TARGET
         if: runner.os == 'Windows'
       - run: python packaging/scripts/stage-tools.py --target "$ARCHIVE_TOOL_TARGET"

@@ -147,6 +147,37 @@ def _staged_duplicate(entry):
 a.binaries = [entry for entry in a.binaries if not _staged_duplicate(entry)]
 a.datas = [entry for entry in a.datas if not _staged_duplicate(entry)]
 
+# OpenCV's Qt payload must never reach a build. `requirements-desktop.txt` pins
+# opencv-python-headless, but insightface and rapidocr both require the full
+# wheel, so pip installs it too, both write the same `cv2/`, and whichever landed
+# last is what gets frozen -- which is how 0.3.0 shipped Qt5 Core, Gui, Widgets,
+# XcbQpa, the xcb/xkb plugins and a second FFmpeg: 36 MB raw, ~13 MB of
+# installer, in a program that never opens a window.
+# tests/unit/test_opencv_headless.py could not have caught it: it asks whether
+# the code calls a GUI function, not which wheel answers `import cv2`.
+#
+# Named precisely, because `libxcb`/`libxkbcommon` look like evidence and are
+# not -- Pillow carries its own copies for its own reasons, and a guard that
+# cries wolf on a clean build is a guard the next person deletes.
+_QT = ("libqt", "qt5", "qt6", "libqxcb")
+_qt_payload = sorted({
+    destination for destination, _source, _kind in a.binaries + a.datas
+    if Path(destination).name.lower().startswith(_QT)
+    or "cv2/qt/" in Path(destination).as_posix()
+    # The full wheel's private library directory, whose headless twin is
+    # `opencv_python_headless.libs`. This is the one that carries the second
+    # libav* set, which is not Qt but arrives for exactly the same reason.
+    or Path(destination).as_posix().startswith("opencv_python.libs/")
+})
+if _qt_payload:
+    raise SystemExit(
+        "error: this build would ship OpenCV's GUI backend:\n  "
+        + "\n  ".join(_qt_payload[:8])
+        + f"\n  ... and {len(_qt_payload) - 8} more" * (len(_qt_payload) > 8)
+        + "\nThe full opencv-python wheel is installed. Fix the environment with:\n"
+        + f"  {sys.executable} packaging/scripts/ensure-headless-opencv.py"
+    )
+
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="trove-backend", console=not sys.platform.startswith("win"))
 COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="backend")
