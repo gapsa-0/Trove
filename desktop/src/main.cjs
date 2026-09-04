@@ -5,6 +5,7 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { validReady } = require("./ready.cjs");
+const { probeSandbox, noSandboxReason } = require("./sandbox.cjs");
 
 const LOOPBACK = "127.0.0.1";
 const READY_TIMEOUT_MS = 20_000;
@@ -22,6 +23,26 @@ function appendDiagnostic(line) {
 function appendMainDiagnostic(line) {
   mainLines.push(`${new Date().toISOString()} ${line}`);
   if (mainLines.length > 200) mainLines.shift();
+}
+
+/* Whether the renderer is sandboxed, recorded rather than decided.
+
+   The decision is not this program's to make: Chromium reads --no-sandbox off
+   the command line before it runs any of this file, and answers "neither
+   sandbox is available" by aborting -- so a build that reaches this line on a
+   system with no sandbox was started with the switch by something outside it.
+   That something is scripts/appimage-launcher.sh, which is why only the AppImage
+   has one (the .deb installs an AppArmor profile instead and sandboxes
+   normally). src/sandbox.cjs holds the reasoning for both.
+
+   What is left to do here is tell the truth about it: an unsandboxed renderer
+   should never be something a user can only discover by reading a launcher
+   script, so it goes in the diagnostics the About panel copies, and on stderr
+   for whoever started Trove from a terminal. */
+const sandboxGap = noSandboxReason(probeSandbox(path.join(path.dirname(process.execPath), "chrome-sandbox")));
+if (sandboxGap) {
+  appendMainDiagnostic(`renderer sandbox off: ${sandboxGap}`);
+  console.warn(`Trove: the renderer is not sandboxed -- ${sandboxGap}.`);
 }
 
 function writeRotatingLog(name, lines) {
@@ -193,7 +214,8 @@ function toolStatus(name, toolRoot) {
 
 function diagnosticText() {
   const tools = ["exiftool", "ffprobe", "ffmpeg"].map(name => `${name}: ${toolStatus(name, bundledToolRoot())}`);
-  return [`Trove ${app.getVersion()} (${process.env.ARCHIVE_BUILD_COMMIT || "dev"})`, `OS: ${process.platform} ${process.arch}`, `Data folder: ${app.getPath("userData")}`, ...tools, "Recent local errors:", ...stderrLines.slice(-20), ...mainLines.slice(-20)].join("\n");
+  const sandbox = `Renderer sandbox: ${sandboxGap ? `off (${sandboxGap})` : "on"}`;
+  return [`Trove ${app.getVersion()} (${process.env.ARCHIVE_BUILD_COMMIT || "dev"})`, `OS: ${process.platform} ${process.arch}`, `Data folder: ${app.getPath("userData")}`, sandbox, ...tools, "Recent local errors:", ...stderrLines.slice(-20), ...mainLines.slice(-20)].join("\n");
 }
 
 ipcMain.handle("archive:about", async () => ({ version: app.getVersion(), commit: process.env.ARCHIVE_BUILD_COMMIT || "dev", backendVersion: backendPort === null ? "not running" : app.getVersion(), dataFolder: app.getPath("userData") }));

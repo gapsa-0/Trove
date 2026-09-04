@@ -1,5 +1,9 @@
 appId: io.capsa.trove
 productName: Trove
+# Wraps the Electron binary in scripts/appimage-launcher.sh, for AppImage builds
+# only -- the hook explains why only, and why `package:linux` therefore packs
+# once per target rather than once for both.
+afterPack: scripts/wrap-appimage-launcher.cjs
 directories:
   output: release
 files:

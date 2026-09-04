@@ -218,6 +218,12 @@ Linux packages bundle FFmpeg and FFprobe. ExifTool is not included on Linux: wit
 it, Trove still uses Takeout sidecars, filenames, and file timestamps, but cannot read
 the full range of embedded metadata.
 
+On Ubuntu 23.10 and later, prefer the `.deb` if you have the choice. It installs an
+AppArmor profile that lets Chromium sandbox the part of Trove that renders your
+media; an AppImage installs nothing, so it cannot, and runs that part unsandboxed
+on those systems. Both work — the difference is one layer of defence, and it is
+explained in the Linux notes below.
+
 See [Linux installation notes](docs/install-linux.md) for AppImage/FUSE and data-path
 details.
 

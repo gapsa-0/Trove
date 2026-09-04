@@ -98,5 +98,5 @@ jobs:
       - run: test -f node_modules/electron/path.txt
         working-directory: desktop
       - run: make lint-js
-      - run: npm run check:version && npm run test:ready && node --check src/main.cjs && node --check src/preload.cjs
+      - run: npm run check:version && npm run test:ready && npm run test:sandbox && node --check src/main.cjs && node --check src/preload.cjs && node --check src/sandbox.cjs
         working-directory: desktop

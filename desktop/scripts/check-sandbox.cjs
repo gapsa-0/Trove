@@ -8,6 +8,10 @@
 // `chrome-sandbox`, which works only when owned by root with the setuid bit. npm
 // unpacks it as the installing user, so from a source checkout it never is, and
 // `npm run dev` aborts with a FATAL that names the file and mode it wants.
+// (Packaged builds do not abort: the .deb installs an AppArmor profile granting
+// the namespace sandbox, and the AppImage, which can install nothing, starts
+// without a sandbox from its own launcher -- ADR 0024. A checkout has neither,
+// on purpose: it can be fixed properly with the two commands below.)
 //
 // That message is clear, but it arrives after a successful install, on a
 // different command, possibly days later. So this runs at each of the three
@@ -65,7 +69,7 @@ if (process.platform === "linux" && restrictsUserNamespaces() && needsOwnership(
       "",
       "Redo this after any npm install/ci, which replaces the file.",
       "To skip the sandbox instead:  npm run dev -- --no-sandbox",
-      "Packaged builds set this themselves; only source checkouts need it.",
+      "Packaged builds handle this themselves; only source checkouts need it.",
       "",
     ].join("\n"),
   );
