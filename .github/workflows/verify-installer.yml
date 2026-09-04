@@ -90,9 +90,14 @@ jobs:
           foreach ($tool in 'ffmpeg', 'ffprobe') {
             $path = "$env:resources\tools\$tool.exe"
             if (-not (Test-Path $path)) { throw "$tool.exe is not in the installed bundle" }
-            $version = & $path -version 2>&1 | Select-Object -First 1
-            if ($LASTEXITCODE -ne 0) { throw "$tool.exe will not run: $version" }
-            "$tool : $version" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            # All of the output, then the exit code, then the first line. Piping
+            # straight into `Select-Object -First 1` closes the pipeline early,
+            # which terminates the tool and leaves $LASTEXITCODE reporting that
+            # rather than what the tool did -- a check that fails on a program
+            # working perfectly, which is how this was found.
+            $output = & $path -version 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "$tool.exe will not run: $($output -join ' ')" }
+            "$tool : $($output | Select-Object -First 1)" | Out-File -Append $env:GITHUB_STEP_SUMMARY
           }
 
       # Two payloads that Linux builds cannot tell you about. PyInstaller
