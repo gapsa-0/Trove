@@ -13,6 +13,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-04
+
+### Fixed
+
+- **The AppImage starts on Ubuntu 23.10 and later.** Trove's window is Chromium,
+  which sandboxes the part of itself that renders your media using a facility
+  Ubuntu 23.10 began withholding from programs no AppArmor profile covers. An
+  AppImage installs nothing, so nothing can give it a profile, and 0.3.0's
+  answered that by exiting with a message about `chrome-sandbox` where a window
+  should have been. It now recognises that situation at launch and starts with
+  the renderer sandbox off, saying so in Help → Copy diagnostics and on stderr.
+  Where a sandbox is available — every distribution that does not restrict user
+  namespaces — nothing changes. The `.deb` was never affected, because it
+  installs a profile of its own; on Ubuntu it remains the better download, and
+  the Linux install notes now say why.
+
+- **The installers stopped carrying a graphics toolkit nothing uses.** The two
+  packages behind face and text detection both ask for the desktop build of
+  OpenCV, so it was installed beside the windowless build Trove pins and the
+  frozen app took whichever arrived last. 0.3.0 took the desktop one and shipped
+  Qt5, an X11 plugin stack and a second copy of FFmpeg with it — 36 MB of files
+  no part of Trove can reach. Every download is smaller for their absence: the
+  AppImage by 14 MB, the `.deb` by 11 MB.
+
+- **Windows: the FFmpeg libraries were in the installer twice.** 177 MB of them,
+  about 50 MB of the download, because the freezer keeps its own copy of a
+  bundled library it also finds as a dependency, and Windows has no symlink to
+  collapse the two into one. Linux was never affected. Nothing loaded the second
+  copy; it was only ever weight.
+
+### Internal
+
+- The build now refuses to package OpenCV's desktop build or a duplicated
+  FFmpeg, rather than trusting the environment it runs in to be right.
+- A workflow installs a published Windows release on a Windows runner, launches
+  it and waits for its catalogue service to answer — the half of the release
+  checklist that a maintainer with no Windows machine could not otherwise do.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added
@@ -1242,6 +1280,7 @@ pets; search the library by description when semantic indexing was enabled;
 and correct photo orientation for display without touching the file on disk.
 
 [Unreleased]: https://github.com/gapsa-0/Trove/compare/v0.3.0...HEAD
+[0.3.1]: https://github.com/gapsa-0/Trove/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gapsa-0/Trove/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/gapsa-0/Trove/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gapsa-0/Trove/compare/v0.1.2...v0.2.0
