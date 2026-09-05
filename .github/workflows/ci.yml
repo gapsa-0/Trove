@@ -22,8 +22,8 @@ jobs:
       # `env:` block, and referencing it there makes GitHub reject the whole
       # workflow before any job starts (a 0s run with no jobs and no logs).
       - run: echo "XDG_DATA_HOME=$RUNNER_TEMP/archive-data" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: { python-version: '3.13', cache: pip }
       # The same install `make setup` performs, so a green run here and a green
       # run on a developer machine mean the same thing. Installing only `.[dev]`
@@ -86,8 +86,8 @@ jobs:
   electron:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: desktop/package-lock.json }
       - run: npm ci
         working-directory: desktop
