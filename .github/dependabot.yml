@@ -1,12 +1,21 @@
 version: 2
 updates:
-  # Python project at the repo root. Note: Dependabot reads `pyproject.toml`'s
-  # dependency ranges, not `constraints.txt` — the exact pins this project tests
-  # against (see the header comment in constraints.txt) are not what Dependabot
-  # proposes or checks; a PR here bumps an allowed range, and the pin in
-  # constraints.txt still needs updating and testing by hand as usual.
+  # Python project at the repo root. Dependabot reads all three dependency files
+  # — `pyproject.toml`, `constraints.txt` and `packaging/requirements-desktop.txt`
+  # — and a PR here is a proposal, not a merge: constraints.txt's header asks for
+  # one bump per commit with the suite and the model-backed tests run, which a
+  # grouped PR is not. Take the numbers, land them in pieces.
+  #
+  # `increase-if-necessary` is what keeps it to the numbers. The default strategy
+  # also rewrites pyproject's floors to match whatever it just pinned — turning
+  # `onnxruntime>=1.20` into `>=1.29.0` — which inverts what these files are for:
+  # pyproject says what is *allowed*, constraints says what is *tested*. Raising a
+  # floor claims older versions no longer work, and a version bump has not found
+  # that out. With this, a range is touched only when it genuinely excludes the
+  # new version.
   - package-ecosystem: "pip"
     directory: "/"
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
     groups:

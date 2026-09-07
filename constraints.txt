@@ -67,7 +67,7 @@ numpy==2.5.2
 # in no extra and installed by no make target -- requires tokenizers<=0.23.0 and
 # will therefore hold this back on a developer machine. That is expected: the
 # packaged app excludes transformers entirely.
-tokenizers==0.23.1
+tokenizers==0.23.2
 
 # --- documents extra ---
 # Bundles its own PDFium build, so this pin fixes the PDF parser itself and not
@@ -90,7 +90,7 @@ shapely==2.1.2
 faiss-cpu==1.15.0
 pytest==9.1.1
 pytest-cov==7.1.0
-ruff==0.16.5
+ruff==0.16.6
 pre-commit==4.6.2
 mypy==2.3.1
 
