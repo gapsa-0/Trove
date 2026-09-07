@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -53,7 +53,7 @@ pets = ["onnxruntime>=1.20", "opencv-python>=4.8", "numpy>=1.24", "Pillow>=10", 
 # win_amd64, so it needs no compiler on the release runners. Deliberately NOT
 # transformers or torch — a 64-token tokenizer does not justify reversing the
 # torch exclusion in packaging/trove.spec.
-semantic = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
+semantic = ["onnxruntime>=1.20", "tokenizers>=0.23.2", "numpy>=1.24", "Pillow>=10", "pillow-heif>=0.16"]
 # Reading the text inside documents. One dependency, and only for PDFs: Word,
 # Excel, PowerPoint and the OpenDocument three are zipped XML, which zipfile and
 # ElementTree read without help, and text/markdown/CSV/HTML/notebooks are stdlib
@@ -87,7 +87,7 @@ ocr = ["rapidocr>=3.9"]
 # Dropping it here too would leave the equivalence claim unverified -- which is
 # the claim that makes excluding it from the installer a size decision rather
 # than a clustering one.
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "pre-commit>=3", "mypy>=1.11", "faiss-cpu>=1.13"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.16.6", "pre-commit>=3", "mypy>=1.11", "faiss-cpu>=1.13"]
 
 [project.scripts]
 trove = "trove.cli:main"
