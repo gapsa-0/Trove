@@ -51,7 +51,7 @@ shapely==2.1.2
 # is authoritative -- so a build that somehow lacked it would be slower to notice
 # a new folder of photos and nothing else.
 watchfiles==1.2.0
-PyInstaller==6.21.0
+PyInstaller==6.22.2
 # ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
 # (packaging/tools/manifest.json). ML model weights are staged separately too
 # (packaging/models/manifest.json).
