@@ -2,8 +2,8 @@
 # Install once per clone:  pre-commit install
 #
 # The ruff hook rev is pinned to the same version as the `ruff` pin in
-# pyproject.toml's dev extra. If they drift, the hook and a local `ruff format`
-# disagree about the same file and you get a commit you cannot make.
+# constraints.txt. If they drift, the hook and a local `ruff format` disagree
+# about the same file and you get a commit you cannot make.
 
 # Vendored third-party code. Its value is that it can be diffed against upstream,
 # which trailing-whitespace and end-of-file-fixer would quietly destroy -- and the
@@ -16,7 +16,7 @@ exclude: |
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
+    rev: v0.16.5
     hooks:
       - id: ruff-check    # lint  (plain `ruff` is a deprecated alias for this)
         args: [--fix]
