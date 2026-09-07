@@ -13,6 +13,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-07
+
 ### Changed
 
 - **Video the machine can decode in hardware no longer goes through ffmpeg
@@ -23,6 +25,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   wherever the machine can decode them, and fall back to the same re-encode
   where it cannot. No other format changed hands, and nothing that played before
   stopped.
+
+- **The downloads are bigger, by about the size of the newer window.** Electron
+  43 is 18 MB larger unpacked than 37 was, and that is most of what each
+  installer gained. It buys the six Chromium versions between them, this
+  release's video decoding among them.
+
+### Fixed
+
+- **The AppImage's note about its renderer sandbox now lands somewhere you can
+  read afterwards.** 0.3.1 said it appeared under *Help → Copy diagnostics*;
+  there is no such menu item, and nothing in the app offers those diagnostics
+  yet, so on a machine where the sandbox is unavailable the only record was a
+  line on stderr — which a desktop launcher throws away. It is written to
+  `~/.config/trove-desktop/logs/electron-main.log` at startup now, on a run that
+  works as much as on one that does not.
+
+### Internal
+
+- The dependency set moved forward as ten separate, separately tested bumps
+  rather than one: onnxruntime 1.29, numpy 2.5.2, pillow-heif 1.6, pypdfium2
+  5.13, tokenizers 0.23.2, PyInstaller 6.22.2, faiss-cpu, scipy, and the three
+  check tools. The `.deb`'s compression level is now stated rather than
+  inherited, after the packaging toolchain's own default changed underneath it
+  and cost 50 MB.
+- A watcher left running by one test was logging inside another, and that log
+  record created a directory a third test needed absent — a chain that only
+  showed up as an intermittent failure on CI.
 
 ## [0.3.1] - 2026-09-04
 
@@ -1291,6 +1320,7 @@ pets; search the library by description when semantic indexing was enabled;
 and correct photo orientation for display without touching the file on disk.
 
 [Unreleased]: https://github.com/gapsa-0/Trove/compare/v0.3.0...HEAD
+[0.3.2]: https://github.com/gapsa-0/Trove/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/gapsa-0/Trove/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gapsa-0/Trove/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/gapsa-0/Trove/compare/v0.2.0...v0.2.1
