@@ -37,8 +37,9 @@ function appendMainDiagnostic(line) {
 
    What is left to do here is tell the truth about it: an unsandboxed renderer
    should never be something a user can only discover by reading a launcher
-   script, so it goes in the diagnostics the About panel copies, and on stderr
-   for whoever started Trove from a terminal. */
+   script. So it goes on stderr for whoever started Trove from a terminal, and
+   into the diagnostics log at startup -- see the note in app.whenReady, which
+   is where the second half of that had to happen. */
 const sandboxGap = noSandboxReason(probeSandbox(path.join(path.dirname(process.execPath), "chrome-sandbox")));
 if (sandboxGap) {
   appendMainDiagnostic(`renderer sandbox off: ${sandboxGap}`);
@@ -257,6 +258,15 @@ async function showStartupFailure(error) {
 }
 
 app.whenReady().then(async () => {
+  /* Put a disabled sandbox on disk before anything else can go wrong.
+
+     Everything else here writes diagnostics only when something failed --
+     showStartupFailure, and the two process-level handlers. A renderer running
+     without its sandbox is the opposite case: the app starts, the window opens,
+     nothing looks wrong, and the one place it was said was a terminal nobody
+     kept. Writing it on a *successful* start is what makes "it is never silent"
+     true rather than nearly true. */
+  if (sandboxGap) writeDiagnostics();
   try { await startBackend(); await createWindow(); }
   catch (error) { await showStartupFailure(error); await stopBackend(); app.quit(); }
 });

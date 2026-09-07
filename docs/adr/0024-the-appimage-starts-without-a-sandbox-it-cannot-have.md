@@ -78,9 +78,12 @@ once per target, rather than once for both.
 
 `desktop/src/sandbox.cjs` asks the same three questions from inside the app. It
 decides nothing (it cannot), and exists to report: when it finds no sandbox
-available, the About panel's diagnostics say `Renderer sandbox: off` with the
-reason, because an unsandboxed renderer should not be a thing a user could only
-discover by reading a launcher script.
+available the app says so on stderr and writes it to
+`~/.config/trove-desktop/logs/electron-main.log` on a successful start, because an
+unsandboxed renderer should not be a thing a user could only discover by reading
+a launcher script. `diagnosticText()` carries the same line as
+`Renderer sandbox: off`, for whenever something offers it — nothing does yet;
+the preload exposes `copyDiagnostics` and no screen calls it.
 
 ## Consequences
 

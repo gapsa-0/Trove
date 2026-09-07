@@ -39,8 +39,9 @@ The two downloads meet that rule differently:
   starts without the sandbox rather than not starting, which is what 0.3.0 did —
   it exited with a message about `chrome-sandbox` and no window. On every
   distribution that does not restrict user namespaces it changes nothing and the
-  AppImage sandboxes normally. Either way it says which in *Help → Copy
-  diagnostics*, and on stderr if you started it from a terminal.
+  AppImage sandboxes normally. Either way it says which: on stderr if you
+  started it from a terminal, and in `~/.config/trove-desktop/logs/electron-main.log`,
+  which it writes at startup whenever the sandbox is off.
 
 Running the renderer unsandboxed is a real, if narrow, reduction: Trove loads
 nothing but its own catalogue service on `127.0.0.1`, and the window cannot
