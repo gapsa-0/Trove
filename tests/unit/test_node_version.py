@@ -7,6 +7,12 @@ postinstall unpacks one file of its binary, hangs, and lets the process exit 0,
 so ``npm ci`` reports a clean install and ``electron .`` dies at runtime with
 "Electron failed to install correctly". ``make setup`` was green throughout.
 
+Since Electron 43 there is a fourth file in the same story. Electron no longer
+carries a ``postinstall`` at all -- the runtime is downloaded by an explicit
+``install-electron`` bin -- so ``desktop/package.json``'s own postinstall is what
+makes ``npm ci`` a complete install, and a missing binary looks exactly like the
+Node 26 failure above from outside. See ADR 0014's amendment.
+
 ``desktop/.npmrc`` sets ``engine-strict``, so the ``engines`` range below is what
 actually refuses the wrong Node. That makes these three files load-bearing rather
 than documentation, which is the reason to guard them:
@@ -99,3 +105,21 @@ def test_every_workflow_pins_the_same_node():
     assert pins, "no workflow pins a node-version; has CI moved?"
     wrong = {name: sorted(v) for name, v in pins.items() if v != {str(major)}}
     assert not wrong, f"workflows not pinned to Node {major}: {wrong}"
+
+
+def test_the_postinstall_still_downloads_electron():
+    """Electron 43 stopped downloading itself; this is what does it instead.
+
+    ``npm ci`` with no ``install-electron`` in the chain leaves a node_modules
+    with no runnable Electron and exits 0 -- indistinguishable, from outside,
+    from the Node 26 unpack this file's other tests are about. `make setup` and
+    CI both catch it afterwards by looking for ``path.txt``; this catches it
+    where it would be introduced, and says which line to put back.
+    """
+    package = json.loads((DESKTOP / "package.json").read_text(encoding="utf-8"))
+    postinstall = package.get("scripts", {}).get("postinstall", "")
+    assert "install-electron" in postinstall, (
+        "desktop/package.json's postinstall must run `install-electron`: since "
+        "Electron 43 the package has no install script of its own, so npm ci "
+        "installs no binary without it (ADR 0014's amendment)"
+    )

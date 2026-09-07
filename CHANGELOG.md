@@ -13,6 +13,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Video the machine can decode in hardware no longer goes through ffmpeg
+  first.** The window moved to Electron 43, whose Chromium reads H.265/HEVC —
+  what an iPhone records — where the previous one did not. Those videos used to
+  be re-encoded on their way to the screen: a second of still picture before the
+  first frame, and that second again after every seek. They now open directly
+  wherever the machine can decode them, and fall back to the same re-encode
+  where it cannot. No other format changed hands, and nothing that played before
+  stopped.
+
 ## [0.3.1] - 2026-09-04
 
 ### Fixed
@@ -23,7 +34,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   AppImage installs nothing, so nothing can give it a profile, and 0.3.0's
   answered that by exiting with a message about `chrome-sandbox` where a window
   should have been. It now recognises that situation at launch and starts with
-  the renderer sandbox off, saying so in Help → Copy diagnostics and on stderr.
+  the renderer sandbox off, saying so on stderr and in its own log.
   Where a sandbox is available — every distribution that does not restrict user
   namespaces — nothing changes. The `.deb` was never affected, because it
   installs a profile of its own; on Ubuntu it remains the better download, and

@@ -69,3 +69,40 @@ compatibility matrix.
   "install script exits 0 without installing" is what made this expensive:
   `make setup` fails if `desktop/node_modules/electron/path.txt` is missing after
   `npm ci`, and CI's electron job asserts the same file.
+
+## Amendment, 2026-09-06: Electron 43 removed the postinstall this record guards
+
+Electron 43 ships **no `scripts` field at all**. `npm view electron@43.3.0
+scripts` returns nothing, where `electron@37.2.6` returns
+`{ postinstall: "node install.js" }`. The same `install.js` is still in the
+package, exposed as a bin — `install-electron` — so downloading the runtime is
+now something a consumer asks for rather than something `npm install` does on
+its way past.
+
+The first sign of it here was dependabot's npm PR going red on this record's own
+guard: `npm ci` finished in two seconds, wrote no `path.txt`, and
+`test -f node_modules/electron/path.txt` failed on an install that had done
+exactly what Electron now intends. The guard was right to fire and wrong about
+why, which is the more interesting half — "the install script silently did
+nothing" and "there is no install script" look identical from outside.
+
+Three things change. The decision does not.
+
+- **`desktop/package.json`'s own `postinstall` runs `install-electron` first**,
+  before the sandbox note it already ran. This is an application, not a library:
+  there is no configuration in which it wants a checkout with no runnable
+  Electron, and putting the download in one lifecycle script keeps every entry
+  point — `make setup`, CI, a developer's bare `npm ci` — complete without each
+  of them remembering a second command. A `--ignore-scripts` install skips it,
+  and then the guard below fails loudly, which is the outcome this record wants.
+- **`engines.node` becomes `>=22.12 <23`.** Electron 43 declares
+  `node: ">= 22.12.0"`, so the `>=20` courtesy to the previous LTS is not even
+  nominally true any more. `.nvmrc` and the workflows are unchanged: 22 was
+  always the version actually exercised.
+- **The guard means the same thing and stays where it is.** `path.txt` after
+  `npm ci` is still the question — only the script that has to produce it is
+  ours now. `tests/unit/test_node_version.py` also checks that the postinstall
+  still invokes `install-electron`, so the file cannot go missing quietly.
+
+The Node 26 failure this record was written about is untouched by any of it:
+`extract-zip` is still how `install.js` unpacks, so the upper bound stays.

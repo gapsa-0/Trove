@@ -24,11 +24,12 @@ setup:           ## Create the venv and install everything for development
 	$(PY) -m pip install -e '.[$(EXTRAS)]' -c constraints.txt
 	$(PY) -m pre_commit install
 	cd desktop && npm ci
-	@# npm ci can report success and still leave no Electron binary: the
-	@# postinstall that unpacks it exits 0 without unpacking on an unsupported
-	@# Node (docs/adr/0014). desktop/.npmrc already refuses that Node outright;
-	@# this catches any future install script that fails the same silent way,
-	@# because a setup that "succeeded" is the part that cost days.
+	@# npm ci can report success and still leave no Electron binary. It did it
+	@# two ways: on an unsupported Node the unpack exits 0 without unpacking,
+	@# and since Electron 43 there is no postinstall of its own at all -- the
+	@# desktop package's own one runs `install-electron` (docs/adr/0014 and its
+	@# amendment). desktop/.npmrc refuses the wrong Node outright; this catches
+	@# either failure, because a setup that "succeeded" is the part that cost days.
 	@test -f desktop/node_modules/electron/path.txt || { \
 	  echo "setup failed: desktop/node_modules/electron has no unpacked binary."; \
 	  echo "npm ci exited 0 without installing it. Select the Node in .nvmrc"; \

@@ -24,6 +24,20 @@ nsis:
   oneClick: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
+deb:
+  # The compression level, stated rather than inherited. fpm 1.17 -- which
+  # electron-builder 26.15 downloads -- sets XZ_OPT=-3 for the deb's data.tar;
+  # fpm 1.9.3 set nothing and got xz's own -6. Same tree in, 50 MB more out.
+  #
+  # Measured on one build of 0.3.1, in millions of bytes: -3 gives 329.7, -6
+  # gives 301.9, -9 gives 289.3. The gap between -6 here and the 279 the old
+  # toolchain produced is xz's threading, which is on by default in 5.8 and
+  # compresses each block alone: -3 wrote 87 blocks, -6 wrote 44, -9 writes 6
+  # (a 192 MB block) and lands within a point of the old single-block ratio.
+  #
+  # -9 costs about six minutes on a four-core runner, once, on a job that only
+  # runs for a release. The 12.6 MB is paid by every person who downloads it.
+  fpm: ["--deb-compression-level", "9"]
 linux:
   target:
     - AppImage

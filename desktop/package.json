@@ -7,14 +7,14 @@
   "private": true,
   "main": "src/main.cjs",
   "engines": {
-    "node": ">=20 <23"
+    "node": ">=22.12 <23"
   },
   "scripts": {
     "check:version": "node scripts/check-version.cjs",
     "sync:version": "node scripts/check-version.cjs --write",
     "test:ready": "node scripts/test-ready-parser.cjs",
     "test:sandbox": "node scripts/test-sandbox-probe.cjs",
-    "postinstall": "node scripts/check-sandbox.cjs",
+    "postinstall": "install-electron && node scripts/check-sandbox.cjs",
     "predev": "node scripts/check-sandbox.cjs",
     "dev": "electron .",
     "build:backend": "npm run check:version && node scripts/build-backend.cjs",
@@ -24,9 +24,9 @@
     "lint": "cd .. && eslint --config eslint.config.js desktop/src desktop/scripts trove/web/static/js"
   },
   "devDependencies": {
-    "@eslint/js": "^9",
-    "electron": "37.2.6",
-    "electron-builder": "26.0.12",
-    "eslint": "^9"
+    "@eslint/js": "10.0.1",
+    "electron": "43.3.0",
+    "electron-builder": "26.15.3",
+    "eslint": "10.8.0"
   }
 }
