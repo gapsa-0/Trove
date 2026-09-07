@@ -182,11 +182,9 @@ def _open(jm, root_id: int) -> None:
     its pause state is.
     """
     jm._open_db = lambda rid: _NullConn()  # type: ignore[method-assign]
-    # Nor its watch. open_archive places a real one on the archive path, in a
-    # daemon thread that no test here closes: it outlives the test, notices
-    # pytest deleting an old basetemp, and logs from inside whatever is running
-    # by then. That is how it was found -- as a FileExistsError in a migrate-data
-    # test three files away, whose target directory the log record had created.
+    # Nor its watch: a real one, in a daemon thread nothing here closes, which
+    # outlives the test and logs from inside a later one -- and that record
+    # creates the data dir a migrate-data test needs absent (logging_setup).
     jm._watcher.start = lambda rid, path: None  # type: ignore[method-assign]
     jm.open_archive(root_id)
 
