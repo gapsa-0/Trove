@@ -39,7 +39,14 @@ BACKUP_COUNT = 3
 # application's behaviour. PIL in particular logs every TIFF tag it reads at
 # DEBUG, which buries our own lines when TROVE_LOG_LEVEL=DEBUG is set to debug a
 # scan -- exactly when the log matters most.
-NOISY_LIBRARIES = ("PIL", "urllib3", "onnxruntime", "matplotlib", "faiss")
+#
+# watchfiles is here for a second reason as well as its "N changes detected" per
+# batch: an INFO record from a library is enough to open the lazy file handler
+# below, and opening it creates the data directory. That is the one thing this
+# module promises not to do on a command that only reads -- see
+# _LazyRotatingFileHandler -- and a watcher running in another thread should not
+# be able to break it from the side.
+NOISY_LIBRARIES = ("PIL", "urllib3", "onnxruntime", "matplotlib", "faiss", "watchfiles")
 
 # Marks the handlers this module installed, so a second configure() call can
 # remove its own without touching anything pytest or a host program added.

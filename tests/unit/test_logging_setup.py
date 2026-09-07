@@ -106,6 +106,25 @@ def test_configure_creates_nothing_on_disk(monkeypatch, tmp_path):
     assert not (tmp_path / "fresh").exists()
 
 
+def test_a_library_logging_at_info_creates_nothing_either(monkeypatch, tmp_path):
+    """The same promise, kept against code this project does not call.
+
+    The file handler opens on the first record from *anywhere*, and opening it
+    creates the directory -- so a library logging at INFO from its own thread
+    breaks the invariant above just as thoroughly as an eager mkdir would, and
+    from somewhere nobody would look. watchfiles does exactly that: its watcher
+    thread logs "N changes detected" per batch, which is why it is in
+    NOISY_LIBRARIES. It cost a CI failure in a migrate-data test whose target
+    directory a stray watcher had created.
+    """
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "fresh"))
+    logging_setup.configure()
+
+    logging.getLogger("watchfiles.main").info("14 changes detected")
+
+    assert not (tmp_path / "fresh").exists()
+
+
 def test_unwritable_log_dir_degrades_to_stderr(monkeypatch, tmp_path, capsys):
     # A packaged app on a read-only data dir must keep running.
     blocker = tmp_path / "data"
