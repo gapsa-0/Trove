@@ -5,10 +5,10 @@
 # cp313 wheels for win_amd64 and manylinux x86_64 — the desktop build must never
 # need a compiler on the release runners.
 Pillow==12.3.0
-pillow-heif==1.6.0
+pillow-heif==1.7.0
 ImageHash==4.3.2
 pyexiftool==0.5.6
-numpy==2.5.2
+numpy==2.5.3
 # The headless variant: same OpenCV version and sources as opencv-python, built
 # without the highgui backend. Nothing in the shipped package uses a GUI or video
 # symbol — cv2 appears only as cvtColor/resize/Laplacian/dnn, and video frames come
@@ -28,7 +28,7 @@ scikit-learn==1.9.0
 # Face detection/recognition backend (SCRFD det_10g + ArcFace w600k_r50 from the
 # buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
 # zoo loader and face_align helpers, inference itself runs on onnxruntime.
-insightface==1.0.1
+insightface==2.0
 # Query tokenizer for local semantic search (SigLIP 2's Gemma SentencePiece
 # vocabulary). A Rust extension, but its wheels are cp310-abi3 for both
 # manylinux x86_64 and win_amd64, so cp313 installs one without a compiler.
