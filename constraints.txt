@@ -36,12 +36,12 @@ watchfiles==1.2.0
 # --- media extra ---
 PyExifTool==0.5.6
 Pillow==12.3.0
-pillow-heif==1.6.0
+pillow-heif==1.7.0
 ImageHash==4.3.2
 
 # --- faces extra ---
-insightface==1.0.1
-onnxruntime==1.29.0
+insightface==2.0
+onnxruntime==1.30.0
 # The one place a desktop pin and a dev pin deliberately differ by *variant* and
 # not by number: requirements-desktop.txt ships opencv-python-headless at this
 # same 5.0.0.93. Same OpenCV sources, built without highgui, which keeps 30 MB of
@@ -55,8 +55,8 @@ onnxruntime==1.29.0
 # packaging/scripts/ensure-headless-opencv.py first; packaging/trove.spec fails
 # the build rather than let the Qt payload through, as it did in 0.3.0.
 opencv-python==5.0.0.93
-scikit-learn==1.9.0
-numpy==2.5.2
+scikit-learn==1.9.1
+numpy==2.5.3
 
 # --- pets extra ---
 # (onnxruntime, opencv-python, numpy, Pillow, pillow-heif — all pinned above)
@@ -90,7 +90,7 @@ shapely==2.1.2
 faiss-cpu==1.15.0
 pytest==9.1.1
 pytest-cov==7.1.0
-ruff==0.16.6
+ruff==0.16.8
 pre-commit==4.6.2
 mypy==2.3.1
 
