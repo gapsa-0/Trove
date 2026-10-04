@@ -9,8 +9,8 @@ Do not publish a release while any entry is incomplete.
 - PyInstaller — GPL-2.0-or-later with a bootloader exception — https://pyinstaller.org/
 - OpenCV Zoo YOLOX-S model — Apache-2.0 —
   https://github.com/opencv/opencv_zoo/tree/main/models/object_detection_yolox
-- FFmpeg / FFprobe — n8.1.2-50-g1a748fe2cd, BtbN GPL 8.1 *shared* build —
-  GPL-3.0-or-later — https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-09-03-13-17
+- FFmpeg / FFprobe — n8.1.3-14-g330caae0c1, BtbN GPL 8.1 *shared* build —
+  GPL-3.0-or-later — https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-03-18-14
   Shipped as the two executables plus the `libav*`/`av*` shared libraries they
   link against, rather than as two static binaries. Same upstream payload and the
   same single GPL obligation; the libraries are simply no longer duplicated inside
