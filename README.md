@@ -159,9 +159,9 @@ too — nothing about a search leaves the machine.
 
 | Platform | Download | Size |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | [Trove.Setup.0.3.2.exe](https://github.com/gapsa-0/Trove/releases/download/v0.3.2/Trove.Setup.0.3.2.exe) | 276 MB |
-| Linux, any distribution | [Trove-0.3.2.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.3.2/Trove-0.3.2.AppImage) | 395 MB |
-| Debian / Ubuntu | [trove-desktop_0.3.2_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.3.2/trove-desktop_0.3.2_amd64.deb) | 264 MB |
+| Windows 10/11 (64-bit) | [Trove.Setup.0.3.3.exe](https://github.com/gapsa-0/Trove/releases/download/v0.3.3/Trove.Setup.0.3.3.exe) | 282 MB |
+| Linux, any distribution | [Trove-0.3.3.AppImage](https://github.com/gapsa-0/Trove/releases/download/v0.3.3/Trove-0.3.3.AppImage) | 406 MB |
+| Debian / Ubuntu | [trove-desktop_0.3.3_amd64.deb](https://github.com/gapsa-0/Trove/releases/download/v0.3.3/trove-desktop_0.3.3_amd64.deb) | 276 MB |
 
 Each download bundles its own Python runtime and FFmpeg — nothing is fetched from
 a package manager at install time. **No model weights are in there.** Every one is
@@ -170,7 +170,7 @@ shared by every archive on the machine — so a feature you never enable costs y
 nothing to have installed.
 
 Checksums for all three are in
-[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.3.2/SHA256SUMS.txt).
+[SHA256SUMS.txt](https://github.com/gapsa-0/Trove/releases/download/v0.3.3/SHA256SUMS.txt).
 Newer versions, when they exist, are on the
 [releases page](https://github.com/gapsa-0/Trove/releases).
 
