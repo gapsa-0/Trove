@@ -21,6 +21,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a line under the count appeared only when both kinds were present, so an
   archive of nothing but byte-identical copies never said so.
 
+- **A place has its own page now, like a person or a pet.** Clicking a card
+  under the map opens it: every photo taken there, to browse and open, with the
+  name and the ⋯ menu at the top. A pin's side panel has an *Open place* button
+  that leads to the same page. Back returns to the map exactly as you left it.
+  Before, clicking a card only moved the map to the place.
+
 ### Fixed
 
 - **The definitions shown when you point at a row of figures no longer run out

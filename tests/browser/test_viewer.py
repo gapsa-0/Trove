@@ -129,9 +129,10 @@ def test_the_arrows_walk_a_places_photos_when_opened_from_a_place(open_app, arch
     draw a card at all, and this tier has to run on a machine without it.
     """
     with open_app("places", wait_for=".pcard") as app:
+        # A card opens the place's own page; its grid is what the arrows walk.
         app.tab.evaluate("document.querySelector('.pcard').click()")
-        app.wait_for("#mapsidegrid .tile")
-        app.tab.evaluate("document.querySelector('#mapsidegrid .tile').click()")
+        app.wait_for("#grid .tile")
+        app.tab.evaluate("document.querySelector('#grid .tile').click()")
         app.tab.wait_for(
             "!!(document.querySelector('#modal.open #minfo h3') || {}).textContent",
             what="the panel to name the file it opened",
@@ -139,7 +140,7 @@ def test_the_arrows_walk_a_places_photos_when_opened_from_a_place(open_app, arch
 
         # Bounded by the place, and the readout says so rather than implying
         # the arrows are about to wander into the rest of the archive.
-        assert "at this place" in app.tab.evaluate("document.getElementById('vpos').textContent")
+        assert "at Bariloche" in app.tab.evaluate("document.getElementById('vpos').textContent")
         assert app.errors() == []
 
 

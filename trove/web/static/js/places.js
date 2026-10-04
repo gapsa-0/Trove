@@ -7,6 +7,12 @@ import {
   currentTheme,
 } from "./settings.js";
 import {
+  backControl, onBackControl, showSection,
+} from "./router.js";
+import {
+  historyButton, mountHistory,
+} from "./history.js";
+import {
   tile,
 } from "./library.js";
 import {
@@ -127,6 +133,8 @@ export async function renderMap(m) {
   if (MAP) { MAP.remove(); MAP = null; MAP_LAYER = null; }
   MAP_POINT_CANVAS = null; MAP_POINT_LAYER = null; MAP_POINT_BUILT = null;
   S.mapSel = null;
+  S.placePage = null;
+  STASHED_PLACES = null;   // a full render replaces whatever was set aside
   // The view choice is a preference and survives; the points themselves are
   // this archive's data and are re-fetched on demand (see setMapView).
   S.mapView = S.mapView || "places";
@@ -299,7 +307,7 @@ function placeCard(place) {
   const card = document.createElement("div"); card.className = "pcard";
   card.onclick = guardCardClick(() => openOrSelect(
     "place", { id: place.id, name: place.name, photos: place.count },
-    () => showPlaceFromGallery(place.id)));
+    () => showPlace(place.id)));
   const name = place.name ? esc(place.name) : "Name this place";
   card.innerHTML = placeCollage(place.thumb_ids) + `<div class="pmeta"><div class="pmeta-text">
     <button class="pname ${place.name ? "" : "un"}" type="button">${name}</button>
@@ -311,12 +319,6 @@ function placeCard(place) {
   attachMergeDrag(card, { kind: "place", id: place.id, name: place.name, photos: place.count }, refreshPlacesAfterMerge);
   cardMenu(card.querySelector(".pmeta"), [placeMergeItem(place, refreshPlacesAfterMerge)]);
   return card;
-}
-function showPlaceFromGallery(id) {
-  const place = MAP_CLUSTERS.find(cluster => cluster.id === id);
-  if (MAP && place) MAP.flyTo([place.lat, place.lon], Math.max(MAP.getZoom(), 14));
-  selectPlaceCluster(id);
-  document.getElementById("lmap")?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 /* The shared editor, which this was the one grid not using.
 
@@ -381,12 +383,13 @@ async function selectPlaceCluster(id) {
     <div class="mapside-name" id="mapsidename">
       <div class="mapside-title"><button class="person-name-button ${c.name ? "" : "un"}" onclick="editClusterName(${id},'${safeName}')">${displayName}</button>
         <span class="muted">${c.total.toLocaleString()} item${c.total === 1 ? "" : "s"}</span></div>
-      <div class="mapside-actions" id="placeactions"><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" data-tip="Close place"><svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>
+      <div class="mapside-actions" id="placeactions"><button class="quietbtn sm" type="button" onclick="showPlace(${id})">Open place</button><button class="close-side" onclick="closePlaceCluster()" aria-label="Close place" data-tip="Close place"><svg class="appicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>
     </div>
     ${mergesPanel(c.merges, "place")}
     <div class="grid" id="mapsidegrid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr))"></div>
     <div class="infinite-status" id="mapside-sentinel" aria-live="polite"></div>`;
-  // Prepended, so the close button stays last in the corner it lives in.
+  // Prepended, so "Open place" and the close button stay last, in the corner
+  // they live in.
   cardMenu(document.getElementById("placeactions"),
     [placeMergeItem({ id, name: c.name, count: c.total }, refreshPlacesAfterMerge)]);
   const actions = document.getElementById("placeactions");
@@ -406,6 +409,103 @@ async function selectPlaceCluster(id) {
       galleryFromGrid("mapsidegrid", "at this place");
     },
   });
+}
+/* A place's own page: the same page a person or a pet opens, for a place.
+
+   The side panel beside the map is a preview, sized for glancing from one
+   marker to the next; this is where a place is looked through, renamed and
+   merged. The Places screen is set aside rather than torn down while it is
+   open -- the map keeps its position and zoom, the gallery its scroll, the
+   side panel whatever it was showing -- for the reason the People screen's
+   twin gives: rebuilding it on the way back loses what you were looking at. */
+let STASHED_PLACES = null;
+export async function showPlace(id) {
+  const m = document.getElementById("main");
+  if (!STASHED_PLACES) {
+    const fragment = document.createDocumentFragment();
+    const scrollTop = m.scrollTop;
+    while (m.firstChild) fragment.appendChild(m.firstChild);
+    STASHED_PLACES = { fragment, scrollTop };
+  }
+  S.placePage = id;
+  m.scrollTop = 0;
+  m.innerHTML = '<div class="muted" style="padding:30px">Loading…</div>';
+  const c = await jget(`/api/map/cluster/${id}?root=${S.arch.id}&limit=${PLACE_PAGE_SIZE}`);
+  if (S.placePage !== id) return;   // superseded, or gone back
+  if (!c || c.error) { m.innerHTML = '<div class="soonbox">Place not found.</div>'; return; }
+  // The picture its card leads with, so the page opens on the same face the
+  // card it was opened from showed.
+  const cover = ((MAP_CLUSTERS.find(cl => cl.id === id) || {}).thumb_ids || [])[0]
+    || (c.members[0] || {}).id;
+  const avatar = cover
+    ? `<img class="person-header-avatar" src="/thumb/${cover}" alt="" onerror="this.style.visibility='hidden'">`
+    : `<div class="person-header-avatar" aria-hidden="true"></div>`;
+  m.innerHTML = `<div class="facetopbar">${backControl("Places")}
+    ${avatar}
+    <div class="ftb-identity"><div class="ftb-name" id="placename"><button class="person-name-button ${c.name ? "" : "un"}" type="button" data-tip="Rename this place"><span>${c.name ? esc(c.name) : "Name this place"}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.7-10.7a2.1 2.1 0 0 0-3-3L5.2 16 4 20Z"/><path d="m14.5 6.5 3 3"/></svg></button></div>
+    <span class="muted ftb-count">${fileCount(c.total)}</span></div>
+    ${historyButton("place", id, c.name)}
+    <div class="ftb-actions" id="placepageactions"></div></div>
+    <div class="grid" id="grid"></div>
+    <div class="infinite-status" id="place-grid-sentinel" aria-live="polite"></div>`;
+  onBackControl(m, backToPlaces);
+  document.querySelector("#placename .person-name-button")
+    .addEventListener("click", () => editPlaceName(id, c.name || ""));
+  // A merge from here follows the survivor: it is still the place being
+  // looked at, whichever id the backend kept.
+  cardMenu(document.getElementById("placepageactions"), [placeMergeItem(
+    { id, name: c.name, count: c.total },
+    merged => (merged && merged.id ? showPlace(merged.id) : backToPlaces()))]);
+  mountHistory(() => showPlace(id));
+  const label = c.name ? `at ${c.name}` : "at this place";
+  let firstPage = c.members;
+  startInfiniteList("placeDetailList", {
+    sentinelId: "place-grid-sentinel", pageSize: PLACE_PAGE_SIZE,
+    fetchPage: async offset => {
+      if (firstPage) { const page = firstPage; firstPage = null; return page; }
+      const res = await jget(`/api/map/cluster/${id}?root=${S.arch.id}&offset=${offset}&limit=${PLACE_PAGE_SIZE}`);
+      return (res && res.members) || [];
+    },
+    onPage: (items, { first }) => {
+      const grid = document.getElementById("grid");
+      if (first) grid.replaceChildren();
+      items.forEach(it => grid.appendChild(tile(it)));
+      galleryFromGrid("grid", label);
+    },
+  });
+}
+export function backToPlaces() {
+  S.placePage = null;
+  const m = document.getElementById("main");
+  if (!STASHED_PLACES) { showSection("places", true); return; }
+  const saved = STASHED_PLACES; STASHED_PLACES = null;
+  m.replaceChildren();
+  m.appendChild(saved.fragment);
+  requestAnimationFrame(() => { m.scrollTop = saved.scrollTop; });
+  // Leaflet measured its box while it was detached, which is no box at all.
+  setTimeout(() => { if (MAP) { MAP.invalidateSize(); drawMap(); } }, 0);
+  // The page just left may have renamed or merged this place, so the map, the
+  // gallery and the side panel are re-read -- in place, keeping the scroll.
+  refreshPlacesAfterMerge();
+}
+function editPlaceName(id, current) {
+  const box = document.getElementById("placename"); if (!box) return;
+  inlineNameEdit(box, {
+    value: current,
+    label: "Place name",
+    className: "detail-name-input",
+    onSave: (name, input) => savePlaceName(id, name, input),
+    onCancel: () => showPlace(id),
+  });
+}
+async function savePlaceName(id, name, input) {
+  input.disabled = true;
+  let result;
+  try { result = await jpost("/api/map/cluster/rename", { cluster_id: id, name }); }
+  catch (error) { result = { error: String(error) }; }
+  if (!result || result.error) toast("Couldn’t save the place name.", true);
+  showPlace(id);
 }
 export function editClusterName(id, current) {
   const box = document.getElementById("mapsidename");

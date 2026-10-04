@@ -50,12 +50,18 @@ not a gap.
 what it is. Naming a place also exempts it from the reporting floor below, so a
 place you have named never disappears for being small.
 
+**Open a place.** Clicking a card under the map opens that place's own page,
+like a person's or a pet's: every photo taken there, to browse and open, with
+the name and the ⋯ menu at the top. From the map, click a pin and press *Open
+place* in the panel beside it. The back arrow returns you to the map where you
+left it.
+
 **Merge two places.** Drag one pin onto another. Trove asks first, and if the
 two are further apart than 20 km it says so, because that is well past the
 distance a genuine "one place got split in two" merge covers. Nothing is
 refused, and a merge can be undone.
 
-**Or merge by name.** Every card's ⋯ menu, and an open place's panel, offers
+**Or merge by name.** Every card's ⋯ menu, a place's panel and its page offer
 "Merge with…" and a list of the places you have already named — for when the
 two are not on screen together.
 

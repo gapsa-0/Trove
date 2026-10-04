@@ -52,7 +52,7 @@ import {
   askCancel, undoMerge,
 } from "./merge.js";
 import {
-  closePlaceCluster, editClusterName, setMapView,
+  closePlaceCluster, editClusterName, setMapView, showPlace,
 } from "./places.js";
 import {
   applyTimelineFilters, clearTimelineFilters, onTimelineYearChange,
@@ -190,7 +190,7 @@ Object.assign(window, {
   removeManualPet,
   renderInfo, saveDate, saveFeatureSheet, saveNewPlace, semanticSubmit, setArchiveName,
   setMapView, startSelecting,
-  setStorageMetric, showDoc, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
+  setStorageMetric, showDoc, showPlace, showRelated, showSection, stepItem, submitArchiveSetup, toPicker,
   thumbFallback,
   toggleBoxes, toggleFeature, toggleInspector, toggleNav, toggleSheetFeature,
   viewerBack,
