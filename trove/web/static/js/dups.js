@@ -68,14 +68,14 @@ export async function renderDedup(m) {
   dupTotalGroups = ds.groups;
   dupListTotal = ds.groups ? ds.groups : null;
   m.innerHTML = `<div class="pagehead"><div><h2 class="sec">Duplicates</h2><p>Every copy Trove found, and which one it keeps in Browse.</p></div>${docsButton("dups")}</div>
-    <div class="statrow">
+    <div class="statrow dupstats">
       <div class="stat"><div><div class="k">Unique files</div><div class="v" id="dup-unique">${(ds.unique || 0).toLocaleString()}</div></div>
         ${why("Unique files", (ds.unique || 0).toLocaleString(), "Every file you have, counting each group of copies only once.")}</div>
       <div class="stat"><div><div class="k">Duplicate groups</div><div class="v" id="dup-groups">${ds.groups.toLocaleString()}</div></div>
         ${why("Duplicate groups", ds.groups.toLocaleString(), "Sets of files found to be the same thing. One is kept; the rest are copies.")}</div>
-      <div class="stat"><div><div class="k">Redundant copies</div><div class="v" id="dup-copies">${ds.duplicates.toLocaleString()}</div>
-        <div class="statsub" id="dup-split">${matchSplit(ds)}</div></div>
-        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies in those groups, still on disk but hidden from Browse. Identical means byte for byte; a visual match is the same picture saved differently.")}</div>
+      <div class="stat"><div><div class="k">Redundant copies</div><div class="statfig"><div class="v" id="dup-copies">${ds.duplicates.toLocaleString()}</div>
+        <div class="statsub" id="dup-split">${matchSplit(ds)}</div></div></div>
+        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies in those groups, still on disk but hidden from Browse.")}</div>
       <div class="stat"><div><div class="k">Reclaimable</div><div class="v" id="dup-reclaimable">${fmtBytes(ds.reclaimable)}</div></div>
         ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together. Trove never deletes them; this is what you would get back if you did.")}</div>
     </div>
@@ -103,15 +103,15 @@ export async function renderDedup(m) {
 
    Both kinds are always named, a zero included: "0 visual matches" is the news
    that every copy is safe to reclaim, and leaving the line out said nothing at
-   all. Silent only when there are no copies to split. Each half is kept whole,
-   so a narrow tile wraps the line at the comma rather than inside a figure. */
+   all. Silent only when there are no copies to split. Set beside the number,
+   one kind to a line, so the tile is no taller than its neighbours. */
 function matchSplit(ds) {
   if (!ds.duplicates) return "";
   const counts = Object.fromEntries((ds.by_match || []).map(m => [m.key, m.count]));
   return ["identical", "visual"].map(key => {
     const n = counts[key] || 0;
     return `<span>${n.toLocaleString()} ${key} ${n === 1 ? "match" : "matches"}</span>`;
-  }).join(", ");
+  }).join("");
 }
 /* Redraw the figures from a fresh summary, without rebuilding the screen.
 

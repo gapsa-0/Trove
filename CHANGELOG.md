@@ -15,10 +15,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Duplicates says what kind of copies it found, every time.** Under
-  "Redundant copies" the tile now reads, for example, "1,204 identical matches,
-  36 visual matches". Before, that line only appeared when both kinds were
-  present, so an archive of nothing but byte-identical copies never said so.
+- **Duplicates says what kind of copies it found, every time.** Beside the
+  "Redundant copies" count the tile now reads, for example, "1,204 identical
+  matches" over "36 visual matches", without making the tile any taller. Before,
+  a line under the count appeared only when both kinds were present, so an
+  archive of nothing but byte-identical copies never said so.
 
 ### Fixed
 
