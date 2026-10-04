@@ -67,12 +67,14 @@ main>.eyebrow {
   position: absolute;
   inset: -1px;
   z-index: 3;
-  /* Exactly the tile, never taller. It replaces the tile in place, so any
-     height of its own would resize the tile under the pointer and shift the
-     whole page below the row. The tile is given room for two lines of sentence
-     instead (see .stat:has(.stat-why) below), which is what the definitions are
-     written to. */
-  bottom: -1px;
+  /* At least the tile, and taller when the sentence needs it. It used to be
+     held to exactly the tile, with the definitions written to fit two lines,
+     but a tile is 140px wide at its narrowest and a sentence that fits there
+     is too short to say anything; the long ones ran out of the card instead.
+     Growing is safe because it is absolute: it covers what is below the row,
+     for as long as the pointer is there, and moves nothing. */
+  bottom: auto;
+  min-height: calc(100% + 2px);
   padding: 15px 17px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -84,7 +86,8 @@ main>.eyebrow {
 }
 
 /* Room for the label and two lines of definition, held whether or not the
-   definitions are showing. Reserving it here rather than letting the
+   definitions are showing, so the usual one covers its tile exactly and only
+   a long one at a narrow width has to grow past it. Reserving it here rather than letting the
    replacement claim it is what keeps the row one height: the tiles are a
    little taller than their figures need, and nothing moves when a pointer
    crosses them. Only the tiles that carry a definition -- the Overview's have

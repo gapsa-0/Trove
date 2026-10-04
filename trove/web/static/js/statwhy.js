@@ -32,9 +32,10 @@
 // have to match back to a number from memory. The figure is set small here --
 // it is what is being explained, not what is being reported.
 //
-// Kept to two lines at the tile's width. The tile reserves exactly this much
-// room (see .stat:has(.stat-why)), so a third line would make the row taller
-// the moment a pointer crossed it.
+// Best kept to two lines at the tile's width, which is the room the tile
+// reserves (see .stat:has(.stat-why)). A longer one is not cut off: the card
+// grows down over whatever is below the row, which reads as a card that does
+// not match its neighbours, so it is worth a sentence earning the extra lines.
 export function why(label, value, text) {
   return `<div class="stat-why">
       <div class="k">${label} <span class="stat-why-v">${value}</span></div>

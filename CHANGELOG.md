@@ -13,6 +13,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Duplicates says what kind of copies it found, every time.** Under
+  "Redundant copies" the tile now reads, for example, "1,204 identical matches,
+  36 visual matches". Before, that line only appeared when both kinds were
+  present, so an archive of nothing but byte-identical copies never said so.
+
+### Fixed
+
+- **The definitions shown when you point at a row of figures no longer run out
+  of their cards.** A long one, like "Redundant copies" in a narrow window,
+  spilled past the bottom edge. The card now grows to fit it.
+
 ## [0.3.2] - 2026-09-07
 
 ### Changed

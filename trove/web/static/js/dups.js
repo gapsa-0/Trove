@@ -75,7 +75,7 @@ export async function renderDedup(m) {
         ${why("Duplicate groups", ds.groups.toLocaleString(), "Sets of files found to be the same thing. One is kept; the rest are copies.")}</div>
       <div class="stat"><div><div class="k">Redundant copies</div><div class="v" id="dup-copies">${ds.duplicates.toLocaleString()}</div>
         <div class="statsub" id="dup-split">${matchSplit(ds)}</div></div>
-        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies inside those groups. Still on disk, hidden from Browse. Identical means byte for byte; a visual match is the same picture saved differently.")}</div>
+        ${why("Redundant copies", ds.duplicates.toLocaleString(), "The extra copies in those groups, still on disk but hidden from Browse. Identical means byte for byte; a visual match is the same picture saved differently.")}</div>
       <div class="stat"><div><div class="k">Reclaimable</div><div class="v" id="dup-reclaimable">${fmtBytes(ds.reclaimable)}</div></div>
         ${why("Reclaimable", fmtBytes(ds.reclaimable), "What those copies weigh together. Trove never deletes them; this is what you would get back if you did.")}</div>
     </div>
@@ -101,15 +101,18 @@ export async function renderDedup(m) {
    picture saved differently, and knowing the mix is what tells you whether the
    space is safe to reclaim.
 
-   Silent when there is nothing to split -- an archive with no copies, or one
-   where every copy is the same kind -- because "2,410 identical" under
-   "2,410" is the number twice. */
+   Both kinds are always named, a zero included: "0 visual matches" is the news
+   that every copy is safe to reclaim, and leaving the line out said nothing at
+   all. Silent only when there are no copies to split. Each half is kept whole,
+   so a narrow tile wraps the line at the comma rather than inside a figure. */
 function matchSplit(ds) {
-  const parts = (ds.by_match || []).filter(m => m.count > 0);
-  if (parts.length < 2) return "";
-  return parts.map(m => `${m.count.toLocaleString()} ${MATCH_WORDS[m.key] || m.key}`).join(" · ");
+  if (!ds.duplicates) return "";
+  const counts = Object.fromEntries((ds.by_match || []).map(m => [m.key, m.count]));
+  return ["identical", "visual"].map(key => {
+    const n = counts[key] || 0;
+    return `<span>${n.toLocaleString()} ${key} ${n === 1 ? "match" : "matches"}</span>`;
+  }).join(", ");
 }
-const MATCH_WORDS = { identical: "identical", visual: "visual" };
 /* Redraw the figures from a fresh summary, without rebuilding the screen.
 
    Everything here writes into an id that renderDedup laid down, so scroll

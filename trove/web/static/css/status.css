@@ -369,6 +369,10 @@ table.types .share {
   font-variant-numeric: tabular-nums;
 }
 
+.stat .statsub span {
+  white-space: nowrap;
+}
+
 .stat .statsub:empty {
   display: none;
 }
