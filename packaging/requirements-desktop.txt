@@ -5,10 +5,10 @@
 # cp313 wheels for win_amd64 and manylinux x86_64 — the desktop build must never
 # need a compiler on the release runners.
 Pillow==12.3.0
-pillow-heif==1.6.0
+pillow-heif==1.8.0
 ImageHash==4.3.2
 pyexiftool==0.5.6
-numpy==2.5.2
+numpy==2.5.3
 # The headless variant: same OpenCV version and sources as opencv-python, built
 # without the highgui backend. Nothing in the shipped package uses a GUI or video
 # symbol — cv2 appears only as cvtColor/resize/Laplacian/dnn, and video frames come
@@ -23,19 +23,19 @@ numpy==2.5.2
 # one unpacked is the one that gets frozen. 0.3.0 shipped the wrong one. Run
 # packaging/scripts/ensure-headless-opencv.py after installing this file.
 opencv-python-headless==5.0.0.93
-onnxruntime==1.29.0
-scikit-learn==1.9.0
+onnxruntime==1.30.0
+scikit-learn==1.9.1
 # Face detection/recognition backend (SCRFD det_10g + ArcFace w600k_r50 from the
 # buffalo_l pack). Pure-Python wheel (py3-none-any): it only supplies the model
 # zoo loader and face_align helpers, inference itself runs on onnxruntime.
-insightface==1.0.1
+insightface==2.1
 # Query tokenizer for local semantic search (SigLIP 2's Gemma SentencePiece
 # vocabulary). A Rust extension, but its wheels are cp310-abi3 for both
 # manylinux x86_64 and win_amd64, so cp313 installs one without a compiler.
 tokenizers==0.23.2
 # PDF text extraction and page rasterising, for the Documents feature. Ships a
 # prebuilt PDFium; its wheels are py3-none-<platform>, so cp313 needs no build.
-pypdfium2==5.13.0
+pypdfium2==5.14.0
 # OCR: PP-OCRv6 detection and recognition. The wheel carries the ONNX weights
 # too, but packaging/trove.spec filters them out and the app fetches them on
 # first use instead -- they were 26.5 MB of every installer, the largest single
@@ -43,15 +43,15 @@ pypdfium2==5.13.0
 # of this package after the weights is 0.1 MB.
 rapidocr==3.9.2
 pyclipper==1.4.0
-shapely==2.1.2
+shapely==2.2.0
 # Filesystem notifications, so files added to an archive are noticed in seconds
 # rather than on the next sweep. A Rust extension over the `notify` crate, with
 # cp313 wheels for both win_amd64 and manylinux x86_64, so it needs no compiler
 # on the release runners. The app runs correctly without it -- the sweep is what
 # is authoritative -- so a build that somehow lacked it would be slower to notice
 # a new folder of photos and nothing else.
-watchfiles==1.2.0
-PyInstaller==6.22.2
+watchfiles==1.3.0
+PyInstaller==6.22.3
 # ffmpeg/ffprobe and ExifTool are bundled separately as platform resources
 # (packaging/tools/manifest.json). ML model weights are staged separately too
 # (packaging/models/manifest.json).
